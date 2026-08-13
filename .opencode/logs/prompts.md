@@ -1883,3 +1883,37 @@ alos a good readme,w e might turn into a "help file" in the app later, we'll see
 ## 13/08/2026, 15:22:51
 
 no need the apk stuff.
+## 13/08/2026, 15:23:55
+
+what's the url it commits to
+## 13/08/2026, 15:24:56
+
+now it should
+## 13/08/2026, 15:25:54
+
+didnt i set it already?
+
+ git remote add origin "https://github.com/presence35/ukrainedrones"
+
+
+## 13/08/2026, 15:27:49
+
+gimme a short description i can add
+## 13/08/2026, 15:28:45
+
+ok i created it
+## 13/08/2026, 15:29:04
+
+https://github.com/presence35/ukraine_drones
+## 13/08/2026, 15:35:17
+
+" grass" text should be centered.  What happens whn threats/counts are shown, how are they visuualy?
+## 13/08/2026, 15:37:56
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 13/08/2026, 15:40:45
+
+does the threat count organize by zone?
+## 13/08/2026, 15:42:45
+
+merge is fine
