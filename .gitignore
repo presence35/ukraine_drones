@@ -1,0 +1,17 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/app/build
+/captures
+/androidx/
+/org/
+/META-INF/
+/build.log
+/classes.jar
+.externalNativeBuild
+.cxx
+local.properties
+/app/upload.properties

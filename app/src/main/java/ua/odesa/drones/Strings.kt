@@ -1,0 +1,336 @@
+package ua.odesa.drones
+
+object Strings {
+    fun get(lang: AppLanguage): StringSet = when (lang) {
+        AppLanguage.UA -> UA
+        AppLanguage.EN -> EN
+    }
+
+    data class StringSet(
+        val appTitle: String,
+        val odesaAlertBanner: String,
+        val settingsTitle: String,
+        val settingsButton: String,
+        val backButton: String,
+        val languageLabel: String,
+        val zonesLabel: String,
+        val redZoneLabel: String,
+        val yellowZoneLabel: String,
+        val alertsLabel: String,
+        val redZoneAlertsTitle: String,
+        val redZoneAlertsDesc: String,
+        val yellowZoneAlertsTitle: String,
+        val yellowZoneAlertsDesc: String,
+        val fastAlertsSoonerTitle: String,
+        val fastAlertsSoonerDesc: String,
+        val officialAlertsTitle: String,
+        val officialAlertsDesc: String,
+        val allAlertsOffLabel: String,
+        val zoneButtonRed: String,
+        val zoneButtonYellow: String,
+        val redZoneHint: String,
+        val yellowZoneHint: String,
+        val zoneExplain: String,
+        val threatsLabel: String,
+        val disclaimerTitle: String,
+        val disclaimerBody: String,
+        val exitButton: String,
+        val redZoneAlert: String,
+        val yellowZoneAlert: String,
+        val notifOngoingTitle: String,
+        val notifChannelName: String,
+        val notifChannelDesc: String,
+        val notifStatusZones: String,
+        val notifBodyRegion: String,
+        val attributionText: String,
+        val madeBy: String,
+        val connOnline: String,
+        val connOffline: String,
+        val connServerLine: String,
+        val connUpLine: String,
+        val connDownLine: String,
+        val reliabilityLow: String,
+        val reliabilityMedium: String,
+        val reliabilityHigh: String,
+        val reliabilityUnknown: String,
+        val speedUnit: String,
+        val groupLabel: String,
+        val uncertaintyLabel: String,
+        val noRegion: String,
+        val minutesAgoSuffix: String,
+        val justNow: String,
+        val hoursAgoSuffix: String,
+        val daysAgoSuffix: String,
+        val mixedTimeFormat: String,
+        val noThreatsMessage: String,
+        val updateAvailableTitle: String,
+        val updateVersionLabel: String,
+        val updateNotesTitle: String,
+        val updateDownload: String,
+        val updateDownloading: String,
+        val updateInstall: String,
+        val updateLater: String,
+        val updateRetry: String,
+        val updateFailedTitle: String,
+        val updateInstallPermissionTitle: String,
+        val updateInstallPermissionBody: String,
+        val updateOpenSettings: String,
+        val updateReadyToInstallTitle: String,
+        val updateReadyToInstallBody: String,
+        val updateUpToDate: String,
+        val updateCheckFailed: String,
+        val checkForUpdates: String,
+        val updateButton: String,
+        val advisoryLabel: String,
+        val areaOnlyLabel: String,
+        val distanceLabel: String,
+        val etaLabel: String,
+        val gpsOffLabel: String,
+        val inRedZone: String,
+        val inYellowZone: String,
+        val outsideZones: String,
+        val editZonesLabel: String,
+        val alertsBellToggle: String,
+        val kmUnit: String,
+        val meterUnit: String,
+        val moreInfoLabel: String,
+        val wikiSourceLabel: String,
+        val offLabel: String
+    )
+
+    private val UA = StringSet(
+        appTitle = "Одеські дрони",
+        odesaAlertBanner = "Одеса: тривога",
+        settingsTitle = "Налаштування",
+        settingsButton = "Налаштування",
+        backButton = "Назад",
+        languageLabel = "Мова",
+        zonesLabel = "Зони тривог",
+        redZoneLabel = "Червона зона",
+        yellowZoneLabel = "Жовта зона",
+        alertsLabel = "Оповіщення",
+        redZoneAlertsTitle = "Оповіщення червоної зони",
+        redZoneAlertsDesc = "Сирена при загрозі в червоній зоні.",
+        yellowZoneAlertsTitle = "Оповіщення жовтої зони",
+        yellowZoneAlertsDesc = "Попереджувальний звук при загрозі в жовтій зоні.",
+        fastAlertsSoonerTitle = "Швидкі об'єкти сповіщають раніше",
+        fastAlertsSoonerDesc = "Ракети (балістика, крилаті, КАБ, МіГ-31К) піднімають сирену, щойно перетинають будь-яку межу зони.",
+        officialAlertsTitle = "Офіційні сповіщення",
+        officialAlertsDesc = "Сповіщення про офіційну повітряну тривогу в області. Не впливає на червону/жовту зони.",
+        zoneButtonRed = "Червона зона: натисни, щоб наблизити, утримуй — налаштування",
+        zoneButtonYellow = "Жовта зона: натисни, щоб наблизити, утримуй — налаштування",
+        redZoneHint = "Радіус критичної зони навколо тебе — 1–5 км.",
+        yellowZoneHint = "Радіус попереджувальної зони — 6–20 км.",
+        zoneExplain = "Зони слідують за твоїм GPS-положенням. Загроза в червоній зоні — червоний банер і сирена; у жовтій — жовтий банер і звук попередження. Швидкі об'єкти (ракети) можуть сповіщати сиреною відразу на вході в будь-яку зону. Координати загроз грубі, тож межі зон — лише орієнтир.",
+        threatsLabel = "Загрози — натисни, щоб увімкнути",
+        disclaimerTitle = "Офіційні сигнали головні",
+        disclaimerBody = "Завжди керуйся офіційними сигналами повітряної тривоги. Наш застосунок використовує дані, які противник не транслює точно, — координати та відстані не можуть бути точними, навіть коли позначені як підтверджені. Показник рівня загрози — груба оцінка, а не офіційний рейтинг. Все це лише орієнтир.",
+        exitButton = "Зупинити моніторинг і вийти",
+        redZoneAlert = "Червона зона: тривога",
+        yellowZoneAlert = "Жовта зона: тривога",
+        notifOngoingTitle = "Моніторинг тривог",
+        notifChannelName = "Фоновий статус",
+        notifChannelDesc = "Моніторинг працює у фоновому режимі. Вимкнення цього лише приховує статусне сповіщення — сповіщення про повітряну тривогу все одно спрацьовуватимуть.",
+        notifStatusZones = "Зони слідують за твоїм GPS",
+        notifBodyRegion = "Одеський регіон",
+        attributionText = "Карта повітряних тривог — NEPTUN",
+        madeBy = "Зроблено Presaince",
+        connOnline = "Онлайн",
+        connOffline = "Офлайн",
+        connServerLine = "З'єднання з сервером повітряних тривог NEPTUN.",
+        connUpLine = "Дані оновлюються.",
+        connDownLine = "З'єднання втрачено, дані можуть бути застарілими.",
+        reliabilityLow = "Достовірність: Низька",
+        reliabilityMedium = "Достовірність: Середня",
+        reliabilityHigh = "Достовірність: Висока",
+        reliabilityUnknown = "Достовірність: Невідома",
+        speedUnit = "км/год",
+        groupLabel = "Хвиля",
+        uncertaintyLabel = "Точність",
+        noRegion = "Одеська область",
+        minutesAgoSuffix = "хв тому",
+        justNow = "щойно",
+        hoursAgoSuffix = "год тому",
+        daysAgoSuffix = "дн тому",
+        mixedTimeFormat = "%1\$d год %2\$d хв тому",
+        noThreatsMessage = "Загроз немає — йди на свіже повітря",
+        updateAvailableTitle = "Доступна нова версія",
+        updateVersionLabel = "Версія",
+        updateNotesTitle = "Що нового",
+        updateDownload = "Завантажити",
+        updateDownloading = "Завантаження… %1\$d%%",
+        updateInstall = "Встановити",
+        updateLater = "Пізніше",
+        updateRetry = "Спробувати знову",
+        updateFailedTitle = "Не вдалося завантажити оновлення",
+        updateInstallPermissionTitle = "Дозвіл на встановлення",
+        updateInstallPermissionBody = "Щоб встановити оновлення, дозволь цьому застосунку встановлювати інші застосунки.",
+        updateOpenSettings = "Відкрити налаштування",
+        updateReadyToInstallTitle = "Оновлення готове",
+        updateReadyToInstallBody = "Оновлення завантажено. Натисни «Встановити», щоб застосувати.",
+        updateUpToDate = "У вас остання версія",
+        updateCheckFailed = "Не вдалося перевірити оновлення",
+        checkForUpdates = "Перевірити оновлення",
+        updateButton = "Оновити",
+        advisoryLabel = "Спостереження",
+        areaOnlyLabel = "Лише область (без точної точки)",
+        distanceLabel = "Відстань",
+        etaLabel = "Час підльоту",
+        gpsOffLabel = "GPS вимкнено — зональні дані недоступні",
+        inRedZone = "У червоній зоні",
+        inYellowZone = "У жовтій зоні",
+        outsideZones = "Поза зонами тривог",
+        editZonesLabel = "Змінити зони",
+        alertsBellToggle = "Увімкнути або вимкнути оповіщення",
+        kmUnit = "км",
+        meterUnit = "м",
+        moreInfoLabel = "Детальніше",
+        wikiSourceLabel = "Джерело: Wikimedia Commons",
+        offLabel = "ВИМК",
+        allAlertsOffLabel = "Усі сповіщення вимкнено"
+    )
+
+    private val EN = StringSet(
+        appTitle = "Odesa Drones",
+        odesaAlertBanner = "Odesa: alert",
+        settingsTitle = "Settings",
+        settingsButton = "Settings",
+        backButton = "Back",
+        languageLabel = "Language",
+        zonesLabel = "Alert zones",
+        redZoneLabel = "Red zone",
+        yellowZoneLabel = "Yellow zone",
+        alertsLabel = "Alerts",
+        redZoneAlertsTitle = "Red zone alerts",
+        redZoneAlertsDesc = "Siren for threats in the red zone.",
+        yellowZoneAlertsTitle = "Yellow zone alerts",
+        yellowZoneAlertsDesc = "Warning chime for threats in the yellow zone.",
+        fastAlertsSoonerTitle = "Fast objects alert sooner",
+        fastAlertsSoonerDesc = "Missiles (ballistic, cruise, guided bombs, MiG-31K) sound the siren the moment they cross any zone boundary.",
+        officialAlertsTitle = "Official alerts",
+        officialAlertsDesc = "Alerts for the official oblast air-raid signal. Does not affect your Red/Yellow zone alerts.",
+        zoneButtonRed = "Red zone: tap to zoom in, long-press for settings",
+        zoneButtonYellow = "Yellow zone: tap to zoom in, long-press for settings",
+        redZoneHint = "Radius of the critical zone around you — 1–5 km.",
+        yellowZoneHint = "Radius of the warning zone — 6–20 km.",
+        zoneExplain = "The zones follow your GPS position. A threat in the red zone — red banner and siren; in the yellow zone — amber banner and warning chime. Fast objects (missiles) may sound the siren as soon as they cross any zone boundary. Threat positions are coarse, so zone edges are only a guide.",
+        threatsLabel = "Threats — tap to toggle",
+        disclaimerTitle = "Official signals come first",
+        disclaimerBody = "Always follow official air-raid signals. Our app uses data the enemy isn't broadcasting precisely — positions and distances can't be accurate, even when marked confirmed. The threat level is a rough estimate, not an official rating. Treat everything as a rough guide only.",
+        exitButton = "Stop Monitoring & Exit",
+        redZoneAlert = "Red zone: alert",
+        yellowZoneAlert = "Yellow zone: alert",
+        notifOngoingTitle = "Alert monitoring",
+        notifChannelName = "Background status",
+        notifChannelDesc = "Monitoring runs in the background. Turning this off only hides this status notification — air-raid alerts still sound.",
+        notifStatusZones = "Zones follow your GPS",
+        notifBodyRegion = "Odesa region",
+        attributionText = "Air threat map — NEPTUN",
+        madeBy = "Made by Presaince",
+        connOnline = "Online",
+        connOffline = "Offline",
+        connServerLine = "Connection to the NEPTUN air-threat server.",
+        connUpLine = "Data is updating live.",
+        connDownLine = "Connection lost; data may be stale.",
+        reliabilityLow = "Reliability: Low",
+        reliabilityMedium = "Reliability: Average",
+        reliabilityHigh = "Reliability: High",
+        reliabilityUnknown = "Reliability: Unknown",
+        speedUnit = "km/h",
+        groupLabel = "Wave size",
+        uncertaintyLabel = "Precision",
+        noRegion = "Odesa region",
+        minutesAgoSuffix = "min ago",
+        justNow = "just now",
+        hoursAgoSuffix = "h ago",
+        daysAgoSuffix = "d ago",
+        mixedTimeFormat = "%1\$d h %2\$d min ago",
+        noThreatsMessage = "No threats — go touch grass",
+        updateAvailableTitle = "New version available",
+        updateVersionLabel = "Version",
+        updateNotesTitle = "What's new",
+        updateDownload = "Download",
+        updateDownloading = "Downloading… %1\$d%%",
+        updateInstall = "Install",
+        updateLater = "Later",
+        updateRetry = "Try again",
+        updateFailedTitle = "Failed to download update",
+        updateInstallPermissionTitle = "Install permission",
+        updateInstallPermissionBody = "To install the update, allow this app to install other apps.",
+        updateOpenSettings = "Open settings",
+        updateReadyToInstallTitle = "Update ready",
+        updateReadyToInstallBody = "The update has been downloaded. Tap Install to apply it.",
+        updateUpToDate = "You have the latest version",
+        updateCheckFailed = "Update check failed",
+        checkForUpdates = "Check for updates",
+        updateButton = "Update",
+        advisoryLabel = "Observation",
+        areaOnlyLabel = "Area-level (no precise point)",
+        distanceLabel = "Distance",
+        etaLabel = "ETA",
+        gpsOffLabel = "GPS off — no zone data",
+        inRedZone = "In red zone",
+        inYellowZone = "In yellow zone",
+        outsideZones = "Outside alert zones",
+        editZonesLabel = "Edit zones",
+        alertsBellToggle = "Toggle alerts on/off",
+        kmUnit = "km",
+        meterUnit = "m",
+        moreInfoLabel = "More info",
+        wikiSourceLabel = "Source: Wikimedia Commons",
+        offLabel = "OFF",
+        allAlertsOffLabel = "All alerts are off"
+    )
+}
+
+/**
+ * Pluralized "source(s)" word for the given count, per language.
+ * English: 1 "source" / N "sources". Ukrainian: 1 "джерело" (21, 31…),
+ * 2–4 "джерела" (22–24…), else "джерел" (5–20, 25–30…).
+ */
+fun sourcesWord(count: Int, lang: AppLanguage): String = when (lang) {
+    AppLanguage.EN -> if (count == 1) "source" else "sources"
+    AppLanguage.UA -> {
+        val n10 = count % 10
+        val n100 = count % 100
+        when {
+            n10 == 1 && n100 != 11 -> "джерело"
+            n10 in 2..4 && n100 !in 12..14 -> "джерела"
+            else -> "джерел"
+        }
+    }
+}
+
+/** Formats elapsed time since a threat's last fix as `m:ss` (e.g. 3:47, 0:05). */
+fun formatElapsedMss(updatedAtMillis: Long?, nowMillis: Long): String {
+    if (updatedAtMillis == null) return "–"
+    val secs = ((nowMillis - updatedAtMillis) / 1000).coerceAtLeast(0)
+    return "%d:%02d".format(secs / 60, secs % 60)
+}
+
+/** Formats a relative time string like NEPTUN's "2 J. 4 minutes ago" pattern, simplified. */
+fun formatRelativeTime(updatedAtIso: String?, lang: AppLanguage): String {
+    if (updatedAtIso.isNullOrBlank()) return Strings.get(lang).justNow
+    return try {
+        val then = java.time.Instant.parse(updatedAtIso)
+        val now = java.time.Instant.now()
+        val minutes = java.time.Duration.between(then, now).toMinutes()
+        val s = Strings.get(lang)
+        when {
+            minutes < 1 -> s.justNow
+            minutes < 60 -> "$minutes ${s.minutesAgoSuffix}"
+            minutes < 60 * 24 -> {
+                val h = minutes / 60
+                val m = minutes % 60
+                if (m == 0L) "$h ${s.hoursAgoSuffix}" else String.format(s.mixedTimeFormat, h, m)
+            }
+            else -> {
+                val d = minutes / (60 * 24)
+                val h = (minutes % (60 * 24)) / 60
+                if (h == 0L) "$d ${s.daysAgoSuffix}" else String.format(s.mixedTimeFormat, d, h)
+            }
+        }
+    } catch (e: Exception) {
+        Strings.get(lang).justNow
+    }
+}

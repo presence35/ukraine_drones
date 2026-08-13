@@ -1,0 +1,207 @@
+import java.util.Properties
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+val versionPropsFile = file("version.properties")
+val versionProps = Properties().apply {
+    if (versionPropsFile.exists()) {
+        versionPropsFile.inputStream().use { load(it) }
+    }
+}
+
+android {
+    namespace = "ua.odesa.drones"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "ua.odesa.drones"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = (versionProps.getProperty("versionCode") ?: "1").toIntOrNull() ?: 1
+        versionName = versionProps.getProperty("versionName") ?: "0.1.0"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    buildFeatures {
+        compose = true
+        viewBinding = true
+        buildConfig = true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+dependencies {
+    // Compose
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // OSMdroid — free, no API key, no Google account needed
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+
+    // WebSocket client
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Image loading (Wikimedia Commons photos in the threat popup)
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // JSON parsing
+    implementation("org.json:json:20240303")
+
+    // Local prefs for zone toggles
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+}
+
+tasks.register("bumpVersion") {
+    group = "versioning"
+    description = "Increments versionCode in app/version.properties and auto-bumps the patch of versionName (e.g. 0.3.8 -> 0.3.9). Optional: -PnewVersion=X.Y.Z overrides the name."
+    doLast {
+        val props = Properties()
+        if (versionPropsFile.exists()) versionPropsFile.inputStream().use { props.load(it) }
+        val currentCode = (props.getProperty("versionCode") ?: "0").toIntOrNull() ?: 0
+        val currentName = props.getProperty("versionName") ?: ""
+        val requested = project.findProperty("newVersion")?.toString()?.takeIf { it.isNotBlank() }
+        val newName = requested ?: autoBumpPatch(currentName)
+        props.setProperty("versionCode", (currentCode + 1).toString())
+        props.setProperty("versionName", newName)
+        versionPropsFile.outputStream().use { props.store(it, "Bumped via gradlew bumpVersion") }
+        println("versionCode: $currentCode -> ${currentCode + 1}")
+        println("versionName: ${currentName.ifEmpty { "(unset)" }} -> $newName")
+    }
+}
+
+private fun autoBumpPatch(name: String): String {
+    val parts = name.split('.').mapNotNull { it.toIntOrNull() }
+    if (parts.size < 3) return name
+    return "${parts[0]}.${parts[1]}.${parts[2] + 1}"
+}
+
+tasks.register("release") {
+    group = "versioning"
+    description = "Bumps the version, builds the release APK and uploads it. Release notes come from notes_en.txt / notes_ua.txt."
+    dependsOn("bumpVersion", "uploadRelease")
+}
+
+tasks.register("uploadRelease") {
+    group = "versioning"
+    description = "Builds the release APK, generates version.json from version.properties + notes files, and uploads both to the FTP server."
+    dependsOn("assembleRelease")
+    doLast {
+        val uploadPropsFile = file("upload.properties")
+        if (!uploadPropsFile.exists()) {
+            throw GradleException("Missing $uploadPropsFile — create it with host, user, password, remoteDir (it is git-ignored).")
+        }
+        val up = Properties().apply { uploadPropsFile.inputStream().use { load(it) } }
+        val host = up.getProperty("host") ?: throw GradleException("upload.properties: missing 'host'")
+        val user = up.getProperty("user") ?: throw GradleException("upload.properties: missing 'user'")
+        val pass = up.getProperty("password") ?: throw GradleException("upload.properties: missing 'password'")
+        val remoteDir = up.getProperty("remoteDir").orEmpty().trim().trim('/')
+
+        val apk = file("build/outputs/apk/release/app-release.apk")
+        if (!apk.exists()) throw GradleException("Release APK not found: $apk")
+
+        val vProps = Properties().apply { versionPropsFile.inputStream().use { load(it) } }
+        val vc = vProps.getProperty("versionCode") ?: "0"
+        val vn = vProps.getProperty("versionName") ?: "0.0.0"
+        val notesEn = file("notes_en.txt").takeIf { it.exists() }?.readText(Charsets.UTF_8)?.trim().orEmpty()
+        val notesUa = file("notes_ua.txt").takeIf { it.exists() }?.readText(Charsets.UTF_8)?.trim().orEmpty()
+
+        val versionJson = buildString {
+            appendLine("{")
+            append("  \"versionCode\": ").append(vc).appendLine(",")
+            append("  \"versionName\": \"").append(escapeJson(vn)).appendLine("\",")
+            append("  \"apkUrl\": \"https://").append(host).append("/other_apps/odesadrones/app-release.apk\",").appendLine()
+            appendLine("  \"notes\": {")
+            append("    \"en\": \"").append(escapeJson(notesEn)).appendLine("\",")
+            append("    \"ua\": \"").append(escapeJson(notesUa)).appendLine("\"")
+            appendLine("  }")
+            appendLine("}")
+        }
+        val jsonFile = file("build/release/version.json")
+        jsonFile.parentFile.mkdirs()
+        jsonFile.writeText(versionJson, Charsets.UTF_8)
+
+        fun ftpPath(fileName: String): String =
+            if (remoteDir.isEmpty()) "ftp://$host/$fileName" else "ftp://$host/$remoteDir/$fileName"
+
+        fun upload(local: File, remoteName: String) {
+            val cmd = listOf(
+                "curl", "-sS", "--ftp-create-dirs",
+                "-T", local.absolutePath,
+                ftpPath(remoteName),
+                "--user", "$user:$pass"
+            )
+            val result = ProcessBuilder(cmd).redirectErrorStream(true).start()
+            val output = result.inputStream.readBytes().toString(Charsets.UTF_8)
+            val code = result.waitFor()
+            println("upload $remoteName -> exit $code")
+            if (output.isNotBlank()) println(output)
+            if (code != 0) throw GradleException("FTP upload of $remoteName failed (exit $code)")
+        }
+
+        upload(apk, "app-release.apk")
+        upload(jsonFile, "version.json")
+        println("Done. https://$host/other_apps/odesadrones/version.json")
+    }
+}
+
+private fun escapeJson(s: String): String = buildString {
+    for (c in s) {
+        when (c) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            '\t' -> append("\\t")
+            else -> append(c)
+        }
+    }
+}
