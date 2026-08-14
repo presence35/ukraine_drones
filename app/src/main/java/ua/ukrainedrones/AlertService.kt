@@ -35,9 +35,11 @@ class AlertService : Service() {
     companion object {
         const val ACTION_STOP = "ua.ukrainedrones.STOP"
         private const val CHANNEL_MONITOR = "monitor"
-        private const val CHANNEL_ALERTS = "alerts_siren"
-        private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer"
-        private const val CHANNEL_ALLCLEAR = "alerts_all_clear"
+        private const val CHANNEL_ALERTS = "alerts_siren2"
+        private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer2"
+        private const val CHANNEL_ALLCLEAR = "alerts_all_clear2"
+        private const val CHANNEL_ALERTS_ALARM = "alerts_siren_alarm"
+        private const val CHANNEL_ALERTS_OUTER_ALARM = "alerts_siren_outer_alarm"
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
         private const val NOTIF_ALLCLEAR = 3
@@ -74,7 +76,8 @@ class AlertService : Service() {
             val redArmed: Boolean,
             val yellowArmed: Boolean,
             val fastAlertsSooner: Boolean,
-            val officialAlertsEnabled: Boolean
+            val officialAlertsEnabled: Boolean,
+            val sirenOverride: Boolean
         ) : MonitorEvent()
     }
 
@@ -84,6 +87,7 @@ class AlertService : Service() {
         val yellowArmed: Boolean,
         val fastAlertsSooner: Boolean,
         val officialAlertsEnabled: Boolean,
+        val sirenOverride: Boolean,
         val followMe: Boolean
     )
 
@@ -145,9 +149,10 @@ class AlertService : Service() {
                     prefs.yellowZoneArmed(),
                     prefs.fastAlertsSooner(),
                     prefs.officialAlertsEnabled(),
+                    prefs.sirenOverride(),
                     prefs.followMe()
-                ) { redArmed, yellowArmed, fast, official, followMe ->
-                    AlertConfig(redArmed, yellowArmed, fast, official, followMe)
+                ) { redArmed, yellowArmed, fast, official, override, followMe ->
+                    AlertConfig(redArmed, yellowArmed, fast, official, override, followMe)
                 },
                 combine(
                     threatEnabledFlow(prefs),
@@ -171,7 +176,8 @@ class AlertService : Service() {
                     redArmed = config.redArmed,
                     yellowArmed = config.yellowArmed,
                     fastAlertsSooner = config.fastAlertsSooner,
-                    officialAlertsEnabled = config.officialAlertsEnabled
+                    officialAlertsEnabled = config.officialAlertsEnabled,
+                    sirenOverride = config.sirenOverride
                 )
             }.collect { handleState(it) }
         }
@@ -269,7 +275,7 @@ class AlertService : Service() {
             val (id, zone) = newZone
             val t = all[id]
             val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
-            postAlert(zone, bannerFor(zone, s), body)
+            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride)
             posted = true
         }
         knownZones = alertable
@@ -281,7 +287,8 @@ class AlertService : Service() {
             postAlert(
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
-                state.focusRegion
+                state.focusRegion,
+                state.sirenOverride
             )
         }
         // All clear: the official alert that was ringing has just ended. The cheerful chime
@@ -338,10 +345,16 @@ class AlertService : Service() {
         safeNotify(NOTIF_MONITOR, monitorNotification(title, text))
     }
 
-    private fun postAlert(zone: ThreatZone?, title: String, body: String) {
-        // OUTER uses its own channel so the two tiers ring differently; everything else
-        // (INNER, official oblast alert) gets the urgent siren channel.
-        val channel = if (zone == ThreatZone.OUTER) CHANNEL_ALERTS_OUTER else CHANNEL_ALERTS
+    private fun postAlert(zone: ThreatZone?, title: String, body: String, sirenOverride: Boolean) {
+        // Without the override, sirens follow the phone's ringer/vibrate mode via the
+        // notification stream; with it, they ring on the alarm stream even in vibrate/silent.
+        // All-clear never overrides — it's not an emergency.
+        val channel = when {
+            sirenOverride && zone == ThreatZone.OUTER -> CHANNEL_ALERTS_OUTER_ALARM
+            sirenOverride -> CHANNEL_ALERTS_ALARM
+            zone == ThreatZone.OUTER -> CHANNEL_ALERTS_OUTER
+            else -> CHANNEL_ALERTS
+        }
         val notif = NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_launcher_drone)
             .setContentTitle(title)
@@ -415,10 +428,7 @@ class AlertService : Service() {
                 enableVibration(true)
                 setSound(
                     sirenUri(R.raw.air_raid_siren),
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
+                    notificationAttributes()
                 )
             }
         )
@@ -428,10 +438,7 @@ class AlertService : Service() {
                 enableVibration(true)
                 setSound(
                     sirenUri(R.raw.zone_outer),
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
+                    notificationAttributes()
                 )
             }
         )
@@ -441,18 +448,56 @@ class AlertService : Service() {
                 enableVibration(true)
                 setSound(
                     sirenUri(R.raw.all_clear),
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
+                    notificationAttributes()
                 )
             }
         )
-        val keep = setOf(CHANNEL_MONITOR, CHANNEL_ALERTS, CHANNEL_ALERTS_OUTER, CHANNEL_ALLCLEAR)
+        // "Always sound" variants used only when the siren-override setting is on: they ring
+        // on the alarm stream so they sound even with the phone on vibrate/silent.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERTS_ALARM, "Air alerts — always sound", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Air-raid sirens and urgent zone alerts, even on vibrate/silent"
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.air_raid_siren),
+                    alarmAttributes()
+                )
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERTS_OUTER_ALARM, "Region alerts — always sound", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "OUTER zone (Регіон) warning alerts, even on vibrate/silent"
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.zone_outer),
+                    alarmAttributes()
+                )
+            }
+        )
+        val keep = setOf(
+            CHANNEL_MONITOR,
+            CHANNEL_ALERTS,
+            CHANNEL_ALERTS_OUTER,
+            CHANNEL_ALLCLEAR,
+            CHANNEL_ALERTS_ALARM,
+            CHANNEL_ALERTS_OUTER_ALARM
+        )
         nm.notificationChannels
             .filter { it.id !in keep }
             .forEach { nm.deleteNotificationChannel(it.id) }
     }
+
+    private fun notificationAttributes(): AudioAttributes =
+        AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+
+    private fun alarmAttributes(): AudioAttributes =
+        AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
 
     /** Re-creating the channel with the same id updates its name/description (not importance). */
     private fun updateMonitorChannel(s: Strings.StringSet) {

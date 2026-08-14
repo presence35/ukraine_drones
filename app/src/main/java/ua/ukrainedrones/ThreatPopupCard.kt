@@ -345,6 +345,7 @@ fun ThreatPopupCard(
 
                         // NEPTUN's course assessment, e.g. "UAV heading toward Chornomorsk"
                         val courseBase = translateCourseAssessment(threat.explanationShort, lang)
+                            ?.let { firstSentence(it) }
                         var course by remember(threat.updatedAtMillis) { mutableStateOf(courseBase) }
                         LaunchedEffect(threat.updatedAtMillis) {
                             if (lang == AppLanguage.EN && courseBase != null && containsCyrillic(courseBase)) {
@@ -353,6 +354,21 @@ fun ThreatPopupCard(
                         }
                         course?.let {
                             Text(it, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_skull),
+                                    contentDescription = null,
+                                    tint = Color(0xFF9E9E9E),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    s.cardSkullNote,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF9E9E9E)
+                                )
+                            }
                             Spacer(Modifier.height(8.dp))
                         }
                         if (threat.advisory) {
@@ -452,6 +468,14 @@ private fun levelColor(level: Double): Color = when {
     level >= 6.0 -> DistUserRed
     level >= 3.0 -> DistUserAmber
     else -> DistUserGreen
+}
+
+/** Keep only the first sentence of NEPTUN's course text. */
+private fun firstSentence(text: String): String {
+    for (c in text) {
+        if (c == '.' || c == '!' || c == '?') return text.substringBefore(c).trim()
+    }
+    return text
 }
 
 /** Small skull icon tinted by the threat level (grey below 3). */

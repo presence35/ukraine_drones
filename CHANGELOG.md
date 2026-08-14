@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Settings → Map centre: the pin-to-city control is now a proper text-field dropdown that opens as a height-constrained scrollable list below the field (no more full-screen box). The title lives in the field label and the description below it; the red alert dots stay.
+- Threat popup: the course description shows only its first sentence, and a small skull line explains that the 0–10 gauge is a rough estimate (type, distance, reliability, sources) — not an official rating or a guarantee of your safety.
+- Alerts: sirens now respect the phone's vibrate/silent mode by default — they ring at notification volume in sound mode and only vibrate on vibrate/silent, so the app no longer blasts over a deliberately quiet phone. A new "Sirens always sound" setting (off by default) in Settings → Alerts makes siren alerts ring even on vibrate/silent. The all-clear chime always follows the phone's mode (it's not an emergency).
+
 - Settings: threat cards (incl. the UAV one) no longer auto-expand when Settings opens — everything starts collapsed.
 - Settings: fixed the pin-to-city dropdown list appearing in a detached popup (a stray box away from the field); it now opens right below the field. The alert-red city dots stay.
 - Settings: a new "Keep alerts running" card asks Android to let the app run unrestricted in the background (battery optimizations off). It only appears while the phone still pauses the app, explains that the app itself uses very little power (live alert stream + low-power location), and turns into a quiet "Unrestricted in background" status once granted.
@@ -18,6 +22,7 @@
 - Settings: fixed the pin-to-city dropdown not opening (the anchor toggled itself twice); it's now dimmed and disabled while "Follow me" is on, since a pin only takes effect once following is off.
 
 - Settings: "made by" credit moved to the very bottom of the screen.
+- Header: the settings button in the top-right is now a gear icon (was a pulsing heart), keeping the blue-over-yellow Ukraine coloring.
 - Settings: opening Settings auto-checks for updates (at most once a day, silently). The update button now lights up with a download icon and "Update available · vX" / «Доступне оновлення · vX» when a new version exists; otherwise it's a plain outlined "Update" / «Оновити» button you can tap to check manually.
 - Update dialog: on app start it still pops, but only when no threat or official alert is active — during an alert it stays silent and the Settings button shows the available update instead.
 

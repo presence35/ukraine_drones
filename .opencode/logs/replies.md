@@ -21738,3 +21738,768 @@ Android 7.1.2's helper doesn't use category either. The category→audio-attribu
 ## 14/08/2026, 16:32:58
 
 Android 6.0.1 also has no category mapping in the helper. Let me check Android 5.1.1 to settle definitively whether the category→usage mapping ever existed in this helper.
+## 14/08/2026, 16:34:16
+
+I now have complete, verified coverage of all relevant code. Here is the report.
+
+---
+
+## Headline finding
+
+**The provided file is a recent `NotificationManagerService.java` (master, 14,269 lines), and on master the sound/vibration decision logic no longer lives in NMS.java at all.** It was extracted into a new class, `NotificationAttentionHelper` (in `services/core/java/com/android/server/notification/NotificationAttentionHelper.java`). NMS.java now only delegates via `mAttentionHelper.buzzBeepBlinkLocked(...)`.
+
+Grep of the decoded file (`C:\Users\Bodi\AppData\Local\Temp\opencode\NMS.java`, decoded from the base64 input) proves this:
+- `convertSoundToVibration`, `hasValidSound`, `audioAttributesForNotification`, `getAudioAttributes`, `USAGE_ALARM`, `STREAM_ALARM`, `isStreamAffectedByRingerMode`, `getStreamType`, `RINGER_MODE_VIBRATE`, `mAudioManager` → **0 matches**.
+- The only `CATEGORY_ALARM`-ish hits are the unrelated zen-policy constants `Policy.PRIORITY_CATEGORY_ALARMS` (NMS.java lines 6395, 6420, 6425).
+- `mAudioManager` is referenced **nowhere** in NMS.java on master.
+
+The delegation is visible at:
+
+```
+NMS.java:750-752
+protected NotificationAttentionHelper mAttentionHelper;
+...
+NMS.java:2672-2674
+mAttentionHelper = new NotificationAttentionHelper(getContext(), mNotificationLock,
+        lightsManager, mAccessibilityManager, mPackageManagerClient, userManager,
+        usageStats, mNotificationManagerPrivate, mZenModeHelper, flagResolver);
+```
+
+and the call sites that drive alerting:
+
+```
+NMS.java:9507-9513  (in handleEnqueueNotificationLocked / the posting path)
+int buzzBeepBlinkLoggingCode = 0;
+if (!r.isHidden()) {
+    buzzBeepBlinkLoggingCode = mAttentionHelper.buzzBeepBlinkLocked(r,
+            new NotificationAttentionHelper.Signals(
+                    mUserProfiles.isCurrentProfile(r.getUserId()),
+                    mListenerHints));
+}
+
+NMS.java:10173-10182  (when a notification becomes un-intercepted)
+if (interceptBefore && !record.isIntercepted()
+        && record.isNewEnoughForAlerting(System.currentTimeMillis())) {
+    mAttentionHelper.buzzBeepBlinkLocked(record,
+            new NotificationAttentionHelper.Signals(mUserProfiles.isCurrentProfile(
+                    record.getUserId()), mListenerHints));
+    ZenLog.traceAlertOnUpdatedIntercept(record);
+}
+```
+
+---
+
+## 1. The function that decides sound vs. vibration in RINGER_MODE_VIBRATE
+
+This is `NotificationAttentionHelper.buzzBeepBlinkLocked(NotificationRecord, Signals)` (AttentionHelper.java). The "convert sound to vibration" logic (the old `convertSoundToVibration`) is now an inline demotion block — there is no method by that name on master:
+
+```
+AttentionHelper.java, buzzBeepBlinkLocked()  (~line 466-484)
+if (mSystemReady && mAudioManager != null) {
+    Uri soundUri = record.getSound();
+    hasValidSound = soundUri != null && !Uri.EMPTY.equals(soundUri);
+    VibrationEffect vibration = record.getVibration();
+    // Demote sound to vibration if vibration missing & phone in vibration mode.
+    if (vibration == null
+            && hasValidSound
+            && (mAudioManager.getRingerModeInternal()
+            == AudioManager.RINGER_MODE_VIBRATE)
+            && mAudioManager.getStreamVolume(
+            AudioAttributes.toLegacyStreamType(record.getAudioAttributes())) == 0) {
+        boolean insistent = (record.getFlags() & Notification.FLAG_INSISTENT) != 0;
+        vibration = mVibratorHelper.createFallbackVibration(insistent);
+    }
+    hasValidVibrate = vibration != null;
+```
+
+Immediately after, the actual beep/buzz branches:
+
+```
+AttentionHelper.java, buzzBeepBlinkLocked()  (~line 487-515)
+if (hasValidSound && !vibrateOnly) {
+    if (isInsistentUpdate) {
+        beep = true;
+    } else {
+        if (isInCall()) {
+            playInCallNotification();
+            beep = true;
+        } else {
+            beep = playSound(record, soundUri);
+        }
+        if (beep) {
+            mSoundNotificationKey = key;
+        }
+    }
+}
+
+final boolean ringerModeSilent =
+        mAudioManager.getRingerModeInternal()
+                == AudioManager.RINGER_MODE_SILENT;
+if (!isInCall() && hasValidVibrate && !ringerModeSilent) {
+    if (isInsistentUpdate) {
+        buzz = true;
+    } else {
+        buzz = playVibration(record, vibration, hasValidSound && !vibrateOnly);
+        if (buzz) {
+            mVibrateNotificationKey = key;
+        }
+    }
+}
+```
+
+**This is the exact decision point in vibrate mode.** Read it carefully:
+
+- Demotion to vibration happens only when: `record.getVibration() == null` (channel has no vibration), sound exists, ringer == `VIBRATE`, **and the legacy stream volume for `record.getAudioAttributes()` is 0**.
+- If that stream's volume is **non-zero** in vibrate mode, the demotion is skipped; `playSound()` is attempted, and it independently re-checks the same stream volume (see #3), so the sound plays.
+
+**The stream-vs-ringer-mode interaction is what makes USAGE_ALARM differ from USAGE_NOTIFICATION.** `AudioAttributes.toLegacyStreamType(USAGE_ALARM) == STREAM_ALARM`, which is **not** affected by ringer mode, so in vibrate mode its volume stays at the user's alarm level (non-zero) → sound plays. `toLegacyStreamType(USAGE_NOTIFICATION) == STREAM_NOTIFICATION`, which **is** affected by ringer mode and is zeroed in vibrate mode → demotion fires → vibration only. (The `isStreamAffectedByRingerMode` logic itself lives in `AudioService.java`, outside these files; the defaults affect `STREAM_RING`/`STREAM_NOTIFICATION`/`STREAM_SYSTEM` but not `STREAM_ALARM`.)
+
+---
+
+## 2. Is `category` or `audioAttributes` consulted in the sound/vibration decision?
+
+**`category`: NOT consulted in the server-side sound decision on master** (nor on Android 5.0–14 — verified across fetched tags). The only `category` usage in `AttentionHelper` is the politeness/notification-cooldown exemption, which mutes or attenuates alerting but is orthogonal to the vibrate-mode sound decision:
+
+```
+AttentionHelper.java, createPolitenessStrategy() (~line 274-283)
+record -> {
+    final String category = record.getNotification().category;
+    if (Notification.CATEGORY_ALARM.equals(category)
+            || Notification.CATEGORY_CAR_EMERGENCY.equals(category)
+            || Notification.CATEGORY_CAR_WARNING.equals(category)) {
+        return true;
+    }
+    return mPackageManager.checkPermission(
+        permission.RECEIVE_EMERGENCY_BROADCAST,
+        record.getSbn().getPackageName()) == PERMISSION_GRANTED;
+});
+```
+
+(`NotificationRecord.isCategory(...)` exists but is only used by rankers/extractors and zen, not by the alerting path.)
+
+**`audioAttributes`: YES — this is the decisive field.** It is consulted twice, always via `record.getAudioAttributes()` + `AudioAttributes.toLegacyStreamType(...)`:
+1. the demotion block above (`getStreamVolume(...) == 0`), and
+2. `playSound()` (`getStreamVolume(...) != 0`, quoted in #3).
+
+So on master the stream for playback is derived **solely** from `NotificationRecord.getAudioAttributes()`, which is the **channel's** `AudioAttributes` (see #3). If your two channels are truly identical (both `USAGE_ALARM`), this code says both behave identically — the observed difference implies the records' `getAudioAttributes()` actually differ (or the device runs non-AOSP code / an older OEM build).
+
+---
+
+## 3. `audioAttributesForNotification` and how `getAudioAttributes()` picks the stream
+
+**This helper does NOT exist on master.** On master it has been replaced by `NotificationRecord.calculateAttributes()` (NotificationRecord.java, master, lines 366-389):
+
+```
+private @NonNull AudioAttributes calculateAttributes() {
+    final Notification n = getSbn().getNotification();
+    AudioAttributes attributes = getChannel().getAudioAttributes();
+    if (attributes == null) {
+        attributes = Notification.AUDIO_ATTRIBUTES_DEFAULT;   // USAGE_NOTIFICATION
+    }
+    if (mPreChannelsNotification
+            && (getChannel().getUserLockedFields()
+            & NotificationChannel.USER_LOCKED_SOUND) == 0) {
+        if (n.audioAttributes != null) {
+            attributes = n.audioAttributes;
+        } else if (n.audioStreamType >= 0 && ...) {
+            attributes = new AudioAttributes.Builder()
+                    .setInternalLegacyStreamType(n.audioStreamType).build();
+        } ...
+    }
+    return attributes;
+}
+```
+
+Note: for post-channels notifications (the normal case) this is **channel-attrs or USAGE_NOTIFICATION** — **category is not consulted at all**. The accessors are trivial:
+
+```
+NotificationRecord.java (master), lines 1242-1252
+public Uri getSound() { return mSound; }
+public VibrationEffect getVibration() { return mVibration; }
+public @NonNull AudioAttributes getAudioAttributes() { return mAttributes; }
+```
+
+Historically, `audioAttributesForNotification` lived **inside NMS.java itself** and was removed when channels arrived (Android 8/O moved it into NotificationRecord, and it is gone entirely on modern master). I verified it in Android 5.1.1 / 6.0.1 / 7.1.2 NMS.java — and it **never** used `category` either; its order of precedence was `notification.audioAttributes` → `notification.audioStreamType` → `AUDIO_ATTRIBUTES_DEFAULT`:
+
+```
+Android 7.1.2 NMS.java, lines 2982-2998
+private static AudioAttributes audioAttributesForNotification(Notification n) {
+    if (n.audioAttributes != null
+            && !Notification.AUDIO_ATTRIBUTES_DEFAULT.equals(n.audioAttributes)) {
+        return n.audioAttributes;
+    } else if (n.audioStreamType >= 0 && n.audioStreamType < AudioSystem.getNumStreamTypes()) {
+        return new AudioAttributes.Builder()
+                .setInternalLegacyStreamType(n.audioStreamType)
+                .build();
+    } else if (n.audioStreamType == AudioSystem.STREAM_DEFAULT) {
+        return Notification.AUDIO_ATTRIBUTES_DEFAULT;
+    } else {
+        Log.w(TAG, String.format("Invalid stream type: %d", n.audioStreamType));
+        return Notification.AUDIO_ATTRIBUTES_DEFAULT;
+    }
+}
+```
+
+How `getAudioAttributes()` determines the playback stream — `playSound()` (AttentionHelper.java, ~lines 727-762):
+
+```
+private boolean playSound(final NotificationRecord record, Uri soundUri) {
+    final boolean shouldPlay;
+    if (focusExclusiveWithRecording()) {
+        shouldPlay = mAudioManager.shouldNotificationSoundPlay(record.getAudioAttributes());
+    } else {
+        // legacy path
+        // play notifications if there is no user of exclusive audio focus
+        // and the stream volume is not 0 (non-zero volume implies not silenced by
+        // SILENT or VIBRATE ringer mode)
+        shouldPlay = !mAudioManager.isAudioFocusExclusive()
+                && (mAudioManager.getStreamVolume(
+                AudioAttributes.toLegacyStreamType(record.getAudioAttributes())) != 0);
+    }
+    if (!shouldPlay) {
+        if (DEBUG) Slog.v(TAG, "Not playing sound " + soundUri + " due to focus/volume");
+        return false;
+    }
+    ...
+    player.playAsync(soundUri, record.getSbn().getUser(), looping,
+            record.getAudioAttributes(), getSoundVolume(record));
+```
+
+So the chain is: `record.getAudioAttributes()` → `AudioAttributes.toLegacyStreamType(...)` → that stream's volume is the ringer-mode gate (0 in vibrate mode for notification-affiliated streams, non-zero for `STREAM_ALARM`).
+
+---
+
+## 4. `mZenModeHelper` / interruption filter vs. ringer mode
+
+They are separate mechanisms, and only zen feeds into alerting — via `record.isIntercepted()`:
+
+- NMS passes `mZenModeHelper` into `NotificationAttentionHelper` at construction (NMS.java 2672-2674, quoted above).
+- Zen interception is a **hard mute** of the alert path in `shouldMuteNotificationLocked()` (AttentionHelper.java):
+
+```
+AttentionHelper.java, shouldMuteNotificationLocked()
+// suppressed due to DND
+if (record.isIntercepted()) {
+    return MUTE_REASON_DND;
+}
+```
+
+  and `buzzBeepBlinkLocked` skips all sound/vibration when muted (`if (shouldMuteReason == MUTE_REASON_NOT_MUTED) { ... }`). This is independent of ringer mode: an intercepted notification is muted in all ringer modes.
+- Zen also interacts with the call-state check in `disableNotificationEffects()`:
+
+```
+AttentionHelper.java, disableNotificationEffects()
+if (mCallState != TelephonyManager.CALL_STATE_IDLE && !mZenModeHelper.isCall(record)) {
+    return "callState";
+}
+```
+
+- NMS's own zen plumbing (interruption filter state, `areChannelsBypassingDnd`, suppressed effects) is at NMS.java lines 669, 2543-2545, 2643, 3202-3207, 3418-3422, 4902-4908 — none of it touches the vibrate-mode sound decision.
+- Note also that in **SILENT** ringer mode, vibration is suppressed too: `if (!isInCall() && hasValidVibrate && !ringerModeSilent)` (quoted in #1).
+
+---
+
+## Bottom line for your investigation
+
+In the master code you supplied, **`category` is never consulted in the sound/vibration decision** — the only inputs are `record.getVibration()` and `record.getAudioAttributes()` (→ `toLegacyStreamType` → that stream's volume vs. ringer mode). USAGE_ALARM plays in vibrate mode because `STREAM_ALARM` is not muted by ringer mode; USAGE_NOTIFICATION vibrates because `STREAM_NOTIFICATION` is zeroed in vibrate mode, triggering the fallback-vibration demotion. If two identically configured USAGE_ALARM channels still behave differently, the divergence is in what each record's `getAudioAttributes()` resolves to (channel attrs vs. the `USAGE_NOTIFICATION` fallback) — i.e., the channel configuration at post time — not in the notification `category`, on this codebase.
+## 14/08/2026, 16:34:25
+
+The error is truncated. Let me dig into the build output and recent changes to find the real
+## 14/08/2026, 16:34:29
+
+The error is truncated. There's a `build.log` file — let me check it and the git log for what changed
+## 14/08/2026, 16:34:40
+
+The `build.log` is from an old successful debug build. The failing task is `:drones:app:compileReleaseKotlin` — note the `:drones:` prefix, which doesn't match this repo's `:app` project. Let me find the full error in the Gradle daemon logs.
+
+
+## 14/08/2026, 16:35:11
+
+The daemon logs are old (Aug 4). Let me check the wrapper version, the Kotlin daemon logs, and where the `:drones:` task prefix comes from.
+## 14/08/2026, 16:35:25
+
+## Diagnosis (confirmed from AOSP source)
+
+I verified the sound decision against Android's actual `NotificationManagerService`/`NotificationAttentionHelper` code. Key facts:
+
+- **The notification `category` is never consulted** in the sound/vibration decision — so my earlier `CATEGORY_ALARM` theory is dead. Sound routing is driven purely by the **channel's audio attributes** → `AudioAttributes.toLegacyStreamType()` → that stream's volume.
+- In **vibrate mode**: a channel whose sound routes to `STREAM_NOTIFICATION` gets volume 0 and is **demoted to vibration** (the siren on your phone plays precisely because it routes to `STREAM_ALARM`, which vibrate mode doesn't mute).
+
+That means on your device the "All clear" channel is **not** using `USAGE_ALARM` — its audio attributes are null/default (`USAGE_NOTIFICATION`), so it hits the notification stream and vibrates. This is the classic "channel settings are sticky" problem: a channel created by an earlier app version keeps its old attributes; re-creating it with the same ID doesn't reliably update them (and once touched, they're user-locked).
+
+The `all_clear.wav` file itself is valid and loud (22050 Hz, ~1.7 s), and the channel isn't muted — so the file/URI are fine.
+
+## Plan
+
+Fix in `AlertService.createChannels()` (app/src/main/java/ua/ukrainedrones/AlertService.kt:438-450) — self-heal only the all-clear channel:
+
+1. Build the all-clear channel with the same `USAGE_ALARM` sound config it already declares.
+2. Before creating it, check the existing channel via `nm.getNotificationChannel(CHANNEL_ALLCLEAR)`:
+   - if it exists and `audioAttributes?.usage != AudioAttributes.USAGE_ALARM` (or `sound == null`) → `deleteNotificationChannel(CHANNEL_ALLCLEAR)` first, then recreate.
+3. Leave the siren channels untouched (they work; don't clobber the user's preferences there).
+
+Result: on your Pixel, the all-clear channel gets recreated fresh with `USAGE_ALARM` → routes to the alarm stream → rings in vibrate mode, matching the sirens. On future installs/updates the check is a no-op.
+
+Optional sanity check you can do meanwhile: switch the phone to sound mode — if all-clear *does* play there, it confirms the channel is stuck on the notification stream (the diagnosis above), since sound mode un-mutes both streams.
+
+Want me to go ahead with this fix?
+## 14/08/2026, 16:35:44
+
+The `build.log` predates the big "changes" commit — the code was renamed (`ua/odesa/drones` → `ua/ukrainedrones`). This is likely the first build since that commit. Let me find the real Kotlin error and the odd `:drones:` task prefix.
+## 14/08/2026, 16:36:01
+
+The daemon log `daemon-23500.out.log` from today is the one. Let me find the Kotlin compilation
+## 14/08/2026, 16:36:10
+
+Found the real errors in the daemon log. The Kotlin compile fails with 3 unresolved references:
+
+- `SettingsScreen.kt:18:47` and `:405:57` → `Unresolved reference: Download`
+- `AlertService.kt:291:13` → `Unresolved reference: postAllClear`
+
+Let me look at those
+## 14/08/2026, 16:36:15
+
+The daemon log is from 15:04 — the working tree may have changed since. Let me check current state of those references.
+## 14/08/2026, 16:36:28
+
+The daemon log's last build is from 15:55, but the version bump happened at 16:33 — a newer build ran after. Let me find its
+## 14/08/2026, 16:36:41
+
+The errors in the daemon log are from 15:04 — stale. The working tree already defines `postAllClear` and doesn't have the `Download` import issue. A build ran at 16:33 (version bump). Let me find its log in all da
+## 14/08/2026, 16:36:54
+
+The daemon log with the errors is from 15:04 (stale — code was committed at 16:33 fixing it). Let me find the build that ran at 16:33 in all daemon dir
+## 14/08/2026, 16:37:21
+
+The daemon log I read was from 15:04 (stale — code was fixed at 16:33 commit). A build ran at 16:33. Let me find its output in the same daemon log
+## 14/08/2026, 16:37:27
+
+Fair point — that reframes it from "bug" to a design decision. Here's my take:
+
+## Recommendation
+
+**All-clear: respect the phone's mode.** No override. It's informational ("it's over"), not urgent — vibrating is the right behavior. The fix is to make the channel *explicitly* follow ringer mode rather than declare `USAGE_ALARM` and accidentally end up with the opposite behavior depending on device stickiness.
+
+- Change `CHANNEL_ALLCLEAR`'s audio attributes from `USAGE_ALARM` → `USAGE_NOTIFICATION` (keep the cheerful chime; it then plays at notification volume in sound mode, and just vibrates in vibrate mode).
+- On your Pixel nothing visibly changes — it already behaves this way. The code change just makes fresh installs consistent with the intent.
+
+**Sirens: keep the override — and yes, I'd not override that.** This is the counterargument to "respect the user's wishes," but I think it holds:
+
+- The app's entire purpose is life-safety. Someone sets vibrate *at night, in a meeting, or while away from the phone* — a silent siren is the one failure mode that matters most. The override is the feature, not a bug.
+- The user already opts in per alert type (Red/Yellow/official toggles in Settings). If they want real silence for sirens, muting that channel or turning the type off is the deliberate control — not the phone's global ringer.
+- Removing it makes the app "a pretty map that vibrates," defeating why it exists.
+
+So: all-clear follows the user's mode; sirens override it. That's a defensible, consistent principle — "override only when missing the alert is dangerous."
+
+## Plan (adjusted)
+
+1. `AlertService.kt:438-450` — `CHANNEL_ALLCLEAR`: switch `setSound(...)` attributes from `USAGE_ALARM` to `USAGE_NOTIFICATION` (sound follows ringer mode).
+2. Siren channels (`CHANNEL_ALERTS`, `CHANNEL_ALERTS_OUTER`): unchanged — keep `USAGE_ALARM`.
+3. No channel self-heal / delete-recreate (nothing to force; the user's existing channel already behaves correctly for all-clear).
+
+Do you agree with keeping the siren override, or do you want sirens to respect vibrate too?
+## 14/08/2026, 16:37:37
+
+The daemon log from 15:04 is stale (code was fixed at 16:33 commit). But the task prefix `:drones:app:` is odd. Let me check what the settings looked like before the 16:33 commit, and reproduce the current build error.
+## 14/08/2026, 16:38:14
+
+The daemon log I found is from 15:04 (stale — code was fixed by the 16:33 commit). Let me check the release APK timestamp and diff the build files to understand the `:drones:` prefix
+## 14/08/2026, 16:38:33
+
+The release APK built successfully at 16:20. A build ran after the 16:33 version bump. Let me check the other daemon logs (8.14.3, 9.0.0) for that run
+
+
+## 14/08/2026, 16:38:50
+
+The release APK built at 16:20, then version bumped to 0.3.39 at 16:33, and a release build failed. The user's pasted error is truncated at "org.jetbrains.k" — matching the compiler runner failure. Let me check the tail of the active daemon log and the complete list of 8.7 daemon
+## 14/08/2026, 16:39:03
+
+Both of your points are compatible, actually. The override doesn't trap anyone — there are two existing escape hatches:
+
+1. **Android's per-channel settings**: any user can go to Settings → Apps → Ukraine Drones → Notifications → *Air alerts* channel and set Sound to off/vibrate-only. It's buried, but it exists and persists.
+2. **In-app alert toggles**: Red/Yellow zone + official-alert toggles in the app's Settings already let someone kill specific alert types.
+
+So a user who's *deliberately* quiet has a way out. The default ("ring through vibrate for the siren") just biases toward safety for everyone who hasn't configured anything — which is the right default for an air-raid app.
+
+The rage-quit risk is real only if the escape hatches aren't discoverable. Options:
+
+**A. Minimal (my rec):** Siren channels keep `USAGE_ALARM`; all-clear switches to `USAGE_NOTIFICATION` (respects mode). Zero new UI.
+
+**B. Same as A + in-app toggle:** add a Settings switch "Siren sounds even when phone is on vibrate/silent" (default ON). Discoverable, directly kills the rage-quit risk, but adds a setting + UA/EN strings + CHANGELOG entry.
+
+**C. Everything respects mode:** sirens also → `USAGE_NOTIFICATION`. Most respectful of the user's ringer, but on vibrate a real siren only vibrates — risky at night, and arguably makes the app pointless for its
+## 14/08/2026, 16:39:17
+
+Now I have the real error: `Strings.kt:302` and `Strings.kt:492` have `Unresolved reference: s`. Let me inspect those lines
+## 14/08/2026, 16:39:25
+
+Found it. The error is a Kotlin string-template issue:
+
+- `Strings.kt:302`: `allClearTitle = "%1$s: відбій тривоги"` 
+- `Strings.kt:492`: `allClearTitle = "%1$s: all clear"`
+
+In Kotlin, `$s` inside a string literal is a template reference, so `"%1$s"` becomes `%1` + `${s}` — and `s` is unresolved. Other format strings here correctly escape it as `%1\$s` (e.g. lines 298, 299, 300). Let me confirm how `allClearTitle` is
+## 14/08/2026, 16:39:34
+
+Confirmed the root cause. Let me check for any other unescaped format-string `$` in Strings.kt
+## 14/08/2026, 16:39:54
+
+Found it. The compile failure is a Kotlin string-template bug in `Strings.kt`:
+
+**Root cause:** `allClearTitle` is declared with `%1$s` — in Kotlin, `$s` inside a string literal is parsed as a template reference to a variable `s`, which doesn't exist. All the other format strings correctly escape it as `%1\$s` (lines 280, 298, 299, 300, 470, 488, 489, 490).
+
+The two broken lines:
+- `Strings.kt:302` — UA: `allClearTitle = "%1$s: відбій тривоги"`
+- `Strings.kt:492` — EN: `allClearTitle = "%1$s: all clear"`
+
+Both are consumed via `String.format(s.allClearTitle, city)` at `AlertService.kt:367`, so the format string itself is correct — only the escaping is wrong.
+
+## Plan
+
+Fix the two unescaped format specifiers in `app/src/main/java/ua/ukrainedrones/Strings.kt`:
+
+1. Line 302: `"%1$s: відбій тривоги"` → `"%1\$s: відбій тривоги"`
+2. Line 492: `"%1$s: all clear"` → `"%1\$s: all clear"`
+
+Then the `:app:release` build (which failed only because `compileReleaseKotlin` failed) will pass. No other changes needed — I verified these are the only two unescaped `$` occurrences, and the daemon-log errors from earlier sessions (`Download`, `postAllClear`) were already fixed by the 16:33 commit.
+
+Note: the task prefix `:drones:app:` is unusual (this repo's root is `UkraineDrones` with `:app`), but it doesn't affect the fix — the failing file path is exactly this `Strings.kt`.
+
+Want me to apply the two-line fix?
+## 14/08/2026, 16:40:42
+
+Good question — let me check whether there's a DND override anywhere in the app and how it interacts.
+
+
+## 14/08/2026, 16:41:03
+
+Both lines fixed. Let me verify the release Kotlin compiles now
+## 14/08/2026, 16:41:22
+
+Fixed. The two unescaped `$` in `Strings.kt` (`allClearTitle` UA + EN) were the cause — Kotlin parsed `$s` as a template reference. Both now use `%1\$s` like the rest, and `:app:compileReleaseKotlin` builds clean.
+## 14/08/2026, 16:41:30
+
+Good question — the answer depends on which quiet mode, because Android treats them differently:
+
+- **"Override Do Not Disturb"** (the per-channel toggle in Android settings) bypasses **DND (Zen mode)**. Under Option C, if a channel has Override DND on, its sound **will** come through during DND. DND doesn't zero the notification stream — the override just stops the channel from being intercepted.
+- It does **not** affect **vibrate/silent ringer mode**. Vibrate zeroes the notification stream itself (that's the AOSP behavior we verified), so in vibrate the sound is demoted to vibration no matter what Override DND says.
+
+So on your phone right now (vibrate), Option C means the siren **only vibrates** — the DND override won't make it sound. It only helps during DND.
+
+## Plan (Option C)
+
+1. **`AlertService.createChannels()`** — change the audio attributes on all three sound channels (`CHANNEL_ALERTS`, `CHANNEL_ALERTS_OUTER`, `CHANNEL_ALLCLEAR`) from `USAGE_ALARM` → `USAGE_NOTIFICATION`. Custom sounds stay; everything now follows ringer mode.
+2. **Self-heal for existing installs** — for each of those three channels, if the channel already on the device has `audioAttributes.usage != USAGE_NOTIFICATION` (i.e. still ALARM from the current build), `deleteNotificationChannel` + recreate so the new policy actually applies. Without this, existing installs (including your Pixel) would keep ringing through vibrate, because channel sound config is sticky.
+   - ⚠️ This resets any per-channel customization (e.g. a sound a user picked in Android settings) on those three channels — one-time, only when the config mismatches. Your siren channels currently hold `USAGE_ALARM`, so your device would be reset too.
+3. No app-level "Override DND" code — that stays a user-controlled Android per-channel setting, which under C still lets the siren ring through DND.
+
+Since step 2 wipes per-channel user choices to enforce the new policy, do you want to confirm that tradeoff, or keep the recreate scoped only to channels that mismatch?
+## 14/08/2026, 16:43:28
+
+Let me look at the settings/prefs patterns to design the new toggle and channel
+## 14/08/2026, 16:43:57
+
+The parameter `settingsHintRemaining` is passed to `MapScreen` at MainScreen.kt:94 but never read inside it (it's only used in `MainScreen`'s `onOpenSettings` lambda). Fix is trivial:
+
+**Plan**
+1. Remove the `settingsHintRemaining: Int` parameter from the `MapScreen` signature (MainScreen.kt:234).
+2. Remove the `settingsHintRemaining = settingsHintRemaining,` argument from the call site (MainScreen.kt:94).
+
+No other usages exist in `MapScreen`, so nothing else changes. Want me to proceed?
+## 14/08/2026, 16:44:16
+
+Done. Both edits applied.
+## 14/08/2026, 16:44:25
+
+Here's the complete plan.
+
+## Plan: respect the user's phone settings; optional siren override (default off)
+
+### Behavior after the change
+| Alert | Phone on vibrate/silent | Phone on sound | Override ON (vibrate/silent) |
+|---|---|---|---|
+| Siren (INNER + official oblast) | vibrate | sound | **sound** |
+| Outer zone warning | vibrate | sound | **sound** |
+| All clear | vibrate | sound | vibrate (never overrides) |
+
+All channels route through the **notification stream** (`USAGE_NOTIFICATION`) by default → follow the phone's ringer/vibrate settings exactly. DND stays suppressed unless the user enables per-channel "Override DND" in Android settings (their earlier question: yes, that works for DND, just not for vibrate — which is now the point).
+
+### Channel design (5 total)
+- `alerts_siren` "Air alerts" — `USAGE_NOTIFICATION` (default) — INNER + official, override OFF
+- `alerts_siren_outer` "Region alerts" — `USAGE_NOTIFICATION` — OUTER, override OFF
+- `alerts_all_clear` "All clear" — `USAGE_NOTIFICATION` — always
+- `alerts_siren_alarm` "Air alerts — always sound" — `USAGE_ALARM` — used only when override ON
+- `alerts_siren_outer_alarm` "Region alerts — always sound" — `USAGE_ALARM` — used only when override ON
+
+`postAlert()` picks the alarm variant when the toggle is on, the normal one otherwise. (Channel audio attributes are sticky in Android and can't be set per-notification, so a second channel per siren tier is the reliable way to make the override dynamic without wiping the user's channel customization on each toggle.)
+
+### Code changes
+1. **ZonePrefs.kt** — add `sirenOverride` pref (default `false`) + getter/setter (mirror `fastAlertsSooner`).
+2. **Strings.kt** — add `sirenOverrideTitle` / `sirenOverrideDesc` (UA + EN).
+3. **MainViewModel.kt** — add `sirenOverride` to both settings states, the `prefsSnapshot` combine, and a `setSirenOverride` (mirror `setFastAlertsSooner`).
+4. **MainScreen.kt / SettingsScreen.kt** — pass the new field + callback; add a third `AlertToggleRow` in the Alerts card.
+5. **AlertService.kt** —
+   - Add the 2 alarm channel constants.
+   - Add `sirenOverride` to `MonitorEvent.State` + `AlertConfig` + the combine.
+   - `postAlert()` selects the channel based on the override flag.
+   - `createChannels()`: switch the 3 existing channels to `USAGE_NOTIFICATION`, add the 2 alarm channels, add them to the `keep` set.
+   - **Self-heal**: for the 3 existing channels, if the channel on-device has `audioAttributes?.usage != USAGE_NOTIFICATION` (i.e. still ALARM from the current build), delete + recreate so the new default applies on existing installs.
+6. **CHANGELOG.md** — `## [Unreleased]` entry (UA/EN release notes later).
+
+### Two tradeoffs to confirm
+1. **Self-heal wipes per-channel customization on the 3 existing channels once** — needed to flip the sticky config on installed devices (incl. your Pixel, where sirens currently ring through vibrate). After this update your sirens will *stop* ringing in vibrate mode by default (until you enable the toggle). OK?
+2. **The two "always sound" channels are always created** and will show in Android's notification settings even while the toggle is off (simple + robust). Alternatively I can create them only when the toggle is on — cleaner list, more wiring. I recommend always-created.
+## 14/08/2026, 16:46:09
+
+Good catch — in beta we don't need self-heal at all. Cleaner option: **give the re-tooled channels brand-new IDs.** A fresh ID = the OS creates the channel from scratch with the correct config on *every* device — including your Pixel, which currently has the old `USAGE_ALARM` channels baked in. No delete/recreate logic, no wiping anything, and the existing cleanup (`nm.notificationChannels.filter { it.id !in keep }...delete`, AlertService.kt:451-454) auto-removes the old channels on next start.
+
+So the revised channel set:
+
+| New ID | Name | Usage | Used when |
+|---|---|---|---|
+| `alerts_siren2` | Air alerts | `USAGE_NOTIFICATION` | INNER + official, override OFF |
+| `alerts_siren_outer2` | Region alerts | `USAGE_NOTIFICATION` | OUTER, override OFF |
+| `alerts_all_clear2` | All clear | `USAGE_NOTIFICATION` | always |
+| `alerts_siren_alarm` | Air alerts — always sound | `USAGE_ALARM` | override ON |
+| `alerts_siren_outer_alarm` | Region alerts — always sound | `USAGE_ALARM` | override ON |
+
+Tradeoff: anyone's per-channel tweaks (sound pick, DND override) on the *old* channels don't carry over. In beta, that's acceptable — and it guarantees the new default actually lands on installed devices without a reinstall.
+
+Self-heal removed from the plan. The rest stands as before (ZonePrefs, Strings, MainViewModel, MainScreen/SettingsScreen toggle, AlertService posting + channels, CHANGELOG).
+
+Confirm and I'll implement.
+## 14/08/2026, 16:46:55
+
+The header button in `MainScreen.kt:335-347` uses `ic_heart_ua` and runs a "heartbeat" pulse animation (`beatScale`) indefinitely. Since you're switching to a gear, let me confirm one design point before finalizing the plan.
+## 14/08/2026, 16:48:17
+
+## Plan: Replace header heart with two-tone settings gear
+
+**1. New drawable — `app/src/main/res/drawable/ic_settings_ua.xml`**
+A 24dp gear vector, split at the horizontal midline (y=12): top half blue `#FF005BBB`, bottom half yellow `#FFFFD500` — same palette as the current heart. Constructed from two `<path>`s (blue = full gear above the line; yellow = full gear below), each built from a half-annulus + 5 tooth shapes (fully-in-half teeth plus the split halves of the left/right teeth), with a transparent center hub:
+- Blue (top): half-ring `M2.5,12 A9.5,9.5 0 0 1 21.5,12 L17,12 A5,5 0 0 0 7,12 Z` + teeth at 270°, 225°, 315° + upper halves of the 0°/180° teeth.
+- Yellow (bottom): mirror-image half-ring + teeth at 90°, 45°, 135° + lower halves of the 0°/180° teeth.
+
+Keeps `ic_heart_ua.xml` intact (becomes unused).
+
+**2. `app/src/main/java/ua/ukrainedrones/MainScreen.kt` (lines 328–348)**
+- Swap `painterResource(R.drawable.ic_heart_ua)` → `painterResource(R.drawable.ic_settings_ua)`.
+- Remove the static heartbeat: drop the `rememberInfiniteTransition`/`beatScale` block and the `graphicsLayer { scaleX/scaleY }` (imports `animateFloat`/`rememberInfiniteTransition` stay — still used by `threatLine` at line 866).
+- Simplify the `Box`/`IconButton` wrapper to a plain `IconButton { Icon(...) }`.
+
+**3. `CHANGELOG.md`** — append an `## [Unreleased]` entry (per repo workflow), e.g. "Settings button in the map header is now a gear icon (was a heart)."
+
+No code build/verification run unless you ask. Ready to implement on your go.
+## 14/08/2026, 16:48:54
+
+Updated: **delete `app/src/main/res/drawable/ic_heart_ua.xml`** after switching the reference to the new `ic_settings_ua.xml` (it's only referenced at `MainScreen.kt:337`).
+
+Revised plan:
+1. Create `app/src/main/res/drawable/ic_settings_ua.xml` — 24dp gear, blue top half `#FF005BBB`, yellow bottom half `#FFFFD500` (same palette), split at midline y=12.
+2. `MainScreen.kt:328-348` — point to `R.drawable.ic_settings_ua`, remove the heartbeat pulse/graphicsLayer.
+3. Delete `app/src/main/res/drawable/ic_heart_ua.xml`.
+4. Add a `## [Unreleased]` CHANGELOG entry (gear settings icon in map header).
+
+Ready on your go.
+## 14/08/2026, 16:49:09
+
+**Icon:** none of the existing drawables fit "sounds even on vibrate/silent" (existing: `ic_bolt`, `ic_trident`, bell, etc.), and `Icons.Filled.VolumeUp` isn't in the bundled core icon set (only material3 is a dependency, SettingsScreen.kt:29 imports core icons only). The repo already ships custom vector drawables, so I'll add one:
+
+- **New file** `app/src/main/res/drawable/ic_volume_up.xml` — standard Material "volume up" speaker (24×24 vector), mirroring `ic_bolt.xml` style.
+- Use it in the third `AlertToggleRow` with `iconTint = MaterialTheme.colorScheme.onSurfaceVariant` (same pattern as the fast-alerts row, SettingsScreen.kt:372-379).
+
+## Final plan recap
+
+1. **ZonePrefs.kt** — `sirenOverride` pref, default `false` (getter/setter mirroring `fastAlertsSooner`).
+2. **Strings.kt** — `sirenOverrideTitle` / `sirenOverrideDesc` (UA + EN).
+3. **MainViewModel.kt** — `sirenOverride` in both settings states, `prefsSnapshot` combine, `setSirenOverride()`.
+4. **MainScreen.kt / SettingsScreen.kt** — pass field + callback; third `AlertToggleRow` (volume icon) in the **Alerts** section card, after official-alerts.
+5. **AlertService.kt** —
+   - New channels: `alerts_siren2`, `alerts_siren_outer2`, `alerts_all_clear2` (`USAGE_NOTIFICATION`) + `alerts_siren_alarm`, `alerts_siren_outer_alarm` (`USAGE_ALARM`); old IDs dropped from `keep` so the cleanup removes them.
+   - `sirenOverride` in `MonitorEvent.State` + `AlertConfig` + combine; `postAlert()` selects the alarm channel variant when the toggle is on (all-clear never does).
+6. **CHANGELOG.md** — `## [Unreleased]` entry.
+
+No self-heal (fresh channel IDs handle existing installs). Confirm and I'll implement.
+## 14/08/2026, 16:49:28
+
+
+
+
+## 14/08/2026, 16:49:32
+
+`Color` is still used, but `graphicsLayer` (line 39) is now unused. Removing it:
+## 14/08/2026, 16:49:38
+
+Now the CHANGELOG entry. Let me check the current `[Unreleased]` section:
+## 14/08/2026, 16:49:47
+
+
+
+
+## 14/08/2026, 16:49:54
+
+Done. Changes:
+
+- `app/src/main/res/drawable/ic_settings_ua.xml` — new gear vector, blue top `#FF005BBB` / yellow bottom `#FFFFD500`, split at midline.
+- `MainScreen.kt:327-334` — now uses `ic_settings_ua`, heartbeat pulse/graphicsLayer removed (`graphicsLayer` import dropped).
+- Deleted `ic_heart_ua.xml`.
+- `CHANGELOG.md` — `[Unreleased]` entry added.
+## 14/08/2026, 16:50:15
+
+Let me read the files I still need to edit precisely
+## 14/08/2026, 16:50:17
+
+I found the card — it's the bordered dropdown row + 26-city menu inside the "Map centre" section (`PinCityRow`, SettingsScreen.kt:583). Before I write a plan, which direction do you want
+## 14/08/2026, 16:50:44
+
+Now implementing. Starting with ZonePrefs
+## 14/08/2026, 16:50:50
+
+Let me move the key declaration up with the other keys for consistency
+## 14/08/2026, 16:50:59
+
+Now Strings
+## 14/08/2026, 16:51:09
+
+
+
+
+## 14/08/2026, 16:51:27
+
+Now MainViewModel
+## 14/08/2026, 16:51:35
+
+Let me check what Material version this app uses so the plan targets the right dropdown
+## 14/08/2026, 16:52:00
+
+Found it. The `PinCityRow` uses a raw `DropdownMenu` with 26 `DropdownMenuItem`s (SettingsScreen.kt:583-668). That's why it opens as an oversized, non-scroll-constrained popup (a full-height box) instead of a normal dropdown — Material 3's raw `DropdownMenu` doesn't bound its own height to the anchor, so with 26 items it balloons past the screen.
+
+Here's my plan:
+
+## Redesign plan — "Map centre" pin card
+
+**Replace `PinCityRow` with a Material 3 `ExposedDropdownMenuBox` (the standard Compose dropdown):**
+
+1. **New control layout** (SettingsScreen.kt:599-668):
+   - `ExposedDropdownMenuBox` wrapping a read-only `OutlinedTextField`:
+     - `label` = "Pin to a city" (the title moves into the field label — no more separate title row)
+     - `value` = selected city name, or placeholder when none
+     - `supportingText` = the description (`pinCityDesc`) — folds the "description below" text into the field, so the card becomes one clean control
+     - `trailingIcon` = `ExposedDropdownMenuDefaults.TrailingIcon(expanded)`
+   - `menuAnchor()` on the field (keep the `alpha`/`enabled = !followMe` behaviour)
+2. **Menu**: `ExposedDropdownMenu` scrolls and height-constrains to the anchor automatically — no more full-screen black box. Keep the red alert dot per city from the current code.
+3. **Card container**: keep it in the same `Card` under the Follow-me divider, matching the existing section style.
+
+**No strings changes needed** — reuses `pinCityTitle`/`pinCityDesc`; all 26 cities keep working.
+
+Shall I implement this?
+## 14/08/2026, 16:52:03
+
+Now MainScreen
+## 14/08/2026, 16:52:19
+
+Now SettingsScreen — signature and the toggle row
+## 14/08/2026, 16:52:37
+
+Now AlertService — channels, config, and posting
+## 14/08/2026, 16:53:03
+
+Now the `postAlert` calls in `handleState` and the `postAlert` function itself
+## 14/08/2026, 16:53:26
+
+Now rewrite `createChannels`
+## 14/08/2026, 16:53:31
+
+Now the volume icon drawable. Let me check an existing drawable's style first
+## 14/08/2026, 16:53:42
+
+Now the CHANGELOG entry
+## 14/08/2026, 16:53:48
+
+Let me verify the changes are consistent across files
+## 14/08/2026, 16:53:55
+
+Let me verify the `AlertToggleRow` accepts `iconTint` and check the final AlertService createChannels block
+## 14/08/2026, 16:54:11
+
+All changes are in place and wired consistently. Done.
+
+**Summary:**
+- **Respect mode by default**: all alert channels now route through the notification stream (`USAGE_NOTIFICATION`) — sirens, region alerts, and all-clear all follow the phone's ringer/vibrate/silent mode.
+- **New channel IDs** (`alerts_siren2`, `alerts_siren_outer2`, `alerts_all_clear2`) so existing installs (incl. your Pixel) pick up the new config; old channels are auto-deleted by the cleanup. No self-heal needed.
+- **Override setting** (`Settings → Alerts → "Sirens always sound"`, off by default): when on, siren + region alerts post to new `USAGE_ALARM` channels (`alerts_siren_alarm`, `alerts_siren_outer_alarm`) and ring through vibrate/silent. All-clear never overrides.
+- Files: `ZonePrefs.kt`, `Strings.kt` (UA/EN), `MainViewModel.kt`, `MainScreen.kt`, `SettingsScreen.kt`, `AlertService.kt`, new `ic_volume_up.xml`, `CHANGELOG.md` Unreleased entry.
+
+Per your global note I didn't run a build — say the word if you want me to compile.
+## 14/08/2026, 16:54:35
+
+
+
+
+## 14/08/2026, 16:55:56
+
+Got it — switching focus to the threat card (the `explanationShort` course text in the Large card, ThreatPopupCard.kt:347). Here's the plan:
+
+## Plan — threat card description + skull disclaimer
+
+**1. First-sentence-only description** (ThreatPopupCard.kt)
+- Add a small helper `firstSentence(text)` that keeps the text up to the first `.`, `!` or `?`.
+- Apply it to `courseBase` at ThreatPopupCard.kt:347, so only NEPTUN's first sentence is shown.
+- `explanationShort` is only displayed here (grep confirms), so no other call sites are affected.
+
+**2. Skull disclaimer line** — in the Large card only (small/medium are glanceable; the gauge only appears on Large)
+- Right below the course description (after ThreatPopupCard.kt:357), add a compact Row:
+  - small grey skull icon (`R.drawable.ic_skull`, ~14dp)
+  - one `bodySmall` grey line: how the 0–10 level is calculated + "not a guarantee of your safety"
+- Wording aligns with the existing `guideCardReadD1/D3` and the Settings disclaimer, e.g.
+  - EN: *"Skull (0–10) is a rough estimate — type, distance, reliability, sources. Not an official rating or a guarantee of your safety."*
+  - UA: *"Череп (0–10) — груба оцінка (тип, відстань, достовірність, джерела). Не офіційний рейтинг і не гарантія вашої безпеки."*
+
+**3. Strings** — add `cardSkullNote` to the `StringSet` interface + both UA/EN implementations in Strings.kt.
+
+The pin-card redesign is still paused (that edit was aborted when you switched topics) — say the word and I'll do both, or just this one. Good to proceed?
+## 14/08/2026, 16:56:48
+
+Now the ThreatPopupCard changes — first-sentence truncation and the skull note line:
+## 14/08/2026, 16:57:05
+
+All imports are present. Let me verify the edited region reads
+## 14/08/2026, 16:57:11
+
+Now updating CHANGELOG per the
+## 14/08/2026, 16:57:25
+
+Done. Changes:
+
+- **ThreatPopupCard.kt:347** — course description truncated to the first sentence via new `firstSentence()` helper (ThreatPopupCard.kt:463).
+- **ThreatPopupCard.kt:355-373** — skull disclaimer line (14dp grey skull icon + `cardSkullNote`) shown in the Large card under the description.
+- **Strings.kt** — `cardSkullNote` added to the interface + UA/EN (`"Skull (0–10) is a rough estimate — type, distance, reliability, sources. Not an official rating or a guarantee of your safety."`).
+- **CHANGELOG.md** — entry added under `[Unreleased]`.
+
+The pin-to-city dropdown redesign is still paused — want me to do that next?
+## 14/08/2026, 16:58:24
+
+
+
+
+## 14/08/2026, 16:58:30
+
+That edit was wrong — it just duplicated the old code and dropped a comment. Let me check the current state and
+## 14/08/2026, 16:58:47
+
+Now I'll replace the whole `PinCityRow` body with the `ExposedDropdownMenuBox` version and restore the lost comment:
+## 14/08/2026, 16:59:21
+
+The code looks correct. Now the CHANGELOG entry:
+## 14/08/2026, 16:59:28
+
+Done. The pin-to-city card in Settings → Map centre is now a proper Material 3 dropdown:
+
+- **SettingsScreen.kt:609** — `PinCityRow` rebuilt on `ExposedDropdownMenuBox` + `OutlinedTextField`:
+  - title ("Pin to a city") is now the field label; the description moved into `supportingText` — one clean control instead of title row + dropdown + description below
+  - `menuAnchor(MenuAnchorType.PrimaryNotEditable)` + `ExposedDropdownMenu` — opens as a height-constrained scrollable list under the field, no more full-screen black box
+  - disabled/dimmed while Follow-me is on (as before); red alert dots preserved
+- Removed the now-unused `border` import.
+- CHANGELOG entry added.
+
+Both requests (threat card + pin card) are done.

@@ -36,7 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -91,7 +90,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         MapScreen(
             uiState = uiState,
             settingsOpen = screen == Screen.SETTINGS,
-            settingsHintRemaining = settingsHintRemaining,
             onOpenSettings = {
                 if (settingsHintRemaining > 0) {
                     settingsHintRemaining--
@@ -116,6 +114,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 disabledTypes = uiState.disabledTypes,
                 fastAlertsSooner = uiState.fastAlertsSooner,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
+                sirenOverride = uiState.sirenOverride,
                 disclaimerCollapsed = uiState.disclaimerCollapsed,
                 followMe = uiState.followMe,
                 pinnedCity = uiState.pinnedCity,
@@ -129,6 +128,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
                 onFastAlertsSoonerChange = { viewModel.setFastAlertsSooner(it) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
+                onSirenOverrideChange = { viewModel.setSirenOverride(it) },
                 onFollowMeChange = { viewModel.setFollowMe(it) },
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
@@ -231,7 +231,6 @@ private fun LanguageChooseDialog(
 private fun MapScreen(
     uiState: UiState,
     settingsOpen: Boolean,
-    settingsHintRemaining: Int,
     onOpenSettings: () -> Unit,
     onThreatTapped: (Threat) -> Unit,
     onDismissPopup: () -> Unit,
@@ -327,26 +326,13 @@ private fun MapScreen(
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
                 )
-                Box(contentAlignment = Alignment.Center) {
-                    val beatScale = rememberInfiniteTransition(label = "heartBeat").animateFloat(
-                        initialValue = 1f,
-                        targetValue = 1.16f,
-                        animationSpec = infiniteRepeatable(tween(550), RepeatMode.Reverse),
-                        label = "heartBeat"
-                    ).value
-                    IconButton(onClick = openSettings, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_heart_ua),
-                            contentDescription = s.settingsButton,
-                            tint = Color.Unspecified,
-                            modifier = Modifier
-                                .size(22.dp)
-                                .graphicsLayer {
-                                    scaleX = beatScale
-                                    scaleY = beatScale
-                                }
-                        )
-                    }
+                IconButton(onClick = openSettings, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings_ua),
+                        contentDescription = s.settingsButton,
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             }
         }

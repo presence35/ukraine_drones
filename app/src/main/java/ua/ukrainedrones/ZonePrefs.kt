@@ -29,6 +29,7 @@ class ZonePrefs(private val context: Context) {
     private val yellowArmedKey = booleanPreferencesKey("yellow_zone_armed")
     private val fastAlertsSoonerKey = booleanPreferencesKey("fast_alerts_sooner")
     private val officialAlertsKey = booleanPreferencesKey("official_alerts_enabled")
+    private val sirenOverrideKey = booleanPreferencesKey("siren_override")
     private val disclaimerCollapsedKey = booleanPreferencesKey("disclaimer_collapsed")
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
     private val followMeKey = booleanPreferencesKey("follow_me")
@@ -83,6 +84,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setOfficialAlertsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[officialAlertsKey] = enabled }
+    }
+
+    /** Whether siren alerts ring even when the phone is on vibrate/silent. Default off. */
+    fun sirenOverride(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[sirenOverrideKey] ?: false }
+
+    suspend fun setSirenOverride(override: Boolean) {
+        context.dataStore.edit { it[sirenOverrideKey] = override }
     }
 
     /** Whether a threat type participates in alerts/map — default on. */

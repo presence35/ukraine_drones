@@ -32,6 +32,7 @@ data class UiState(
     val yellowArmed: Boolean = true,
     val fastAlertsSooner: Boolean = true,
     val officialAlertsEnabled: Boolean = true,
+    val sirenOverride: Boolean = false,
     val disabledTypes: Set<ThreatType> = emptySet(),
     val activeZone: ThreatZone? = null,           // most specific zone with a threat
     val focusOblastAlertActive: Boolean = false,  // official alert on the focus point's oblast
@@ -113,6 +114,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val yellowArmed: Boolean,
         val fastAlertsSooner: Boolean,
         val officialAlertsEnabled: Boolean,
+        val sirenOverride: Boolean,
         val followMe: Boolean,
         val pinnedCity: String?,
         val languageChosen: Boolean,
@@ -140,6 +142,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val yellowArmed: Boolean,
         val fastAlertsSooner: Boolean,
         val officialAlertsEnabled: Boolean,
+        val sirenOverride: Boolean,
         val followMe: Boolean
     )
 
@@ -164,9 +167,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.yellowZoneArmed(),
             prefs.fastAlertsSooner(),
             prefs.officialAlertsEnabled(),
+            prefs.sirenOverride(),
             prefs.followMe()
-        ) { redArmed, yellowArmed, fast, official, followMe ->
-            AlertConfig(redArmed, yellowArmed, fast, official, followMe)
+        ) { redArmed, yellowArmed, fast, official, override, followMe ->
+            AlertConfig(redArmed, yellowArmed, fast, official, override, followMe)
         },
         combine(
             prefs.pinnedCity(),
@@ -182,6 +186,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             yellowArmed = b.yellowArmed,
             fastAlertsSooner = b.fastAlertsSooner,
             officialAlertsEnabled = b.officialAlertsEnabled,
+            sirenOverride = b.sirenOverride,
             followMe = b.followMe,
             pinnedCity = c.first,
             languageChosen = c.second,
@@ -241,6 +246,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             yellowArmed = prefs.yellowArmed,
             fastAlertsSooner = prefs.fastAlertsSooner,
             officialAlertsEnabled = prefs.officialAlertsEnabled,
+            sirenOverride = prefs.sirenOverride,
             languageChosen = prefs.languageChosen,
             threatCardSize = prefs.cardSize
         )
@@ -419,6 +425,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setOfficialAlertsEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setOfficialAlertsEnabled(enabled) }
+    }
+
+    fun setSirenOverride(override: Boolean) {
+        viewModelScope.launch { prefs.setSirenOverride(override) }
     }
 
     /** Follow-me toggle: switching it back on resumes GPS-centered zones/camera. */

@@ -6,7 +6,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
@@ -64,6 +63,7 @@ fun SettingsScreen(
     disabledTypes: Set<ThreatType>,
     fastAlertsSooner: Boolean,
     officialAlertsEnabled: Boolean,
+    sirenOverride: Boolean,
     disclaimerCollapsed: Boolean,
     followMe: Boolean,
     pinnedCity: City?,
@@ -77,6 +77,7 @@ fun SettingsScreen(
     onThreatToggle: (ThreatType, Boolean) -> Unit,
     onFastAlertsSoonerChange: (Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
+    onSirenOverrideChange: (Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
@@ -386,6 +387,15 @@ fun SettingsScreen(
                             icon = painterResource(R.drawable.ic_trident),
                             note = s.officialAlertsRedTridentNote
                         )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        AlertToggleRow(
+                            title = s.sirenOverrideTitle,
+                            description = s.sirenOverrideDesc,
+                            checked = sirenOverride,
+                            onCheckedChange = onSirenOverrideChange,
+                            icon = painterResource(R.drawable.ic_volume_up),
+                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -596,74 +606,50 @@ private fun PinCityRow(
     val selected = pinnedCity?.let { label(it) } ?: ""
     var expanded by remember { mutableStateOf(false) }
 
-    Column {
-        Box {
-            Row(
-                // While Follow-me is on a pin has no effect, so the whole control reads as
-                // inactive and won't open. The alpha lives on the anchor Row itself (a child
-                // of the Box the menu anchors to), keeping any graphics layer off the popup's
-                // anchor path so the menu positions correctly.
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .alpha(if (followMe) 0.45f else 1f)
-                    .clip(RoundedCornerShape(4.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .clickable(enabled = !followMe) { expanded = !expanded }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        s.pinCityTitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(selected, style = MaterialTheme.typography.bodyLarge)
-                }
-                Spacer(Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (!followMe) expanded = it },
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            enabled = !followMe,
+            label = { Text(s.pinCityTitle) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            supportingText = { Text(s.pinCityDesc) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = !followMe)
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            cities.forEach { city ->
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (city.nameUa in redCities) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFFD32F2F))
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(label(city))
+                        }
+                    },
+                    onClick = {
+                        onChange(city)
+                        expanded = false
+                    }
                 )
             }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                cities.forEach { city ->
-                    DropdownMenuItem(
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (city.nameUa in redCities) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFFD32F2F))
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                }
-                                Text(label(city))
-                            }
-                        },
-                        onClick = {
-                            onChange(city)
-                            expanded = false
-                        }
-                    )
-                }
-            }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            s.pinCityDesc,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
