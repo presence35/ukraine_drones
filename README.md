@@ -8,25 +8,14 @@ drones, missiles, guided bombs, and more — right on your phone.
 WebSocket, tracks your (approximate) location on-device, and fires siren/chime
 notifications from its own local background service.
 
-## Download
-
-The app updates itself in place, so you only ever need the latest APK once:
-
-- **APK:** [app-release.apk](https://odesaplay.com.ua/other_apps/ukrainedrones/app-release.apk)
-- **Version info:** [version.json](https://odesaplay.com.ua/other_apps/ukrainedrones/version.json)
-
-Open the APK on the phone and allow "install unknown apps" when asked. From then on,
-Settings → Update keeps you current automatically (checked silently at most once a day).
-
 ## Screenshots
 
-The gallery below uses placeholders for now — real captures will drop in here. To replace
-one, run the app (e.g. in an emulator) and use
+To replace a capture, run the app (e.g. in an emulator) and use
 `adb exec-out screencap -p > docs/screenshots/<name>.png`, keeping the filename.
 
-| Map | Threat detail card | Edit alert zones |
-| --- | --- | --- |
-| <img src="docs/screenshots/map.png" width="220" alt="Live threat map"> | <img src="docs/screenshots/threat-popup.png" width="220" alt="Threat detail card"> | <img src="docs/screenshots/edit-zones.png" width="220" alt="Edit alert zones"> |
+| Map | Edit alert zones |
+| --- | --- |
+| <img src="docs/screenshots/map.png" width="220" alt="Live threat map"> | <img src="docs/screenshots/edit-zones.png" width="220" alt="Edit alert zones"> |
 
 | Settings | Feature guide |
 | --- | --- |
@@ -48,7 +37,7 @@ one, run the app (e.g. in an emulator) and use
   reliability with source count, wave size and time since last seen. Tap the map to dismiss.
 - **Live city alerts** — city labels turn red while their oblast is on official alert and
   show active-threat counts (e.g. "Kharkiv (2)").
-- **UA / EN** — English uses Canadian spelling and the 🇬🇧 flag; first launch asks your
+- **UA / EN** — English uses Canadian spelling and the 🇨🇦 flag; first launch asks your
   preference, or switch anytime in Settings.
 - **Battery-cheap location** — coarse network fix only (~2 min / ~250 m), so the rings stay
   honest and the battery stays alive.

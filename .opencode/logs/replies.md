@@ -23051,3 +23051,147 @@ Done. README overhauled with audited facts and a screenshot gallery.
 - **`docs/screenshots/`** — 5 dark placeholder PNGs (`map`, `threat-popup`, `edit-zones`, `settings`, `feature-guide`). Drop real captures in with the same filenames (the gallery has the `adb` command).
 
 Note: the placeholders are simple generated images since no emulator/device is available. To get real screenshots, run the app in an emulator and capture with `adb exec-out screencap -p`.
+## 14/08/2026, 17:23:13
+
+I've mapped the current state. Here's what exists today:
+
+- **No onboarding at all** — the only first-launch step is the language picker (`MainScreen.kt:185-191`). The old spotlight tour was removed (CHANGELOG line 34), leaving the Feature Guide (`FeatureGuide.kt`) as the sole tutorial surface, buried under Settings → "Feature guide".
+- **Settings gear has no attention signal** — the pulsing-heart machinery (`settingsHintRemaining`, default 10, `ZonePrefs.kt:165`) is now dead visually: it still decrements on open (`MainScreen.kt:94-96`) but nothing draws the pulse anymore.
+- **Tap-a-drone → details** works (`MapView.kt:432-435` → `ThreatPopupCard`) and is documented in the guide card "Live map" (`Strings.kt:325`), but nothing on the map hints at it.
+
+So the two things you mention are genuinely undiscoverable.
+
+A few ways to fix that — different tradeoffs
+## 14/08/2026, 17:24:06
+
+
+
+
+## 14/08/2026, 17:24:14
+
+Both fixed: flag is now 🇨🇦 and the Download section (APK/version links) is removed.
+## 14/08/2026, 17:24:37
+
+Got it — put the tips right in the first-launch language picker. Let me check the dialog's pieces and strings before drafting the plan.
+## 14/08/2026, 17:24:56
+
+Here's the plan.
+
+## Goal
+First-launch language picker doubles as a tiny onboarding: a few short tips so users learn the two key things (tap a drone → details; Settings → everything) without a separate tour.
+
+## Changes
+
+**1. `Strings.kt` — add tip strings to `StringSet` (UA + EN)**
+```
+onboardingTipsTitle: "Кілька підказок" / "A few tips"
+onboardingTipTap:   "Натисни будь-який дрон на мапі, щоб відкрити його картку." /
+                    "Tap any drone on the map to see its details."
+onboardingTipSettings: "У Налаштуваннях (шестерня) — зони тривог, мова та повний путівник по функціях." /
+                    "Settings (gear icon) holds alert zones, language and a full feature guide."
+onboardingTipSiren: "Сирена за замовчуванням слідує за режимом звуку телефона — увімкни «Сирена звучить завжди», щоб змінити." /
+                    "Sirens follow your phone's sound mode by default — turn on "Sirens always sound" to override."
+```
+(3 tips max, one line each; references existing settings names.)
+
+**2. `MainScreen.kt` — `LanguageChooseDialog` (`:194-227`)**
+- After the two flag cards, add a divider + small "A few tips" label and the 3 bullet rows (bullet dot + text, `labelMedium`/`bodySmall`, secondary color).
+- Keep everything else unchanged: still dismissible by tapping outside, no confirm/later button.
+
+**3. `CHANGELOG.md`** — append under `## [Unreleased]`: *"First launch: the language picker now shows three short tips — tap a drone on the map for its details, Settings holds zones/language/guide, and sirens follow the phone's sound mode."*
+
+## Notes / decisions for you
+- All three tips, or cut the siren one to keep it to two? (Siren tip adds value, but the dialog gets taller.)
+- Tips use existing terms ("Sirens always sound", "Feature guide") so nothing new needs defining — no new screens or prefs.
+
+Confirm and I'll implement.
+## 14/08/2026, 17:25:11
+
+Removed. Restart opencode for the change to take effect.
+## 14/08/2026, 17:26:20
+
+
+
+
+## 14/08/2026, 17:26:24
+
+Now implementing. First the strings
+## 14/08/2026, 17:27:11
+
+
+
+
+## 14/08/2026, 17:27:21
+
+Now the dialog in MainScreen.kt
+## 14/08/2026, 17:27:26
+
+Now the CHANGELOG entry
+## 14/08/2026, 17:27:42
+
+Done. The first-launch language picker now shows three tips below the flags:
+
+- **`Strings.kt`** — added `onboardingTipsTitle` + 3 tip strings (UA + EN), each referencing existing feature names.
+- **`MainScreen.kt`** — `LanguageChooseDialog` now stacks the flags, then a divider, a "A few tips" label, and three icon rows via a new `OnboardingTipRow` composable: the Shahed drone icon (`ic_threat_shahed`, untinted to keep its silhouette), the Ukraine-colored gear (`ic_settings_ua`), and a muted volume bell (`ic_volume_up`) for the siren tip.
+- **`CHANGELOG.md`** — entry added under `## [Unreleased]`.
+
+Dialog stays non-blocking (taps outside to dismiss), no new screens or prefs.
+## 14/08/2026, 17:33:41
+
+
+
+
+## 14/08/2026, 17:34:24
+
+I can't view the images (this model doesn't support image input), but I've noted the file state:
+
+- `docs/screenshots/` has 4 updated files: `map.png`, `edit-zones.png`, `settings.png`, `feature-guide.png`
+- `threat-popup.png` was **deleted**, but `README.md:19` still references it in the gallery table
+
+The message is a bit ambiguous for me to plan from. What's
+## 14/08/2026, 17:35:23
+
+Plan: update the README screenshot gallery so it matches the 4 existing files.
+
+**Change in `README.md:11-23` (Screenshots section):**
+1. Drop the `threat-popup.png` cell — restructure the first row from 3 columns to 2:
+   `| Map | Edit alert zones |` with only `map.png` and `edit-zones.png`.
+   Keep the `Settings | Feature guide` row as-is.
+2. Update the stale intro line ("uses placeholders for now — real captures will drop in here") since real captures are now in place — keep the `adb` refresh instructions.
+
+Resulting gallery: 2×2 (Map, Edit alert zones / Settings, Feature guide), matching `docs/screenshots/`.
+
+Ready to apply when you switch out of plan mode.
+## 14/08/2026, 17:35:48
+
+Plan ready.
+
+## Plan: Language picker — don't auto-close, add OK button
+
+**Why it closes now:** `ZonePrefs.setLanguage()` (ZonePrefs.kt:149) sets `languageChosenKey = true`, which hides the dialog. So tapping a flag both changes language and dismisses.
+
+**Changes:**
+
+1. **`app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`** (~line 152)
+   - Remove `it[languageChosenKey] = true` from `setLanguage()` so tapping a flag only switches the live language preview and keeps the dialog open.
+
+2. **`app/src/main/java/ua/ukrainedrones/MainScreen.kt`** (`LanguageChooseDialog`, ~line 201)
+   - Add `confirmButton` to the `AlertDialog` with a `TextButton(onClick = onLater)` labelled by a new `s.okButton` string. (`onLater` → `skipLanguageChoose()` already marks it chosen and closes.)
+
+3. **`app/src/main/java/ua/ukrainedrones/Strings.kt`**
+   - Add `okButton: String` to the interface (~line 17).
+   - UA: `okButton = "Готово"`; EN: `okButton = "OK"`.
+
+4. **`CHANGELOG.md`** — append a line under `## [Unreleased]` (per AGENTS.md workflow).
+
+**Notes:**
+- Settings-screen language switching also calls `setLanguage`, but there `languageChosen` is already true, so removing that line is safe.
+- Tapping outside the dialog still dismisses (existing `onDismissRequest = onLater`).
+
+One question: for the UA button label, "Готово" or plain "ОК"?
+## 14/08/2026, 17:35:55
+
+Done. README gallery now references only the 4 existing screenshots.
+## 14/08/2026, 17:37:25
+
+Done. Tapping a language flag now just switches the live preview; the dialog stays open with a new ОК/OK confirm button (MainScreen.kt:202, ZonePrefs.kt:149, Strings.kt).

@@ -149,7 +149,6 @@ class ZonePrefs(private val context: Context) {
     suspend fun setLanguage(lang: AppLanguage) {
         context.dataStore.edit {
             it[languageKey] = lang.name
-            it[languageChosenKey] = true
         }
     }
 

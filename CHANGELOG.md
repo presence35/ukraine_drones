@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- First launch: tapping a language in the picker no longer auto-closes it — it just switches the language live so you can read the tips first, then confirm with the new ОК/OK button.
+- First launch: the language picker now shows three short tips — tap any drone on the map to open its details card, Settings (gear) holds zones/language/feature guide, and sirens follow the phone's sound mode (override with "Sirens always sound").
 - Settings → Map centre: the pin-to-city control is now a proper text-field dropdown that opens as a height-constrained scrollable list below the field (no more full-screen box). The title lives in the field label and the description below it; the red alert dots stay.
 - Threat popup: the course description shows only its first sentence.
 - Settings → threat card size: the note below the three sizes is replaced by a skull line explaining that the 0–10 gauge is a rough estimate (type, distance, reliability, sources) — not an official rating or a guarantee of your safety.

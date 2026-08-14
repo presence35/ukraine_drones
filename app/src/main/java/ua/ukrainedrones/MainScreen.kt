@@ -200,30 +200,77 @@ private fun LanguageChooseDialog(
     val s = Strings.get(current)
     AlertDialog(
         onDismissRequest = onLater,
-        confirmButton = {},
+        confirmButton = { TextButton(onClick = onLater) { Text(s.okButton) } },
         title = { Text(s.languageChooseTitle) },
         text = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                LanguageFlag(
-                    emoji = "\uD83C\uDDFA\uD83C\uDDE6",
-                    label = "Українська",
-                    active = current == AppLanguage.UA,
-                    onClick = { onChoose(AppLanguage.UA) },
-                    modifier = Modifier.weight(1f)
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    LanguageFlag(
+                        emoji = "\uD83C\uDDFA\uD83C\uDDE6",
+                        label = "Українська",
+                        active = current == AppLanguage.UA,
+                        onClick = { onChoose(AppLanguage.UA) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    LanguageFlag(
+                        emoji = "\uD83C\uDDE8\uD83C\uDDE6",
+                        label = "English",
+                        active = current == AppLanguage.EN,
+                        onClick = { onChoose(AppLanguage.EN) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    s.onboardingTipsTitle,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                LanguageFlag(
-                    emoji = "\uD83C\uDDE8\uD83C\uDDE6",
-                    label = "English",
-                    active = current == AppLanguage.EN,
-                    onClick = { onChoose(AppLanguage.EN) },
-                    modifier = Modifier.weight(1f)
+                Spacer(Modifier.height(8.dp))
+                OnboardingTipRow(
+                    iconRes = R.drawable.ic_threat_shahed,
+                    iconTint = Color.Unspecified,
+                    text = s.onboardingTipTap
+                )
+                OnboardingTipRow(
+                    iconRes = R.drawable.ic_settings_ua,
+                    iconTint = Color.Unspecified,
+                    text = s.onboardingTipSettings
+                )
+                OnboardingTipRow(
+                    iconRes = R.drawable.ic_volume_up,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = s.onboardingTipSiren
                 )
             }
         }
     )
+}
+
+@Composable
+private fun OnboardingTipRow(iconRes: Int, iconTint: Color, text: String) {
+    Row(modifier = Modifier.padding(bottom = 8.dp)) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier
+                .padding(top = 1.dp)
+                .size(16.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

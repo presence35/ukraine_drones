@@ -13636,3 +13636,25 @@ go
 ## 14/08/2026, 17:21:45
 
 teh user has no idea they can tap a drone on the map to see more details. Nor that Settings is full of goodies.  
+## 14/08/2026, 17:23:57
+
+it uses canadian flag.
+dont mention version info, or the apk file on my server.
+## 14/08/2026, 17:25:04
+
+sure. 
+## 14/08/2026, 17:25:51
+
+add icons where approprioate, keep it clean and informative.
+## 14/08/2026, 17:33:27
+
+the readme file screenshots were updated.  only what's in there matters.
+## 14/08/2026, 17:34:49
+
+when tapping english on the init screen, it should not auto close.  we need an OK now that there's tips on that screen.
+## 14/08/2026, 17:35:48
+
+go
+## 14/08/2026, 17:36:51
+
+"ok" but cyrclic.
