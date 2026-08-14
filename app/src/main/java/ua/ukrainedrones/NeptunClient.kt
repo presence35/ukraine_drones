@@ -2,6 +2,7 @@ package ua.ukrainedrones
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -44,6 +45,8 @@ object NeptunClient {
     private var reconnectAttempt = 0
     private var lastFrameAt = 0L
     private var openedAt = 0L
+    private val connectInFlight = AtomicBoolean(false)
+    private var reconnectJob: Job? = null
 
     private val _state = MutableStateFlow(NeptunState())
     val state: StateFlow<NeptunState> = _state.asStateFlow()
@@ -60,6 +63,8 @@ object NeptunClient {
 
     fun stop() {
         manuallyStopped = true
+        reconnectJob?.cancel()
+        reconnectJob = null
         ws?.close(1000, "client stop")
         ws = null
         scope.cancel()
@@ -111,7 +116,7 @@ object NeptunClient {
                         for (i in 0 until arr.length()) {
                             val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
                             val existing = merged[t.id]
-                            if (existing == null || (t.updatedAtMillis ?: 0L) >= (existing.updatedAtMillis ?: 0L)) {
+                            if (existing == null || (t.updatedAtMillis ?: 0L) > (existing.updatedAtMillis ?: 0L)) {
                                 merged[t.id] = t
                             }
                         }
@@ -151,12 +156,19 @@ object NeptunClient {
     }
 
     private fun connect() {
+        if (!connectInFlight.compareAndSet(false, true)) return
         val request = Request.Builder()
             .url("wss://neptun.in.ua/api/v1/stream")
             .build()
 
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                connectInFlight.set(false)
+                if (manuallyStopped) {
+                    ws = null
+                    webSocket.close(1000, "stopped")
+                    return
+                }
                 reconnectAttempt = 0
                 openedAt = System.currentTimeMillis()
                 lastFrameAt = System.currentTimeMillis()
@@ -174,11 +186,15 @@ object NeptunClient {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                ws = null
+                connectInFlight.set(false)
                 _state.value = _state.value.copy(connected = false)
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                ws = null
+                connectInFlight.set(false)
                 _state.value = _state.value.copy(connected = false, lastError = t.message)
                 scheduleReconnect()
             }
@@ -199,10 +215,11 @@ object NeptunClient {
             } else {
                 minOf(15_000L, 1000L * (1 shl (reconnectAttempt - 1))) + (0..400).random()
             }
-        Thread {
-            Thread.sleep(delayMs)
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            delay(delayMs)
             if (!manuallyStopped) connect()
-        }.start()
+        }
     }
 
     private fun handleFrame(text: String) {

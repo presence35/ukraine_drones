@@ -294,6 +294,10 @@ data class OblastAlert(
     val since: String?
 )
 
+/** True when the official alert belongs to the oblast whose adjectival stem is [token]. */
+fun OblastAlert.inOblast(token: String): Boolean =
+    oblast.startsWith(token, ignoreCase = true) || name.startsWith(token, ignoreCase = true)
+
 private val COURSE_PATTERNS: List<Pair<Regex, String>> = listOf(
     Regex("^Група БпЛА курсом на (.+)$") to "Group of UAVs heading toward {X}",
     Regex("^Шахеди? курсом на (.+)$") to "Shahed heading toward {X}",

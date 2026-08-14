@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
@@ -30,6 +29,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,14 +37,22 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.SubcomposeLayout
+
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlin.math.roundToInt
 
 private val UkraineBlue = Color(0xFF005BBB)
@@ -63,6 +71,7 @@ fun SettingsScreen(
     threatCardSize: ThreatCardSize,
     versionName: String,
     isChecking: Boolean,
+    latestVersion: String?,
     onBack: () -> Unit,
     onLanguageChange: (AppLanguage) -> Unit,
     onThreatToggle: (ThreatType, Boolean) -> Unit,
@@ -74,10 +83,22 @@ fun SettingsScreen(
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onExit: () -> Unit,
     onCheckUpdate: () -> Unit,
-    onShowTutorial: () -> Unit
+    onOpenGuide: () -> Unit
 ) {
     val s = Strings.get(lang)
-    var expandedType by remember { mutableStateOf<ThreatType?>(ThreatType.SHAHED) }
+    val appContext = LocalContext.current
+    var batteryOptimized by remember { mutableStateOf(BatteryOptimization.isIgnoringBatteryOptimizations(appContext)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                batteryOptimized = BatteryOptimization.isIgnoringBatteryOptimizations(appContext)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    var expandedType by remember { mutableStateOf<ThreatType?>(null) }
     // The "Official signals" card needs two collapse taps before it actually stays collapsed.
     var collapseAttempts by remember { mutableStateOf(0) }
     val onDisclaimerClick: () -> Unit = {
@@ -173,7 +194,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                     LanguageFlag(
-                        emoji = "\uD83C\uDDFA\uD83C\uDDF8",
+                        emoji = "\uD83C\uDDE8\uD83C\uDDE6",
                         active = lang == AppLanguage.EN,
                         onClick = { onLanguageChange(AppLanguage.EN) },
                         modifier = Modifier.weight(1f)
@@ -198,6 +219,26 @@ fun SettingsScreen(
                             pinnedCity = pinnedCity,
                             redCities = redCities,
                             onChange = onPinnedCityChange
+                        )
+                    }
+                }
+            }
+
+            item { SectionHeader(s.cardSizeLabel, painterResource(R.drawable.ic_card_size)) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                        ThreatCardSizeSelector(
+                            lang = lang,
+                            selected = threatCardSize,
+                            onChange = onThreatCardSizeChange
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            s.cardSizeDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -228,10 +269,10 @@ fun SettingsScreen(
                                 .alpha(if (enabled) 1f else 0.45f),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            ThreatTypeIcon(
-                                type = type,
-                                vectorRes = iconResFor(type),
+                            Icon(
+                                painter = painterResource(id = iconResFor(type)),
                                 contentDescription = label,
+                                tint = Color.Unspecified,
                                 modifier = Modifier.size(36.dp)
                             )
                             Spacer(Modifier.width(14.dp))
@@ -275,6 +316,7 @@ fun SettingsScreen(
                                 Spacer(Modifier.height(12.dp))
                                 typicalSpeed?.let {
                                     Surface(
+                                        modifier = Modifier.align(Alignment.End),
                                         shape = RoundedCornerShape(50),
                                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                                     ) {
@@ -288,7 +330,16 @@ fun SettingsScreen(
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
-                                ThreatImages.url(type)?.let { imgUrl ->
+                                ThreatImages.drawableRes(type)?.let { resId ->
+                                    Image(
+                                        painter = painterResource(id = resId),
+                                        contentDescription = label,
+                                        contentScale = ContentScale.FillWidth,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                    )
+                                } ?: ThreatImages.url(type)?.let { imgUrl ->
                                     AsyncImage(
                                         model = imageRequest(context, imgUrl),
                                         contentDescription = label,
@@ -300,12 +351,6 @@ fun SettingsScreen(
                                             .clip(RoundedCornerShape(12.dp))
                                     )
                                 }
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    s.wikiSourceLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                                 joke.takeIf { it.isNotBlank() }?.let {
                                     Spacer(Modifier.height(8.dp))
                                     Text(
@@ -328,46 +373,126 @@ fun SettingsScreen(
                             title = s.fastAlertsSoonerTitle,
                             description = s.fastAlertsSoonerDesc,
                             checked = fastAlertsSooner,
-                            onCheckedChange = onFastAlertsSoonerChange
+                            onCheckedChange = onFastAlertsSoonerChange,
+                            icon = painterResource(R.drawable.ic_bolt),
+                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         AlertToggleRow(
                             title = s.officialAlertsTitle,
                             description = s.officialAlertsDesc,
                             checked = officialAlertsEnabled,
-                            onCheckedChange = onOfficialAlertsChange
+                            onCheckedChange = onOfficialAlertsChange,
+                            icon = painterResource(R.drawable.ic_trident),
+                            note = s.officialAlertsRedTridentNote
                         )
                     }
                 }
             }
 
-            item { SectionHeader(s.cardSizeLabel, rememberVectorPainter(Icons.Default.MoreVert)) }
-            item {
-                ThreatCardSizeSelector(
-                    lang = lang,
-                    selected = threatCardSize,
-                    onChange = onThreatCardSizeChange
-                )
-            }
-            item {
-                Text(
-                    s.cardSizeDesc,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (batteryOptimized) {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_check),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            s.batteryGranted,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                s.batteryTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                s.batteryBody,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { BatteryOptimization.requestExemption(appContext) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
             }
 
             item {
-                Button(
-                    onClick = onShowTutorial,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = Color.White
-                    )
+                OutlinedButton(
+                    onClick = onOpenGuide,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(s.settingsGuideButton, fontWeight = FontWeight.SemiBold)
+                    Text(s.guideSettingsButton, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            item {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+
+            item {
+                if (isChecking) {
+                    Button(
+                        onClick = onCheckUpdate,
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(s.updateButton, fontWeight = FontWeight.SemiBold)
+                    }
+                } else if (latestVersion != null) {
+                    Button(
+                        onClick = onCheckUpdate,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_download),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "${s.updateAvailableButton} · v$latestVersion",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onCheckUpdate,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = s.checkForUpdates,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(s.updateButton, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
@@ -385,50 +510,15 @@ fun SettingsScreen(
             }
 
             item {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
-
-            item {
-                Column(
+                Text(
+                    "${s.madeBy} · v$versionName",
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        "${s.madeBy} · v$versionName",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    if (isChecking) {
-                        Button(
-                            onClick = onCheckUpdate,
-                            enabled = false,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(s.updateButton, fontWeight = FontWeight.SemiBold)
-                        }
-                    } else {
-                        Button(
-                            onClick = onCheckUpdate,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = s.checkForUpdates,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(s.updateButton, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -446,7 +536,10 @@ private fun AlertToggleRow(
     title: String,
     description: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    icon: Painter? = null,
+    iconTint: Color? = null,
+    note: String? = null
 ) {
     Row(
         modifier = Modifier
@@ -455,6 +548,14 @@ private fun AlertToggleRow(
             .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        icon?.let {
+            Image(
+                painter = it,
+                contentDescription = null,
+                colorFilter = iconTint?.let { c -> ColorFilter.tint(c) },
+                modifier = Modifier.padding(end = 12.dp).size(24.dp)
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(2.dp))
@@ -463,6 +564,14 @@ private fun AlertToggleRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            note?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
         Switch(checked = checked, onCheckedChange = null)
@@ -487,22 +596,20 @@ private fun PinCityRow(
     val selected = pinnedCity?.let { label(it) } ?: ""
     var expanded by remember { mutableStateOf(false) }
 
-    Column(
-        // While Follow-me is on a pin has no effect, so the whole control reads as
-        // inactive and won't open.
-        modifier = Modifier.alpha(if (followMe) 0.45f else 1f)
-    ) {
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { if (!followMe) expanded = it }
-        ) {
+    Column {
+        Box {
             Row(
+                // While Follow-me is on a pin has no effect, so the whole control reads as
+                // inactive and won't open. The alpha lives on the anchor Row itself (a child
+                // of the Box the menu anchors to), keeping any graphics layer off the popup's
+                // anchor path so the menu positions correctly.
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor()
+                    .alpha(if (followMe) 0.45f else 1f)
                     .clip(RoundedCornerShape(4.dp))
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
                     .background(MaterialTheme.colorScheme.surface)
+                    .clickable(enabled = !followMe) { expanded = !expanded }
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -522,7 +629,7 @@ private fun PinCityRow(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            ExposedDropdownMenu(
+            DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false }
             ) {
@@ -605,16 +712,13 @@ private fun ThreatCardSizeSelector(
     selected: ThreatCardSize,
     onChange: (ThreatCardSize) -> Unit
 ) {
-    val s = Strings.get(lang)
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         ThreatCardSize.values().forEach { size ->
             CardSizeTile(
                 size = size,
-                label = when (size) {
-                    ThreatCardSize.SMALL -> s.cardSizeSmall
-                    ThreatCardSize.MEDIUM -> s.cardSizeMedium
-                    ThreatCardSize.LARGE -> s.cardSizeLarge
-                },
                 lang = lang,
                 selected = size == selected,
                 onClick = { onChange(size) },
@@ -627,7 +731,6 @@ private fun ThreatCardSizeSelector(
 @Composable
 private fun CardSizeTile(
     size: ThreatCardSize,
-    label: String,
     lang: AppLanguage,
     selected: Boolean,
     onClick: () -> Unit,
@@ -646,46 +749,46 @@ private fun CardSizeTile(
             modifier = Modifier.padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                }
-            )
-            Spacer(Modifier.height(8.dp))
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF141414))
-            ) {
-                // Draw the real card at a fixed nominal width, then scale it to the tile.
-                val nominalWidth = 340.dp
-                val scale = maxWidth / nominalWidth
-                Box(
-                    modifier = Modifier
-                        .width(nominalWidth)
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            transformOrigin = TransformOrigin(0f, 0f)
-                        }
-                ) {
-                    ThreatPopupCard(
-                        threat = PreviewThreat,
-                        lang = lang,
-                        proximity = PreviewProximity,
-                        pinnedCity = null,
-                        threatLevel = 7.0,
-                        fastAlertsSooner = true,
-                        onDismiss = {},
-                        cardSize = size
+            // Draw the real card at a fixed nominal width, then scale it down to the tile.
+            // The height follows the scaled card exactly, so there's no dead space around it.
+            val density = LocalDensity.current
+            SubcomposeLayout(modifier = Modifier.fillMaxWidth()) { constraints ->
+                val nominalW = with(density) { 340.dp.toPx() }
+                val nominalWpx = with(density) { 340.dp.roundToPx() }
+                val scale = constraints.maxWidth.toFloat() / nominalW
+                val cardPlaceable = subcompose("preview-card") {
+                    Box(
+                        modifier = Modifier
+                            .width(340.dp)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                transformOrigin = TransformOrigin(0f, 0f)
+                            }
+                    ) {
+                        ThreatPopupCard(
+                            threat = PreviewThreat,
+                            lang = lang,
+                            proximity = PreviewProximity,
+                            pinnedCity = null,
+                            threatLevel = 7.0,
+                            fastAlertsSooner = true,
+                            onDismiss = {},
+                            cardSize = size,
+                            interactive = false
+                        )
+                    }
+                }[0].measure(
+                    constraints.copy(
+                        minWidth = nominalWpx,
+                        maxWidth = nominalWpx,
+                        minHeight = 0,
+                        maxHeight = Constraints.Infinity
                     )
+                )
+                val height = (cardPlaceable.height * scale).roundToInt()
+                layout(constraints.maxWidth, height) {
+                    cardPlaceable.place(0, 0)
                 }
             }
         }
@@ -742,7 +845,13 @@ private fun WarningTriangle(modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun LanguageFlag(emoji: String, active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun LanguageFlag(
+    emoji: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null
+) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
@@ -753,17 +862,27 @@ internal fun LanguageFlag(emoji: String, active: Boolean, onClick: () -> Unit, m
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            emoji,
-            fontSize = 32.sp,
-            // Inverted: the flag of the language you'd switch to is the colored one.
-            modifier = Modifier.alpha(if (active) 0.3f else 1f)
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                emoji,
+                fontSize = 32.sp,
+                // Inverted: the flag of the language you'd switch to is the colored one.
+                modifier = Modifier.alpha(if (active) 0.3f else 1f)
+            )
+            if (label != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
     }
 }
 
 private fun iconResFor(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.ic_threat_shahed
+    ThreatType.SHAHED -> R.drawable.shahed
     ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
     ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
     ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic

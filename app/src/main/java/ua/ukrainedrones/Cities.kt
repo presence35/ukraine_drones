@@ -48,6 +48,10 @@ object Cities {
         City("Ternopil", "Тернопіль", 49.5535, 25.5948, true),
         City("Sumy", "Суми", 50.9077, 34.7981, true),
         City("Chernihiv", "Чернігів", 51.4982, 31.2893, true),
+        City("Donetsk", "Донецьк", 48.0159, 37.8029, true),
+        City("Luhansk", "Луганськ", 48.5740, 39.3078, true),
+        City("Uzhhorod", "Ужгород", 48.6208, 22.2879, true),
+        City("Lutsk", "Луцьк", 50.7472, 25.3254, true),
         // Minor — Odesa region + neighbours, for distance context at higher zoom
         City("Chornomorsk", "Чорноморськ", 46.3036, 30.6566, false),
         City("Yuzhne", "Южне", 46.6226, 31.1014, false),
@@ -98,6 +102,10 @@ object Cities {
         "Тернопіль" to "Тернопільськ",
         "Суми" to "Сумськ",
         "Чернігів" to "Чернігівськ",
+        "Донецьк" to "Донецьк",
+        "Луганськ" to "Луганськ",
+        "Ужгород" to "Закарпатськ",
+        "Луцьк" to "Волинськ",
         "Чорноморськ" to "Одеськ",
         "Южне" to "Одеськ",
         "Білгород-Дністровський" to "Одеськ",
@@ -115,6 +123,50 @@ object Cities {
         "Вознесенськ" to "Миколаївськ",
         "Первомайськ" to "Миколаївськ"
     )
+
+    /**
+     * Nearest listed city within [radiusKm] of a GPS position, used to attribute a follow-me
+     * location to an oblast for official-alert matching without depending on a geocoder.
+     */
+    fun nearestCity(lat: Double, lon: Double, radiusKm: Double = 70.0): City? {
+        var best: City? = null
+        var bestM = radiusKm * 1000.0
+        for (c in ALL) {
+            val d = distanceMeters(lat, lon, c.lat, c.lon)
+            if (d < bestM) {
+                bestM = d
+                best = c
+            }
+        }
+        return best
+    }
+}
+
+/** Oblast attribution + banner city for the focus point: the pinned city, else nearest to GPS. */
+data class FocusAttribution(
+    val token: String?,
+    val bannerCityUa: String,
+    val bannerCityEn: String
+)
+
+fun focusAttribution(followMe: Boolean, userLocation: LatLng?, pinned: City?): FocusAttribution {
+    if (!followMe && pinned != null) {
+        return FocusAttribution(
+            token = Cities.cityOblast[pinned.nameUa],
+            bannerCityUa = pinned.nameUa,
+            bannerCityEn = pinned.nameEn
+        )
+    }
+    val gps = userLocation?.let { Cities.nearestCity(it.lat, it.lon) }
+    return if (gps != null) {
+        FocusAttribution(
+            token = Cities.cityOblast[gps.nameUa],
+            bannerCityUa = gps.nameUa,
+            bannerCityEn = gps.nameEn
+        )
+    } else {
+        FocusAttribution(null, "Одеса", "Odesa")
+    }
 }
 
 /** Draws city names in the current language, sized to zoom level. */

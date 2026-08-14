@@ -1,6 +1,6 @@
 # Ukraine Drones
 
-A live air-threat map for Odesa that connects straight to the
+A live air-threat map for all of Ukraine that connects straight to the
 [NEPTUN](https://neptun.in.ua) public API and rings alerts when threats come close.
 
 **No account, no server, no API key.** The app talks directly to NEPTUN's public
@@ -29,10 +29,11 @@ There are three independent alert sources, each with its own toggle:
 3. **Official oblast alert** — follows the government signal on its own; never mixed with the
    zone alerts.
 
-Zone rings follow your last location fix; radii are dragged in the **Edit zones** panel
-(sliders update the circles live). Each zone has its own bell toggle, plus a master bell in
-the floating map controls. When both zone bells are muted, a small "All alerts are off" pill
-appears.
+Zone rings follow your last location fix — or, when you pin the map to a city in Settings
+("Map center"), they centre on that city instead. Radii are dragged in the **Edit zones**
+panel (sliders update the circles live). Each zone has its own bell toggle, plus a master
+bell in the floating map controls. When both zone bells are muted, a small "All alerts are
+off" pill appears.
 
 The **"Fast objects alert sooner"** setting (on by default) fires the siren the moment a
 ballistic/cruise missile, guided bomb, or MiG-31K crosses any zone edge — for those types
@@ -59,9 +60,10 @@ dismiss.
 **Edit zones** — the pencil button on the map opens the bottom sheet with Red/Yellow radius
 sliders and per-zone bells. Non-modal: you can pan/zoom the map behind it.
 
-**Settings** — gear icon. Language flags, per-threat-type cards (tap to enable/disable,
-expand for background on the type plus a photo), official-alert toggle, "Fast objects alert
-sooner", update check, and Stop Monitoring & Exit.
+**Settings** — gear icon. Language flags, "Map center" (follow your GPS or pin the camera
+and zones to one of 22 cities), per-threat-type cards (tap to enable/disable, expand for
+background on the type plus a photo), official-alert toggle, "Fast objects alert sooner",
+update check, the **Feature guide** (Settings → "Feature guide"), and Stop Monitoring & Exit.
 
 ## What it deliberately does NOT do
 

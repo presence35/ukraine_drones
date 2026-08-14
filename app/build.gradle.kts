@@ -11,6 +11,12 @@ fun readVersionProps(): Properties = Properties().apply {
     if (versionPropsFile.exists()) versionPropsFile.inputStream().use { load(it) }
 }
 
+/** Release signing credentials live in app/keystore.properties (git-ignored). */
+fun readKeystoreProps(): Properties = Properties().apply {
+    val f = file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "ua.ukrainedrones"
     compileSdk = 34
@@ -30,12 +36,25 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        create("release") {
+            val ksPropsFile = file("keystore.properties")
+            if (!ksPropsFile.exists()) {
+                throw GradleException("Missing $ksPropsFile — create it with storeFile, storePassword, keyAlias, keyPassword (it is git-ignored).")
+            }
+            val ks = Properties().apply { ksPropsFile.inputStream().use { load(it) } }
+            storeFile = file(ks.getProperty("storeFile") ?: throw GradleException("keystore.properties: missing 'storeFile'"))
+            storePassword = ks.getProperty("storePassword") ?: throw GradleException("keystore.properties: missing 'storePassword'")
+            keyAlias = ks.getProperty("keyAlias") ?: throw GradleException("keystore.properties: missing 'keyAlias'")
+            keyPassword = ks.getProperty("keyPassword") ?: throw GradleException("keystore.properties: missing 'keyPassword'")
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 

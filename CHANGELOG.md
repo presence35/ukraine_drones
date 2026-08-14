@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+- Settings: threat cards (incl. the UAV one) no longer auto-expand when Settings opens — everything starts collapsed.
+- Settings: fixed the pin-to-city dropdown list appearing in a detached popup (a stray box away from the field); it now opens right below the field. The alert-red city dots stay.
+- Settings: a new "Keep alerts running" card asks Android to let the app run unrestricted in the background (battery optimizations off). It only appears while the phone still pauses the app, explains that the app itself uses very little power (live alert stream + low-power location), and turns into a quiet "Unrestricted in background" status once granted.
+- Settings threat card photos: the Shahed, Unknown and Ballistic reference photos are now bundled in the app (offline, instant load) instead of being served from our update server — the app no longer depends on the server `/images/` folder.
+- Map: the map can't pan past Ukraine (incl. Crimea) or zoom out beyond "Ukraine fills the screen", so foreign territory like "all of Europe" is unreachable.
+- Monitoring: the background service now restarts automatically after a phone reboot and after an in-app update, so alerts keep working without reopening the app.
+- Alerts: when the official air-raid alert ends, a short cheerful "all clear" chime + notification plays (official alerts only — zone threats end silently). The all-clear notification names the city (e.g. "Kyiv: all clear" / «Київ: відбій тривоги»).
+- Release: the APK is now signed with a dedicated release keystore (no more public debug key) and shrunk with R8, so it's smaller and can't be impersonated by anyone holding the well-known debug key.
 - Settings: the new "Map center" section now shows both controls at once — a "Follow me" toggle (on by default: camera + alert zones keep following your GPS) and a dropdown that pins the camera and zones to any of 22 major cities. Picking a city switches Follow-me off automatically; cities whose oblast has an official air-raid alert are marked with a red dot in the list.
 - Map: with a city pinned, the camera and the red/yellow alert zones centre on that city and a proper map pin (tip on the city) marks it. The bottom-left pill shows "Pinned: <city>" / «Прикріплено: <місто>» only while a city is pinned.
 - Header: with a city pinned the title shows just the city name (e.g. "Kyiv" / «Київ»); during an official oblast alert it becomes "<city>: alert" / «<місто>: тривога» and the trident glows red for the pinned city's oblast instead of Odesa's.
@@ -7,13 +17,34 @@
 - Threat popup: when a city is pinned, the distance line reads "Distance to <city>" / «Відстань до <міста>» instead of just "Distance".
 - Settings: fixed the pin-to-city dropdown not opening (the anchor toggled itself twice); it's now dimmed and disabled while "Follow me" is on, since a pin only takes effect once following is off.
 
-## [Unreleased]
+- Settings: "made by" credit moved to the very bottom of the screen.
+- Settings: opening Settings auto-checks for updates (at most once a day, silently). The update button now lights up with a download icon and "Update available · vX" / «Доступне оновлення · vX» when a new version exists; otherwise it's a plain outlined "Update" / «Оновити» button you can tap to check manually.
+- Update dialog: on app start it still pops, but only when no threat or official alert is active — during an alert it stays silent and the Settings button shows the available update instead.
+
+- Settings: the Alerts toggles now have leading icons — a lightning bolt for "Fast objects alert sooner" and the trident for "Official alerts" — with a note explaining that a red trident in the header means the official alert is on.
+
+- Language: English strings now use Canadian spelling — "Map centre" replaces the American "Map center" in the settings section title, its pin-to-city description and the Feature guide.- Map: the footer threat strip now shows only the types that actually have a live count — types with zero threats no longer appear greyed out; when every count is zero the strip shows the "no threats" message as before. The Feature guide's threat-strip and threat-toggles cards were updated to match.
+- Language: English is now shown with the Canadian flag 🇨🇦 instead of the US one — in the Settings language switcher, the first-launch language picker and the Feature guide's language illustration.
+- Removed: the "How it works" / «Як це працює» first-launch spotlight tour and its Settings replay button (which looked dead whenever an alert was ringing). The Feature guide is now the single tutorial surface.
+
+- Guide: a brand-new "Feature guide" / «Путівник по функціях» screen (Settings → "Feature guide" / via "Learn more" / «Дізнатися більше» in the tour) explains 14 core features in short, expandable cards with small animated illustrations — map basics (live map, threat strip, connection & scale), zones & alerts, location (follow me / pin to city), threat cards (sizes, reading a card) and settings (language, threat toggles, updates). The first-launch tour tooltips are now one-line hooks with a "Learn more" link straight into the matching section instead of a wall of text.
+
+- Map: tiles are now only downloaded (and cached) while the camera shows Ukraine plus a margin around it — panning or zooming beyond that area leaves a black base map with markers but uses no extra data and no cache.
+- First launch: the language picker no longer has a "Later" button — each flag now has the language's own name under it (Українська / English); tapping outside still dismisses it.
+- Map: the initial view starts at a city-level zoom instead of the whole globe, and the (approximate) GPS location permission is now requested first (before notifications) on first load, so the map can find you straight away.
+- Alert zones: default red and yellow zone radii are now the maximums (5 km and 20 km) for fresh installs.
+
+- Map: when both zone alerts are off, a small "all alerts are off" pill (two muted bells + warning icon) floats above the zone buttons; tapping it opens Edit zones. The pencil (Edit zones) button now sits level with the zoom buttons instead of floating higher.
 
 - Settings: toggles (Follow me, fast alerts, official alerts) now respond to a tap anywhere on their row, not just on the switch itself.
 
-- Header: the heart (Settings) button finally shows its Ukraine blue-and-yellow colors (it was being tinted monochrome) and, until you open Settings at least once, a soft pulsing ring draws attention to it so it's clear the heart is tappable.
+- Map, settings and threat cards: the UAV (Shahed) icon is back to the cropped shahed.webp image; on the map it's scaled down to a marker-sized bitmap.
 
-- Threat popup: its density is now selectable in Settings ("Threat card size" / «Розмір картки загрози») — Small (one glanceable line: skull, type and distance/ETA with a thin level bar), Medium (header, distance/ETA + speed, reliability/elapsed) and Large (the full card, unchanged). Each option shows a live scaled preview in Settings.
+- Header: the heart (Settings) button now shows its Ukraine blue-and-yellow colors split 50/50 (blue top half, yellow bottom half — it was being tinted monochrome, and the blue used to be only the lobes) and, until you've opened Settings 10 times, the heart gently beats (scales up and down) to make it clear it's tappable.
+
+- Threat popup: its size and detail are now selectable in Settings ("Threat card size and detail" / «Розмір і деталізація картки загрози») — Small (one glanceable line: threat icon, type and distance/ETA with the level skull beside its bar), Medium (header, distance/ETA + speed, reliability/elapsed) and Large (the full card, unchanged). Each option shows a live scaled preview; the whole tile is tappable.
+
+- Threat icons: every threat card (Small/Medium/Large), the Settings threat rows and the footer threat strip now always use the matching vector SVG icon (no more webp photo swap). Map markers also use the vector icons. The photo now appears only as the reference image inside the expanded Settings threat card. The Small card's skull moved next to its level bar instead of replacing the threat icon.
 
 - Settings: the Unknown threat card now ends with a playful Schrödinger one-liner («Об'єкт Шредінгера: і дрон, і ракета…» / "Schrödinger's object: both a drone and a missile…").
 

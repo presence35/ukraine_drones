@@ -38,6 +38,21 @@ sealed interface UpdateState {
 
 class UpdateManager(private val context: Context) {
 
+    companion object {
+        /** True when [candidate] is a semantically newer version name than [installed]; false when either is unparseable. */
+        internal fun versionNameGreater(candidate: String, installed: String): Boolean {
+            val a = candidate.split('.').mapNotNull { it.toIntOrNull() }
+            val b = installed.split('.').mapNotNull { it.toIntOrNull() }
+            val len = maxOf(a.size, b.size)
+            for (i in 0 until len) {
+                val x = a.getOrElse(i) { 0 }
+                val y = b.getOrElse(i) { 0 }
+                if (x != y) return x > y
+            }
+            return false
+        }
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -106,19 +121,6 @@ class UpdateManager(private val context: Context) {
             }
             target
         }
-    }
-
-    /** True when [candidate] is a semantically newer version name than [installed]; false when either is unparseable. */
-    private fun versionNameGreater(candidate: String, installed: String): Boolean {
-        val a = candidate.split('.').mapNotNull { it.toIntOrNull() }
-        val b = installed.split('.').mapNotNull { it.toIntOrNull() }
-        val len = maxOf(a.size, b.size)
-        for (i in 0 until len) {
-            val x = a.getOrElse(i) { 0 }
-            val y = b.getOrElse(i) { 0 }
-            if (x != y) return x > y
-        }
-        return false
     }
 
     private fun isLikelyApk(file: File): Boolean {

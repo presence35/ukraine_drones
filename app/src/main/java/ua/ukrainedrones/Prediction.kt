@@ -50,7 +50,7 @@ fun staleAfterMs(type: ThreatType): Long = when (type) {
 
 /** True when the threat's last confirmed fix is older than its per-type staleness window. */
 fun isExpired(t: Threat, now: Long): Boolean {
-    val updated = t.updatedAtMillis ?: return false
+    val updated = t.updatedAtMillis ?: t.confirmedAtMillis ?: return false
     return now - updated > staleAfterMs(t.type)
 }
 
@@ -101,10 +101,10 @@ class ThreatSpeedTracker {
         t.speedKmh?.let { s -> if (s in 5.0..2000.0) return s / 3.6 to SpeedSource.RECORDED }
         val q = fixes[id]
         if (q != null && q.size >= 2) {
-            val a = q[q.size - 2]
-            val b = q[q.size - 1]
+            val a = q.first()
+            val b = q.last()
             val dt = (b.t - a.t) / 1000.0
-            if (dt in 5.0..600.0) {
+            if (dt in 2.0..600.0) {
                 val v = distanceMeters(a.lat, a.lon, b.lat, b.lon) / dt
                 if (v in 5.0..400.0) return v to SpeedSource.RECORDED
             }

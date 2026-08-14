@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,7 +14,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 // Dark-only palette — this app never switches to a light theme, regardless
 // of the device's system setting.
@@ -31,30 +34,39 @@ private val AppDarkColors = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
 
-    companion object {
-        const val REQUEST_NOTIFICATIONS = 1
-        // Set the moment the process spawns; used to tell cold starts from warm starts.
-        val PROCESS_START_MILLIS: Long = SystemClock.elapsedRealtime()
+    private companion object {
+        const val REQUEST_LOCATION = 1
+        const val REQUEST_NOTIFICATIONS = 2
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Tiles now live in the OS cache dir; delete the pre-migration caches (internal and
-        // external app dirs) that Android counted as "user data". Tiles re-download harmlessly.
-        File(filesDir, "osmdroid")?.takeIf { it.exists() }?.deleteRecursively()
-        getExternalFilesDir(null)?.let { base ->
-            File(base, "osmdroid").takeIf { it.exists() }?.deleteRecursively()
-        }
+        cleanLegacyOsmdroidCache()
         AlertService.start(this)
-        requestNotificationPermission()
+        requestLocationAndNotifications()
         setContent {
             MaterialTheme(colorScheme = AppDarkColors) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    SplashGate {
-                        MainScreen()
-                    }
+                    MainScreen()
                 }
             }
+        }
+    }
+
+    /**
+     * Tiles now live in the OS cache dir; delete the pre-migration caches (internal and
+     * external app dirs) that Android counted as "user data" — once, not on every launch.
+     * Tiles re-download harmlessly.
+     */
+    private fun cleanLegacyOsmdroidCache() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val prefs = ZonePrefs(applicationContext)
+            if (prefs.legacyCacheCleaned().first()) return@launch
+            File(filesDir, "osmdroid").takeIf { it.exists() }?.deleteRecursively()
+            getExternalFilesDir(null)?.let { base ->
+                File(base, "osmdroid").takeIf { it.exists() }?.deleteRecursively()
+            }
+            prefs.setLegacyCacheCleaned(true)
         }
     }
 
@@ -62,6 +74,41 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         // Mirror the website's focus handler — refresh positions and reset the stale window.
         NeptunClient.onForeground()
+    }
+
+    /**
+     * Two system permission dialogs must never be up at once — Android drops a request that
+     * arrives while another is showing. Ask for location first (the map depends on it), then
+     * chain the notification request once that dialog is resolved.
+     */
+    private fun requestLocationAndNotifications() {
+        val locationGranted =
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (locationGranted) {
+            LocationTracker.start(this)
+            requestNotificationPermission()
+        } else {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
+                REQUEST_LOCATION
+            )
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_LOCATION) {
+            if (grantResults.isNotEmpty() && grantResults.any { it == PackageManager.PERMISSION_GRANTED }) {
+                LocationTracker.start(this)
+            }
+            requestNotificationPermission()
+        }
     }
 
     private fun requestNotificationPermission() {

@@ -5,15 +5,17 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.osmdroid.util.GeoPoint
@@ -24,8 +26,8 @@ data class UiState(
     val threatsOuter: List<Threat> = emptyList(), // in the yellow ring, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
     val userLocation: LatLng? = null,
-    val redZoneKm: Int = 3,
-    val yellowZoneKm: Int = 8,
+    val redZoneKm: Int = 5,
+    val yellowZoneKm: Int = 20,
     val redArmed: Boolean = true,
     val yellowArmed: Boolean = true,
     val fastAlertsSooner: Boolean = true,
@@ -73,15 +75,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val speedTracker = ThreatSpeedTracker()
     private val updateManager = UpdateManager(app.applicationContext)
 
-    // Seed from persisted prefs so the UI shows the previously chosen language
-    // (and zone radii) on the very first frame — no UA flash when EN was selected.
-    private val initialLanguage = runBlocking { prefs.language().first() }
-    private val initialRedKm = runBlocking { prefs.redZoneKm().first() }
-    private val initialYellowKm = runBlocking { prefs.yellowZoneKm().first() }
-    private val initialFollowMe = runBlocking { prefs.followMe().first() }
-    private val initialPinnedCity = runBlocking { prefs.pinnedCity().first() }
-    private val initialLanguageChosen = runBlocking { prefs.languageChosen().first() }
-
     private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
     private val updateStateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
     private val installPermissionFlow = MutableStateFlow(false)
@@ -103,87 +96,158 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         LocationTracker.start(getApplication())
-        // Auto-check for updates at most once per day, silently.
-        viewModelScope.launch {
-            val lastCheck = prefs.lastUpdateCheck().first()
-            if (System.currentTimeMillis() - lastCheck >= DAILY_CHECK_INTERVAL_MS) {
-                checkForUpdates(notify = false)
-            }
-        }
+        // Auto-check for updates at most once per day; pops only when no alert is active.
+        autoCheckForUpdates(allowPopup = true)
     }
 
     override fun onCleared() {
         super.onCleared()
     }
 
-    /** Re-check location after the user grants the permission mid-session. */
-    fun onLocationPermissionGranted() {
-        LocationTracker.start(getApplication())
-    }
+    /** Everything read from prefs whenever any of them changes. */
+    private data class PrefsSnapshot(
+        val enabled: Set<ThreatType>,
+        val language: AppLanguage,
+        val disclaimerCollapsed: Boolean,
+        val redArmed: Boolean,
+        val yellowArmed: Boolean,
+        val fastAlertsSooner: Boolean,
+        val officialAlertsEnabled: Boolean,
+        val followMe: Boolean,
+        val pinnedCity: String?,
+        val languageChosen: Boolean,
+        val cardSize: ThreatCardSize
+    )
 
-    val uiState: StateFlow<UiState> = combine(
+    /** Live inputs that change every frame/second: stream, GPS, selection, time. */
+    private data class LiveSnapshot(
+        val neptun: NeptunState,
+        val redKm: Int,
+        val yellowKm: Int,
+        val userLocation: LatLng?,
+        val selected: Threat?,
+        val now: Long
+    )
+
+    private data class UpdateUi(
+        val update: UpdateState,
+        val needsInstallPermission: Boolean,
+        val latestVersion: String?
+    )
+
+    private data class AlertConfig(
+        val redArmed: Boolean,
+        val yellowArmed: Boolean,
+        val fastAlertsSooner: Boolean,
+        val officialAlertsEnabled: Boolean,
+        val followMe: Boolean
+    )
+
+    private val liveSnapshot = combine(
         NeptunClient.state,
         zonesFlow,
-        threatEnabledFlow(prefs),
-        prefs.language(),
         LocationTracker.location,
         selectedThreatFlow,
+        nowFlow
+    ) { neptun, radii, location, selected, now ->
+        LiveSnapshot(neptun, radii.first, radii.second, location, selected, now)
+    }
+
+    private val prefsSnapshot = combine(
+        combine(
+            threatEnabledFlow(prefs),
+            prefs.language(),
+            prefs.disclaimerCollapsed()
+        ) { enabled, lang, disclaimer -> Triple(enabled, lang, disclaimer) },
+        combine(
+            prefs.redZoneArmed(),
+            prefs.yellowZoneArmed(),
+            prefs.fastAlertsSooner(),
+            prefs.officialAlertsEnabled(),
+            prefs.followMe()
+        ) { redArmed, yellowArmed, fast, official, followMe ->
+            AlertConfig(redArmed, yellowArmed, fast, official, followMe)
+        },
+        combine(
+            prefs.pinnedCity(),
+            prefs.languageChosen(),
+            prefs.threatCardSize()
+        ) { pinned, chosen, card -> Triple(pinned, chosen, card) }
+    ) { a, b, c ->
+        PrefsSnapshot(
+            enabled = a.first,
+            language = a.second,
+            disclaimerCollapsed = a.third,
+            redArmed = b.redArmed,
+            yellowArmed = b.yellowArmed,
+            fastAlertsSooner = b.fastAlertsSooner,
+            officialAlertsEnabled = b.officialAlertsEnabled,
+            followMe = b.followMe,
+            pinnedCity = c.first,
+            languageChosen = c.second,
+            cardSize = c.third
+        )
+    }
+
+    private val updateUiFlow = combine(
         updateStateFlow,
         installPermissionFlow,
-        latestVersionFlow,
-        nowFlow,
-        prefs.disclaimerCollapsed(),
-        prefs.redZoneArmed(),
-        prefs.yellowZoneArmed(),
-        prefs.fastAlertsSooner(),
-        prefs.officialAlertsEnabled(),
-        prefs.followMe(),
-        prefs.pinnedCity(),
-        prefs.languageChosen(),
-        prefs.threatCardSize()
-    ) { values ->
-        @Suppress("UNCHECKED_CAST")
-        val radii = values[1] as Pair<Int, Int>
-        val pinned = (values[16] as String?)?.let { name ->
-            Cities.ALL.firstOrNull { it.nameUa == name }
-        }
+        latestVersionFlow
+    ) { update, install, latest ->
+        UpdateUi(update, install, latest)
+    }
+
+    /**
+     * One-time background read that primes the DataStore cache off the main thread, so the
+     * first uiState emission already carries the persisted language/radii — no runBlocking on
+     * the main thread and no first-frame flash.
+     */
+    private val seedFlow: Flow<Unit> = flow {
+        prefs.language().first()
+        prefs.redZoneKm().first()
+        prefs.yellowZoneKm().first()
+        prefs.followMe().first()
+        prefs.pinnedCity().first()
+        prefs.languageChosen().first()
+        emit(Unit)
+    }.flowOn(Dispatchers.IO)
+
+    val uiState: StateFlow<UiState> = combine(
+        seedFlow,
+        liveSnapshot,
+        prefsSnapshot,
+        updateUiFlow
+    ) { _, live, prefs, updateUi ->
         buildUiState(
-            neptun = values[0] as NeptunState,
-            redKm = radii.first,
-            yellowKm = radii.second,
-            enabledTypes = values[2] as Set<ThreatType>,
-            language = values[3] as AppLanguage,
-            userLocation = values[4] as LatLng?,
-            followMe = values[15] as Boolean,
-            pinnedCity = pinned,
-            selected = values[5] as Threat?,
-            now = values[9] as Long,
-            fastAlertsSooner = values[13] as Boolean
+            neptun = live.neptun,
+            redKm = live.redKm,
+            yellowKm = live.yellowKm,
+            enabledTypes = prefs.enabled,
+            language = prefs.language,
+            userLocation = live.userLocation,
+            followMe = prefs.followMe,
+            pinnedCity = prefs.pinnedCity?.let { name ->
+                Cities.ALL.firstOrNull { it.nameUa == name }
+            },
+            selected = live.selected,
+            now = live.now,
+            fastAlertsSooner = prefs.fastAlertsSooner
         ).copy(
-            update = values[6] as UpdateState,
-            needsInstallPermission = values[7] as Boolean,
-            latestVersion = values[8] as String?,
-            disclaimerCollapsed = values[10] as Boolean,
-            redArmed = values[11] as Boolean,
-            yellowArmed = values[12] as Boolean,
-            fastAlertsSooner = values[13] as Boolean,
-            officialAlertsEnabled = values[14] as Boolean,
-            languageChosen = values[17] as Boolean,
-            threatCardSize = values[18] as ThreatCardSize
+            update = updateUi.update,
+            needsInstallPermission = updateUi.needsInstallPermission,
+            latestVersion = updateUi.latestVersion,
+            disclaimerCollapsed = prefs.disclaimerCollapsed,
+            redArmed = prefs.redArmed,
+            yellowArmed = prefs.yellowArmed,
+            fastAlertsSooner = prefs.fastAlertsSooner,
+            officialAlertsEnabled = prefs.officialAlertsEnabled,
+            languageChosen = prefs.languageChosen,
+            threatCardSize = prefs.cardSize
         )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        UiState(
-            redZoneKm = initialRedKm,
-            yellowZoneKm = initialYellowKm,
-            language = initialLanguage,
-            followMe = initialFollowMe,
-            pinnedCity = initialPinnedCity?.let { name ->
-                Cities.ALL.firstOrNull { it.nameUa == name }
-            },
-            languageChosen = initialLanguageChosen
-        )
+        UiState()
     )
 
     private fun buildUiState(
@@ -203,29 +267,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
         val focusLocation = if (followMe) userLocation
         else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: userLocation
-        // Official alert state for the FOCUS point: Odesa while following (as before), the
-        // pinned city's oblast otherwise.
-        val focusToken = if (followMe) "Одеськ"
-        else pinnedCity?.let { Cities.cityOblast[it.nameUa] }
+        // Official alert state for the FOCUS point: the pinned city's oblast, else the
+        // oblast of the nearest listed city to the GPS fix while following.
+        val attribution = focusAttribution(followMe, userLocation, pinnedCity)
+        val focusToken = attribution.token
         val focusOblastAlertActive = focusToken?.let { token ->
-            neptun.oblastAlerts.any {
-                it.oblast.contains(token, ignoreCase = true) ||
-                    it.name.contains(token, ignoreCase = true)
-            }
+            neptun.oblastAlerts.any { it.inOblast(token) }
         } == true
-        val focusBannerCity = when {
-            !followMe && pinnedCity != null ->
-                if (language == AppLanguage.UA) pinnedCity.nameUa else pinnedCity.nameEn
-            else -> if (language == AppLanguage.UA) "Одеса" else "Odesa"
-        }
+        val focusBannerCity =
+            if (language == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
         // Oblasts with an official alert: a city label turns red when its oblast is listed.
         val activeRegionTokens = buildSet {
             for (citiesToken in Cities.cityOblast.values) {
-                if (neptun.oblastAlerts.any {
-                        it.oblast.contains(citiesToken, ignoreCase = true) ||
-                            it.name.contains(citiesToken, ignoreCase = true)
-                    }
-                ) add(citiesToken)
+                if (neptun.oblastAlerts.any { it.inOblast(citiesToken) }) add(citiesToken)
             }
         }
         // Cities whose oblast is under an official alert — red dot in the picker.
@@ -405,7 +459,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selectedThreatFlow.value = threat
     }
 
-    fun checkForUpdates(notify: Boolean = true, popupAvailable: Boolean = true) {
+    /** Auto-check at most once per day. [allowPopup] pops the dialog on start when no alert is active. */
+    fun autoCheckForUpdates(allowPopup: Boolean) {
+        viewModelScope.launch {
+            val lastCheck = prefs.lastUpdateCheck().first()
+            if (System.currentTimeMillis() - lastCheck >= DAILY_CHECK_INTERVAL_MS) {
+                checkForUpdates(notify = false, popupAvailable = allowPopup, popupOnlyWithoutAlert = allowPopup)
+            }
+        }
+    }
+
+    /** True when any threat or official alert is currently active — the update dialog stays hidden then. */
+    private fun hasActiveAlert(): Boolean =
+        uiState.value.mapThreats.isNotEmpty() || uiState.value.redCities.isNotEmpty()
+
+    fun checkForUpdates(notify: Boolean = true, popupAvailable: Boolean = true, popupOnlyWithoutAlert: Boolean = false) {
         if (isChecking) return
         val current = updateStateFlow.value
         if (current is UpdateState.Downloading || current is UpdateState.Downloaded) return
@@ -419,7 +487,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (result) {
                 is UpdateState.Available -> {
                     latestVersionFlow.value = result.info.versionName
-                    updateStateFlow.value = if (popupAvailable) result else UpdateState.Idle
+                    val showDialog = popupAvailable && (!popupOnlyWithoutAlert || !hasActiveAlert())
+                    updateStateFlow.value = if (showDialog) result else UpdateState.Idle
                 }
                 is UpdateState.UpToDate -> {
                     latestVersionFlow.value = null

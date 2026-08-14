@@ -31,6 +31,7 @@ import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.TileSystem
+import org.osmdroid.util.TileSystemWebMercator
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.events.MapEventsReceiver
@@ -40,7 +41,7 @@ import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val DARK_TILE_SOURCE = XYTileSource(
+internal val DARK_TILE_SOURCE = XYTileSource(
     "CartoDB_DarkNoLabels", 0, 17, 256, ".png",
     arrayOf(
         "https://a.basemaps.cartocdn.com/dark_nolabels/",
@@ -52,6 +53,11 @@ private val DARK_TILE_SOURCE = XYTileSource(
 
 /** Odesa city centre — fallback camera target before the first GPS fix. */
 private val DEFAULT_CENTER = GeoPoint(46.4832, 30.7346)
+
+/** Ukraine (incl. Crimea) plus a ~0.5° margin — the map can't pan past this. */
+private val UA_VIEW_LIMITS = BoundingBox(52.7, 40.6, 43.9, 21.7)
+
+private val tileSystem = TileSystemWebMercator()
 
 /** Bounding box that fits a zone circle centred on `center`, with a 5% margin. */
 private fun zoneBoundingBox(center: IGeoPoint, radiusKm: Double): BoundingBox {
@@ -68,7 +74,7 @@ private fun zoneBoundingBox(center: IGeoPoint, radiusKm: Double): BoundingBox {
 }
 
 private fun iconFor(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.ic_threat_shahed
+    ThreatType.SHAHED -> R.drawable.shahed
     ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
     ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
     ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
@@ -85,19 +91,23 @@ private fun StringBuilder.appendThreatKey(t: Threat) {
 }
 
 /**
- * osmdroid draws markers at the drawable's intrinsic size, so the self-hosted photo is
- * scaled down to a marker-sized bitmap; the vector icon is the fallback until it's cached.
+ * osmdroid draws markers at the drawable's intrinsic size; the vector icons are used as-is,
+ * but the shahed.webp photo is larger, so scale it down to a marker-sized bitmap.
  */
 private fun threatIcon(context: Context, type: ThreatType): Drawable {
     val res = context.resources
-    val src = ThreatImages.cachedBitmap(type)
-        ?: return ContextCompat.getDrawable(context, iconFor(type))!!
+    if (type != ThreatType.SHAHED) return ContextCompat.getDrawable(context, iconFor(type))!!
+    val src = ContextCompat.getDrawable(context, R.drawable.shahed)!!
     val targetW = (32 * res.displayMetrics.density).toInt()
-    val iw = src.width.coerceAtLeast(1)
-    val ih = src.height.coerceAtLeast(1)
+    val iw = src.intrinsicWidth.coerceAtLeast(1)
+    val ih = src.intrinsicHeight.coerceAtLeast(1)
     val w = targetW
     val h = (ih.toFloat() * targetW / iw).toInt().coerceAtLeast(1)
-    return BitmapDrawable(res, Bitmap.createScaledBitmap(src, w, h, true))
+    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    src.setBounds(0, 0, w, h)
+    src.draw(canvas)
+    return BitmapDrawable(res, bmp)
 }
 
 private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
@@ -208,13 +218,7 @@ fun NeptunMapView(
     // Only rebuild overlays when the threat data actually changes. Pan/zoom and
     // unrelated recompositions (language, popup selection) must not clear + redraw
     // the map, which is what made the banner above it flicker.
-    val photoRev = ThreatImages.revision.intValue
-    val mapTypes = uiState.mapThreats.map { it.type }.toSet()
-    LaunchedEffect(mapTypes) {
-        for (type in mapTypes) ThreatImages.ensureLoaded(context, type)
-    }
     val overlayKey = buildString {
-        append(photoRev).append('V')
         append(lang).append('A').append(uiState.activeZone)
         append('R').append(uiState.redZoneKm).append('Y').append(uiState.yellowZoneKm)
         append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
@@ -247,7 +251,7 @@ fun NeptunMapView(
             Configuration.getInstance().tileFileSystemCacheMaxBytes = 64L * 1024 * 1024
             Configuration.getInstance().tileFileSystemCacheTrimBytes = 48L * 1024 * 1024
             MapView(ctx).apply {
-                setTileSource(DARK_TILE_SOURCE)
+                setTileProvider(UkraineTileProvider(ctx))
                 setBackgroundColor(Color.BLACK)
                 overlayManager.tilesOverlay.setLoadingBackgroundColor(Color.BLACK)
                 overlayManager.tilesOverlay.setLoadingLineColor(Color.BLACK)
@@ -255,7 +259,13 @@ fun NeptunMapView(
                 // No +/– buttons — everyone uses pinch. Contours stay clean on the map.
                 setBuiltInZoomControls(false)
                 maxZoomLevel = 17.0
+                // Clamp the viewport to Ukraine (incl. Crimea) plus a small margin so
+                // the map can't pan out into foreign territory.
+                setScrollableAreaLimitDouble(UA_VIEW_LIMITS)
                 controller.setCenter(DEFAULT_CENTER)
+                // Start at a city-level zoom instead of osmdroid's default whole-globe view;
+                // once the first GPS fix lands, didDefaultFit re-zooms to the yellow zone.
+                controller.setZoom(12.0)
 
                 // Feed ground meters-per-pixel to the Compose scale bar while panning/zooming.
                 addMapListener(object : MapListener {
@@ -268,6 +278,12 @@ fun NeptunMapView(
         },
         update = { mapView ->
             mapViewRef.value = mapView
+            // Floor the zoom-out so you can't zoom past "Ukraine fills the screen".
+            if (mapView.width > 0 && mapView.height > 0) {
+                val floorZoom =
+                    tileSystem.getBoundingBoxZoom(UA_VIEW_LIMITS, mapView.width, mapView.height)
+                if (mapView.minZoomLevel != floorZoom) mapView.setMinZoomLevel(floorZoom)
+            }
             onScaleChange(
                 TileSystem.GroundResolution(mapView.mapCenter.latitude, mapView.zoomLevelDouble)
             )

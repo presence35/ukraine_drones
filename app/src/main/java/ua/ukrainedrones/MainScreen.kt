@@ -1,11 +1,8 @@
 package ua.ukrainedrones
 
-import android.Manifest
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,7 +11,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,12 +20,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,8 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -61,7 +56,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
-private enum class Screen { MAP, SETTINGS }
+private enum class Screen { MAP, SETTINGS, GUIDE }
 
 private val UkraineBlue = Color(0xFF005BBB)
 private val UkraineYellow = Color(0xFFFFD500)
@@ -74,60 +69,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val context = LocalContext.current
     var screen by remember { mutableStateOf(Screen.MAP) }
 
-    // First-launch guide: shown once (after the location dialog is resolved, never
-    // during an active alert), replayable from Settings. Persisted via DataStore.
+    // The settings heart pulses gently until Settings has been opened 10 times.
     val scope = rememberCoroutineScope()
     val prefs = remember { ZonePrefs(context.applicationContext) }
-    var tutorialSeen by remember { mutableStateOf(true) }
-    var replayTutorial by remember { mutableStateOf(false) }
-    var permissionHandled by remember { mutableStateOf(false) }
-    var settingsOpened by remember { mutableStateOf(true) }
+    var settingsHintRemaining by remember { mutableStateOf(0) }
+    var guideFeatureId by remember { mutableStateOf<String?>(null) }
+    var guideFromSettings by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        settingsOpened = prefs.settingsOpened().first()
-    }
-    val tutorialController = remember {
-        TutorialController(
-            steps = tutorialSteps(Strings.get(uiState.language)),
-            onFinish = { tutorialSeen = true }
-        )
-    }
-
-    // Ask for device location once so the popup can show GPS-based distance/ETA.
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        permissionHandled = true
-        if (granted) viewModel.onLocationPermissionGranted()
-    }
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
-        } else {
-            permissionHandled = true
-        }
-    }
-
-    // The tutorial must never cover an active alert: don't start while one is ringing
-    // and drop it immediately if one fires mid-tour.
-    val alertBlocking = uiState.activeZone != null || uiState.focusOblastAlertActive
-    LaunchedEffect(tutorialSeen, permissionHandled, replayTutorial, alertBlocking, screen) {
-        if (alertBlocking || screen != Screen.MAP) return@LaunchedEffect
-        if (!tutorialSeen && permissionHandled) {
-            tutorialSeen = true
-            scope.launch { prefs.setTutorialSeen(true) }
-            viewModel.selectThreat(null)
-            tutorialController.start()
-        } else if (replayTutorial) {
-            replayTutorial = false
-            viewModel.selectThreat(null)
-            tutorialController.start()
-        }
-    }
-    LaunchedEffect(alertBlocking) {
-        if (alertBlocking) tutorialController.skip()
+        settingsHintRemaining = prefs.settingsHintRemaining().first()
     }
 
     val onExit: () -> Unit = {
@@ -142,14 +91,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         MapScreen(
             uiState = uiState,
             settingsOpen = screen == Screen.SETTINGS,
-            settingsOpened = settingsOpened,
-            tutorial = tutorialController,
+            settingsHintRemaining = settingsHintRemaining,
             onOpenSettings = {
-                if (!settingsOpened) {
-                    settingsOpened = true
-                    scope.launch { prefs.setSettingsOpened(true) }
+                if (settingsHintRemaining > 0) {
+                    settingsHintRemaining--
+                    scope.launch { prefs.setSettingsHintRemaining(settingsHintRemaining) }
                 }
                 screen = Screen.SETTINGS
+                viewModel.autoCheckForUpdates(allowPopup = false)
             },
             onThreatTapped = { viewModel.selectThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
@@ -174,6 +123,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 threatCardSize = uiState.threatCardSize,
                 versionName = BuildConfig.VERSION_NAME,
                 isChecking = uiState.update is UpdateState.Checking,
+                latestVersion = uiState.latestVersion,
                 onBack = { screen = Screen.MAP },
                 onLanguageChange = { viewModel.setLanguage(it) },
                 onThreatToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
@@ -185,18 +135,22 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
                 onExit = onExit,
                 onCheckUpdate = { viewModel.checkForUpdates() },
-                onShowTutorial = { screen = Screen.MAP; replayTutorial = true }
+                onOpenGuide = {
+                    guideFromSettings = true
+                    guideFeatureId = null
+                    screen = Screen.GUIDE
+                }
             )
         }
-
-        TutorialOverlay(
-            controller = tutorialController,
-            s = Strings.get(uiState.language)
-        )
+        if (screen == Screen.GUIDE) {
+            BackHandler { screen = if (guideFromSettings) Screen.SETTINGS else Screen.MAP }
+            FeatureGuideScreen(
+                s = Strings.get(uiState.language),
+                initialFeatureId = guideFeatureId,
+                onBack = { screen = if (guideFromSettings) Screen.SETTINGS else Screen.MAP }
+            )
+        }
     }
-
-    // Back skips the guide instead of leaving the map alone.
-    BackHandler(enabled = tutorialController.isActive) { tutorialController.skip() }
 
     // Auto-launch the installer once the APK is downloaded and permission is granted.
     val installLauncher = rememberLauncherForActivityResult(
@@ -246,6 +200,7 @@ private fun LanguageChooseDialog(
     val s = Strings.get(current)
     AlertDialog(
         onDismissRequest = onLater,
+        confirmButton = {},
         title = { Text(s.languageChooseTitle) },
         text = {
             Row(
@@ -254,20 +209,19 @@ private fun LanguageChooseDialog(
             ) {
                 LanguageFlag(
                     emoji = "\uD83C\uDDFA\uD83C\uDDE6",
+                    label = "Українська",
                     active = current == AppLanguage.UA,
                     onClick = { onChoose(AppLanguage.UA) },
                     modifier = Modifier.weight(1f)
                 )
                 LanguageFlag(
-                    emoji = "\uD83C\uDDFA\uD83C\uDDF8",
+                    emoji = "\uD83C\uDDE8\uD83C\uDDE6",
+                    label = "English",
                     active = current == AppLanguage.EN,
                     onClick = { onChoose(AppLanguage.EN) },
                     modifier = Modifier.weight(1f)
                 )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onLater) { Text(s.languageChooseLater) }
         }
     )
 }
@@ -277,8 +231,7 @@ private fun LanguageChooseDialog(
 private fun MapScreen(
     uiState: UiState,
     settingsOpen: Boolean,
-    settingsOpened: Boolean,
-    tutorial: TutorialController,
+    settingsHintRemaining: Int,
     onOpenSettings: () -> Unit,
     onThreatTapped: (Threat) -> Unit,
     onDismissPopup: () -> Unit,
@@ -375,34 +328,23 @@ private fun MapScreen(
                     modifier = Modifier.padding(end = 4.dp)
                 )
                 Box(contentAlignment = Alignment.Center) {
-                    val pulseRingVisible = !settingsOpened && !tutorial.isActive
-                    if (pulseRingVisible) {
-                        val ringProgress by rememberInfiniteTransition(label = "heartPulse").animateFloat(
-                            initialValue = 0f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Restart),
-                            label = "heartPulse"
-                        )
-                        Canvas(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .padding(1.dp)
-                        ) {
-                            val radius = size.minDimension / 2f * (0.6f + 0.5f * ringProgress)
-                            val alpha = (1f - ringProgress) * 0.9f
-                            drawCircle(
-                                color = UkraineBlue.copy(alpha = alpha),
-                                radius = radius,
-                                style = Stroke(width = 2.dp.toPx())
-                            )
-                        }
-                    }
-                    IconButton(onClick = openSettings, modifier = Modifier.size(32.dp).tutorialTarget(tutorial, "settings")) {
+                    val beatScale = rememberInfiniteTransition(label = "heartBeat").animateFloat(
+                        initialValue = 1f,
+                        targetValue = 1.16f,
+                        animationSpec = infiniteRepeatable(tween(550), RepeatMode.Reverse),
+                        label = "heartBeat"
+                    ).value
+                    IconButton(onClick = openSettings, modifier = Modifier.size(32.dp)) {
                         Icon(
                             painter = painterResource(R.drawable.ic_heart_ua),
                             contentDescription = s.settingsButton,
                             tint = Color.Unspecified,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier
+                                .size(22.dp)
+                                .graphicsLayer {
+                                    scaleX = beatScale
+                                    scaleY = beatScale
+                                }
                         )
                     }
                 }
@@ -452,15 +394,13 @@ private fun MapScreen(
                             zoomTick++
                         },
                         onEditZones = openZonesPanel,
-                        editZoneModifier = Modifier.tutorialTarget(tutorial, "editZones"),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 4.dp)
-                            .tutorialTarget(tutorial, "zones")
                     )
                 }
 
-                Surface(tonalElevation = 2.dp, modifier = Modifier.tutorialTarget(tutorial, "footer")) {
+                Surface(tonalElevation = 2.dp) {
                     val innerCounts = uiState.threatsInner.groupingBy { it.type }.eachCount()
                     val outerCounts = uiState.threatsOuter.groupingBy { it.type }.eachCount()
                     val total = ThreatType.values().sumOf {
@@ -486,11 +426,14 @@ private fun MapScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             ThreatType.values().forEach { type ->
-                                ThreatStatusCell(
-                                    type = type,
-                                    count = (innerCounts[type] ?: 0) + (outerCounts[type] ?: 0),
-                                    enabled = type !in uiState.disabledTypes
-                                )
+                                val count = (innerCounts[type] ?: 0) + (outerCounts[type] ?: 0)
+                                if (count > 0) {
+                                    ThreatStatusCell(
+                                        type = type,
+                                        count = count,
+                                        enabled = type !in uiState.disabledTypes
+                                    )
+                                }
                             }
                         }
                     }
@@ -626,9 +569,12 @@ private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall.copy(
+            modifier = Modifier
+                .background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(3.dp))
+                .padding(horizontal = 4.dp, vertical = 1.dp),
+            style = MaterialTheme.typography.labelLarge.copy(
                 color = Color(0xFF222222),
-                shadow = Shadow(color = Color.White.copy(alpha = 0.9f), blurRadius = 4f)
+                fontWeight = FontWeight.SemiBold
             )
         )
         Spacer(Modifier.height(3.dp))
@@ -661,24 +607,26 @@ private fun ZoneButtons(
     lang: AppLanguage,
     onZoneTap: (ThreatZone) -> Unit,
     onEditZones: () -> Unit,
-    modifier: Modifier = Modifier,
-    editZoneModifier: Modifier = Modifier
+    modifier: Modifier = Modifier
 ) {
     val s = Strings.get(lang)
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        if (!redArmed && !yellowArmed) {
+            AllAlertsOffWarning(label = s.allAlertsOffLabel, onClick = onEditZones)
+            Spacer(Modifier.height(6.dp))
+        }
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
             ZoneButton(ThreatZone.INNER, redArmed, s.zoneButtonRed, onZoneTap)
             ZoneButton(ThreatZone.OUTER, yellowArmed, s.zoneButtonYellow, onZoneTap)
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .then(editZoneModifier)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surface)
                     .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
@@ -693,6 +641,47 @@ private fun ZoneButtons(
                     modifier = Modifier.size(18.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AllAlertsOffWarning(label: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color.Black.copy(alpha = 0.55f),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Notifications,
+                contentDescription = null,
+                tint = Color(0xFF777777),
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.Outlined.Notifications,
+                contentDescription = null,
+                tint = Color(0xFF777777),
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = Color(0xFFF9A825),
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = label,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }
@@ -883,9 +872,8 @@ private fun ThreatStatusCell(
         label = "lineAlpha"
     )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        ThreatTypeIcon(
-            type = type,
-            vectorRes = threatIconRes(type),
+        Icon(
+            painter = painterResource(id = threatIconRes(type)),
             contentDescription = null,
             tint = if (enabled) Color.Unspecified else Color(0xFF9E9E9E),
             modifier = Modifier.size(18.dp)
@@ -910,7 +898,7 @@ private fun ThreatStatusCell(
 }
 
 private fun threatIconRes(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.ic_threat_shahed
+    ThreatType.SHAHED -> R.drawable.shahed
     ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
     ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
     ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic

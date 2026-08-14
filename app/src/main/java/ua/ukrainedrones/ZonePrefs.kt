@@ -33,21 +33,21 @@ class ZonePrefs(private val context: Context) {
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
     private val followMeKey = booleanPreferencesKey("follow_me")
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
-    private val tutorialSeenKey = booleanPreferencesKey("tutorial_seen")
-    private val settingsOpenedKey = booleanPreferencesKey("settings_opened")
+    private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
+    private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
 
-    /** Red (inner) zone radius in km — slider range 1–5. */
+    /** Red (inner) zone radius in km — slider range 1–5, default max (5). */
     fun redZoneKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[redZoneKmKey] ?: 3 }
+        context.dataStore.data.map { prefs -> prefs[redZoneKmKey] ?: 5 }
 
     suspend fun setRedZoneKm(km: Int) {
         context.dataStore.edit { it[redZoneKmKey] = km.coerceIn(1, 5) }
     }
 
-    /** Yellow (outer) zone radius in km — slider range 6–20. */
+    /** Yellow (outer) zone radius in km — slider range 6–20, default max (20). */
     fun yellowZoneKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[yellowZoneKmKey] ?: 8 }
+        context.dataStore.data.map { prefs -> prefs[yellowZoneKmKey] ?: 20 }
 
     suspend fun setYellowZoneKm(km: Int) {
         context.dataStore.edit { it[yellowZoneKmKey] = km.coerceIn(6, 20) }
@@ -152,20 +152,12 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[languageChosenKey] = chosen }
     }
 
-    /** Whether the first-launch guide has been shown at least once. */
-    fun tutorialSeen(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[tutorialSeenKey] ?: false }
+    /** How many more launches should draw the pulsing ring around the Settings heart. */
+    fun settingsHintRemaining(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[settingsHintRemainingKey] ?: 10 }
 
-    suspend fun setTutorialSeen(seen: Boolean) {
-        context.dataStore.edit { it[tutorialSeenKey] = seen }
-    }
-
-    /** Whether the user has ever opened Settings (drives the one-time heart hint). */
-    fun settingsOpened(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[settingsOpenedKey] ?: false }
-
-    suspend fun setSettingsOpened(opened: Boolean) {
-        context.dataStore.edit { it[settingsOpenedKey] = opened }
+    suspend fun setSettingsHintRemaining(remaining: Int) {
+        context.dataStore.edit { it[settingsHintRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
     /** Density of the threat detail popup. */
@@ -178,6 +170,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setThreatCardSize(size: ThreatCardSize) {
         context.dataStore.edit { it[threatCardSizeKey] = size.name }
+    }
+
+    /** Whether the pre-migration osmdroid tile caches have already been deleted. */
+    fun legacyCacheCleaned(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[legacyCacheCleanedKey] ?: false }
+
+    suspend fun setLegacyCacheCleaned(cleaned: Boolean) {
+        context.dataStore.edit { it[legacyCacheCleanedKey] = cleaned }
     }
 }
 

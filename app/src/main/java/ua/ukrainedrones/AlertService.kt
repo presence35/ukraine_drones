@@ -21,11 +21,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 /**
@@ -40,8 +37,10 @@ class AlertService : Service() {
         private const val CHANNEL_MONITOR = "monitor"
         private const val CHANNEL_ALERTS = "alerts_siren"
         private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer"
+        private const val CHANNEL_ALLCLEAR = "alerts_all_clear"
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
+        private const val NOTIF_ALLCLEAR = 3
         private const val CENTRE_ALERT_GRACE_MS = 60_000L
 
         fun start(context: Context) {
@@ -77,9 +76,16 @@ class AlertService : Service() {
             val fastAlertsSooner: Boolean,
             val officialAlertsEnabled: Boolean
         ) : MonitorEvent()
-
-        object Tick : MonitorEvent()
     }
+
+    /** Toggle + follow state used to gate zone/official alert tiering. */
+    private data class AlertConfig(
+        val redArmed: Boolean,
+        val yellowArmed: Boolean,
+        val fastAlertsSooner: Boolean,
+        val officialAlertsEnabled: Boolean,
+        val followMe: Boolean
+    )
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -120,82 +126,65 @@ class AlertService : Service() {
         if (monitoringJob != null) return
         val prefs = ZonePrefs(applicationContext)
         monitoringJob = scope.launch {
-            val stateEvents: Flow<MonitorEvent> = combine(
-                NeptunClient.state,
-                prefs.redZoneKm(),
-                prefs.yellowZoneKm(),
-                LocationTracker.location,
-                threatEnabledFlow(prefs),
-                prefs.language(),
-                prefs.redZoneArmed(),
-                prefs.yellowZoneArmed(),
-                prefs.fastAlertsSooner(),
-                prefs.officialAlertsEnabled(),
-                prefs.followMe(),
-                prefs.pinnedCity()
-            ) { values ->
-                @Suppress("UNCHECKED_CAST")
-                val neptun = values[0] as NeptunState
-                val gps = values[3] as LatLng?
-                val followMe = values[10] as Boolean
-                val pinnedName = values[11] as String?
-                val pinned = pinnedName?.let { name ->
-                    Cities.ALL.firstOrNull { it.nameUa == name }
-                }
-                val lang = values[5] as AppLanguage
-                // Zones + official alert centre on the focus point: GPS while following,
-                // the pinned city otherwise (mirrors the foreground UI).
-                val focus = if (followMe) gps
-                else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
-                MonitorEvent.State(
-                    focusOblastAlertActive = focusOblastAlertActive(neptun, followMe, pinned),
-                    focusBannerCity = focusBannerCity(lang, followMe, pinned),
-                    focusRegion = focusRegionText(lang, followMe, pinned),
-                    focusPinned = !followMe && pinned != null,
-                    zoneThreats = zoneThreats(
-                        neptun,
-                        values[1] as Int,
-                        values[2] as Int,
-                        focus,
-                        values[4] as Set<ThreatType>
-                    ),
-                    lang = lang,
-                    redArmed = values[6] as Boolean,
-                    yellowArmed = values[7] as Boolean,
-                    fastAlertsSooner = values[8] as Boolean,
-                    officialAlertsEnabled = values[9] as Boolean
-                )
-            }.distinctUntilChanged()
-            // Periodic tick so the alert's grace window can expire even when the
-            // telemetry stream goes quiet — no 5s polling, one cheap wakeup per grace.
-            val ticks: Flow<MonitorEvent> = flow {
+            val nowFlow = MutableStateFlow(System.currentTimeMillis())
+            launch {
                 while (true) {
                     delay(CENTRE_ALERT_GRACE_MS)
-                    emit(MonitorEvent.Tick)
+                    nowFlow.value = System.currentTimeMillis()
                 }
             }
-            merge(stateEvents, ticks).collect { event ->
-                when (event) {
-                    is MonitorEvent.State -> handleState(event)
-                    is MonitorEvent.Tick -> handleGraceTick()
-                }
-            }
+            combine(
+                combine(
+                    NeptunClient.state,
+                    LocationTracker.location,
+                    nowFlow
+                ) { neptun, gps, now -> Triple(neptun, gps, now) },
+                combine(prefs.redZoneKm(), prefs.yellowZoneKm()) { red, yellow -> red to yellow },
+                combine(
+                    prefs.redZoneArmed(),
+                    prefs.yellowZoneArmed(),
+                    prefs.fastAlertsSooner(),
+                    prefs.officialAlertsEnabled(),
+                    prefs.followMe()
+                ) { redArmed, yellowArmed, fast, official, followMe ->
+                    AlertConfig(redArmed, yellowArmed, fast, official, followMe)
+                },
+                combine(
+                    threatEnabledFlow(prefs),
+                    prefs.language(),
+                    prefs.pinnedCity()
+                ) { enabled, lang, pinned -> Triple(enabled, lang, pinned) }
+            ) { core, radii, config, tail ->
+                val neptun = core.first
+                val gps = core.second
+                val now = core.third
+                val followMe = config.followMe
+                val pinned = tail.third?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
+                val focus = if (followMe) gps else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
+                MonitorEvent.State(
+                    focusOblastAlertActive = focusOblastAlertActive(neptun, followMe, gps, pinned),
+                    focusBannerCity = focusBannerCity(tail.second, followMe, gps, pinned),
+                    focusRegion = focusRegionText(tail.second, followMe, pinned),
+                    focusPinned = !followMe && pinned != null,
+                    zoneThreats = zoneThreats(neptun, radii.first, radii.second, focus, tail.first, now),
+                    lang = tail.second,
+                    redArmed = config.redArmed,
+                    yellowArmed = config.yellowArmed,
+                    fastAlertsSooner = config.fastAlertsSooner,
+                    officialAlertsEnabled = config.officialAlertsEnabled
+                )
+            }.collect { handleState(it) }
         }
     }
 
-    private fun focusOblastAlertActive(st: NeptunState, followMe: Boolean, pinned: City?): Boolean {
-        val token = if (followMe) "Одеськ"
-        else pinned?.let { Cities.cityOblast[it.nameUa] } ?: "Одеськ"
-        return st.oblastAlerts.any {
-            it.oblast.contains(token, ignoreCase = true) ||
-                it.name.contains(token, ignoreCase = true)
-        }
+    private fun focusOblastAlertActive(st: NeptunState, followMe: Boolean, gps: LatLng?, pinned: City?): Boolean {
+        val token = focusAttribution(followMe, gps, pinned).token ?: return false
+        return st.oblastAlerts.any { it.inOblast(token) }
     }
 
-    private fun focusBannerCity(lang: AppLanguage, followMe: Boolean, pinned: City?): String = when {
-        !followMe && pinned != null ->
-            if (lang == AppLanguage.UA) pinned.nameUa else pinned.nameEn
-        else -> if (lang == AppLanguage.UA) "Одеса" else "Odesa"
+    private fun focusBannerCity(lang: AppLanguage, followMe: Boolean, gps: LatLng?, pinned: City?): String {
+        val att = focusAttribution(followMe, gps, pinned)
+        return if (lang == AppLanguage.UA) att.bannerCityUa else att.bannerCityEn
     }
 
     private fun focusRegionText(lang: AppLanguage, followMe: Boolean, pinned: City?): String {
@@ -221,10 +210,10 @@ class AlertService : Service() {
         redKm: Int,
         yellowKm: Int,
         focus: LatLng?,
-        enabled: Set<ThreatType>
+        enabled: Set<ThreatType>,
+        now: Long
     ): Map<String, ThreatZone> {
         if (focus == null) return emptyMap()
-        val now = System.currentTimeMillis()
         val zones = RadialZones(redKm, yellowKm)
         val map = LinkedHashMap<String, ThreatZone>()
         for (t in st.threats.values) {
@@ -295,11 +284,26 @@ class AlertService : Service() {
                 state.focusRegion
             )
         }
+        // All clear: the official alert that was ringing has just ended. The cheerful chime
+        // fires only for the official oblast alert — zone-threat clears stay silent — and
+        // never when the official-alert notifications are turned off.
+        if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertActive) {
+            postAllClear(s, state.focusBannerCity)
+        }
         wasFocusAlertActive = state.focusOblastAlertActive
 
         // Start the grace window once nothing is active; clear only after it expires.
+        // The periodic nowFlow tick re-runs this every grace period, so a quiet stream still
+        // clears stale alerts (threats leave the zone map on the next tick, not on demand).
         if (state.zoneThreats.isEmpty() && !state.focusOblastAlertActive) {
-            if (emptySince == null) emptySince = System.currentTimeMillis()
+            val since = emptySince
+            if (since == null) {
+                emptySince = System.currentTimeMillis()
+            } else if (System.currentTimeMillis() - since >= CENTRE_ALERT_GRACE_MS) {
+                emptySince = null
+                cancelAlert()
+                knownZones = emptyMap()
+            }
         } else {
             emptySince = null
         }
@@ -308,16 +312,6 @@ class AlertService : Service() {
     private fun bannerFor(zone: ThreatZone, s: Strings.StringSet): String = when (zone) {
         ThreatZone.INNER -> s.redZoneAlert
         ThreatZone.OUTER -> s.yellowZoneAlert
-    }
-
-    /** After the grace window with nothing active, clear the alert. */
-    private fun handleGraceTick() {
-        val since = emptySince ?: return
-        if (System.currentTimeMillis() - since >= CENTRE_ALERT_GRACE_MS) {
-            emptySince = null
-            cancelAlert()
-            knownZones = emptyMap()
-        }
     }
 
     private fun threatBody(t: Threat, lang: AppLanguage): String {
@@ -367,6 +361,18 @@ class AlertService : Service() {
         }
     }
 
+    private fun postAllClear(s: Strings.StringSet, city: String) {
+        val notif = NotificationCompat.Builder(this, CHANNEL_ALLCLEAR)
+            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setContentTitle(String.format(s.allClearTitle, city))
+            .setContentText(s.allClearText)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent())
+            .build()
+        safeNotify(NOTIF_ALLCLEAR, notif)
+    }
+
     private fun sirenUri(resId: Int): Uri =
         Uri.parse("android.resource://$packageName/$resId")
 
@@ -405,7 +411,7 @@ class AlertService : Service() {
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ALERTS, "Air alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Odesa air raid and INNER zone threat alerts"
+                description = "Air-raid sirens and urgent zone alerts"
                 enableVibration(true)
                 setSound(
                     sirenUri(R.raw.air_raid_siren),
@@ -429,7 +435,20 @@ class AlertService : Service() {
                 )
             }
         )
-        val keep = setOf(CHANNEL_MONITOR, CHANNEL_ALERTS, CHANNEL_ALERTS_OUTER)
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALLCLEAR, "All clear", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Cheerful chime when the official air-raid alert ends"
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.all_clear),
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+            }
+        )
+        val keep = setOf(CHANNEL_MONITOR, CHANNEL_ALERTS, CHANNEL_ALERTS_OUTER, CHANNEL_ALLCLEAR)
         nm.notificationChannels
             .filter { it.id !in keep }
             .forEach { nm.deleteNotificationChannel(it.id) }

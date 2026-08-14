@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,7 +45,8 @@ fun ThreatPopupCard(
     fastAlertsSooner: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    cardSize: ThreatCardSize = ThreatCardSize.LARGE
+    cardSize: ThreatCardSize = ThreatCardSize.LARGE,
+    interactive: Boolean = true
 ) {
     val s = Strings.get(lang)
     val distLabel = pinnedCity?.let {
@@ -113,20 +115,29 @@ fun ThreatPopupCard(
     }
 
     Surface(
-        modifier = modifier.clickable(onClick = onDismiss),
+        modifier = if (interactive) {
+            modifier.clickable(onClick = onDismiss)
+        } else {
+            modifier
+        },
         shape = RoundedCornerShape(16.dp),
         color = Color(0xFF1E1E1E),
         border = BorderStroke(2.dp, bandColor),
         tonalElevation = 8.dp
     ) {
         when (cardSize) {
-            // One glanceable line: skull + type + distance/ETA, with a thin level bar.
+            // One glanceable line: threat icon + type + distance/ETA, skull next to its bar.
             ThreatCardSize.SMALL -> {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LevelSkullIcon(level = threatLevel)
+                    Icon(
+                        painter = painterResource(id = iconResFor(threat.type)),
+                        contentDescription = typeLabel,
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(28.dp)
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -147,7 +158,11 @@ fun ThreatPopupCard(
                         )
                     }
                     Spacer(Modifier.width(10.dp))
-                    HorizontalLevelBar(level = threatLevel)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LevelSkullIcon(level = threatLevel, size = 18.dp)
+                        Spacer(Modifier.width(6.dp))
+                        HorizontalLevelBar(level = threatLevel)
+                    }
                 }
             }
 
@@ -155,10 +170,10 @@ fun ThreatPopupCard(
             ThreatCardSize.MEDIUM -> {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        ThreatTypeIcon(
-                            type = threat.type,
-                            vectorRes = iconResFor(threat.type),
+                        Icon(
+                            painter = painterResource(id = iconResFor(threat.type)),
                             contentDescription = typeLabel,
+                            tint = Color.Unspecified,
                             modifier = Modifier.size(28.dp)
                         )
                         Spacer(Modifier.width(10.dp))
@@ -191,6 +206,12 @@ fun ThreatPopupCard(
                                         .rotate(course.toFloat())
                                 )
                             }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            LevelSkullIcon(level = threatLevel, size = 24.dp)
+                            Spacer(Modifier.height(3.dp))
+                            HorizontalLevelBar(level = threatLevel)
                         }
                     }
 
@@ -257,10 +278,10 @@ fun ThreatPopupCard(
                     Column(modifier = Modifier.weight(1f)) {
                         // Header: icon, type + region/course, close.
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            ThreatTypeIcon(
-                                type = threat.type,
-                                vectorRes = iconResFor(threat.type),
+                            Icon(
+                                painter = painterResource(id = iconResFor(threat.type)),
                                 contentDescription = typeLabel,
+                                tint = Color.Unspecified,
                                 modifier = Modifier.size(32.dp)
                             )
                             Spacer(Modifier.width(10.dp))
@@ -435,12 +456,12 @@ private fun levelColor(level: Double): Color = when {
 
 /** Small skull icon tinted by the threat level (grey below 3). */
 @Composable
-private fun LevelSkullIcon(level: Double) {
+private fun LevelSkullIcon(level: Double, size: Dp = 30.dp) {
     Icon(
         painter = painterResource(id = R.drawable.ic_skull),
         contentDescription = null,
         tint = if (level >= 3.0) levelColor(level) else Color(0xFF9E9E9E),
-        modifier = Modifier.size(30.dp)
+        modifier = Modifier.size(size)
     )
 }
 
@@ -559,7 +580,7 @@ private fun UncertaintyBar(uncertaintyKm: Double?, s: Strings.StringSet) {
 }
 
 private fun iconResFor(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.ic_threat_shahed
+    ThreatType.SHAHED -> R.drawable.shahed
     ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
     ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
     ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
