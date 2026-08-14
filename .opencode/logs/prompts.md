@@ -13491,3 +13491,142 @@ ya
 ## 14/08/2026, 17:00:54
 
 bulid it
+## 14/08/2026, 17:01:58
+
+the readme file needs an overhaul.  some screenshots would be cool too
+## 14/08/2026, 17:08:51
+
+PS D:\Desktop\drones> .\gradlew.bat :app:release
+
+> Task :app:bumpVersion
+versionCode: 53 -> 54
+versionName: 0.3.42 -> 0.3.43
+
+> Task :drones:app:compileReleaseKotlin
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/FeatureGuide.kt:103:44 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MainActivity.kt:100:18 This declaration overrides deprecated member but not marked as deprecated itself. Please add @Deprecated annotation or suppress. See https://youtrack.jetbrains.com/issue/KT-47902 for details
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MainActivity.kt:105:15 'onRequestPermissionsResult(Int, Array<String>, IntArray): Unit' is deprecated. This method has been deprecated in favor of using the Activity Result API
+      which brings increased type safety via an {@link ActivityResultContract} and the prebuilt
+      contracts for common intents available in
+      {@link androidx.activity.result.contract.ActivityResultContracts}, provides hooks for
+      testing, and allow receiving results in separate, testable classes independent from your
+      activity. Use
+      {@link #registerForActivityResult(ActivityResultContract, ActivityResultCallback)} passing
+      in a {@link RequestMultiplePermissions} object for the {@link ActivityResultContract} and
+      handling the result in the {@link ActivityResultCallback#onActivityResult(Object) callback}.
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:260:17 'setBuiltInZoomControls(Boolean): Unit' is deprecated. Deprecated in Java
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:390:25 'setter for fillColor: Int' is deprecated. Deprecated in Java
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:391:25 'setter for strokeColor: Int' is deprecated. Deprecated in Java
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:393:25 'setter for strokeWidth: Float' is deprecated. Deprecated in Java
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:399:25 'setter for fillColor: Int' is deprecated. Deprecated in Java
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:400:25 'setter for strokeColor: Int' is deprecated. Deprecated in Java
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:402:25 'setter for strokeWidth: Float' is deprecated. Deprecated in Java
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:422:25 Variable 'zone' is never used
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/MapView.kt:477:23 Parameter 'mapView' is never used, could be renamed to _
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/SettingsScreen.kt:124:44 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/Threat.kt:40:26 Unnecessary safe call on a non-null receiver of type String?
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt:107:22 Unnecessary safe call on a non-null receiver of type ThreatProximity?
+w: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt:570:9 Condition 'km == null' is always 'false'
+
+> Task :drones:app:compileReleaseJavaWithJavac
+Java compiler version 21 has deprecated support for compiling with source/target version 8.
+Try one of the following options:
+    1. [Recommended] Use Java toolchain with a lower language version
+    2. Set a higher source/target version
+    3. Use a lower version of the JDK running the build (if you're not using Java toolchain)
+For more details on how to configure these settings, see https://developer.android.com/build/jdks.
+To suppress this warning, set android.javaCompile.suppressSourceTargetDeprecationWarning=true in gradle.properties.
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+3 warnings
+
+> Task :drones:app:uploadRelease
+upload app-release.apk -> exit 0
+upload version.json -> exit 0
+Done. https://odesaplay.com.ua/other_apps/ukrainedrones/version.json
+
+BUILD SUCCESSFUL in 1m 17s
+2 actionable tasks: 2 executed
+PS D:\Desktop\drones>
+
+
+do we care about those warnings?
+## 14/08/2026, 17:09:28
+
+ya
+## 14/08/2026, 17:11:20
+
+the skull warning was meant for inside settings, not on the threat popup.  instead of the note below the 3 sizes, keep the first sentence, and add the skull warning
+## 14/08/2026, 17:12:17
+
+go
+## 14/08/2026, 17:13:08
+
+go
+## 14/08/2026, 17:14:21
+
+you might have to recheck all the features, much has changed
+## 14/08/2026, 17:14:51
+
+Research task (READ-ONLY, no code changes). Audit the current UI state of the map screen in this Android app (Kotlin + Jetpack Compose + OSMdroid).
+
+Read these files under D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\:
+- MainScreen.kt
+- MapView.kt
+- ZonesSheet.kt
+- FeatureGuide.kt (and skim FeatureDiagrams.kt if needed for what illustrations exist)
+
+Report, with concrete detail (quote labels/strings as they appear):
+1. Header: what exactly is shown now (trident? app title? city name when pinned? connection pill/dot? settings button — is it a gear icon? flags?). Note any pinned-city behavior.
+2. Footer / threat strip: exactly what it shows now — which types, counts, pulsing underline, OFF chips or bells, "no threats" message, when it appears.
+3. Floating map controls: list every floating button/pill on the map (zone circles/buttons, zoom-to-zone, bell, pencil/Edit zones, "all alerts off" pill, scale bar, pinned-city pill, GPS/city pin dot).
+4. "Edit zones" bottom sheet: what it contains now (sliders, per-zone toggles/bells, handle).
+5. Feature guide: how many cards / what sections it covers (just list the section titles/topics, not every sentence).
+6. Map tile provider / map constraints (can it pan past Ukraine? zoom limits?).
+
+Be thorough but efficient. Output a structured bullet list of findings with file:line references where useful. Do not write or edit anything.
+## 14/08/2026, 17:14:52
+
+Research task (READ-ONLY, no code changes). Audit the current Settings screen of this Android app (Kotlin + Jetpack Compose).
+
+Read these files under D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\:
+- SettingsScreen.kt
+- ZonePrefs.kt (the prefs/keys and defaults)
+- Strings.kt (just the English settings-related strings/labels)
+
+Report, with concrete detail (quote the actual English labels shown to users):
+1. The full ordered list of Settings sections and every control/toggle/card in each, with its exact English label. Sections I expect to verify: language switcher (which flags?), "Map centre" (Follow me toggle + pin-to-city dropdown — how many cities?), Threat cards (per-type toggles + expandable info with photos), Alerts section (official alerts toggle, "Fast objects alert sooner", "Sirens always sound"?), updates section (auto-check, Update button), "Keep alerts running" / battery optimization card, "Feature guide" entry, "Stop Monitoring & Exit".
+2. Threat card size/detail setting (Small/Medium/Large) if present.
+3. Default zone radii (red/yellow) and their min/max ranges, from ZonePrefs.kt.
+4. Whether English UI now uses "centre" (Canadian spelling) anywhere.
+5. Any "made by" credit line at the bottom.
+
+Be thorough but efficient. Output a structured bullet list with file:line references where useful. Do not write or edit anything.
+## 14/08/2026, 17:15:03
+
+Research task (READ-ONLY, no code changes). Audit the threat popup, alerting engine, and background/location/update behavior of this Android app (Kotlin).
+
+Read these files under D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\:
+- ThreatPopupCard.kt
+- Threat.kt
+- ThreatLevel.kt
+- AlertService.kt
+- BootReceiver.kt
+- LocationTracker.kt
+- UpdateManager.kt
+- Cities.kt and Translate.kt (skim)
+
+Report, with concrete detail:
+1. Threat popup: every field/row the card shows now (type+icon, course description one-liner?, 0-10 gauge + skull line disclaimer, speed, distance/ETA, precision, reliability + source count, wave size, last seen, zone-colored border). Note the "course shows first sentence only" and skull-line details if present.
+2. The 8 threat types (enum values) and their English labels/typical speeds.
+3. Alerting engine rules: what fires the siren vs chime, red/yellow zone semantics, "Fast objects alert sooner" behavior, handling of phone vibrate/silent mode and the "Sirens always sound" setting, the official-alert "all clear" chime+notification, background status notification, pin-to-city influence on notifications, auto-restart after reboot/in-app update.
+4. Location: coarse-only? update frequency / accuracy (~2 min / 250 m)? "Approximate location" label?
+5. Update manager: update server URL, auto-check cadence (once/day?), in-app install behavior.
+6. City alert coloring (red dots / city names turning red) from Cities.kt — confirm it's live.
+7. Where the connection pill info / NEPTUN link lives now.
+
+Be thorough but efficient. Output a structured bullet list with file:line references where useful. Do not write or edit anything.
+## 14/08/2026, 17:19:04
+
+do my full skills audit

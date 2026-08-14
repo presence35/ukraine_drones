@@ -37,7 +37,7 @@ enum class ThreatType(val apiKey: String) {
             if (key == null) return UNKNOWN
             return values().firstOrNull { it.apiKey == key } ?: run {
                 // best-effort mapping from other possible API strings
-                when (key?.lowercase()) {
+                when (key.lowercase()) {
                     "uav", "drone" -> SHAHED
                     "lancet", "molniya", "loitering" -> FPV_LOITERING
                     "missile", "cruise_missile" -> CRUISE_MISSILE

@@ -3,7 +3,8 @@
 ## [Unreleased]
 
 - Settings → Map centre: the pin-to-city control is now a proper text-field dropdown that opens as a height-constrained scrollable list below the field (no more full-screen box). The title lives in the field label and the description below it; the red alert dots stay.
-- Threat popup: the course description shows only its first sentence, and a small skull line explains that the 0–10 gauge is a rough estimate (type, distance, reliability, sources) — not an official rating or a guarantee of your safety.
+- Threat popup: the course description shows only its first sentence.
+- Settings → threat card size: the note below the three sizes is replaced by a skull line explaining that the 0–10 gauge is a rough estimate (type, distance, reliability, sources) — not an official rating or a guarantee of your safety.
 - Alerts: sirens now respect the phone's vibrate/silent mode by default — they ring at notification volume in sound mode and only vibrate on vibrate/silent, so the app no longer blasts over a deliberately quiet phone. A new "Sirens always sound" setting (off by default) in Settings → Alerts makes siren alerts ring even on vibrate/silent. The all-clear chime always follows the phone's mode (it's not an emergency).
 
 - Settings: threat cards (incl. the UAV one) no longer auto-expand when Settings opens — everything starts collapsed.

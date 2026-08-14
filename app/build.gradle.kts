@@ -59,12 +59,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
 
     buildFeatures {
@@ -81,6 +81,14 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        // coil 2.7.0 asks for kotlin-stdlib 2.0.0, but we compile with Kotlin 1.9.24;
+        // force keeps the stdlib on the compiler's own version.
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
     }
 }
 

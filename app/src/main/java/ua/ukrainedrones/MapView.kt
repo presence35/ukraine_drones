@@ -419,12 +419,6 @@ fun NeptunMapView(
                         predictPosition(t, it, System.currentTimeMillis())
                     }
                     val pos = predicted ?: GeoPoint(t.lat, t.lon)
-                    val zone = if (t.areaOnly) null else focus?.let {
-                        radialZone(
-                            distanceMeters(it.lat, it.lon, pos.latitude, pos.longitude) / 1000.0,
-                            RadialZones(uiState.redZoneKm, uiState.yellowZoneKm)
-                        )?.let { spatial -> effectiveZone(t, spatial, uiState.fastAlertsSooner) }
-                    }
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
@@ -474,7 +468,7 @@ fun NeptunMapView(
                 mapView.invalidate()
             }
         },
-        onRelease = { mapView ->
+        onRelease = { _ ->
             mapViewRef.value = null
         }
     )

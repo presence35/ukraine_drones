@@ -151,8 +151,8 @@ class AlertService : Service() {
                     prefs.officialAlertsEnabled(),
                     prefs.sirenOverride(),
                     prefs.followMe()
-                ) { redArmed, yellowArmed, fast, official, override, followMe ->
-                    AlertConfig(redArmed, yellowArmed, fast, official, override, followMe)
+                ) { flags: Array<Boolean> ->
+                    AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5])
                 },
                 combine(
                     threatEnabledFlow(prefs),

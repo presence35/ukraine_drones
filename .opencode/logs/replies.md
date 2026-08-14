@@ -22503,3 +22503,495 @@ Done. The pin-to-city card in Settings → Map centre is now a proper Material 3
 - CHANGELOG entry added.
 
 Both requests (threat card + pin card) are done.
+## 14/08/2026, 17:02:00
+
+The build fails on two fronts: my `MenuAnchorType` API error in SettingsScreen.kt, and `combine` errors in files I didn't touch. Let me check the dependency
+## 14/08/2026, 17:02:26
+
+
+
+
+## 14/08/2026, 17:03:00
+
+The current README is already thorough but dense (111 lines, no visuals). I checked the environment: no emulator, AVDs, or connected device exist, and there are no existing screenshots — so the screenshot question drives how I plan this
+## 14/08/2026, 17:03:01
+
+Root cause found: **`io.coil-kt:coil:2.7.0` hard-requires `kotlin-stdlib:{strictly 2.0.0}`**, dragging the whole classpath to stdlib 2.0.0 while the project compiles with Kotlin **1.9.24**. The compiler then fails to resolve symbols across several libraries (`combine` overloads, `MenuAnchorType`) — a pre-existing break, not just my change. Let me pin stdlib back to match the compiler:
+## 14/08/2026, 17:03:12
+
+The `configurations.all` placement inside `android {}` won't work — it belongs at script top level. Let me fix that:
+## 14/08/2026, 17:03:20
+
+
+
+
+## 14/08/2026, 17:04:03
+
+Still failing — let me check whether the stdlib force actually took effect and what material3 version is really on the compile classpath:
+## 14/08/2026, 17:04:29
+
+stdlib force worked (now 1.9.24), but the same errors persist — so they're genuine, not metadata cascades. Let me confirm the material3 version on the
+## 14/08/2026, 17:04:51
+
+Let me inspect what the compiler actually sees from material3 1.2.1 — checking the A
+## 14/08/2026, 17:05:08
+
+material3 1.2.1 has no `MenuAnchorType` class — so the new API I used doesn't exist in this version. Let me confirm the actual `
+## 14/08/2026, 17:05:09
+
+Here's my plan for the README overhaul.
+
+## Plan: README overhaul + screenshot gallery
+
+**Goal:** Turn the dense 111-line README into a polished, marketing-friendly doc with a visual screenshot gallery, while keeping all the valuable technical/safety content.
+
+### 1. Screenshot placeholders (`docs/screenshots/`)
+- Generate 5 placeholder PNGs (dark-theme, named + captioned) so the gallery renders now, with a note on how to replace each one later:
+  - `map.png` — live map, zones, threat markers
+  - `threat-popup.png` — detail card with 0–10 gauge
+  - `edit-zones.png` — radius sliders bottom sheet
+  - `settings.png` — toggles, language, map centre
+  - `feature-guide.png` — in-app tutorial
+- Placeholders created via PowerShell `System.Drawing` (solid color + text) — no build tools needed. Filenames are stable so real `adb` screenshots can just be dropped in (`adb exec-out screencap -p > docs/screenshots/map.png`).
+
+### 2. Rewritten README structure
+- **Hero** — title, tagline, one-liner (live NEPTUN air-threat map, no account/server/API key).
+- **Download** — real link to `https://odesaplay.com.ua/other_apps/ukrainedrones/app-release.apk` + note about in-app self-updates.
+- **Screenshots** — 2-row gallery with one-line captions.
+- **Features** — crisp bullets: live WebSocket stream over OSM dark tiles, Red/Yellow alert rings (siren/chime, adjustable), official oblast alerts (trident glow), 8 threat types, threat popup detail, UA/EN switcher, coarse-only battery-cheap location, background monitoring + boot auto-restart, self-updates.
+- **Alerts model** — condensed three-source explanation (Red / Yellow / Official), "Fast objects alert sooner", muting, pin-to-city.
+- **What it deliberately does NOT do** — keep existing 4 bullets (no cloud, no precise GPS, no push, not official); key trust/safety content.
+- **Build from source** — JDK 17 + Android SDK 34, `.\gradlew.bat :app:assembleDebug`, adb install.
+- **Architecture** — condensed key-file map (unchanged facts).
+- **Safety & attribution** — NEPTUN disclaimer, defer to official channels.
+
+### 3. Notes
+- No behavioral/factual changes — same app details, reorganized + visual.
+- Skipping a CHANGELOG entry (README is dev-facing, not release notes) unless you want one.
+
+Want me to proceed with this?
+## 14/08/2026, 17:05:40
+
+Confirmed: material3 1.2.1 has the **no-arg** `Modifier.menuAnchor()` (the `MenuAnchorType` overload came in 1.3.x), and `kotlinx-coroutines` has no 6-arg `combine` — so the 6-flow `combine` calls in AlertService.kt/MainViewModel.kt are pre-existing broken code in HEAD. Fixing all three
+## 14/08/2026, 17:06:17
+
+Build successful. The debug APK compiled with only pre-existing deprecation warnings.
+
+Fixes made beyond the UI changes:
+- **SettingsScreen.kt** — `.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = ...)` → `.menuAnchor()` (material3 1.2.1 has the no-arg API; `MenuAnchorType` came in 1.3.x). Opening is still gated by `onExpandedChange = { if (!followMe) expanded = it }`.
+- **AlertService.kt / MainViewModel.kt** — pre-existing broken 6-arg `combine` calls (kotlinx-coroutines caps at 5) rewritten to the vararg `combine { flags: Array<Boolean> -> ... }` form.
+- **app/build.gradle.kts** — added a resolution strategy forcing `kotlin-stdlib:1.9.24`, since `coil:2.7.0` declares a strict 2.0.0 stdlib that broke library symbol resolution for the Kotlin 1.9.24 compiler.
+## 14/08/2026, 17:08:59
+
+Short answer: they don't block anything, but a few are worth caring about:
+
+**Worth fixing eventually (tech debt, not urgent):**
+- `MainActivity.kt:100/105` — `onRequestPermissionsResult` deprecated in favor of the Activity Result API. Real migration work; Android will keep pushing this.
+- Java 8 source/target "obsolete" — will hard-fail once the JDK drops support. Bumping `compileOptions` to 11/17 is a one-line fix.
+- `ThreatPopupCard.kt:570` `km == null` always false — points to dead code/simplifiable logic; worth a look.
+
+**Trivial cleanups (low risk, quick):**
+- `ArrowBack` → `Icons.AutoMirrored.Filled.ArrowBack` (2 spots)
+- Unused `zone` (MapView.kt:422), unused `mapView` param (MapView.kt:477)
+- Unnecessary safe calls (Threat.kt:40, ThreatPopupCard.kt:107)
+
+**Safe to ignore:**
+- MapView deprecated setters (`setBuiltInZoomControls`, fillColor/strokeColor/strokeWidth) — that's the maps library's API; nothing you can do until you upgrade the library version.
+
+None of these affect the release that just went out. Want me to plan a cleanup pass for the trivial ones + the Java 8 target bump?
+## 14/08/2026, 17:09:35
+
+Let me look at the specific spots to build an
+## 14/08/2026, 17:09:42
+
+Let me check the build config and the `proximity` context.
+
+
+## 14/08/2026, 17:10:08
+
+
+
+
+## 14/08/2026, 17:10:20
+
+## Plan: Cleanup pass for build warnings
+
+**1. AutoMirrored `ArrowBack` (2 files)** — swap import + usage:
+- `FeatureGuide.kt:10-11,103` — replace `filled.ArrowBack` import with `automirrored.filled.ArrowBack`; use `Icons.AutoMirrored.Filled.ArrowBack`.
+- `SettingsScreen.kt:15-16,124` — same.
+
+**2. `MapView.kt:422-427`** — delete the unused `val zone = ...` block (pure computation; `radialZone`/`effectiveZone` are still used elsewhere, e.g. the animation loop, so no new unused-symbol warnings).
+
+**3. `MapView.kt:477`** — `onRelease = { mapView ->` → `{ _ ->`.
+
+**4. `Threat.kt:40`** — `key?.lowercase()` → `key.lowercase()` (already null-checked at :37).
+
+**5. `ThreatPopupCard.kt:107`** — `proximity?.etaToUserMin?.let` → `proximity.etaToUserMin?.let` (compiler confirms it's non-null here).
+
+**6. `ThreatPopupCard.kt:570`** — delete `if (km == null) return 0` in `uncertaintyBars(km: Double)`.
+
+**7. `build.gradle.kts:61-68`** — bump `compileOptions` to `VERSION_17` and `kotlinOptions.jvmTarget = "17"` (clears the Java 8 "obsolete" warnings; you're already on JDK 21, Kotlin 1.9.24 supports 17). Alternative if you want to be more conservative: `VERSION_11`, or just suppress with `android.javaCompile.suppressSourceTargetDeprecationWarning=true` in `gradle.properties`.
+
+**Skipping** (intentional): MapView deprecated setters (library API), `onRequestPermissionsResult` migration (bigger refactor), CHANGELOG entry (not user-visible).
+
+**Verification**: `.\gradlew.bat :app:compileReleaseKotlin` to confirm the warnings are gone (all changes are source/compile-level; no release unless you trigger it).
+
+Want me to go ahead with this? And 17 or 11 for the Java target?
+## 14/08/2026, 17:11:42
+
+Got it — skull warning belongs in Settings under the card-size selector, and the threat popup keeps only the first-sentence description. Here's the plan:
+
+## Plan — move skull warning from popup to Settings
+
+1. **ThreatPopupCard.kt** — remove the skull icon + `cardSkullNote` Row I added under the course description (the block after the `Text(it, ...)` at line ~358). Keep the first-sentence truncation (`firstSentence`) and the plain course text.
+
+2. **SettingsScreen.kt** — in the Card size section (lines 237-243), replace the `cardSizeDesc` note below the divider with a skull warning row: a small grey skull icon (`R.drawable.ic_skull`, ~14dp) + `Text(s.cardSkullNote)` in `bodySmall` / `onSurfaceVariant` — matching the style of the removed popup line.
+
+3. **Strings.kt** — delete the now-unused `cardSizeDesc` field from the `StringSet` interface and both UA/EN implementations (keep `cardSkullNote`).
+
+4. **CHANGELOG.md** — rewrite the `[Unreleased]` entry: the skull disclaimer now lives under Settings → card size, and the threat popup shows only the first sentence of the course text.
+
+Good to go?
+## 14/08/2026, 17:12:37
+
+Now remove the unused `cardSizeDesc` string:
+## 14/08/2026, 17:12:43
+
+Now update the CHANGELOG entry to match:
+## 14/08/2026, 17:12:54
+
+Done:
+
+- **ThreatPopupCard.kt** — removed the skull note line from the popup; the course description keeps just its first sentence.
+- **SettingsScreen.kt** — the note below the 3 card sizes is now a skull warning row (grey skull icon + `cardSkullNote`) under the divider.
+- **Strings.kt** — removed the now-unused `cardSizeDesc` (interface + UA/EN).
+- **CHANGELOG.md** — entries updated to match.
+## 14/08/2026, 17:13:26
+
+All edits applied. Verifying with a compile:
+## 14/08/2026, 17:13:49
+
+Done. Cleanup verified — all targeted warnings are gone and the build is green.
+
+Remaining warnings are the intentionally skipped ones (the `onRequestPermissionsResult` → Activity Result API refactor and the maps-library deprecations), plus the `MapView.kt:422`/`477` cleanups also resolved the smart-cast warnings. Java 8 "obsolete" warnings cleared with the 17 target bump.
+## 14/08/2026, 17:15:03
+
+Good catch — the CHANGELOG shows a lot has changed since this README was written (header button, footer, defaults, new settings, alert behavior). Let me audit the actual current code before final
+## 14/08/2026, 17:15:06
+
+Now let me read the remaining requested files and supporting files (Strings.kt for exact labels, UkraineTileProvider.kt for tile provider, FeatureDiagrams.kt).
+## 14/08/2026, 17:15:10
+
+Now let me look at the English strings used by the Settings screen and check for "centre" spellings.
+## 14/08/2026, 17:15:12
+
+Now let me read Strings.kt for exact labels and skim FeatureDiagrams.kt for the diagram kinds.
+## 14/08/2026, 17:15:17
+
+Now let me get the threat type English labels and the city count for the pin-to-city dropdown.
+## 14/08/2026, 17:15:22
+
+Let me check the drawable for the settings button icon and confirm the diagrams list, plus verify the scale bar and GPS/city pin dot details already noted.
+## 14/08/2026, 17:15:35
+
+Let me verify the enum order of ThreatType and check the guide strings for "Map centre" usage, plus confirm the flags used.
+## 14/08/2026, 17:15:59
+
+All research complete. Here is the full audit.
+
+# Settings Screen Audit — Ukraine Drones (Kotlin + Compose)
+
+All file references are under `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\`.
+
+## 1. Ordered list of sections, controls and exact English labels
+
+The screen is a `LazyColumn` (`SettingsScreen.kt:130-542`), top bar titled **"Settings"** with a **Back** arrow (`Strings.kt:396,398`). Sections in render order:
+
+### a. Disclaimer card — no section header (top of screen)
+- **"Official signals come first"** (`Strings.kt:423`, `SettingsScreen.kt:151`)
+- Expandable/collapsible body: **"Always follow official air-raid signals. Our app uses data the enemy isn't broadcasting precisely — positions and distances can't be accurate, even when marked confirmed. The threat level is a rough estimate, not an official rating. Treat everything as a rough guide only."** (`Strings.kt:424`)
+- Quirk: needs **two taps to collapse** (comment `SettingsScreen.kt:103`, logic `SettingsScreen.kt:105-116`). Warning-triangle icon drawn in code, `SettingsScreen.kt:816-840`.
+
+### b. Language switcher — section header "Language" (`Strings.kt:399`)
+- Header is **inverted**: it shows the label of the language you'd switch *to* (`SettingsScreen.kt:178-185`).
+- Two flag tiles (`SettingsScreen.kt:191-202`), emoji only, no text labels:
+  - **🇺🇦 Ukraine flag** (`\uD83C\uDDFA\uD83C\uDDE6`) → switches to Ukrainian (`SettingsScreen.kt:192-196`)
+  - **🇬🇧 UK/GB flag** (`\uD83C\uDDE8\uD83C\uDDE6`) → switches to English (`SettingsScreen.kt:198-202`). Note: it's the **British** flag, not US.
+- Visual is inverted too: the flag of the language you'd *switch to* is the colored/opaque one (`SettingsScreen.kt:864-865`).
+
+### c. "Map centre" (`Strings.kt:490`, header `SettingsScreen.kt:206`)
+One card containing two controls:
+- **"Follow me"** toggle — description **"The map and zones follow your GPS position."** (`Strings.kt:491-492`, `SettingsScreen.kt:211-212`)
+- **"Pin to a city"** dropdown (`Strings.kt:493`) — description **"The map centre and zones pin to the selected city. Cities with an official oblast alert are marked red."** (`Strings.kt:494`, `SettingsScreen.kt:628-630`)
+  - **26 cities** in the dropdown: all `major == true` entries in `Cities.kt:29-54` (Kyiv, Odesa, Lviv, Dnipro, Kharkiv, Zaporizhzhia, Vinnytsia, Mykolaiv, Kherson, Kryvyi Rih, Kropyvnytskyi, Poltava, Cherkasy, Uman, Khmelnytskyi, Zhytomyr, Rivne, Chernivtsi, Ivano-Frankivsk, Ternopil, Sumy, Chernihiv, Donetsk, Luhansk, Uzhhorod, Lutsk), filtered/sorted in `SettingsScreen.kt:610-613`. Minor cities (16 more, `Cities.kt:56-71`) are excluded.
+  - Cities with an official alert get a small red square (color `0xFFD32F2F`) beside their name (`SettingsScreen.kt:643-651`).
+  - Dropdown is disabled while "Follow me" is on (`SettingsScreen.kt:620,627`).
+
+### d. "Threat card size and detail" (`Strings.kt:505`, header `SettingsScreen.kt:228`)
+- Three selectable tiles — **SMALL / MEDIUM / LARGE** (enum `ZonePrefs.kt:20`). The tiles show **no text labels**; each tile is a *live scaled preview* of a real threat card rendered at that size (`SettingsScreen.kt:704-791`, preview built from mock `PreviewThreat`, `SettingsScreen.kt:666-701`). Selected tile gets a 2dp primary border.
+- Below the selector, a skull note: **"Skull (0–10) is a rough estimate — type, distance, reliability, sources. Not an official rating or a guarantee of your safety."** (`Strings.kt:475`, `SettingsScreen.kt:248`)
+- Default is `ThreatCardSize.LARGE` (`ZonePrefs.kt:177`).
+
+### e. "Threats — tap to toggle" (`Strings.kt:422`, header `SettingsScreen.kt:257`)
+Eight per-type cards, each = toggle on tap (whole row, `SettingsScreen.kt:277`), expandable info via "More info" chevron (`Strings.kt:487`). Labels/descriptions (`Threat.kt:66-126`), in enum order (`Threat.kt:25-33`):
+
+| # | Label (`labelEn`) | Description (`descriptionEn`) |
+|---|---|---|
+| 1 | **"UAV"** | "Strike drones, including \"Shahed\"-type." |
+| 2 | **"FPV drone"** | "FPV and loitering munitions (Lancet, Molniya) — short range, near the front line." |
+| 3 | **"Cruise missile"** | "Air-, sea-, and ground-launched cruise missiles." |
+| 4 | **"Ballistic"** | "Ballistic missiles with short flight time — highest priority." |
+| 5 | **"Guided bomb"** | "Guided aerial bombs, used near the front line." |
+| 6 | **"Aviation / MiG-31K"** | "Takeoff of \"Kinzhal\" carrier aircraft — threat to the entire country." |
+| 7 | **"Reconnaissance"** | "Reconnaissance activity that precedes strikes." |
+| 8 | **"Unknown"** | "Signals whose type is still being confirmed by sources." |
+
+- Enabled cards get a 2dp primary border; disabled are dimmed to 45% alpha (`SettingsScreen.kt:269-271,279`).
+- Expanded info per card (`SettingsScreen.kt:311-372`): details paragraph, a speed chip **"~NNN km/h"** (`speedUnit = "km/h"`, `Strings.kt:444`, chip `SettingsScreen.kt:327-341`), a **photo** (drawable via `ThreatImages.drawableRes` or network image via `ThreatImages.url` + Coil `AsyncImage`, `SettingsScreen.kt:343-363`), and a joke line if present (`SettingsScreen.kt:364-371`).
+- Default: all types enabled (`ZonePrefs.kt:100`).
+
+### f. "Alerts" (`Strings.kt:405`, header `SettingsScreen.kt:378`)
+One card, three toggles (`SettingsScreen.kt:379-410`):
+1. **"Fast objects alert sooner"** — "Missiles (ballistic, cruise, guided bombs, MiG-31K) sound the siren the moment they cross any zone boundary." (`Strings.kt:410-411`; bolt icon)
+2. **"Official alerts"** — "Alerts for the official oblast air-raid signal. Does not affect your Red/Yellow zone alerts." (`Strings.kt:412-413`; trident icon) + small note **"A red trident in the header means the official alert is on."** (`Strings.kt:416`)
+3. **"Sirens always sound"** — "Ring the siren even when the phone is on vibrate or silent. Off by default — alerts follow your phone's sound settings." (`Strings.kt:414-415`; volume icon)
+- Defaults: fastAlertsSooner = true, officialAlerts = true, sirenOverride = **false** (`ZonePrefs.kt:75,83,91`).
+
+### g. Battery / "Keep alerts running" card (`SettingsScreen.kt:412-457`)
+- If exemption granted: a plain check-mark row **"Unrestricted in background"** (`Strings.kt:504`).
+- Otherwise a card: title **"Keep alerts running"** (`Strings.kt:501`), body **"Android may pause this app in the background to save battery. The app itself uses very little power — alerts stream in live and your location uses a low-power fix — so allowing unrestricted background use won't drain your phone, and alerts keep ringing. Safety first."** (`Strings.kt:502`), and a full-width button **"Allow in background"** (`Strings.kt:503`) that calls `BatteryOptimization.requestExemption` (`SettingsScreen.kt:449`).
+
+### h. "Feature guide" entry
+- Full-width outlined button, label **"Feature guide"** (`Strings.kt:507`, `SettingsScreen.kt:464`).
+
+### i. Horizontal divider (`SettingsScreen.kt:468-470`)
+
+### j. Update button — three states (`SettingsScreen.kt:472-516`)
+- Checking: disabled button, spinner + **"Update"** (`Strings.kt:471`)
+- Update available: filled button, download icon + **"Update available · vX.Y.Z"** (`Strings.kt:472`, `SettingsScreen.kt:498`)
+- Idle: outlined button, refresh icon + **"Update"** (contentDescription "Check for updates", `Strings.kt:470`)
+
+### k. "Stop Monitoring & Exit"
+- Full-width button in error color (`SettingsScreen.kt:518-529`), label **"Stop Monitoring & Exit"** (`Strings.kt:425`).
+
+## 2. Threat card size/detail setting — present
+Yes: **"Threat card size and detail"** section with SMALL / MEDIUM / LARGE (`ZonePrefs.kt:20`, selector `SettingsScreen.kt:704-724`), default **LARGE** (`ZonePrefs.kt:177`), persisted as string key `threat_card_size` (`ZonePrefs.kt:38`). Tiles are live scaled previews, no textual Small/Medium/Large captions.
+
+## 3. Default zone radii and ranges (ZonePrefs.kt)
+- **Red (inner) zone**: default **5 km**, slider/coerce range **1–5** (`ZonePrefs.kt:41-47`, key `red_zone_km`).
+- **Yellow (outer) zone**: default **20 km**, slider/coerce range **6–20** (`ZonePrefs.kt:49-55`, key `yellow_zone_km`).
+- (Related: `red_zone_armed` / `yellow_zone_armed` default **true** — `ZonePrefs.kt:58-71`; these drive the Zones sheet, not the Settings screen.)
+
+## 4. Canadian spelling "centre" in English UI — yes
+- **"Map centre"** — section header (`Strings.kt:490`, used at `SettingsScreen.kt:206`)
+- **"The map centre and zones pin to the selected city..."** (`Strings.kt:494`)
+- **"Toggle it in Settings → Map centre."** — feature-guide string (`Strings.kt:552`)
+
+## 5. "Made by" credit line — yes
+Bottom of the list (`SettingsScreen.kt:531-541`): centered small text **"Made by Presaince · v{versionName}"** (EN) / "Зроблено Presaince" (UA) — `Strings.kt:434,242`; version from `versionName` param.
+
+### Notable observations
+- The "Fast objects alert sooner" and "Sirens always sound" toggles exist exactly as you described, but **"Fast objects alert sooner" appears before "Official alerts"** in the Alerts card (`SettingsScreen.kt:382-407`).
+- The pin-to-city dropdown shows **26 major cities** (not 42 — minor cities are filtered out, `SettingsScreen.kt:611`).
+- The language row uses the **🇬🇧 UK flag**, not the US flag, for English.
+- Threat-type toggles are whole-row taps with a "More info" chevron; there is no separate per-type on/off switch component.
+## 14/08/2026, 17:16:44
+
+I have everything needed. Here is the audit report.
+
+---
+
+# Map Screen UI Audit — Ukraine Drones
+
+## 1. Header (top bar)
+`MainScreen.kt:266-338`
+
+- **Trident emblem**: `UkraineEmblem` composable (`MainScreen.kt:300-303`, `511-533`) — 32dp box rendering `R.drawable.ic_trident`. When an official oblast alert is active (`focusOblastAlertActive`), it gets a soft red radial halo and the trident itself is tinted red (`AlertRed #D32F2F`); otherwise untinted.
+- **Title text** (`MainScreen.kt:279-287, 308-323`), single line, ellipsized, tap-to-recenter (`recenterTick++`):
+  - In red zone: **"Червона зона: тривога" / "Red zone: alert"** (`s.redZoneAlert`) — white text on red banner.
+  - In yellow zone: **"Жовта зона: тривога" / "Yellow zone: alert"** (`s.yellowZoneAlert`) — white on `#F9A825` banner.
+  - No zone but official alert: **"<city>: тривога" / "<city>: alert"** (`s.alertBannerFormat`, e.g. "Одеса: тривога") in `#E57373`, plus a 2.5dp `AlertRed` border around the whole bar (`MainScreen.kt:294`).
+  - Pinned city (and not followMe): the city name itself (UA or EN name).
+  - Otherwise: app title **"Українські дрони" / "Ukraine Drones"** (`s.appTitle`) rendered with a blue→yellow gradient brush (`#005BBB` → `#FFD500`).
+- **Connection pill** (`MainScreen.kt:324-328`, `761-845`): dark pill (black 55% alpha), 8dp dot — green `#4CAF50` when connected ("Онлайн"/"Online"), red `#E57373` when not ("Офлайн"/"Offline"). Tap opens an AlertDialog with server-status lines, up/down indicators, and an underlined NEPTUN attribution link to `https://neptun.in.ua/`.
+- **Settings button** (`MainScreen.kt:329-336`): 32dp IconButton using `R.drawable.ic_settings_ua` (22dp). Inspected the vector (`res/drawable/ic_settings_ua.xml`): it is **a gear icon split blue top half (`#005BBB`) / yellow bottom half (`#FFD500`)** — i.e. a Ukraine-flag-colored gear, not a plain gear and not flags. Content description: "Налаштування"/"Settings".
+- **Flags**: none in the header. Flag emojis 🇺🇦/🇬🇧 appear only in the first-run `LanguageChooseDialog` (`MainScreen.kt:210-222`) and in Settings.
+- **Pinned-city behavior**: with a city pinned and followMe off, the title shows the city name and the whole bar's title-tap recenters to it; the map camera jumps to the city and refits its yellow zone on pin change (`MapView.kt:311-320`). A red trident (official alert) / gradient title / zone banner all override the city name display. Also, tapping the title while following recenters to GPS (or Odesa pre-fix).
+
+## 2. Footer / threat strip
+`MainScreen.kt:389-426`, `848-884`
+
+- A `Surface(tonalElevation = 2.dp)` under the map. Counts come from `uiState.threatsInner` + `uiState.threatsOuter` grouped by `ThreatType`.
+- **All-zero state**: centered green (`#4CAF50`) text **"Загроз немає — йди на свіже повітря" / "No threats — go touch grass"** (`s.noThreatsMessage`).
+- **Otherwise**: a horizontally scrollable row (`spacedBy 16dp`) of `ThreatStatusCell` per type **with count > 0 only** — a type with zero threats is hidden entirely. Each cell (`MainScreen.kt:848-884`): 18dp type icon + count (`labelLarge`) + a 2dp × 18dp rounded underline bar.
+- **Pulsing underline**: when the type is enabled (`type !in uiState.disabledTypes`), the underline pulses (alpha 0.3→1.0, 700ms, reverse repeat) in `colorScheme.primary`; disabled types render the icon grey (`#9E9E9E`) and a static `outlineVariant` bar at 0.4 alpha.
+- **No OFF chips or bells in the footer.** OFF markers/bells live on the map zone buttons and in the edit sheet, not in the strip.
+
+## 3. Floating map controls (everything overlaid on the map)
+`MainScreen.kt:356-387` + map overlays in `MapView.kt`
+
+- **Scale bar** (`ScaleIndicator`, `MainScreen.kt:356-362, 536-587`): bottom-start. Google-Maps-style — a rounded white label ("5 км"/"5 km", using `s.kmUnit`/`s.meterUnit`, candidates 50 m → 50 km fitting ~84dp) above a thin 3dp bar of alternating black/white segments with a white border. Hidden when `metersPerPixel <= 0`.
+- **Pinned-city pill** (`PinnedPill`, `MainScreen.kt:363-373, 732-758`): shown only when a city is pinned and not following — bottom-start above the scale (bottom 40dp). White pill, 8dp blue dot (`#005BBB`), text **"Прикріплено: %1$s" / "Pinned: %1$s"** (`s.mapPillPinned`).
+- **Zone buttons row** (`ZoneButtons`, `MainScreen.kt:374-386, 590-632`): bottom-center column:
+  - **"All alerts off" pill** (`AllAlertsOffWarning`, `MainScreen.kt:603-605, 635-673`) — only when both zones are disarmed. Black 55% rounded-50 pill with two grey outlined bell icons + amber `#F9A825` warning icon + label **"Усі сповіщення вимкнено" / "All alerts are off"** (`s.allAlertsOffLabel`). Tap → opens the zones sheet.
+  - **Red zone button** + **Yellow zone button** (`ZoneButton`/`ZonePill`, `MainScreen.kt:676-729`): 38dp circles. Armed = filled `#D32F2F` / `#F9A825` with white zoom-in icon (`R.drawable.ic_zoom_in`); disarmed = dark `#2A2A2A` fill, grey `#666666` border, grey icon. **A dimmed outlined bell floats above a disarmed zone's pill** (`MainScreen.kt:687-695`). Tap → zoom camera to fit that zone circle with 5% margin (`MapView.kt:330-338`).
+  - **Pencil / "Edit zones" button** (`MainScreen.kt:613-629`): 38dp circle, `Icons.Default.Edit` pencil in primary color, content description **"Змінити зони" / "Edit zones"** (`s.editZonesLabel`). Tap → opens the bottom sheet.
+- **Map overlay markers** (not buttons, `MapView.kt`): threat markers for all 8 types (rotated to course, tap → popup, `MapView.kt:409-439`); **GPS dot** — classic blue glowing dot (`#2196F3` core + radial glow + white ring) only while following (`MapView.kt:120-149, 445-454`); **pinned-city pin** — blue map pin (`#005BBB` fill, white stroke, white circle with yellow dot) anchored tip-on-city, only when pinned (`MapView.kt:152-189, 457-466`); zone rings (below); city-name labels overlay; tap-empty-map overlay closes the popup.
+- **Zone circles**: two outline-only `Polygon`s (no fill) centered on the focus point — yellow ring (`#FFD540`-ish) and red circle (`#FF5252`-ish), both brighter/thicker (4f vs 2.5f/3f stroke) when that zone is actively alerting (`MapView.kt:384-406`).
+- No built-in +/− zoom buttons ("everyone uses pinch", `MapView.kt:259-260`).
+
+## 4. "Edit zones" bottom sheet
+`MainScreen.kt:452-506` (container) + `ZonesSheet.kt:23-140` (content)
+
+- Non-modal dark (`#1E1E1E`) surface pinned to the bottom, 20dp rounded top corners, over the live map (circles update while dragging; map stays pannable). Opening it also re-centers/re-zooms the map so the yellow zone fits the top 60% of the viewport (`MapView.kt:343-354`).
+- **Handle**: 36×4dp grey `#555555` rounded bar; tap anywhere on it closes, vertical drag ≥ 80dp dismisses (`MainScreen.kt:465-491`).
+- **Content** (`ZonesEditContent`): title **"Зони тривог" / "Alert zones"** (`s.zonesLabel`); two `ZoneRow`s separated by a divider, then a small explain paragraph (`s.zoneExplain`).
+- **Per-zone row** (`ZoneRow`, `ZonesSheet.kt:77-140`):
+  - **Bell IconButton** (40dp) — filled + accent-colored when armed, outlined grey `#777777` when muted; content description "Увімкнути або вимкнути оповіщення"/"Toggle alerts on/off" (`s.alertsBellToggle`).
+  - **Switch** — accent-colored thumb/track when on, grey when off.
+  - **Slider** (live commit on drag) — Red row: **1..5 km**, accent `#D32F2F`; Yellow row: **6..20 km**, accent `#F9A825` (`ZonesSheet.kt:46, 58`).
+  - Value label `"<N> km"` in the accent color. Note: it hardcodes EN `kmUnit` ("km") even in the Ukrainian UI (`ZonesSheet.kt:134`).
+
+## 5. Feature guide
+`FeatureGuide.kt:33-62`, `FeatureDiagrams.kt:39-79`
+
+- **14 expandable cards** (thumbnail diagram 92×62dp, title, summary, chevron; expanded shows 3 bullet points each) grouped under **5 category headers**:
+  - **"Карта" / "Map"**: Live threat map · Threat strip · Connection & scale
+  - **"Зони та тривоги" / "Zones & alerts"**: Red & yellow zones · Edit zones · Notifications · Alert toggles
+  - **"Місцезнаходження" / "Location"**: Follow me · Pin to a city
+  - **"Картка загрози" / "Threat cards"**: Card sizes · Reading a card
+  - **"Налаштування" / "Settings"**: Language · Threat toggles · Updates
+- **Illustrations**: `GuideDiagram` enum has exactly those 14 kinds (LIVE, STRIP, CONN, ZONES, EDIT_ZONES, NOTIF, TOGGLES, FOLLOW, PIN, CARD_SIZE, CARD_READ, LANG, THREAT_TOGGLES, UPDATE), each with a matching `DrawScope` function (`drawLive`, `drawStrip`, `drawConn`, `drawZones`, `drawEditZones`, `drawNotif`, `drawToggles`, `drawFollow`, `drawPin`, `drawCardSize`, `drawCardRead`, `drawThreatToggles`, `drawUpdate`) plus shared helpers (`bg`, `bell`, `drawCross`, `switch`). The LANG diagram draws flag emoji text instead of Canvas art.
+
+## 6. Tile provider & map constraints
+`MapView.kt:44-58, 243-277`; `UkraineTileProvider.kt`
+
+- **Tile source**: `DARK_TILE_SOURCE` = `XYTileSource("CartoDB_DarkNoLabels", 0..17, 256px PNG)` served from `a|b|c|d.basemaps.cartocdn.com/dark_nolabels/` (`MapView.kt:44-52`). Black map background, black loading overlay lines.
+- **Download filter**: custom `UkraineTileProvider` wraps the tile downloader and **refuses to download/cache any tile that doesn't intersect Ukraine bounds** (lat 42.4–54.4, lon 20.1–42.2, ~2° margin) (`UkraineTileProvider.kt:16-19, 23-47`).
+- **Pan constraint**: `setScrollableAreaLimitDouble(UA_VIEW_LIMITS)` where `UA_VIEW_LIMITS = BoundingBox(52.7, 40.6, 43.9, 21.7)` — "Ukraine (incl. Crimea) plus a ~0.5° margin — the map can't pan past this" (`MapView.kt:57-58, 264`).
+- **Zoom limits**: `maxZoomLevel = 17.0` (`MapView.kt:261`); min zoom is **floored to the zoom that fits the whole Ukraine viewport** so you can't zoom out past "Ukraine fills the screen" (`MapView.kt:282-286`).
+- **Startup**: centered on Odesa `GeoPoint(46.4832, 30.7346)` at zoom 12.0; once a GPS/pin focus exists it zooms to fit the whole yellow zone (`MapView.kt:265-268, 300-308`).
+- **Cache**: osmdroid paths under `cacheDir/osmdroid`, 64 MB max / 48 MB trim (`MapView.kt:247-252`).
+
+## Notable details / potential issues found
+- `ZonesSheet.kt:134` hardcodes `Strings.get(AppLanguage.EN).kmUnit` → the sheet always shows "km", even in the UA UI (UA "км" elsewhere, e.g. `s.kmUnit = "км"`).
+- The header's official-alert state uses both a red border (`MainScreen.kt:294`) and the red trident halo, plus red `#E57373` title text — three simultaneous red signals.
+- Zone button content descriptions mention "long-press for settings" (`s.zoneButtonRed/Yellow`), but the actual implementation only supports tap-to-zoom (`MainScreen.kt:719`) — long-press is not wired in this file (only via the separate pencil button / pill).
+## 14/08/2026, 17:17:34
+
+Audit complete. All findings verified against source under `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\`. Nothing was modified.
+
+---
+
+## 1. Threat popup card (`ThreatPopupCard.kt`)
+
+Three sizes via `ThreatCardSize { SMALL, MEDIUM, LARGE }` (`ZonePrefs.kt:20`), selected in settings. All sizes share one dark `Surface` (`0xFF1E1E1E`, 16dp radius, elevation 8) with a **zone-colored border**:
+
+- **Border** = `BorderStroke(2.dp, bandColor)` (`ThreatPopupCard.kt:125`); `bandColor` derives from `effectiveZone(threat, spatial, fastAlertsSooner)` → INNER = red `0xFFE57373`, OUTER = amber `0xFFFFD54F`, null/outside = grey `0xFF9E9E9E` (lines 85–94). The border color therefore turns red the moment a fast object crosses any zone boundary.
+- **SMALL** (lines 130–167): one line — 28dp type icon + type label (1 line) + summary (distance/ETA or "GPS off"); right side a grey-tinted `LevelSkullIcon` (18dp) next to a compact `HorizontalLevelBar` (56×8dp, 0–10).
+- **MEDIUM** (lines 170–273): header (icon 28dp, type label, region text + rotated course arrow), right column skull 24dp + horizontal bar; summary row + `SpeedPill`; divider; footer = reliability pill + ticking "last seen" elapsed (updates every 1s via `LaunchedEffect`).
+- **LARGE** (lines 276–445), the full card, top to bottom:
+  1. Header: 32dp icon + type label + region (`locality · district · region`, deduped, EN-translated via `Translator` when Cyrillic; lines 61–74) + course arrow rotated `threat.courseDeg` (lines 306–315).
+  2. Always-visible summary: colored distance + ETA (line 102–115: distance colored red <5 km / amber <15 km / green above) + `SpeedPill` (green if `SpeedSource.RECORDED`, amber if `TYPICAL`; lines 532–544).
+  3. Divider, then **course description — first sentence only**: `translateCourseAssessment(threat.explanationShort, lang)?.let { firstSentence(it) }` (lines 347–348); `firstSentence` cuts at the first `.`, `!`, or `?` (lines 459–464). `translateCourseAssessment` (`Threat.kt:319–330`) maps known Ukrainian sentence templates (`COURSE_PATTERNS`, Threat.kt:301–311) to EN, translating only place names via `Cities.uaToEn`; unrecognized text stays raw Ukrainian. NEPTUN's raw course text is also scrubbed of confirmation-count noise in `Threat.sanitizeCourse` (Threat.kt:255–265).
+  4. Amber **advisory** label when `threat.advisory` (lines 359–370).
+  5. **Wave size**: `"${s.groupLabel}: $it"` when `count > 0` (lines 372–379).
+  6. **Precision**: `UncertaintyBar` — 5-segment bar (1–5 segments by `uncertaintyBars`, km<1→5 … ≥8→1) plus raw `±N km` caption (lines 554–588).
+  7. `areaOnly` label "Оblast only (no exact point)" when applicable (lines 383–386).
+  8. Divider, footer: **reliability pill** (HIGH/MEDIUM/LOW/UNKNOWN) + **sources pill** `"$n sources"` when `confirmations > 0` + ticking "last seen" elapsed (lines 392–440).
+  9. Right rail: vertical **`ThreatLevelGauge`** — 26dp skull above a 12×140dp 0–10 fill bar (lines 499–530).
+- **Skull disclaimer**: skull icons are grey below level 3.0, tinted by `levelColor` (≥8 red `0xFFD32F2F`, ≥6 `0xFFE57373`, ≥3 amber, else green; lines 451–456). The disclaimer line — `cardSkullNote` = "Skull (0–10) is a rough estimate — type, distance, reliability, sources. Not an official rating or a guarantee of your safety." (`Strings.kt:475` UA at 283) — is **not rendered inside the popup**; it appears in `SettingsScreen.kt:247–248` under the card-size selector (skull icon + text). A broader "official signals come first" disclaimer card also exists (`Strings.kt:423–424`).
+
+## 2. The 8 threat types (`Threat.kt:25–33`, catalog `ThreatTypeCatalog`, speeds `Prediction.kt:130–141`)
+
+| apiKey | UA label | EN label | typical speed (km/h) |
+|---|---|---|---|
+| `shahed` | БпЛА | UAV | 180 (50 m/s) |
+| `fpv` | FPV-дрон | FPV drone | 120 (33.33 m/s) |
+| `cruise` | Крилата ракета | Cruise missile | 850 (236.11 m/s) |
+| `ballistic` | Балістика | Ballistic | 3300 (916.67 m/s) |
+| `kab` | КАБ | Guided bomb | 900 (250 m/s) |
+| `aviation` | Авіація / МіГ-31К | Aviation / MiG-31K | 900 (250 m/s) |
+| `recon` | Розвідка | Reconnaissance | 80 (22.22 m/s) |
+| `unknown` | Невідомий | Unknown | none (`typicalSpeedKmh` null) |
+
+`fromApi` also maps aliases: `uav/drone→SHAHED`, `lancet/molniya/loitering→FPV_LOITERING`, `missile/cruise_missile→CRUISE_MISSILE`, `mig31/mig31k/kinzhal→AVIATION` (Threat.kt:40–45). Icons per type: `ThreatPopupCard.kt:590–598`.
+
+## 3. Alerting engine (`AlertService.kt`, `Zones.kt`)
+
+- **Architecture**: always-on foreground service (`START_STICKY`, `startForegroundCompat` DATA_SYNC type), owns the shared `NeptunClient` + `LocationTracker`; `START_NOT_STICKY` only on explicit `ACTION_STOP`.
+- **Siren vs chime**: INNER (red) zone → `air_raid_siren` sound, banner `s.redZoneAlert`; OUTER (yellow) zone → `zone_outer` chime, banner `s.yellowZoneAlert` (`AlertService.kt:319–322`, channels 425–444). Both `IMPORTANCE_HIGH`, `CATEGORY_ALARM`, auto-cancel, tap opens app via singleTask intent (lines 400–413).
+- **Red/yellow semantics** (`Zones.kt:14–18`): `radialZone` — ≤ redKm → INNER, ≤ yellowKm → OUTER, else outside. Zones are km-scale circles centered on the focus point (GPS while following, else pinned city). Zone membership uses **dead-reckoned predicted positions** (`speedTracker` + `predictPosition`), skipping resolved/stale/expired/`areaOnly` threats and disabled types (`AlertService.kt:226–228`).
+- **"Fast objects alert sooner"**: `effectiveZone` (`Zones.kt:25–26`) promotes a `FAST_THREAT_TYPES` object (`BALLISTIC, CRUISE_MISSILE, AVIATION, KAB`; `Threat.kt:18–23`) from OUTER to INNER — i.e. it fires the urgent siren the moment it crosses *any* zone boundary. Default ON (`ZonePrefs.kt:75`).
+- **Arming toggles** (`AlertService.kt:256–262`): `redArmed` gates INNER (falls back to OUTER chime if `yellowArmed`); `yellowArmed` gates OUTER; both off → silent (no notification for that object).
+- **Vibrate/silent & "Sirens always sound"**: without override, channels use `USAGE_NOTIFICATION` sound (follows ringer). With `sirenOverride` ON, posts go to `CHANNEL_ALERTS_ALARM` / `CHANNEL_ALERTS_OUTER_ALARM` which use `USAGE_ALARM` → sound even on vibrate/silent (lines 348–357, 455–476). All-clear never overrides (comment line 351).
+- **Official oblast alert**: independent of zone membership; fires on the false→true edge of `focusOblastAlertActive` and only when `officialAlertsEnabled`; banner `String.format(alertBannerFormat, focusBannerCity)` + region text (lines 286–293). The toggle gates *only* official-alert notifications, never zone alerts (lines 283–285).
+- **All clear**: when the ringing official alert ends → `CHANNEL_ALLCLEAR` notification with cheerful `all_clear` chime, title `allClearTitle` (lines 297–299, 445–454). Only fires for official alerts; zone clears are silent; gated by the official-alerts toggle.
+- **Coalescing**: only tier *changes* post; closest/urgent tier wins (`minWithOrNull(compareBy ordinal)`), max one notification per update to avoid double-playing the siren (lines 264–281).
+- **Grace window**: after everything is quiet, the alert notification is cancelled only after `CENTRE_ALERT_GRACE_MS = 60s` (lines 305–316).
+- **Background status notification**: `NOTIF_MONITOR` ongoing, `IMPORTANCE_LOW`, text switches between `notifStatusZones` and `notifStatusPinned` depending on pin state (lines 248–251); channel name/desc refreshed per language (lines 503–511).
+- **Pin-to-city**: with follow-me off, focus = pinned city's lat/lon (line 168); drives zone circles, official-alert matching (`focusAttribution` → `Cities.cityOblast` token, `Cities.kt:152–170`), banner city, and the "pinned" monitor text. Red cities in the settings picker come from the same `redCities` set.
+- **Auto-restart**: `BootReceiver.kt:11–17` restarts `AlertService` on `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED` (in-app update), registered in `AndroidManifest.xml:27–31` with `RECEIVE_BOOT_COMPLETED` permission (line 11). Service is also restarted by the system on kill via `START_STICKY` (`AlertService.kt:111`).
+
+## 4. Location (`LocationTracker.kt`)
+
+- **Coarse-only confirmed**: requests only `ACCESS_COARSE_LOCATION` (manifest `AndroidManifest.xml:6` + runtime `LocationTracker.kt:73`, `MainActivity.kt:86–94`), and registers only `LocationManager.NETWORK_PROVIDER` — GPS deliberately skipped to keep the radio off (lines 50–54). No fine-location permission anywhere.
+- **Cadence**: `UPDATE_INTERVAL_MS = 120_000` (~2 min) with `MIN_DISTANCE_METERS = 250f` (~250 m movement threshold) (lines 23–24). Seeds from last-known network fix (line 47), so zones keep drawing indoors.
+- Single listener owned by the foreground service; the UI and alert logic share the same `StateFlow<LatLng?>` (lines 26–27).
+- **"Approximate location" label**: no such literal label exists. Closest UX: popup shows `gpsOffLabel` = "GPS off — no zone data" when there is no fix (`ThreatPopupCard.kt:112`, `Strings.kt:287/479`); the settings zone explainer says "Threat positions are coarse, so zone edges are only a guide" (`Strings.kt:421`); the disclaimer says positions "can't be accurate, even when marked confirmed" (`Strings.kt:424`). NEPTUN's `positionQuality` (`confirmed|approx`) is consumed only as a threat-level factor (`ThreatLevel.kt:38–51`) and is not rendered as a label in the popup.
+
+## 5. Update manager (`UpdateManager.kt`, `MainViewModel.kt`)
+
+- **Server**: `UPDATE_BASE_URL = "https://odesaplay.com.ua/other_apps/ukrainedrones/"` (line 19); checks `version.json` with fields `versionCode`, `versionName`, `apkUrl`, `notes.en`, `notes.ua` (lines 64–77). Update considered available when server `versionCode >` installed, or equal code + semantically greater version name (lines 78–81).
+- **Cadence**: `autoCheckForUpdates` — at most once per day (`DAILY_CHECK_INTERVAL_MS = 24h`, `MainViewModel.kt:72`, 473–480), gated by `last_update_check` timestamp in DataStore (`ZonePrefs.kt:34,116–120`). Called from VM init (`allowPopup=true`) and when opening settings (`allowPopup=false`; `MainScreen.kt:99`). The update dialog is suppressed while any threat or official alert is active (`hasActiveAlert`, `MainViewModel.kt:483–484`).
+- **Install behavior**: APK streamed to `cacheDir/updates/app-update.apk` with progress, validated ≥1 MB + "PK" zip magic (lines 93–131); install via `FileProvider` `ACTION_VIEW application/vnd.android.package-archive` (lines 143–151), requires the "install unknown apps" permission — otherwise opens `ACTION_MANAGE_UNKNOWN_APP_SOURCES` (lines 133–140). Installer auto-launches once downloaded + permission granted (`MainScreen.kt:164`).
+
+## 6. City alert coloring (`Cities.kt`) — confirmed live
+
+- `CityLabelOverlay` draws every listed city name; paint turns red `(255, 211, 47, 47)` when the city's oblast stem token is in `activeRegionTokens`, else light grey `(230, 235, 235, 235)` (lines 209–213).
+- `activeRegionTokens` is derived **live** in `MainViewModel.buildUiState` from `neptun.oblastAlerts` (lines 286–290) and passed to the overlay each frame via `MapView.kt:379` (also encoded into the map cache key at `MapView.kt:227`). So red city names track the live official-alert stream.
+- Labels also append `"(N)"` threat counts when a curated city's locality is named (lines 214–215; counts built at `MainViewModel.kt:314–316`).
+- Settings city picker shows a **red dot** on cities whose oblast is under alert (`SettingsScreen.kt:643`, from `MainViewModel.kt:292–297` `redCities`).
+- Oblast attribution: `focusAttribution` (`Cities.kt:152–170`) uses the pinned city, else nearest listed city within 70 km of GPS, else falls back to "Одеса/Odesa".
+
+## 7. Connection pill / NEPTUN link
+
+- `ConnectionStatus` pill (`MainScreen.kt:761–784`): a small rounded black pill in the top bar with a green/red dot and `connOnline`/`connOffline` text, driven by `uiState.connected` (from `NeptunClient`). Tapping it opens an `AlertDialog` (lines 785–844) showing server up/down legend lines and an underlined attribution link (`attributionText`) rendered as `ClickableText` that launches `https://neptun.in.ua/` (`MainScreen.kt:838–840`).
+- The live threat data feed itself is `https://neptun.in.ua/api/v1/threats` (`NeptunClient.kt:86`), plus a WebSocket telemetry stream (referenced at `NeptunClient.kt:91`).
+
+### Notable gaps vs. the request's premises
+- "Skull line disclaimer" is a settings screen element, not part of the popup card itself.
+- No "Approximate location" label exists in the UI; coarse-only location is handled invisibly (permission name + the generic "GPS off" text).
+## 14/08/2026, 17:18:28
+
+Audit done — verified against current source. The README is out of date in several places. Here's what I found:
+
+## Outdated claims (README vs. actual code)
+
+| README says | Actually now |
+|---|---|
+| Red zone default 1–5 km, Yellow 6–20 km | Defaults are the **maxima**: 5 km (1–5) / 20 km (6–20) |
+| "master bell in the floating map controls" | Master bell is **gone**; per-zone bell+switch live in Edit zones; dimmed bell floats over a disarmed zone's button |
+| Language switcher in the header | Flags (🇺🇦/🇬🇧, now the **UK** flag) are in Settings + first-launch picker; header has trident, title, connection pill, Ukraine-colored **gear** |
+| Pin to one of **22 cities** | **26 major cities**, "**Map centre**" (Canadian spelling), behind a "Follow me" toggle |
+| Footer "always shows the armed/muted state" | Footer shows **only types with a live count**; no bells/OFF chips; pulsing underline for enabled+active types |
+| "Threats render full-strength in-zone, dimmed outside" | All threats are **full opacity** everywhere (`MapView.kt:426`) — no zone dimming anymore |
+| Popup: single full card | **3 selectable sizes** (Small/Medium/Large with live previews); course line = first sentence; zone-colored border; the skull disclaimer lives in Settings |
+| — | Missing entirely: all-clear chime, "Sirens always sound", reboot/update auto-restart, "Keep alerts running" battery card, threat-card-size setting, map locked to Ukraine, pinned-city pill/title |
+
+Everything else (two-zone siren/chime model, "Fast objects alert sooner", coarse-only location, 8 threat types, official oblast alert, no-cloud/no-push/privacy section) checks out.
+
+## Revised plan
+
+1. **Placeholder screenshots** — same as before: generate 5 dark-themed PNGs (`docs/screenshots/map.png`, `threat-popup.png`, `edit-zones.png`, `settings.png`, `feature-guide.png`) so the gallery renders, each captioned with how to replace it via `adb`.
+2. **Rewrite README.md** with the audited facts:
+   - Hero + download link (`app-release.apk` on the update server) + screenshot gallery
+   - Features: live NEPTUN WebSocket over dark CARTO tiles; Red (siren) / Yellow (chime) rings with adjustable radii; official oblast alert (trident glows red); 8 threat types; 3 threat-card sizes; UA/EN (Canadian English, UK flag); coarse-only battery-cheap location; background monitoring with boot/update auto-restart; in-app self-updates
+   - Alerts model: corrected defaults, no master bell, "Fast objects alert sooner", sirens follow phone sound mode + "Sirens always sound", all-clear chime, pin-to-city
+   - What it deliberately does NOT do (kept verbatim-ish)
+   - Build-from-source + condensed architecture + safety/attribution
+
+Good to execute this plan?
+## 14/08/2026, 17:19:13
+
+I'll audit all skills across global, project, and external locations, plus config registration.

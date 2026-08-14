@@ -104,7 +104,7 @@ fun ThreatPopupCard(
             withStyle(SpanStyle(color = distColor, fontWeight = FontWeight.SemiBold)) {
                 append("$distLabel: ${formatKm(distUser)} ${s.kmUnit}")
             }
-            proximity?.etaToUserMin?.let { eta ->
+            proximity.etaToUserMin?.let { eta ->
                 append(" · ${s.etaLabel} ${formatEtaMinutes(eta)}")
             }
         } else {
@@ -355,21 +355,6 @@ fun ThreatPopupCard(
                         course?.let {
                             Text(it, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
                             Spacer(Modifier.height(8.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_skull),
-                                    contentDescription = null,
-                                    tint = Color(0xFF9E9E9E),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    s.cardSkullNote,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF9E9E9E)
-                                )
-                            }
-                            Spacer(Modifier.height(8.dp))
                         }
                         if (threat.advisory) {
                             Surface(shape = RoundedCornerShape(12.dp), color = AdvisoryAmber.copy(alpha = 0.18f)) {
@@ -567,7 +552,6 @@ private fun formatEtaMinutes(min: Double): String {
 
 /** Maps uncertainty km to a 1–5 quality rating (more bars = tighter fix). */
 private fun uncertaintyBars(km: Double): Int {
-    if (km == null) return 0
     return when {
         km < 1.0 -> 5
         km < 2.0 -> 4
