@@ -13630,3 +13630,9 @@ Be thorough but efficient. Output a structured bullet list with file:line refere
 ## 14/08/2026, 17:19:04
 
 do my full skills audit
+## 14/08/2026, 17:19:41
+
+go
+## 14/08/2026, 17:21:45
+
+teh user has no idea they can tap a drone on the map to see more details. Nor that Settings is full of goodies.  

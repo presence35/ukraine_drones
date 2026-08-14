@@ -1,110 +1,141 @@
-# Ukraine Drones
+# Ukraine Drones · Українські дрони
 
-A live air-threat map for all of Ukraine that connects straight to the
-[NEPTUN](https://neptun.in.ua) public API and rings alerts when threats come close.
+**A live air-threat map for all of Ukraine.** It connects straight to the
+[NEPTUN](https://neptun.in.ua) public API and rings alerts when threats come close —
+drones, missiles, guided bombs, and more — right on your phone.
 
-**No account, no server, no API key.** The app talks directly to NEPTUN's public
+**No account. No server of ours. No API key.** The app talks directly to NEPTUN's public
 WebSocket, tracks your (approximate) location on-device, and fires siren/chime
 notifications from its own local background service.
 
-## At a glance
+## Download
 
-- Live threat stream from `wss://neptun.in.ua/api/v1/stream` — drones, missiles, bombs,
-  and more, over an OpenStreetMap base (no Google account or key needed).
-- **Two alert rings around your location**: a Red zone (urgent, full siren) and a Yellow
-  zone (warning, two-tone chime). Radius is adjustable per zone.
-- **Official oblast alert** shown on its own — the trident-glow indicator turns red while
-  a government air-raid signal is active; controlled independently in Settings.
-- Threats render full-strength when inside a zone and dimmed outside. Tap any threat for a
-  detail card — type, region, level, speed, precision, reliability, last seen.
-- UA/EN language switcher in the header; city labels turn red when their oblast is on alert.
-- Dark-only theme, battery-cheap location, self-updates with in-app install.
+The app updates itself in place, so you only ever need the latest APK once:
 
-## Alerts model
+- **APK:** [app-release.apk](https://odesaplay.com.ua/other_apps/ukrainedrones/app-release.apk)
+- **Version info:** [version.json](https://odesaplay.com.ua/other_apps/ukrainedrones/version.json)
 
-There are three independent alert sources, each with its own toggle:
+Open the APK on the phone and allow "install unknown apps" when asked. From then on,
+Settings → Update keeps you current automatically (checked silently at most once a day).
 
-1. **Red zone** — inner ring (default 1–5 km). Entering it triggers the urgent air-raid siren.
-2. **Yellow zone** — outer ring (default 6–20 km). Entering it triggers a two-tone warning chime.
-3. **Official oblast alert** — follows the government signal on its own; never mixed with the
-   zone alerts.
+## Screenshots
+
+The gallery below uses placeholders for now — real captures will drop in here. To replace
+one, run the app (e.g. in an emulator) and use
+`adb exec-out screencap -p > docs/screenshots/<name>.png`, keeping the filename.
+
+| Map | Threat detail card | Edit alert zones |
+| --- | --- | --- |
+| <img src="docs/screenshots/map.png" width="220" alt="Live threat map"> | <img src="docs/screenshots/threat-popup.png" width="220" alt="Threat detail card"> | <img src="docs/screenshots/edit-zones.png" width="220" alt="Edit alert zones"> |
+
+| Settings | Feature guide |
+| --- | --- |
+| <img src="docs/screenshots/settings.png" width="220" alt="Settings"> | <img src="docs/screenshots/feature-guide.png" width="220" alt="Feature guide"> |
+
+## Features
+
+- **Live threat stream** from `wss://neptun.in.ua/api/v1/stream` (with REST merge when the
+  stream goes quiet), drawn over a dark OpenStreetMap-style base. No Google account or key.
+- **Two alert rings around your location** — a Red zone (urgent, full siren) and a Yellow
+  zone (warning, two-tone chime). Radii are adjustable (red 1–5 km, yellow 6–20 km).
+- **Official oblast air-raid alerts** on their own — the trident glow in the header turns
+  red while a government signal is active. Controlled independently in Settings.
+- **Eight threat types** with vector icons, plain-language descriptions and reference
+  photos: UAV (Shahed), FPV/loitering (Lancet), cruise missile, ballistic, guided bomb,
+  aviation (MiG-31K), reconnaissance, unknown.
+- **Threat detail cards in three sizes** (Small / Medium / Large, pick in Settings): type,
+  region, an experimental 0–10 threat-level gauge, speed, distance/ETA, precision (±km),
+  reliability with source count, wave size and time since last seen. Tap the map to dismiss.
+- **Live city alerts** — city labels turn red while their oblast is on official alert and
+  show active-threat counts (e.g. "Kharkiv (2)").
+- **UA / EN** — English uses Canadian spelling and the 🇬🇧 flag; first launch asks your
+  preference, or switch anytime in Settings.
+- **Battery-cheap location** — coarse network fix only (~2 min / ~250 m), so the rings stay
+  honest and the battery stays alive.
+- **Monitoring keeps running in the background** — a foreground service keeps alerting while
+  you use other apps, and restarts itself after a phone reboot or an in-app update.
+- **Self-updating** — silent daily checks plus a manual button, with in-app install.
+
+## How alerts work
+
+Three independent alert sources, each with its own toggle:
+
+1. **Red zone** — inner ring (1–5 km). Entering it triggers the urgent air-raid siren.
+2. **Yellow zone** — outer ring (6–20 km). Entering it triggers a two-tone warning chime.
+3. **Official oblast alert** — follows the government signal on its own; never mixed with
+   the zone alerts.
 
 Zone rings follow your last location fix — or, when you pin the map to a city in Settings
-("Map center"), they centre on that city instead. Radii are dragged in the **Edit zones**
-panel (sliders update the circles live). Each zone has its own bell toggle, plus a master
-bell in the floating map controls. When both zone bells are muted, a small "All alerts are
-off" pill appears.
+(**Map centre**, 26 major cities), they centre on that city instead. "Follow me" keeps the
+camera and zones on your GPS; pinning to a city switches it off and marks the city with a
+map pin. Radii are dragged in the **Edit zones** sheet (sliders update the circles live);
+each zone has its own bell + switch, and when both are muted a small "All alerts are off"
+pill appears on the map.
 
 The **"Fast objects alert sooner"** setting (on by default) fires the siren the moment a
 ballistic/cruise missile, guided bomb, or MiG-31K crosses any zone edge — for those types
-the travel-time difference between the rings is only seconds. Inbound fast objects also
-present as red everywhere (banner, ring, marker).
+the travel-time difference between the rings is only seconds.
 
-Alerting keeps working while you're in another app — a foreground dataSync service monitors
-in the background. The **Stop Monitoring & Exit** button in Settings ends it. Position is
-deliberately **coarse-only** (one network fix, ~250 m), so the rings stay honest and the
-battery stays alive; you'll see a disclaimer that positions are approximate.
+Sirens respect your phone's sound mode by default — they ring at notification volume and
+only vibrate on vibrate/silent. The **"Sirens always sound"** setting (off by default, in
+Settings → Alerts) makes siren alerts ring even on vibrate/silent. When an official alert
+ends, a short "all clear" chime plays; the all-clear always follows the phone's mode.
 
-## Screens & controls
+Alerting keeps working while you're in another app — a foreground `dataSync` service
+monitors in the background. The **Stop Monitoring & Exit** button in Settings ends it.
+Positions are deliberately **coarse-only**, and you'll see disclaimers that positions and
+threat levels are approximate, never exact.
 
-**Map** — pinch to zoom, tap a zone floating button to zoom to that circle. Threats show a
-type icon, live count per type, and a pulsing underline while a type is active; a footer
-always shows the armed/muted state of every toggled type.
-
-**Threat popup** — tap a marker. Shows type + icon, region + locality, a vertical 0–10
-threat-level gauge (experimental blend of distance, speed, reliability, source count, raid
-size, position quality and staleness), speed, distance/ETA, precision, reliability with
-source count ("High · 3 sources"), wave size, and time since last seen. Tap the map to
-dismiss.
-
-**Edit zones** — the pencil button on the map opens the bottom sheet with Red/Yellow radius
-sliders and per-zone bells. Non-modal: you can pan/zoom the map behind it.
-
-**Settings** — gear icon. Language flags, "Map center" (follow your GPS or pin the camera
-and zones to one of 22 cities), per-threat-type cards (tap to enable/disable, expand for
-background on the type plus a photo), official-alert toggle, "Fast objects alert sooner",
-update check, the **Feature guide** (Settings → "Feature guide"), and Stop Monitoring & Exit.
-
-## What it deliberately does NOT do
+## What it deliberately does **not** do
 
 - **No cloud anywhere** — no server of ours, no Firebase, no accounts, no billing. If the
   NEPTUN stream is down, the app keeps retrying silently; there's no intermediate service
   to buffer anything.
-- **No precise GPS** — coarse location only, to save battery and respect your privacy
-  (Settings shows "Approximate location").
+- **No precise GPS** — coarse location only, to save battery and respect your privacy.
 - **No push infrastructure** — alerts are generated locally by the app's own foreground
   service, so they stop the moment you exit. This is a conscious zero-backend tradeoff.
 - **Not an official alert system** — NEPTUN is an aggregator. Always defer to official
   sirens and government channels for actual safety decisions.
 
+## Build from source
+
+Requirements: JDK 17+ and the Android SDK (compileSdk 34).
+
+```powershell
+.\gradlew.bat :app:assembleDebug
+adb install app\build\outputs\apk\debug\app-debug.apk
+```
+
+For a release build you also need `app/keystore.properties` (git-ignored) with
+`storeFile`, `storePassword`, `keyAlias`, `keyPassword`, then run `.\gradlew.bat :app:release`.
+
 ## Architecture
 
-Built with Jetpack Compose + OSMdroid, Kotlin, coroutines + DataStore. Key files under
+Jetpack Compose + OSMdroid, Kotlin, coroutines + DataStore. Key files under
 `app/src/main/java/ua/ukrainedrones/`:
 
-- `NeptunClient.kt` — WebSocket client with auto-reconnect (backoff) and REST merge when the
-  stream goes quiet.
-- `MainViewModel.kt` — combines the threat stream, alerts and location into UI state; tracks
-  the selected threat.
-- `MapView.kt` — OSMdroid rendering: zone circles, type-icon markers, dimming, tap-to-select,
-  scale bar.
-- `MainScreen.kt` — top-level Compose UI: header (trident, flags, connection dot), alert
-  banner, map, footer, navigation.
-- `SettingsScreen.kt` — per-type toggles, alert settings, update check.
+- `NeptunClient.kt` — NEPTUN WebSocket with auto-reconnect (backoff) and REST merge.
+- `MainViewModel.kt` — combines the threat stream, alerts and location into UI state.
+- `MapView.kt` — OSMdroid rendering: zone circles, type-icon markers, course rotation,
+  dead-reckoned positions, city labels, scale bar.
+- `MainScreen.kt` — top-level Compose UI: header (trident, title, connection pill, gear),
+  alert banner, map, threat strip, navigation.
+- `SettingsScreen.kt` — language, Map centre, threat toggles/cards, alerts, updates,
+  battery, feature guide.
 - `ZonesSheet.kt` — "Edit zones" bottom sheet with live radius sliders.
-- `AlertService.kt` — foreground dataSync service that rings siren/chime for zone crossings.
+- `AlertService.kt` — foreground service that rings siren/chime for zone crossings and
+  official alerts; `BootReceiver.kt` restarts it after reboot/update.
 - `LocationTracker.kt` — battery-cheap coarse GPS (network-first, ~2 min / 250 m).
 - `Prediction.kt` — dead-reckoning: markers drift only while flying, using a real course.
-- `Threat.kt` / `ThreatTypeCatalog` — data model, type catalog (labels/descriptions in UA+EN,
-  icons), staleness windows per type.
+- `Threat.kt` / `ThreatTypeCatalog` — data model and type catalog (labels, descriptions,
+  icons in UA+EN, staleness windows, typical speeds).
 - `ThreatLevel.kt` — the experimental 0–10 threat-level estimator.
-- `ThreatImages.kt` — Wikimedia photos for the type info, with app User-Agent + icon fallback.
 - `Zones.kt` / `ZoneConfig` — zone definitions and point-in-polygon helpers.
 - `Cities.kt` / `Translate.kt` — city alert coloring and NEPTUN locality translation.
-- `UpdateManager.kt` — daily silent version check + manual check, in-app install.
+- `UpdateManager.kt` — silent daily version checks + manual check, in-app install.
 - `Strings.kt` / `ZonePrefs.kt` — UA/EN string table and DataStore-backed prefs.
 
-## Attribution
+## Attribution & safety
 
 Per NEPTUN's API terms, the app links back to [neptun.in.ua](https://neptun.in.ua/). NEPTUN
 is an aggregator, not an official alert system — always defer to official siren/alert

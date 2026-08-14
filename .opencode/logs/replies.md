@@ -22995,3 +22995,59 @@ Good to execute this plan?
 ## 14/08/2026, 17:19:13
 
 I'll audit all skills across global, project, and external locations, plus config registration.
+## 14/08/2026, 17:19:44
+
+# Skills Audit
+
+## Inventory
+
+| Location | Found |
+|---|---|
+| Global (`~/.config/opencode/skills/`) | 2 skills |
+| Project (`.opencode/skills/`) | none |
+| External (`~/.claude/skills`, `~/.agents/skills`) | none |
+| Registered via `skills.paths`/`urls` | 2 (redundantly, see below) |
+| Built-in | `customize-opencode` (ships with opencode) |
+
+Both skills load correctly — they appear in the active `available_skills`.
+
+## Per-skill
+
+**engineering-prompts** — OK
+- Frontmatter valid; `name` matches folder; description covers what+when with "Use ONLY" gating. ✔
+- References `~/.config/opencode/prompts.md` (6342 B) — exists. ✔
+- Running-file convention (`review-summary.md`) is active and in use in this project (Bug Hunter summary present). ✔
+
+**web-app-builder** — OK
+- Frontmatter valid; `name` matches folder; clear what+when, properly gated to web apps only. ✔
+
+## Issues
+
+1. **Redundant `skills.paths`** — `opencode.json:3-5` registers `~/.config/opencode/skills`, which is already the default global skill location. Harmless, but the entry can be deleted.
+
+## Verdict
+
+Both skills are healthy, correctly discovered, and load. No broken references, no orphaned folders, no naming violations. The only cleanup opportunity is the redundant `skills.paths` entry.
+
+Want me to remove that redundant config entry?
+## 14/08/2026, 17:20:36
+
+Images created but the accent-colored elements failed. Let me fix the brush creation and regenerate cleanly.
+
+
+## 14/08/2026, 17:20:46
+
+Found it — my function param `[int]$g` collides with the `$g` graphics variable. Fixing:
+
+
+## 14/08/2026, 17:21:03
+
+Placeholders generated. Let me verify one visually:
+## 14/08/2026, 17:22:00
+
+Done. README overhauled with audited facts and a screenshot gallery.
+
+- **`README.md`** — rewritten: hero + download links, screenshot gallery, corrected features (5 km/20 km defaults, no master bell, 26-city "Map centre", 3 card sizes, UK flag/Canadian spelling, all-clear chime, "Sirens always sound", boot/update restart, "Keep alerts running", threat strip shows only live counts), build-from-source, condensed architecture.
+- **`docs/screenshots/`** — 5 dark placeholder PNGs (`map`, `threat-popup`, `edit-zones`, `settings`, `feature-guide`). Drop real captures in with the same filenames (the gallery has the `adb` command).
+
+Note: the placeholders are simple generated images since no emulator/device is available. To get real screenshots, run the app in an emulator and capture with `adb exec-out screencap -p`.
