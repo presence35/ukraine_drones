@@ -1,10 +1,11 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
@@ -83,21 +84,20 @@ private fun StringBuilder.appendThreatKey(t: Threat) {
     append(t.courseDeg).append(';')
 }
 
-/** osmdroid draws markers at the drawable's intrinsic size; the shahed.webp is 255x255, so scale it down. */
+/**
+ * osmdroid draws markers at the drawable's intrinsic size, so the self-hosted photo is
+ * scaled down to a marker-sized bitmap; the vector icon is the fallback until it's cached.
+ */
 private fun threatIcon(context: Context, type: ThreatType): Drawable {
     val res = context.resources
-    if (type != ThreatType.SHAHED) return ContextCompat.getDrawable(context, iconFor(type))!!
-    val src = ContextCompat.getDrawable(context, R.drawable.shahed)!!
+    val src = ThreatImages.cachedBitmap(type)
+        ?: return ContextCompat.getDrawable(context, iconFor(type))!!
     val targetW = (32 * res.displayMetrics.density).toInt()
-    val iw = src.intrinsicWidth.coerceAtLeast(1)
-    val ih = src.intrinsicHeight.coerceAtLeast(1)
+    val iw = src.width.coerceAtLeast(1)
+    val ih = src.height.coerceAtLeast(1)
     val w = targetW
     val h = (ih.toFloat() * targetW / iw).toInt().coerceAtLeast(1)
-    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bmp)
-    src.setBounds(0, 0, w, h)
-    src.draw(canvas)
-    return BitmapDrawable(res, bmp)
+    return BitmapDrawable(res, Bitmap.createScaledBitmap(src, w, h, true))
 }
 
 private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
@@ -138,30 +138,44 @@ private fun gpsDotBitmap(context: Context): Bitmap {
     return bmp
 }
 
-/** Type icon wrapped in a ring colored by the zone the threat is currently in. */
-private fun zoneRingIcon(context: Context, type: ThreatType, zone: ThreatZone?): Drawable {
-    val res = context.resources
-    val density = res.displayMetrics.density
-    val base = threatIcon(context, type)
-    val pad = (3 * density).toInt()
-    val w = base.intrinsicWidth + pad * 2
-    val h = base.intrinsicHeight + pad * 2
+/** Map pin with the tip at the bottom centre — anchors the pinned city precisely. */
+private fun pinBitmap(context: Context): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val w = (30 * density).toInt()
+    val h = (42 * density).toInt()
     val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
-    val stroke = 2.5f * density
-    val paint = Paint().apply {
-        style = Paint.Style.STROKE
-        strokeWidth = stroke
-        isAntiAlias = true
-        color = zoneColor(zone)
+    val path = Path().apply {
+        moveTo(w / 2f, h.toFloat())
+        cubicTo(w * 0.24f, h * 0.62f, 0f, h * 0.38f, 0f, h * 0.30f)
+        cubicTo(0f, h * 0.08f, w * 0.22f, 0f, w / 2f, 0f)
+        cubicTo(w * 0.78f, 0f, w.toFloat(), h * 0.08f, w.toFloat(), h * 0.30f)
+        cubicTo(w.toFloat(), h * 0.38f, w * 0.76f, h * 0.62f, w / 2f, h.toFloat())
+        close()
     }
-    val cx = w / 2f
-    val cy = h / 2f
-    val r = minOf(w, h) / 2f - stroke / 2f - 1f
-    canvas.drawCircle(cx, cy, r, paint)
-    base.setBounds(pad, pad, w - pad, h - pad)
-    base.draw(canvas)
-    return BitmapDrawable(res, bmp)
+    canvas.drawPath(path, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = Color.rgb(0, 91, 187)
+    })
+    canvas.drawPath(path, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeWidth = 2f * density
+        color = Color.WHITE
+    })
+    val innerR = (4.6f * density)
+    canvas.drawCircle(w / 2f, h * 0.28f, innerR, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = Color.WHITE
+    })
+    canvas.drawCircle(w / 2f, h * 0.28f, innerR * 0.55f, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = Color.rgb(255, 213, 0)
+    })
+    return bmp
 }
 
 /** Polygon approximation of a circle around [center] — osmdroid has no native circle overlay. */
@@ -194,11 +208,18 @@ fun NeptunMapView(
     // Only rebuild overlays when the threat data actually changes. Pan/zoom and
     // unrelated recompositions (language, popup selection) must not clear + redraw
     // the map, which is what made the banner above it flicker.
+    val photoRev = ThreatImages.revision.intValue
+    val mapTypes = uiState.mapThreats.map { it.type }.toSet()
+    LaunchedEffect(mapTypes) {
+        for (type in mapTypes) ThreatImages.ensureLoaded(context, type)
+    }
     val overlayKey = buildString {
+        append(photoRev).append('V')
         append(lang).append('A').append(uiState.activeZone)
         append('R').append(uiState.redZoneKm).append('Y').append(uiState.yellowZoneKm)
-        append('G').append(uiState.userLocation?.lat).append(',').append(uiState.userLocation?.lon)
-        append('O').append(uiState.odesaOblastAlertActive)
+        append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
+        append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
+        append('O').append(uiState.focusOblastAlertActive)
         for (token in uiState.activeRegionTokens) append('R').append(token).append(';')
         for ((c, n) in uiState.cityCounts) append('N').append(c).append('=').append(n).append(';')
         for (t in uiState.mapThreats) appendThreatKey(t)
@@ -209,6 +230,7 @@ fun NeptunMapView(
     val lastZoomTick = remember { mutableStateOf(-1) }
     val lastFitZonesTick = remember { mutableStateOf(-1) }
     val didDefaultFit = remember { mutableStateOf(false) }
+    val lastPinnedCity = remember { mutableStateOf<String?>(null) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
     val markerRefs = remember { mutableStateOf<MutableMap<String, Marker>>(mutableMapOf()) }
     val speedTracker = remember { ThreatSpeedTracker() }
@@ -250,36 +272,48 @@ fun NeptunMapView(
                 TileSystem.GroundResolution(mapView.mapCenter.latitude, mapView.zoomLevelDouble)
             )
 
-            // Camera always follows the user's GPS fix (zones move with them).
-            val user = uiState.userLocation
-            if (user != null && lastFollow.value != user) {
-                lastFollow.value = user
-                mapView.controller.animateTo(GeoPoint(user.lat, user.lon))
-            } else if (user == null && lastFollow.value != null) {
+            // Camera follows the focus point (GPS while following, pinned city otherwise).
+            val focus = uiState.focusLocation
+            if (focus != null && lastFollow.value != focus) {
+                lastFollow.value = focus
+                mapView.controller.animateTo(GeoPoint(focus.lat, focus.lon))
+            } else if (focus == null && lastFollow.value != null) {
                 lastFollow.value = null
             }
 
-            // Default view: once we have a GPS fix, open zoomed to fit the whole
-            // yellow zone (camera then just follows the fix without re-zooming).
-            if (!didDefaultFit.value && user != null) {
+            // Default view: once we have a focus point, open zoomed to fit the whole
+            // yellow zone (camera then just follows it without re-zooming).
+            if (!didDefaultFit.value && focus != null) {
                 didDefaultFit.value = true
                 mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(user.lat, user.lon), uiState.yellowZoneKm.toDouble()),
+                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.yellowZoneKm.toDouble()),
                     true
                 )
             }
 
-            // Explicit recenter (title tap) snaps back to the GPS fix, or Odesa pre-fix.
+            // Pin change: jump to the city and refit to its yellow zone.
+            val pinned = uiState.pinnedCity
+            if (!uiState.followMe && pinned != null && lastPinnedCity.value != pinned.nameUa) {
+                lastPinnedCity.value = pinned.nameUa
+                mapView.zoomToBoundingBox(
+                    zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.yellowZoneKm.toDouble()),
+                    true
+                )
+            } else if (uiState.followMe) {
+                lastPinnedCity.value = null
+            }
+
+            // Explicit recenter (title tap) snaps back to the focus point, or Odesa pre-fix.
             if (recenterTick != lastRecenterTick.value) {
                 lastRecenterTick.value = recenterTick
-                val target = user?.let { GeoPoint(it.lat, it.lon) } ?: DEFAULT_CENTER
+                val target = focus?.let { GeoPoint(it.lat, it.lon) } ?: DEFAULT_CENTER
                 mapView.controller.animateTo(target)
             }
 
             // Zone-button tap: zoom the camera to fit that zone circle with a 5% margin.
             if (zoomZone != null && zoomTick != lastZoomTick.value) {
                 lastZoomTick.value = zoomTick
-                val center = user?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
+                val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
                 val radiusKm = when (zoomZone) {
                     ThreatZone.INNER -> uiState.redZoneKm.toDouble()
                     else -> uiState.yellowZoneKm.toDouble()
@@ -292,7 +326,7 @@ fun NeptunMapView(
             // zone occupies the top 60% of the viewport (the sheet covers ~40% below).
             if (fitZonesTick != lastFitZonesTick.value) {
                 lastFitZonesTick.value = fitZonesTick
-                val center = user?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
+                val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
                 val zone = zoneBoundingBox(center, uiState.yellowZoneKm.toDouble())
                 val visibleFrac = 0.6f
                 val dLat = zone.latNorth - center.latitude
@@ -329,10 +363,10 @@ fun NeptunMapView(
                     CityLabelOverlay(context, lang, uiState.activeRegionTokens, uiState.cityCounts)
                 )
 
-                // GPS-centered alert zones: yellow ring (outer) and red circle (inner),
+                // Focus-centered alert zones: yellow ring (outer) and red circle (inner),
                 // outlines only — no fill so the map underneath stays clean.
-                if (user != null) {
-                    val zoneCenter = GeoPoint(user.lat, user.lon)
+                if (focus != null) {
+                    val zoneCenter = GeoPoint(focus.lat, focus.lon)
                     val yellowAlert = uiState.activeZone == ThreatZone.OUTER
                     val redAlert = uiState.activeZone == ThreatZone.INNER
                     mapView.overlays.add(Polygon(mapView).apply {
@@ -369,7 +403,7 @@ fun NeptunMapView(
                         predictPosition(t, it, System.currentTimeMillis())
                     }
                     val pos = predicted ?: GeoPoint(t.lat, t.lon)
-                    val zone = if (t.areaOnly) null else user?.let {
+                    val zone = if (t.areaOnly) null else focus?.let {
                         radialZone(
                             distanceMeters(it.lat, it.lon, pos.latitude, pos.longitude) / 1000.0,
                             RadialZones(uiState.redZoneKm, uiState.yellowZoneKm)
@@ -378,7 +412,7 @@ fun NeptunMapView(
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = zoneRingIcon(context, t.type, zone)
+                        icon = threatIcon(context, t.type)
                         alpha = 1.0f
                         title = typeLabel
                         snippet = regionLabel
@@ -396,13 +430,29 @@ fun NeptunMapView(
 
                 // GPS dot — a plain marker driven by LocationTracker's coarse fix. No separate
                 // location provider here (that was the battery-heavy blue accuracy circle).
-                user?.let {
-                    mapView.overlays.add(Marker(mapView).apply {
-                        position = GeoPoint(it.lat, it.lon)
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = BitmapDrawable(context.resources, gpsDotBitmap(context))
-                        setInfoWindow(null)
-                    })
+                // Only shown while following; when pinned to a city your real position (possibly
+                // far away) would just confuse the view.
+                if (uiState.followMe) {
+                    uiState.userLocation?.let {
+                        mapView.overlays.add(Marker(mapView).apply {
+                            position = GeoPoint(it.lat, it.lon)
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            icon = BitmapDrawable(context.resources, gpsDotBitmap(context))
+                            setInfoWindow(null)
+                        })
+                    }
+                }
+
+                // Pinned-city pin — tip of the marker sits exactly on the city.
+                if (!uiState.followMe) {
+                    uiState.pinnedCity?.let { city ->
+                        mapView.overlays.add(Marker(mapView).apply {
+                            position = GeoPoint(city.lat, city.lon)
+                            setAnchor(Marker.ANCHOR_CENTER, 1.0f)
+                            icon = BitmapDrawable(context.resources, pinBitmap(context))
+                            setInfoWindow(null)
+                        })
+                    }
                 }
 
                 mapView.invalidate()

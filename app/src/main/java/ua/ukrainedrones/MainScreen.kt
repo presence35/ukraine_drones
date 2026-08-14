@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import android.Manifest
 import android.app.Activity
@@ -14,6 +14,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -55,6 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 private enum class Screen { MAP, SETTINGS }
@@ -70,10 +74,29 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val context = LocalContext.current
     var screen by remember { mutableStateOf(Screen.MAP) }
 
+    // First-launch guide: shown once (after the location dialog is resolved, never
+    // during an active alert), replayable from Settings. Persisted via DataStore.
+    val scope = rememberCoroutineScope()
+    val prefs = remember { ZonePrefs(context.applicationContext) }
+    var tutorialSeen by remember { mutableStateOf(true) }
+    var replayTutorial by remember { mutableStateOf(false) }
+    var permissionHandled by remember { mutableStateOf(false) }
+    var settingsOpened by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        settingsOpened = prefs.settingsOpened().first()
+    }
+    val tutorialController = remember {
+        TutorialController(
+            steps = tutorialSteps(Strings.get(uiState.language)),
+            onFinish = { tutorialSeen = true }
+        )
+    }
+
     // Ask for device location once so the popup can show GPS-based distance/ETA.
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        permissionHandled = true
         if (granted) viewModel.onLocationPermissionGranted()
     }
     LaunchedEffect(Unit) {
@@ -82,7 +105,29 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             PackageManager.PERMISSION_GRANTED
         ) {
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        } else {
+            permissionHandled = true
         }
+    }
+
+    // The tutorial must never cover an active alert: don't start while one is ringing
+    // and drop it immediately if one fires mid-tour.
+    val alertBlocking = uiState.activeZone != null || uiState.focusOblastAlertActive
+    LaunchedEffect(tutorialSeen, permissionHandled, replayTutorial, alertBlocking, screen) {
+        if (alertBlocking || screen != Screen.MAP) return@LaunchedEffect
+        if (!tutorialSeen && permissionHandled) {
+            tutorialSeen = true
+            scope.launch { prefs.setTutorialSeen(true) }
+            viewModel.selectThreat(null)
+            tutorialController.start()
+        } else if (replayTutorial) {
+            replayTutorial = false
+            viewModel.selectThreat(null)
+            tutorialController.start()
+        }
+    }
+    LaunchedEffect(alertBlocking) {
+        if (alertBlocking) tutorialController.skip()
     }
 
     val onExit: () -> Unit = {
@@ -97,7 +142,15 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         MapScreen(
             uiState = uiState,
             settingsOpen = screen == Screen.SETTINGS,
-            onOpenSettings = { screen = Screen.SETTINGS },
+            settingsOpened = settingsOpened,
+            tutorial = tutorialController,
+            onOpenSettings = {
+                if (!settingsOpened) {
+                    settingsOpened = true
+                    scope.launch { prefs.setSettingsOpened(true) }
+                }
+                screen = Screen.SETTINGS
+            },
             onThreatTapped = { viewModel.selectThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
             onMapTapped = { viewModel.selectThreat(null) },
@@ -115,6 +168,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 fastAlertsSooner = uiState.fastAlertsSooner,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
                 disclaimerCollapsed = uiState.disclaimerCollapsed,
+                followMe = uiState.followMe,
+                pinnedCity = uiState.pinnedCity,
+                redCities = uiState.redCities,
+                threatCardSize = uiState.threatCardSize,
                 versionName = BuildConfig.VERSION_NAME,
                 isChecking = uiState.update is UpdateState.Checking,
                 onBack = { screen = Screen.MAP },
@@ -122,12 +179,24 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
                 onFastAlertsSoonerChange = { viewModel.setFastAlertsSooner(it) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
+                onFollowMeChange = { viewModel.setFollowMe(it) },
+                onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
+                onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
                 onExit = onExit,
-                onCheckUpdate = { viewModel.checkForUpdates() }
+                onCheckUpdate = { viewModel.checkForUpdates() },
+                onShowTutorial = { screen = Screen.MAP; replayTutorial = true }
             )
         }
+
+        TutorialOverlay(
+            controller = tutorialController,
+            s = Strings.get(uiState.language)
+        )
     }
+
+    // Back skips the guide instead of leaving the map alone.
+    BackHandler(enabled = tutorialController.isActive) { tutorialController.skip() }
 
     // Auto-launch the installer once the APK is downloaded and permission is granted.
     val installLauncher = rememberLauncherForActivityResult(
@@ -157,6 +226,50 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         onLater = { viewModel.dismissUpdate() },
         onOpenSettings = { viewModel.openInstallPermissionSettings() }
     )
+
+    // First-install: a small language picker, dismissable. Choosing or skipping marks it done.
+    if (!uiState.languageChosen) {
+        LanguageChooseDialog(
+            current = uiState.language,
+            onChoose = { viewModel.setLanguage(it) },
+            onLater = { viewModel.skipLanguageChoose() }
+        )
+    }
+}
+
+@Composable
+private fun LanguageChooseDialog(
+    current: AppLanguage,
+    onChoose: (AppLanguage) -> Unit,
+    onLater: () -> Unit
+) {
+    val s = Strings.get(current)
+    AlertDialog(
+        onDismissRequest = onLater,
+        title = { Text(s.languageChooseTitle) },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                LanguageFlag(
+                    emoji = "\uD83C\uDDFA\uD83C\uDDE6",
+                    active = current == AppLanguage.UA,
+                    onClick = { onChoose(AppLanguage.UA) },
+                    modifier = Modifier.weight(1f)
+                )
+                LanguageFlag(
+                    emoji = "\uD83C\uDDFA\uD83C\uDDF8",
+                    active = current == AppLanguage.EN,
+                    onClick = { onChoose(AppLanguage.EN) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onLater) { Text(s.languageChooseLater) }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -164,6 +277,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 private fun MapScreen(
     uiState: UiState,
     settingsOpen: Boolean,
+    settingsOpened: Boolean,
+    tutorial: TutorialController,
     onOpenSettings: () -> Unit,
     onThreatTapped: (Threat) -> Unit,
     onDismissPopup: () -> Unit,
@@ -199,17 +314,24 @@ private fun MapScreen(
     Scaffold(
         topBar = {
             val activeZone = uiState.activeZone
-            val officialOnly = uiState.odesaOblastAlertActive && activeZone == null
+            val officialOnly = uiState.focusOblastAlertActive && activeZone == null
             val zoneColor = when (activeZone) {
                 ThreatZone.INNER -> AlertRed
                 ThreatZone.OUTER -> Color(0xFFF9A825)
                 null -> MaterialTheme.colorScheme.surface
             }
             val containerColor = if (activeZone != null) zoneColor else MaterialTheme.colorScheme.surface
+            val pinnedCityName = if (uiState.followMe) null else uiState.pinnedCity?.let {
+                if (uiState.language == AppLanguage.UA) it.nameUa else it.nameEn
+            }
             val alertText = when (activeZone) {
                 ThreatZone.INNER -> s.redZoneAlert
                 ThreatZone.OUTER -> s.yellowZoneAlert
-                null -> if (officialOnly) s.odesaAlertBanner else s.appTitle
+                null -> when {
+                    officialOnly -> String.format(s.alertBannerFormat, uiState.focusBannerCity)
+                    pinnedCityName != null -> pinnedCityName
+                    else -> s.appTitle
+                }
             }
             Row(
                 modifier = Modifier
@@ -224,7 +346,7 @@ private fun MapScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 UkraineEmblem(
-                    active = uiState.odesaOblastAlertActive,
+                    active = uiState.focusOblastAlertActive,
                     modifier = Modifier.padding(end = 4.dp)
                 )
                 Box(
@@ -252,8 +374,37 @@ private fun MapScreen(
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
                 )
-                IconButton(onClick = openSettings, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Settings, contentDescription = s.settingsButton, modifier = Modifier.size(22.dp))
+                Box(contentAlignment = Alignment.Center) {
+                    val pulseRingVisible = !settingsOpened && !tutorial.isActive
+                    if (pulseRingVisible) {
+                        val ringProgress by rememberInfiniteTransition(label = "heartPulse").animateFloat(
+                            initialValue = 0f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Restart),
+                            label = "heartPulse"
+                        )
+                        Canvas(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .padding(1.dp)
+                        ) {
+                            val radius = size.minDimension / 2f * (0.6f + 0.5f * ringProgress)
+                            val alpha = (1f - ringProgress) * 0.9f
+                            drawCircle(
+                                color = UkraineBlue.copy(alpha = alpha),
+                                radius = radius,
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        }
+                    }
+                    IconButton(onClick = openSettings, modifier = Modifier.size(32.dp).tutorialTarget(tutorial, "settings")) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_heart_ua),
+                            contentDescription = s.settingsButton,
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -281,6 +432,17 @@ private fun MapScreen(
                             .align(Alignment.BottomStart)
                             .padding(start = 12.dp, bottom = 12.dp)
                     )
+                    if (!uiState.followMe) {
+                        uiState.pinnedCity?.let { city ->
+                            val cityName = if (uiState.language == AppLanguage.UA) city.nameUa else city.nameEn
+                            PinnedPill(
+                                text = String.format(s.mapPillPinned, cityName),
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(start = 12.dp, bottom = 40.dp)
+                            )
+                        }
+                    }
                     ZoneButtons(
                         redArmed = uiState.redArmed,
                         yellowArmed = uiState.yellowArmed,
@@ -290,13 +452,15 @@ private fun MapScreen(
                             zoomTick++
                         },
                         onEditZones = openZonesPanel,
+                        editZoneModifier = Modifier.tutorialTarget(tutorial, "editZones"),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 4.dp)
+                            .tutorialTarget(tutorial, "zones")
                     )
                 }
 
-                Surface(tonalElevation = 2.dp) {
+                Surface(tonalElevation = 2.dp, modifier = Modifier.tutorialTarget(tutorial, "footer")) {
                     val innerCounts = uiState.threatsInner.groupingBy { it.type }.eachCount()
                     val outerCounts = uiState.threatsOuter.groupingBy { it.type }.eachCount()
                     val total = ThreatType.values().sumOf {
@@ -344,8 +508,10 @@ private fun MapScreen(
                         threat = threat,
                         lang = uiState.language,
                         proximity = uiState.selectedThreatInfo,
+                        pinnedCity = if (uiState.followMe) null else uiState.pinnedCity,
                         threatLevel = uiState.threatLevel,
                         fastAlertsSooner = uiState.fastAlertsSooner,
+                        cardSize = uiState.threatCardSize,
                         onDismiss = onDismissPopup,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -495,27 +661,24 @@ private fun ZoneButtons(
     lang: AppLanguage,
     onZoneTap: (ThreatZone) -> Unit,
     onEditZones: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    editZoneModifier: Modifier = Modifier
 ) {
     val s = Strings.get(lang)
-    val allMuted = !redArmed && !yellowArmed
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (allMuted) {
-            AllAlertsOffPill(s.allAlertsOffLabel, onClick = onEditZones)
-            Spacer(Modifier.height(6.dp))
-        }
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ZonePill(ThreatZone.INNER, redArmed, s.zoneButtonRed, onZoneTap)
-            ZonePill(ThreatZone.OUTER, yellowArmed, s.zoneButtonYellow, onZoneTap)
+            ZoneButton(ThreatZone.INNER, redArmed, s.zoneButtonRed, onZoneTap)
+            ZoneButton(ThreatZone.OUTER, yellowArmed, s.zoneButtonYellow, onZoneTap)
             Box(
                 modifier = Modifier
                     .size(38.dp)
+                    .then(editZoneModifier)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surface)
                     .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
@@ -531,6 +694,32 @@ private fun ZoneButtons(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ZoneButton(
+    zone: ThreatZone,
+    armed: Boolean,
+    contentDescription: String,
+    onZoneTap: (ThreatZone) -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier.size(width = 16.dp, height = 18.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!armed) {
+                // Dimmed bell floating above the pill signals this zone's alerts are off.
+                Icon(
+                    imageVector = Icons.Outlined.Notifications,
+                    contentDescription = null,
+                    tint = Color(0xFF888888),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+        ZonePill(zone, armed, contentDescription, onZoneTap)
     }
 }
 
@@ -565,28 +754,28 @@ private fun ZonePill(
 }
 
 @Composable
-private fun AllAlertsOffPill(text: String, onClick: () -> Unit) {
+private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = Color(0xFFF9A825),
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 3.dp,
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = modifier
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Notifications,
-                contentDescription = null,
-                tint = Color(0xFF3A2B00),
-                modifier = Modifier.size(14.dp)
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(UkraineBlue)
             )
             Spacer(Modifier.width(6.dp))
             Text(
                 text,
                 style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFF3A2B00),
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -694,8 +883,9 @@ private fun ThreatStatusCell(
         label = "lineAlpha"
     )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(
-            painter = painterResource(id = threatIconRes(type)),
+        ThreatTypeIcon(
+            type = type,
+            vectorRes = threatIconRes(type),
             contentDescription = null,
             tint = if (enabled) Color.Unspecified else Color(0xFF9E9E9E),
             modifier = Modifier.size(18.dp)
@@ -720,7 +910,7 @@ private fun ThreatStatusCell(
 }
 
 private fun threatIconRes(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.shahed
+    ThreatType.SHAHED -> R.drawable.ic_threat_shahed
     ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
     ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
     ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
@@ -759,7 +949,10 @@ private fun UpdateDialog(
                             Spacer(Modifier.height(8.dp))
                             Text(s.updateNotesTitle, style = MaterialTheme.typography.labelLarge)
                             Spacer(Modifier.height(4.dp))
-                            Text(notes, style = MaterialTheme.typography.bodyMedium)
+                            notes.split('\n').filter { it.isNotBlank() }.forEachIndexed { i, line ->
+                                if (i > 0) Spacer(Modifier.height(4.dp))
+                                Text(line, style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 },

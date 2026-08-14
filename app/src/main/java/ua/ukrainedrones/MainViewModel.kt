@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import android.app.Application
 import android.content.Intent
@@ -32,17 +32,24 @@ data class UiState(
     val officialAlertsEnabled: Boolean = true,
     val disabledTypes: Set<ThreatType> = emptySet(),
     val activeZone: ThreatZone? = null,           // most specific zone with a threat
-    val odesaOblastAlertActive: Boolean = false,
+    val focusOblastAlertActive: Boolean = false,  // official alert on the focus point's oblast
+    val focusBannerCity: String = "",             // localized city name for the alert banner
     val activeRegionTokens: Set<String> = emptySet(), // oblast stems under official alert
     val cityCounts: Map<String, Int> = emptyMap(),    // nameUa -> active threats in that city
     val language: AppLanguage = AppLanguage.EN,
+    val followMe: Boolean = true,
+    val pinnedCity: City? = null,
+    val focusLocation: LatLng? = null,            // camera + zone center: GPS (follow) or pinned city
+    val redCities: Set<String> = emptySet(),      // nameUa of cities whose oblast has an official alert
     val selectedThreat: Threat? = null,
     val selectedThreatInfo: ThreatProximity? = null,
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
     val disclaimerCollapsed: Boolean = false,
     val update: UpdateState = UpdateState.Idle,
     val needsInstallPermission: Boolean = false,
-    val latestVersion: String? = null
+    val latestVersion: String? = null,
+    val languageChosen: Boolean = false,
+    val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE
 )
 
 /** Distance/ETA facts for the threat popup, computed from the predicted position. */
@@ -71,6 +78,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val initialLanguage = runBlocking { prefs.language().first() }
     private val initialRedKm = runBlocking { prefs.redZoneKm().first() }
     private val initialYellowKm = runBlocking { prefs.yellowZoneKm().first() }
+    private val initialFollowMe = runBlocking { prefs.followMe().first() }
+    private val initialPinnedCity = runBlocking { prefs.pinnedCity().first() }
+    private val initialLanguageChosen = runBlocking { prefs.languageChosen().first() }
 
     private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
     private val updateStateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -126,10 +136,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         prefs.redZoneArmed(),
         prefs.yellowZoneArmed(),
         prefs.fastAlertsSooner(),
-        prefs.officialAlertsEnabled()
+        prefs.officialAlertsEnabled(),
+        prefs.followMe(),
+        prefs.pinnedCity(),
+        prefs.languageChosen(),
+        prefs.threatCardSize()
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val radii = values[1] as Pair<Int, Int>
+        val pinned = (values[16] as String?)?.let { name ->
+            Cities.ALL.firstOrNull { it.nameUa == name }
+        }
         buildUiState(
             neptun = values[0] as NeptunState,
             redKm = radii.first,
@@ -137,6 +154,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             enabledTypes = values[2] as Set<ThreatType>,
             language = values[3] as AppLanguage,
             userLocation = values[4] as LatLng?,
+            followMe = values[15] as Boolean,
+            pinnedCity = pinned,
             selected = values[5] as Threat?,
             now = values[9] as Long,
             fastAlertsSooner = values[13] as Boolean
@@ -148,7 +167,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             redArmed = values[11] as Boolean,
             yellowArmed = values[12] as Boolean,
             fastAlertsSooner = values[13] as Boolean,
-            officialAlertsEnabled = values[14] as Boolean
+            officialAlertsEnabled = values[14] as Boolean,
+            languageChosen = values[17] as Boolean,
+            threatCardSize = values[18] as ThreatCardSize
         )
     }.stateIn(
         viewModelScope,
@@ -156,7 +177,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         UiState(
             redZoneKm = initialRedKm,
             yellowZoneKm = initialYellowKm,
-            language = initialLanguage
+            language = initialLanguage,
+            followMe = initialFollowMe,
+            pinnedCity = initialPinnedCity?.let { name ->
+                Cities.ALL.firstOrNull { it.nameUa == name }
+            },
+            languageChosen = initialLanguageChosen
         )
     )
 
@@ -167,15 +193,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         enabledTypes: Set<ThreatType>,
         language: AppLanguage,
         userLocation: LatLng?,
+        followMe: Boolean,
+        pinnedCity: City?,
         selected: Threat?,
         now: Long,
         fastAlertsSooner: Boolean
     ): UiState {
         val zones = RadialZones(redKm, yellowKm)
-        val odesaActive = neptun.oblastAlerts.any {
-            it.oblast.contains("Одеськ", ignoreCase = true) ||
-                it.name.contains("Одеськ", ignoreCase = true) ||
-                it.key.contains("одеськ", ignoreCase = true)
+        // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
+        val focusLocation = if (followMe) userLocation
+        else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: userLocation
+        // Official alert state for the FOCUS point: Odesa while following (as before), the
+        // pinned city's oblast otherwise.
+        val focusToken = if (followMe) "Одеськ"
+        else pinnedCity?.let { Cities.cityOblast[it.nameUa] }
+        val focusOblastAlertActive = focusToken?.let { token ->
+            neptun.oblastAlerts.any {
+                it.oblast.contains(token, ignoreCase = true) ||
+                    it.name.contains(token, ignoreCase = true)
+            }
+        } == true
+        val focusBannerCity = when {
+            !followMe && pinnedCity != null ->
+                if (language == AppLanguage.UA) pinnedCity.nameUa else pinnedCity.nameEn
+            else -> if (language == AppLanguage.UA) "Одеса" else "Odesa"
         }
         // Oblasts with an official alert: a city label turns red when its oblast is listed.
         val activeRegionTokens = buildSet {
@@ -185,6 +226,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             it.name.contains(citiesToken, ignoreCase = true)
                     }
                 ) add(citiesToken)
+            }
+        }
+        // Cities whose oblast is under an official alert — red dot in the picker.
+        val redCities = buildSet {
+            for (city in Cities.ALL) {
+                val token = Cities.cityOblast[city.nameUa] ?: continue
+                if (token in activeRegionTokens) add(city.nameUa)
             }
         }
 
@@ -210,9 +258,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val predicted = speedTracker.estimate(t.id, t)
                 ?.let { predictPosition(t, it, now) } ?: GeoPoint(t.lat, t.lon)
             if (neptun.oblastAlerts.isNotEmpty()) mapThreats.add(t)
-            if (userLocation == null) continue
+            if (focusLocation == null) continue
             val distKm = distanceMeters(
-                userLocation.lat, userLocation.lon, predicted.latitude, predicted.longitude
+                focusLocation.lat, focusLocation.lon, predicted.latitude, predicted.longitude
             ) / 1000.0
             if (distKm <= yellowKm) {
                 val speed = speedTracker.estimate(t.id, t)
@@ -244,7 +292,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val speed = speedPair?.first
                 val predicted = speed?.let { predictPosition(t, it, now) }
                     ?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(t.lat, t.lon)
-                val distUser = userLocation?.let {
+                val distUser = focusLocation?.let {
                     distanceMeters(it.lat, it.lon, predicted.lat, predicted.lon) / 1000.0
                 }
                 val etaUser = if (distUser != null && speed != null && speed > 0.0) {
@@ -272,10 +320,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             yellowZoneKm = yellowKm,
             disabledTypes = ThreatType.values().toSet() - enabledTypes,
             activeZone = activeZone,
-            odesaOblastAlertActive = odesaActive,
+            focusOblastAlertActive = focusOblastAlertActive,
+            focusBannerCity = focusBannerCity,
             activeRegionTokens = activeRegionTokens,
             cityCounts = cityCounts,
             language = language,
+            followMe = followMe,
+            pinnedCity = pinnedCity,
+            focusLocation = focusLocation,
+            redCities = redCities,
             selectedThreat = refreshedSelected,
             selectedThreatInfo = proximity,
             threatLevel = ThreatLevelModel.overall(threatScores)
@@ -314,6 +367,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setOfficialAlertsEnabled(enabled) }
     }
 
+    /** Follow-me toggle: switching it back on resumes GPS-centered zones/camera. */
+    fun setFollowMe(follow: Boolean) {
+        viewModelScope.launch { prefs.setFollowMe(follow) }
+    }
+
+    /** Pin the map to a city. Pinning auto-disables follow-me so the pin takes effect. */
+    fun setPinnedCity(city: City?) {
+        viewModelScope.launch {
+            prefs.setPinnedCity(city?.nameUa)
+            if (city != null) prefs.setFollowMe(false)
+        }
+    }
+
     fun setThreatEnabled(type: ThreatType, enabled: Boolean) {
         viewModelScope.launch { prefs.setThreatEnabled(type, enabled) }
     }
@@ -322,8 +388,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setDisclaimerCollapsed(collapsed) }
     }
 
+    fun setThreatCardSize(size: ThreatCardSize) {
+        viewModelScope.launch { prefs.setThreatCardSize(size) }
+    }
+
     fun setLanguage(lang: AppLanguage) {
         viewModelScope.launch { prefs.setLanguage(lang) }
+    }
+
+    /** Dismiss the first-run language picker without changing the language. */
+    fun skipLanguageChoose() {
+        viewModelScope.launch { prefs.setLanguageChosen(true) }
     }
 
     fun selectThreat(threat: Threat?) {

@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import org.json.JSONObject
 import java.time.Instant
@@ -56,7 +56,9 @@ data class ThreatTypeInfo(
     val descriptionUa: String,
     val descriptionEn: String,
     val detailsUa: String,
-    val detailsEn: String
+    val detailsEn: String,
+    val jokeUa: String = "",
+    val jokeEn: String = ""
 )
 
 object ThreatTypeCatalog {
@@ -123,7 +125,9 @@ object ThreatTypeCatalog {
             descriptionUa = "Сигнали, тип яких ще уточнюється джерелами.",
             descriptionEn = "Signals whose type is still being confirmed by sources.",
             detailsUa = "Джерела бачать об'єкт, але тип ще не підтверджено — це може бути БпЛА, ракета чи імітатор. Показані швидкість і дальність — орієнтовні. Не вважай, що «це просто так»: стався до сигналу як до реального, поки він не розв'язався, і керуйся офіційними сигналами.",
-            detailsEn = "Sources see an object but haven't confirmed the type — it could be a UAV, missile or decoy. Speed/range shown are guesses. Don't assume \"probably nothing\": treat it as a real alert until it resolves, and stay with official signals."
+            detailsEn = "Sources see an object but haven't confirmed the type — it could be a UAV, missile or decoy. Speed/range shown are guesses. Don't assume \"probably nothing\": treat it as a real alert until it resolves, and stay with official signals.",
+            jokeUa = "Об'єкт Шредінгера: і дрон, і ракета — поки хтось не скаже інакше.",
+            jokeEn = "Schrödinger's object: both a drone and a missile until someone says otherwise."
         )
     )
 }
@@ -214,7 +218,7 @@ data class Threat(
             return Threat(
                 id = o.optString("id"),
                 type = ThreatType.fromApi(if (o.has("type") && !o.isNull("type")) o.optString("type") else null),
-                title = o.optString("title", ""),
+                title = sanitizeCourse(o.optString("title", "")) ?: "",
                 region = optNullable("region"),
                 district = optNullable("district"),
                 locality = optNullable("locality"),
@@ -230,7 +234,7 @@ data class Threat(
                     optNullable("confidenceLevel") ?: optNullable("reliability")
                 ),
                 count = o.optInt("count", 0),
-                explanationShort = optNullable("explanationShort"),
+                explanationShort = sanitizeCourse(optNullable("explanationShort")),
                 speedKmh = speedKmh,
                 uncertaintyKm = uncertainty,
                 positionQuality = optNullable("positionQuality"),
@@ -240,6 +244,24 @@ data class Threat(
                 updatedAtMillis = updatedAtMillis,
                 trail = parseTrail(o)
             )
+        }
+
+        /**
+         * NEPTUN sometimes fills `explanationShort` with a bare confirmation count
+         * (e.g. "Підтверджень: 3") that duplicates our own confirmations pill. Strip any
+         * "підтвердж…" phrase and a leading bare-count ("3 джерелами: …"); drop the field
+         * entirely when nothing course-relevant remains.
+         */
+        private fun sanitizeCourse(text: String?): String? {
+            if (text == null) return null
+            val cyr = "[А-Яа-яіїєґІЇЄҐ']"
+            var t = text.replace(Regex("(?iu)підтвердж$cyr*"), " ")
+            t = t.replace(Regex("^[\\s:.,—-]+"), "").trim()
+            t = t.replaceFirst(Regex("(?iu)^\\d+\\s*(?:джерел$cyr*|sources?)?[\\s:.,—-]*"), "").trim()
+            if (t.isEmpty()) return null
+            // A bare count like "3" or "3 джерела" carries no course info.
+            if (t.matches(Regex("(?iu)^\\d+(?:\\s*(?:джерел$cyr*|sources?))?\\.?$"))) return null
+            return t
         }
 
         /**

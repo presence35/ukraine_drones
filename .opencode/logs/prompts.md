@@ -1917,3 +1917,354 @@ does the threat count organize by zone?
 ## 13/08/2026, 15:42:45
 
 merge is fine
+## 13/08/2026, 17:49:34
+
+in settings add a new "Follow me" or a dropdown of cities to pin to.
+## 13/08/2026, 17:49:53
+
+the usa flag is horrible.  can't you use the emoji?
+## 13/08/2026, 17:51:13
+
+remove circles around threats on map
+## 13/08/2026, 17:52:43
+
+go
+## 13/08/2026, 17:53:21
+
+go
+## 13/08/2026, 17:54:17
+
+can you improve on that, 
+## 13/08/2026, 17:56:09
+
+majors.  
+2 i dont understand.  instead of what?
+3 good idea
+## 13/08/2026, 18:00:23
+
+current beavhior don'ts lock me at all.  i can pan the map and stay. 
+## 13/08/2026, 18:00:57
+
+go
+## 13/08/2026, 21:38:51
+
+nothing changed about zones.
+ but the language flags are different, so it's new code.
+also opening map shows all black map
+## 13/08/2026, 21:42:26
+
+the black map was because i was centered on the lake.  it is not using my GPS properly, maybe something to do w the new pin to city feature.
+## 13/08/2026, 21:43:19
+
+go
+## 13/08/2026, 21:47:07
+
+how can we get the "official alert on" reason? Does neptun provide that? The telegram groups post it, it's something.
+## 13/08/2026, 21:52:17
+
+the map centre content shoudl always be fully visible. can the dropdown show which cities are currently red? also, the official alert should be pinned to that city too.  The header should chagne from "Odesa Drones" to "[city] Mock". we should consider an app name change too.  this is clearly useful nationwide.
+## 13/08/2026, 21:55:27
+
+1. shouldn't it be the latest since the alarm?  highest priority makse sense too tho, since it's more relevant.
+3 are there any better data feeds we can tap into in general?!
+## 13/08/2026, 21:59:24
+
+
+GET https://neptun.in.ua/api/v1/threats
+
+{
+  "serverTime": "2026-07-09T12:34:56.000Z",
+  "threats": [
+    {
+      "id": "trk_1a2b",
+      "type": "uav",                 // uav | recon | missile | ballistic | kab | mig31k | unknown
+      "title": "Шахед",
+      "region": "Одеська область",
+      "district": "Одеський район",
+      "locality": "Чорноморськ",
+      "lat": 46.30, "lon": 30.65,
+      "heading": 42,                 // курс у градусах (0 = північ), null якщо невідомо
+      "confidenceLevel": "high",     // low | medium | high
+      "sourceCount": 3,
+      "count": 2,                    // розмір групи (нальоту), 0/відсутнє = не вказано
+      "updatedAt": "2026-07-09T12:34:50.000Z",
+      "status": "active",            // active | stale | resolved
+      "explanationShort": "БпЛА курсом на Чорноморськ",
+      "velocity": { "bearingDeg": 42, "speedKmh": 150 },   // якщо трек рухається
+      "confirmedAt": "2026-07-09T12:34:20.000Z",           // якір dead-reckon
+      "uncertaintyKm": 4,
+      "positionQuality": "confirmed",
+      "advisory": false,             // true = спостереження, а не сигнал ховатися (див. нижче)
+      "areaOnly": false              // true = точки НЕМАЄ, названо лише область (див. нижче)
+    }
+  ]
+}
+
+let's re-assess if we're using this info properly and to the best.
+## 13/08/2026, 21:59:30
+
+In the codebase at D:\Desktop\drones (an Android app called Odesa Drones), find everything related to the threats API from neptun.in.ua/api/v1/threats.
+
+Specifically find:
+1. Where the API is called (URL, Retrofit/OkHttp service, endpoints).
+2. The data model classes for threats (fields like id, type, title, region, district, locality, lat, lon, heading, confidenceLevel, sourceCount, count, updatedAt, status, explanationShort, velocity, confirmedAt, uncertaintyKm, positionQuality, advisory, areaOnly).
+3. How the app renders/displays threats on the map and in UI (markers, overlays, list).
+4. Any logic around threat types (uav, recon, missile, ballistic, kab, mig31k, unknown), status (active/stale/resolved), confidenceLevel, advisory, areaOnly.
+5. Where alerts/notifications or "hide" signals are triggered.
+6. Any dead-reckoning / position extrapolation logic using velocity, confirmedAt, uncertaintyKm.
+
+Report file paths with line numbers for each finding. Be thorough (very thorough level) — search for keywords like "threat", "neptun", "uav", "ballistic", "mig31k", "confidenceLevel", "advisory", "areaOnly", "uncertaintyKm", "velocity", "dead", "reckon". Return a structured summary.
+## 13/08/2026, 22:02:58
+
+voice alerts "A dron is near you", etc etc.  w diff voices? Possible? I could make a bunch using ai, or...?
+## 13/08/2026, 22:03:03
+
+In the codebase at D:\Desktop\drones, find everything related to voice alerts / TTS (text-to-speech) / voice announcements for drone detection. This is likely an Android app (Kotlin). 
+
+I need to know:
+1. Where TTS is currently implemented (file paths + key code locations, e.g. any TextToSpeech usage, voice engine setup, pitch/speech rate settings).
+2. What phrases/messages are currently announced (e.g. "A drone is near you").
+3. Whether any pre-recorded audio assets (mp3/ogg in res/raw) are used instead of runtime TTS.
+4. The relevant string resources for these messages (UA/EN).
+5. Anything related to voice selection or multiple voices.
+
+Report file paths with line numbers and concise code excerpts. Be thorough but concise in the summary.
+## 13/08/2026, 22:10:24
+
+1. no. i meant in settings, follow me or the city.
+ i renamed ftp folder to ukrainedrones
+## 13/08/2026, 22:14:10
+
+go
+## 13/08/2026, 22:16:51
+
+we don't need "following" on the map, but keep "pinned" and add a "pin" icon instead of the blue gps.
+## 13/08/2026, 22:17:42
+
+Nationwide rename → Ukraine Drones (+ FTP folder rename)
+res/values/strings.xml app_name → "Ukraine Drones".
+Strings.kt appTitle: EN "Ukraine Drones" / UA "Українські дрони".
+SettingsScreen image User-Agent → UkraineDrones (Android; https://odesaplay.com.ua).
+UpdateManager.kt UPDATE_BASE_URL → https://odesaplay.com.ua/other_apps/ukrainedrones/ (matches your FTP rename).
+Update the release-workflow URL in AGENTS.md to match.
+Package + APK path stay unchanged.
+anything else?
+## 13/08/2026, 22:21:46
+
+10-13 yes
+package should rename too.
+odesaAlertBanner -- well tbf this was made when the app name was odesadrones, so the variables are technically wrong now, no?
+## 13/08/2026, 22:25:05
+
+1. in UA the text that's best is fine.  to tranlste to EN I guess both, some users might be able to read it, but would need english.
+2. banner reason can't be long. I thought we meant the android notifcation msg?
+## 13/08/2026, 22:27:00
+
+B. Well I'm about to make the app usable in any city, so odesaAlertbanner to officialAlertBanner might not be wath the otehr agent decides, so just be aware of that. he will go after we do this.  
+
+ua.ukrainedrones no?  im the only user.
+## 13/08/2026, 22:28:00
+
+1. re update.
+2 derived i guess
+## 13/08/2026, 22:30:21
+
+go
+## 13/08/2026, 22:32:36
+
+go
+## 13/08/2026, 22:37:35
+
+go
+## 13/08/2026, 22:42:00
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 13/08/2026, 22:51:27
+
+the alert icons in "Alsert zones" panel don't let the user know they can be toggled.  suggestions?
+## 13/08/2026, 22:52:32
+
+dopes the apprelease code work now? i didn't upload to ftp
+## 13/08/2026, 22:55:49
+
+the pin to city dropdown doesn't open.  that section should be tinted while follow me is on.
+does the pin city dd show what is currently in alert mode, or only what can get data on alert status?
+## 13/08/2026, 22:58:51
+
+we don't need the title "red/y zone", the literal colors make it obvious.  So we can cominb them all one row.  on the left is the alert bell w a material toggle.  the bell pro should be a bit bigger.  then a spce before the slider 
+## 13/08/2026, 22:59:40
+
+go
+## 13/08/2026, 23:00:20
+
+add icons to Settings sections
+## 13/08/2026, 23:02:45
+
+add icons to Settings sections.
+move "Map center" to 3rd place.
+move "language" to the 2nd place.
+move "officila signals come first" to the 1st place, default expanded. Needs to be collapsed twice before staying collapsed.
+on first install, a small overlay popoup to choose the language.  very simple.
+
+## 13/08/2026, 23:05:07
+
+go
+## 13/08/2026, 23:06:32
+
+it can be dismissed.  default is ukrainian.
+maybe we can change the gear icon to something more inticing?
+## 13/08/2026, 23:07:31
+
+somehow "confirmations: x" came back to the middle of the threat popup.  it's a pill in footer now, so remove that text.
+## 13/08/2026, 23:08:10
+
+go
+## 13/08/2026, 23:09:07
+
+we need a quick in app tutorial, lets plan.  what's best practise for app like this these days.  surely we can imrpove it
+## 13/08/2026, 23:12:38
+
+improve that
+## 13/08/2026, 23:14:21
+
+maybe the string is wrong then.  it literally says "pidtberdzhen" in ukrainina.
+## 13/08/2026, 23:15:00
+
+go
+## 13/08/2026, 23:18:49
+
+oh, it was built into the api's data.  maybe we can strip that if it comes, since that dats is elsewhere too? Or meh
+## 13/08/2026, 23:18:54
+
+make "UAV" ( the first threat in settings), expanded by default, so the user knows it's possible. Also make those carets better.
+## 13/08/2026, 23:20:16
+
+"Підтверджено: 3" excpet zhen(softb) as ending
+## 13/08/2026, 23:23:49
+
+ go
+## 13/08/2026, 23:23:57
+
+the startup logo should be the fully animating ukraine trident.  the source should be here, if not it's in d:\desktop\odesaplay\
+## 13/08/2026, 23:24:41
+
+done?
+## 13/08/2026, 23:24:50
+
+go
+## 13/08/2026, 23:26:22
+
+new version log should have an extra space between each so the user doenst get a block of text.  
+## 13/08/2026, 23:27:38
+
+shwy is it in mainscreen and not settings?
+## 13/08/2026, 23:34:31
+
+if the alert is off, the floating zoom button should have a dimmed bell.  good visual cue you think?
+## 13/08/2026, 23:34:40
+
+why is "Odesa (follow GPS)" the first dropdown item?  isn't that the same as follow me being on? remove it. I can still see the gps blue dot even tho im pinned.
+## 13/08/2026, 23:35:04
+
+compact this session
+## 13/08/2026, 23:36:27
+
+doen'st matter where tthe code is, just add the extra lines
+## 13/08/2026, 23:38:24
+
+1. if it's not pinned don't show anything.
+2 gps should not follow at all, makes no sense if pinned.
+## 13/08/2026, 23:38:49
+
+go
+## 13/08/2026, 23:39:18
+
+go
+## 13/08/2026, 23:47:31
+
+if alerts are off it should be a floating grey bell ABOVE the zoom button, so restore the previous state of zoom coloring/icon
+## 13/08/2026, 23:47:53
+
+go
+## 13/08/2026, 23:48:50
+
+go
+## 13/08/2026, 23:48:56
+
+go
+## 13/08/2026, 23:49:01
+
+audit this.  security is not important.  precisions, accuracy, relaibilty are the KEY issues.
+## 13/08/2026, 23:50:28
+
+the heart in the header isn't colored.  make it bigger so it mirros the height of the trident on the left.  
+## 13/08/2026, 23:50:33
+
+Explore the codebase at D:\Desktop\drones to understand the project structure. I need to find:
+1. The header component/file that contains the heart icon
+2. The trident icon on the left 
+3. Any CSS or styling related to these elements
+4. The overall project structure (is this a React app? What framework?)
+
+Return the file paths, relevant code snippets, and any CSS related to the heart and trident icons. Be very thorough - look at all relevant files.
+## 13/08/2026, 23:53:49
+
+the disabled-zoom button is now sitting below its neighbors.
+## 13/08/2026, 23:54:29
+
+the disabled-zoom button is now sitting below its neighbors.
+## 14/08/2026, 12:04:31
+
+the disabled-zoom button is now sitting below its neighbors.
+## 14/08/2026, 12:07:55
+
+go
+## 14/08/2026, 12:09:23
+
+what local folder i should put all the images?
+## 14/08/2026, 12:10:08
+
+i put 2, i'll add more later. go
+## 14/08/2026, 12:15:52
+
+just your schro joke.  is jpg better than png, they're much smaller.
+## 14/08/2026, 12:18:29
+
+b
+## 14/08/2026, 12:21:34
+
+the images should be cached on the user's phone in the proper cache folder.
+## 14/08/2026, 12:24:56
+
+32mb is the folder cache size max, or just for images?
+## 14/08/2026, 12:25:37
+
+each should be <200kb,  3MB max seems mroe erasonable.
+## 14/08/2026, 12:25:57
+
+go
+## 14/08/2026, 12:27:34
+
+the header "heart" is not self-eveidnt it's clickable.
+
+
+## 14/08/2026, 12:29:24
+
+use my audit skill.  security is not important.  precisions, realiabilty are most. agreed? suggestions?
+## 14/08/2026, 12:29:56
+
+B.  the heart is supposedt o have ukr colors, it doesnt now.
+## 14/08/2026, 12:32:09
+
+just kotlin, dont fix anything yet.
+
+
+## 14/08/2026, 12:33:45
+
+go
+## 14/08/2026, 12:39:16
+
+ignore L3.
+## 14/08/2026, 12:39:33
+
+only settings

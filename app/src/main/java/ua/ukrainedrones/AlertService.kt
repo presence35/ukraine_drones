@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -36,7 +36,7 @@ import kotlinx.coroutines.launch
 class AlertService : Service() {
 
     companion object {
-        const val ACTION_STOP = "ua.odesa.drones.STOP"
+        const val ACTION_STOP = "ua.ukrainedrones.STOP"
         private const val CHANNEL_MONITOR = "monitor"
         private const val CHANNEL_ALERTS = "alerts_siren"
         private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer"
@@ -56,7 +56,7 @@ class AlertService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var monitoringJob: Job? = null
 
-    private var wasOdesaActive = false
+    private var wasFocusAlertActive = false
     private var knownZones: Map<String, ThreatZone> = emptyMap()
     private var lastChannelLang: AppLanguage? = null
     private var emptySince: Long? = null
@@ -66,7 +66,10 @@ class AlertService : Service() {
 
     private sealed class MonitorEvent {
         data class State(
-            val odesaActive: Boolean,
+            val focusOblastAlertActive: Boolean,
+            val focusBannerCity: String,
+            val focusRegion: String,
+            val focusPinned: Boolean,
             val zoneThreats: Map<String, ThreatZone>,
             val lang: AppLanguage,
             val redArmed: Boolean,
@@ -127,19 +130,36 @@ class AlertService : Service() {
                 prefs.redZoneArmed(),
                 prefs.yellowZoneArmed(),
                 prefs.fastAlertsSooner(),
-                prefs.officialAlertsEnabled()
+                prefs.officialAlertsEnabled(),
+                prefs.followMe(),
+                prefs.pinnedCity()
             ) { values ->
                 @Suppress("UNCHECKED_CAST")
+                val neptun = values[0] as NeptunState
+                val gps = values[3] as LatLng?
+                val followMe = values[10] as Boolean
+                val pinnedName = values[11] as String?
+                val pinned = pinnedName?.let { name ->
+                    Cities.ALL.firstOrNull { it.nameUa == name }
+                }
+                val lang = values[5] as AppLanguage
+                // Zones + official alert centre on the focus point: GPS while following,
+                // the pinned city otherwise (mirrors the foreground UI).
+                val focus = if (followMe) gps
+                else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
                 MonitorEvent.State(
-                    odesaActive = isOdesaActive(values[0] as NeptunState),
+                    focusOblastAlertActive = focusOblastAlertActive(neptun, followMe, pinned),
+                    focusBannerCity = focusBannerCity(lang, followMe, pinned),
+                    focusRegion = focusRegionText(lang, followMe, pinned),
+                    focusPinned = !followMe && pinned != null,
                     zoneThreats = zoneThreats(
-                        values[0] as NeptunState,
+                        neptun,
                         values[1] as Int,
                         values[2] as Int,
-                        values[3] as LatLng?,
+                        focus,
                         values[4] as Set<ThreatType>
                     ),
-                    lang = values[5] as AppLanguage,
+                    lang = lang,
                     redArmed = values[6] as Boolean,
                     yellowArmed = values[7] as Boolean,
                     fastAlertsSooner = values[8] as Boolean,
@@ -163,24 +183,47 @@ class AlertService : Service() {
         }
     }
 
-    private fun isOdesaActive(st: NeptunState): Boolean = st.oblastAlerts.any {
-        it.oblast.contains("Одеськ", ignoreCase = true) ||
-            it.name.contains("Одеськ", ignoreCase = true) ||
-            it.key.contains("одеськ", ignoreCase = true)
+    private fun focusOblastAlertActive(st: NeptunState, followMe: Boolean, pinned: City?): Boolean {
+        val token = if (followMe) "Одеськ"
+        else pinned?.let { Cities.cityOblast[it.nameUa] } ?: "Одеськ"
+        return st.oblastAlerts.any {
+            it.oblast.contains(token, ignoreCase = true) ||
+                it.name.contains(token, ignoreCase = true)
+        }
+    }
+
+    private fun focusBannerCity(lang: AppLanguage, followMe: Boolean, pinned: City?): String = when {
+        !followMe && pinned != null ->
+            if (lang == AppLanguage.UA) pinned.nameUa else pinned.nameEn
+        else -> if (lang == AppLanguage.UA) "Одеса" else "Odesa"
+    }
+
+    private fun focusRegionText(lang: AppLanguage, followMe: Boolean, pinned: City?): String {
+        val s = Strings.get(lang)
+        if (!followMe && pinned != null) {
+            val token = Cities.cityOblast[pinned.nameUa]
+            return if (lang == AppLanguage.UA) {
+                // "Київськ" -> "Київська область"
+                String.format(s.notifBodyRegionFormat, "${token ?: ""}а")
+            } else {
+                String.format(s.notifBodyRegionFormat, pinned.nameEn)
+            }
+        }
+        return s.notifBodyRegion
     }
 
     /**
      * Active threats inside either tier (INNER > OUTER), keyed by id. Zones are radii around
-     * the user's GPS fix (falls back to the last known fix); disabled threat types are skipped.
+     * the focus point (GPS or pinned city); disabled threat types are skipped.
      */
     private fun zoneThreats(
         st: NeptunState,
         redKm: Int,
         yellowKm: Int,
-        user: LatLng?,
+        focus: LatLng?,
         enabled: Set<ThreatType>
     ): Map<String, ThreatZone> {
-        if (user == null) return emptyMap()
+        if (focus == null) return emptyMap()
         val now = System.currentTimeMillis()
         val zones = RadialZones(redKm, yellowKm)
         val map = LinkedHashMap<String, ThreatZone>()
@@ -192,7 +235,7 @@ class AlertService : Service() {
             val lat = p?.latitude ?: t.lat
             val lon = p?.longitude ?: t.lon
             val zone = radialZone(
-                distanceMeters(user.lat, user.lon, lat, lon) / 1000.0,
+                distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0,
                 zones
             ) ?: continue
             map[t.id] = zone
@@ -207,7 +250,10 @@ class AlertService : Service() {
             updateMonitorChannel(s)
             lastChannelLang = state.lang
         }
-        notifyMonitor(title = s.notifOngoingTitle, text = s.notifStatusZones)
+        notifyMonitor(
+            title = s.notifOngoingTitle,
+            text = if (state.focusPinned) s.notifStatusPinned else s.notifStatusZones
+        )
 
         val all = NeptunClient.state.value.threats
 
@@ -242,13 +288,17 @@ class AlertService : Service() {
         // Official oblast-level alert (independent of zone membership). Gated by the
         // Settings toggle — turning it off stops only official-alert notifications,
         // never the Red/Yellow zone alerts.
-        if (state.officialAlertsEnabled && state.odesaActive && !wasOdesaActive && !posted) {
-            postAlert(null, s.odesaAlertBanner, s.notifBodyRegion)
+        if (state.officialAlertsEnabled && state.focusOblastAlertActive && !wasFocusAlertActive && !posted) {
+            postAlert(
+                null,
+                String.format(s.alertBannerFormat, state.focusBannerCity),
+                state.focusRegion
+            )
         }
-        wasOdesaActive = state.odesaActive
+        wasFocusAlertActive = state.focusOblastAlertActive
 
         // Start the grace window once nothing is active; clear only after it expires.
-        if (state.zoneThreats.isEmpty() && !state.odesaActive) {
+        if (state.zoneThreats.isEmpty() && !state.focusOblastAlertActive) {
             if (emptySince == null) emptySince = System.currentTimeMillis()
         } else {
             emptySince = null

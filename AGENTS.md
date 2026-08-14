@@ -1,4 +1,4 @@
-# Odesa Drones — Release Workflow
+# Ukraine Drones — Release Workflow
 
 ## Trigger phrase: "release it"
 
@@ -10,7 +10,7 @@ When the user says **"release it"**, perform a full release:
 4. Show the notes + inferred version and wait for confirmation ("go"). Upload only after confirmation.
 5. Run the single command (no args — the version auto-bumps its patch, e.g. 0.3.8 → 0.3.9; use `-PnewVersion=<ver>` only for an explicit override):
    - `.\gradlew.bat :app:release`
-6. Verify the live result at `https://odesaplay.com.ua/other_apps/odesadrones/version.json` (version + both translations).
+6. Verify the live result at `https://odesaplay.com.ua/other_apps/ukrainedrones/version.json` (version + both translations).
 7. Move the released entries under a new `## [<ver>]` heading in `CHANGELOG.md` and clear `## [Unreleased]`.
 
 ## While working

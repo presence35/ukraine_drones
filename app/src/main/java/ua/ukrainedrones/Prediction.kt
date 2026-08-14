@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import org.osmdroid.util.GeoPoint
 import kotlin.math.cos

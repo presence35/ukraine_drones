@@ -1,7 +1,46 @@
 # Changelog
 
+- Settings: the new "Map center" section now shows both controls at once — a "Follow me" toggle (on by default: camera + alert zones keep following your GPS) and a dropdown that pins the camera and zones to any of 22 major cities. Picking a city switches Follow-me off automatically; cities whose oblast has an official air-raid alert are marked with a red dot in the list.
+- Map: with a city pinned, the camera and the red/yellow alert zones centre on that city and a proper map pin (tip on the city) marks it. The bottom-left pill shows "Pinned: <city>" / «Прикріплено: <місто>» only while a city is pinned.
+- Header: with a city pinned the title shows just the city name (e.g. "Kyiv" / «Київ»); during an official oblast alert it becomes "<city>: alert" / «<місто>: тривога» and the trident glows red for the pinned city's oblast instead of Odesa's.
+- Alerts: the official alert notification follows the same focus — the banner and body use the pinned city's region (e.g. "Kyiv region" / «Київська область»); the background status notification reports that the zones are pinned to a city rather than following GPS.
+- Threat popup: when a city is pinned, the distance line reads "Distance to <city>" / «Відстань до <міста>» instead of just "Distance".
+- Settings: fixed the pin-to-city dropdown not opening (the anchor toggled itself twice); it's now dimmed and disabled while "Follow me" is on, since a pin only takes effect once following is off.
+
 ## [Unreleased]
 
+- Settings: toggles (Follow me, fast alerts, official alerts) now respond to a tap anywhere on their row, not just on the switch itself.
+
+- Header: the heart (Settings) button finally shows its Ukraine blue-and-yellow colors (it was being tinted monochrome) and, until you open Settings at least once, a soft pulsing ring draws attention to it so it's clear the heart is tappable.
+
+- Threat popup: its density is now selectable in Settings ("Threat card size" / «Розмір картки загрози») — Small (one glanceable line: skull, type and distance/ETA with a thin level bar), Medium (header, distance/ETA + speed, reliability/elapsed) and Large (the full card, unchanged). Each option shows a live scaled preview in Settings.
+
+- Settings: the Unknown threat card now ends with a playful Schrödinger one-liner («Об'єкт Шредінгера: і дрон, і ракета…» / "Schrödinger's object: both a drone and a missile…").
+
+- Threat photos: the UAV and Unknown images now load from our own server (`/images/`) instead of being bundled in the app, and are cached on the phone in the OS cache folder (evictable, not user data) so they don't re-download each launch; until a photo is cached the app falls back to the matching icon, so it works offline too.
+
+- Settings: "Map center" no longer offers an "Odesa (follow GPS)" entry — the city dropdown lists only the 22 cities (picking none just shows the empty control, dimmed). Pinned, the map stops following GPS entirely: the GPS dot is hidden and only the city pin is shown.
+
+- Settings: sections now have icons — language (globe), "Map center" (map pin), "Threats" (warning) and "Alerts" (bell) — and are reordered so "Official signals come first" sits at the top, followed by Language then Map center. The heart-shaped Settings button now uses Ukraine's blue-and-yellow.
+- Settings: the first threat card (UAV) is expanded by default so the expandable rows are discoverable; the expand/collapse carets are bigger for a clearer tap target.
+- Settings: "Official signals come first" is expanded by default and needs two collapse taps before it stays collapsed.
+- First launch: a small dismissable popup asks you to pick the app language (Ukrainian preselected); you can also skip it and choose later in Settings.
+
+- Guide: the app now runs a short first-launch tour — a spotlight walks you through the alert zones, the "Edit zones" button, the threat strip and Settings, with Skip available at any step. It never shows during an active alert (and drops out instantly if one fires mid-tour). A "How it works" / «Як це працює» button in Settings replays it anytime.
+
+- Threat popup: NEPTUN's bare confirmation text in the course line (e.g. «Підтверджень: 3») is dropped as redundant — the confirmation count already shows as a pill in the footer.
+
+- Alert zones: each zone is now a single row — the bell and a proper on/off switch on the left, the radius slider in the middle, and the km value at the end. The zone-name labels are gone since the colors speak for themselves.
+- Map: a zone whose alerts are muted shows a dimmed grey bell floating above its zoom button; the button itself keeps its zoom icon and still zooms to that zone on tap. The amber "All alerts are off" pill is gone — the per-zone bells carry that signal now.
+
+- Rebranded nationwide: the app is now "Ukraine Drones" («Українські дрони») — new launcher name, in-app title, package `ua.ukrainedrones`, and update-server folder (`other_apps/ukrainedrones`).
+
+- Map: the pinned city is now marked with a proper map pin (tip on the city) instead of a blue dot; the bottom-left pill shows only "Pinned: <city>" (and only while a city is pinned) — the "Following" pill is gone.
+
+- Alerts: the official alert notification now carries the reason — the latest NEPTUN Telegram message mentioning Odesa (the same wording groups post), with a fallback to the highest-priority active threat over the oblast that appeared since the alarm started. In English the reason line is translated/derived and the original message is appended below. While the alert is ringing, new reason text updates the notification silently (no siren re-trigger).
+
+- Settings: new "Map center" section — a "Follow me" toggle keeps the camera and alert zones on your GPS (the default); when it's off, a dropdown pins the camera and zones to any of 22 major cities instead.
+- Map: threat markers no longer have a colored circle (zone ring) around them — just the clean type icon.
 - Updates: the app now checks for a new version automatically at most once per day (silently), instead of every time the app starts or the Settings screen opens. The manual "Check for updates" button in Settings still checks on demand.
 - Map footer: per-threat notification bells and OFF chips are gone — threat types are toggled only in Settings. The footer now shows just the type icon and a pulsing underline while that type is active; the count appears only when it's > 0. With everything quiet it shows "No threats — go touch grass" in green instead.
 - Map: the floating red/yellow zone buttons no longer respond to long-press; tap still zooms to that zone. A new floating edit (pencil) button opens the "Edit zones" panel.
@@ -9,7 +48,11 @@
 - Alert zones: the radius sliders no longer show step dots (the value still snaps to whole km). The per-zone bell icons moved next to the zone label and now show an expanding ring so they clearly read as tap-to-toggle.
 - Alert zones: opening the panel auto-centres and zooms the map to fit the whole yellow zone within the visible area above the panel; the top drag handle is now also tappable to close the panel.
 - Settings: new "Official alerts" toggle under Alerts — controls only notifications for the official oblast air-raid signal; the Red/Yellow zone alerts are never affected. The "Official signals come first" card now has an amber warning icon.
-- Settings: the Language heading names the language you'd switch to (inverted like the flags), and the USA flag was redrawn as a proper 13-stripe flag with a real 50-star field.
+- Settings: the Language heading names the language you'd switch to (inverted like the flags), and the language flags are now real flag emoji (🇺🇦 / 🇺🇸) instead of hand-drawn vectors.
+- Threats: "Observation" (Спостереження) threats are now observations only, not take-cover signals — they never fire a zone siren or chime, are drawn dimmed on the map, and count half as much in the threat-level gauge.
+- Threats: the popup now shows the specific threat name from the server (e.g. «Шахед», «Орлан-10») under the type label.
+- Map: threats with a wide position uncertainty now show a soft amber ring of that size (±km) around the marker.
+- Reliability: staleness, ETA and elapsed time now follow the server clock (serverTime), so a wrong device clock no longer makes threats expire early or linger.
 
 ## [0.3.9] — 2026-08-13
 

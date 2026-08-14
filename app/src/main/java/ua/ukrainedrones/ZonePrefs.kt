@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
@@ -16,9 +16,13 @@ private val Context.dataStore by preferencesDataStore(name = "zone_prefs")
 
 enum class AppLanguage { UA, EN }
 
+/** Density of the threat detail popup. */
+enum class ThreatCardSize { SMALL, MEDIUM, LARGE }
+
 class ZonePrefs(private val context: Context) {
 
     private val languageKey = stringPreferencesKey("app_language")
+    private val languageChosenKey = booleanPreferencesKey("language_chosen")
     private val redZoneKmKey = intPreferencesKey("red_zone_km")
     private val yellowZoneKmKey = intPreferencesKey("yellow_zone_km")
     private val redArmedKey = booleanPreferencesKey("red_zone_armed")
@@ -27,6 +31,11 @@ class ZonePrefs(private val context: Context) {
     private val officialAlertsKey = booleanPreferencesKey("official_alerts_enabled")
     private val disclaimerCollapsedKey = booleanPreferencesKey("disclaimer_collapsed")
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
+    private val followMeKey = booleanPreferencesKey("follow_me")
+    private val pinnedCityKey = stringPreferencesKey("pinned_city")
+    private val tutorialSeenKey = booleanPreferencesKey("tutorial_seen")
+    private val settingsOpenedKey = booleanPreferencesKey("settings_opened")
+    private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
 
     /** Red (inner) zone radius in km — slider range 1–5. */
     fun redZoneKm(): Flow<Int> =
@@ -102,16 +111,73 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[lastUpdateCheckKey] = ts }
     }
 
+    /** Whether the map/zones follow the GPS position (false = pinned to a city). */
+    fun followMe(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[followMeKey] ?: true }
+
+    suspend fun setFollowMe(follow: Boolean) {
+        context.dataStore.edit { it[followMeKey] = follow }
+    }
+
+    /** Pinned city by nameUa, or null when not pinned. */
+    fun pinnedCity(): Flow<String?> =
+        context.dataStore.data.map { prefs -> prefs[pinnedCityKey] }
+
+    suspend fun setPinnedCity(nameUa: String?) {
+        context.dataStore.edit {
+            if (nameUa == null) it.remove(pinnedCityKey) else it[pinnedCityKey] = nameUa
+        }
+    }
+
     fun language(): Flow<AppLanguage> =
         context.dataStore.data.map { prefs ->
             when (prefs[languageKey]) {
-                "UA" -> AppLanguage.UA
-                else -> AppLanguage.EN
+                "EN" -> AppLanguage.EN
+                else -> AppLanguage.UA
             }
         }
 
     suspend fun setLanguage(lang: AppLanguage) {
-        context.dataStore.edit { it[languageKey] = lang.name }
+        context.dataStore.edit {
+            it[languageKey] = lang.name
+            it[languageChosenKey] = true
+        }
+    }
+
+    /** Whether the user has ever picked a language (via the first-run popup or Settings). */
+    fun languageChosen(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[languageChosenKey] ?: false }
+
+    suspend fun setLanguageChosen(chosen: Boolean) {
+        context.dataStore.edit { it[languageChosenKey] = chosen }
+    }
+
+    /** Whether the first-launch guide has been shown at least once. */
+    fun tutorialSeen(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[tutorialSeenKey] ?: false }
+
+    suspend fun setTutorialSeen(seen: Boolean) {
+        context.dataStore.edit { it[tutorialSeenKey] = seen }
+    }
+
+    /** Whether the user has ever opened Settings (drives the one-time heart hint). */
+    fun settingsOpened(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[settingsOpenedKey] ?: false }
+
+    suspend fun setSettingsOpened(opened: Boolean) {
+        context.dataStore.edit { it[settingsOpenedKey] = opened }
+    }
+
+    /** Density of the threat detail popup. */
+    fun threatCardSize(): Flow<ThreatCardSize> =
+        context.dataStore.data.map { prefs ->
+            prefs[threatCardSizeKey]?.let { stored ->
+                ThreatCardSize.values().firstOrNull { it.name == stored }
+            } ?: ThreatCardSize.LARGE
+        }
+
+    suspend fun setThreatCardSize(size: ThreatCardSize) {
+        context.dataStore.edit { it[threatCardSizeKey] = size.name }
     }
 }
 

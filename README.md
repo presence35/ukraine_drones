@@ -1,4 +1,4 @@
-# Odesa Drones
+# Ukraine Drones
 
 A live air-threat map for Odesa that connects straight to the
 [NEPTUN](https://neptun.in.ua) public API and rings alerts when threats come close.
@@ -78,7 +78,7 @@ sooner", update check, and Stop Monitoring & Exit.
 ## Architecture
 
 Built with Jetpack Compose + OSMdroid, Kotlin, coroutines + DataStore. Key files under
-`app/src/main/java/ua/odesa/drones/`:
+`app/src/main/java/ua/ukrainedrones/`:
 
 - `NeptunClient.kt` — WebSocket client with auto-reconnect (backoff) and REST merge when the
   stream goes quiet.

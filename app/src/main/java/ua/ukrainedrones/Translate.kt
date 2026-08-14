@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

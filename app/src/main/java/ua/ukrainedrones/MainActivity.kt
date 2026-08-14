@@ -1,9 +1,10 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,8 +31,10 @@ private val AppDarkColors = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
 
-    private companion object {
+    companion object {
         const val REQUEST_NOTIFICATIONS = 1
+        // Set the moment the process spawns; used to tell cold starts from warm starts.
+        val PROCESS_START_MILLIS: Long = SystemClock.elapsedRealtime()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,7 +50,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = AppDarkColors) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    MainScreen()
+                    SplashGate {
+                        MainScreen()
+                    }
                 }
             }
         }

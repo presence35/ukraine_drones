@@ -6,22 +6,21 @@ plugins {
 }
 
 val versionPropsFile = file("version.properties")
-val versionProps = Properties().apply {
-    if (versionPropsFile.exists()) {
-        versionPropsFile.inputStream().use { load(it) }
-    }
+
+fun readVersionProps(): Properties = Properties().apply {
+    if (versionPropsFile.exists()) versionPropsFile.inputStream().use { load(it) }
 }
 
 android {
-    namespace = "ua.odesa.drones"
+    namespace = "ua.ukrainedrones"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "ua.odesa.drones"
+        applicationId = "ua.ukrainedrones"
         minSdk = 26
         targetSdk = 34
-        versionCode = (versionProps.getProperty("versionCode") ?: "1").toIntOrNull() ?: 1
-        versionName = versionProps.getProperty("versionName") ?: "0.1.0"
+        versionCode = (readVersionProps().getProperty("versionCode") ?: "1").toIntOrNull() ?: 1
+        versionName = readVersionProps().getProperty("versionName") ?: "0.1.0"
     }
 
     signingConfigs {
@@ -124,10 +123,12 @@ private fun autoBumpPatch(name: String): String {
     return "${parts[0]}.${parts[1]}.${parts[2] + 1}"
 }
 
-tasks.register("release") {
+tasks.register<GradleBuild>("release") {
     group = "versioning"
-    description = "Bumps the version, builds the release APK and uploads it. Release notes come from notes_en.txt / notes_ua.txt."
-    dependsOn("bumpVersion", "uploadRelease")
+    description = "Bumps the version, then builds the release APK and uploads it in a fresh Gradle run so the APK and version.json both carry the new version. Release notes come from notes_en.txt / notes_ua.txt."
+    dependsOn("bumpVersion")
+    dir = rootProject.projectDir
+    tasks = listOf(":app:uploadRelease")
 }
 
 tasks.register("uploadRelease") {
@@ -158,7 +159,7 @@ tasks.register("uploadRelease") {
             appendLine("{")
             append("  \"versionCode\": ").append(vc).appendLine(",")
             append("  \"versionName\": \"").append(escapeJson(vn)).appendLine("\",")
-            append("  \"apkUrl\": \"https://").append(host).append("/other_apps/odesadrones/app-release.apk\",").appendLine()
+            append("  \"apkUrl\": \"https://").append(host).append("/other_apps/ukrainedrones/app-release.apk\",").appendLine()
             appendLine("  \"notes\": {")
             append("    \"en\": \"").append(escapeJson(notesEn)).appendLine("\",")
             append("    \"ua\": \"").append(escapeJson(notesUa)).appendLine("\"")
@@ -189,7 +190,7 @@ tasks.register("uploadRelease") {
 
         upload(apk, "app-release.apk")
         upload(jsonFile, "version.json")
-        println("Done. https://$host/other_apps/odesadrones/version.json")
+        println("Done. https://$host/other_apps/ukrainedrones/version.json")
     }
 }
 

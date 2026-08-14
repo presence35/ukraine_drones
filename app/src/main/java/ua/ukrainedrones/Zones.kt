@@ -1,4 +1,4 @@
-package ua.odesa.drones
+package ua.ukrainedrones
 
 /** The two alert tiers, most specific first: INNER (red zone) then OUTER (yellow zone). */
 enum class ThreatZone { INNER, OUTER }
