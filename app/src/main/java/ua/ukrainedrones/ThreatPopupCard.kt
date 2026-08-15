@@ -30,7 +30,6 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 private val ReliabilityRed = Color(0xFFD9737A)
-private val UncertaintyFill = Color(0xFF7CB342)
 private val UncertaintyEmpty = Color(0xFF3A3A3A)
 private val AdvisoryAmber = Color(0xFFFFC107)
 private val DistUserRed = Color(0xFFE57373)
@@ -89,7 +88,6 @@ fun ThreatPopupCard(
     }
     val confirmations = threat.confirmations.takeIf { it > 0 }
 
-    val distUser = proximity?.distToUserKm
     val band = proximity?.let { p ->
         val d = p.distToUserKm ?: return@let null
         radialZone(d, RadialZones(p.redKm, p.yellowKm))
@@ -505,17 +503,17 @@ private fun SummaryPills(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        MetricPill(
-            number = formatKm(distUser),
-            unit = s.kmUnit,
-            contentDescription = distCd
-        )
         proximity.etaToUserMin?.let { eta ->
             MetricPill(
                 number = formatEtaMinutes(eta),
                 unit = s.etaUnit
             )
         }
+        MetricPill(
+            number = formatKm(distUser),
+            unit = s.kmUnit,
+            contentDescription = distCd
+        )
         proximity.speedKmh?.let { speed ->
             MetricPill(
                 number = speed.roundToInt().toString(),
@@ -571,11 +569,19 @@ private fun uncertaintyBars(km: Double): Int {
     }
 }
 
+/** Fill colour for the precision bar: green at 5 bars, amber mid-range, red when coarse. */
+private fun uncertaintyColor(bars: Int): Color = when (bars) {
+    5 -> DistUserGreen
+    3, 4 -> DistUserAmber
+    else -> DistUserRed
+}
+
 /** 5-segment uncertainty indicator with the raw ±km kept as a small caption. */
 @Composable
 private fun UncertaintyBar(uncertaintyKm: Double?, s: Strings.StringSet) {
     if (uncertaintyKm == null) return
     val bars = uncertaintyBars(uncertaintyKm)
+    val color = uncertaintyColor(bars)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(s.uncertaintyLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF9E9E9E))
         Spacer(Modifier.width(8.dp))
@@ -584,7 +590,7 @@ private fun UncertaintyBar(uncertaintyKm: Double?, s: Strings.StringSet) {
                 modifier = Modifier
                     .size(width = 12.dp, height = 6.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(if (i < bars) UncertaintyFill else UncertaintyEmpty)
+                    .background(if (i < bars) color else UncertaintyEmpty)
             )
             if (i < 4) Spacer(Modifier.width(2.dp))
         }

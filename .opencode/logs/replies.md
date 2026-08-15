@@ -31005,3 +31005,1621 @@ Let me look at the current state of the code to understand the layout and the th
 
 Let me look at the ThreatTypeCatalog INFO and the ThreatType enum more closely, plus the ThreatLevel type groupings to inform the grouping suggestion.
 
+
+## 15/08/2026, 18:36:38
+
+I now have all the context. Let me review the current `ThreatToggleCard` and the layout. The user wants:
+
+1. "All types" label not distinct enough → needs renaming or a better header.
+2. Toggle buttons too big → page scrolls forever. They want toggles **stacked on the right side of each threat** instead of full-width cards below each threat.
+3. Organize threats into groups (high/med/low or fast/slow).
+
+Let me think about the design.
+
+**Current layout per threat**: a Card with a Row (icon + label/desc + caret), then a full-width Row of two big `ThreatToggleCard`s below it. That's tall — 8 types × ~100px each of toggle cards = lots of scrolling.
+
+**Proposed**: Put the Map/Alerts toggles on the right side of the header row, stacked vertically, as compact switches rather than big bordered cards. This saves a full row of height per type.
+
+**Grouping**: The app already has a natural grouping — `FAST_THREAT_TYPES` (BALLISTIC, CRUISE_MISSILE, AVIATION, KAB) vs. slow (SHAHED, FPV_LOITERING, RECON, UNKNOWN). This maps to a "Fast" vs "Slow" split which is meaningful (fast objects alert sooner / highest priority). There's also `ThreatLevel.kt` TYPE_BASE (10/8/7/5/4/4/3/2) which gives a High/Med/Low grouping.
+
+The user asked for suggestions. Let me present the plan and ask which grouping + which toggle style they prefer.
+
+Let me look at `ThreatToggleCard` definition and how compact we can make it, plus check `FAST_THREAT_TYPES` reuse. I have enough. Let me formulate the plan and ask clarifying questions.
+
+Let me present the design options.
+
+
+## 15/08/2026, 18:38:24
+
+I'll investigate how threat cards display timing info. Let me search the codebase.
+
+
+## 15/08/2026, 18:38:35
+
+The user's request is a bit ambiguous: "confirm threat cards show number of mins to GPS/pinned city/red zone." Let me understand what "threat cards" refers to — likely the `ThreatPopupCard.kt`. Let me read it to understand what it currently shows.
+
+
+## 15/08/2026, 18:38:52
+
+I now understand the current behavior. Let me analyze what the threat cards currently show.
+
+The request: "confirm threat cards show number of mins to GPS/pinned city/red zone."
+
+Current state analysis:
+- **ThreatPopupCard** (`ThreatPopupCard.kt`) shows a `SummaryPills` trio: **distance (km)**, **ETA to user (min)**, and **speed (km/h)** — see `SummaryPills` at line 485-526.
+- The **distance** is measured to the focus point (`distUser` = distance to `focusLocation`), which is GPS while following, else the pinned city (`MainViewModel.kt:376-381`).
+- The **ETA** (`etaToUserMin`) is the time to the focus point (GPS or pinned city) — but computed as `distKm / speed`, straight-line, no red-zone-specific timing.
+- The card border is **colored by band** (INNER red / OUTER amber) based on the red/yellow zone — but there's **no explicit "mins to red zone"** number shown.
+
+So the request likely asks me to confirm/verify what the current implementation shows, or possibly to confirm that it shows minutes-to-red-zone. Given the phrasing "confirm threat cards show number of mins to GPS/pinned city/red zone," the user wants to verify/ensure the card displays minutes to each of these three reference points.
+
+Let me clarify the ambiguity before planning.
+
+Current facts:
+- Card shows **ETA in minutes to the focus point** (GPS if following, else pinned city). ✓ (that covers "mins to GPS/pinned city" — but it's one ETA, whichever focus is active, not both)
+- Card does **NOT** show a separate "minutes to red zone" number. It only color-codes the border by which zone the threat is in.
+
+Let me confirm by checking Strings for the labels used.
+
+
+## 15/08/2026, 18:38:54
+
+Good catch — this is a real inconsistency. Let me analyze the logic.
+
+**Pill dot** (when `backupActive`): amber `0xFFF9A825` — shows "on backup".
+
+**Popup dots** (`SourceStatusRow`):
+- NEPTUN: green if `connected` — but if we're on backup, NEPTUN is *supposed* to be down/silent, yet `connected` is often still `true` (the WS socket can be alive while the alert feed is quiet, or the temp test keeps it connected). So NEPTUN shows green.
+- Backup: green if `backupUp` — the backup *is* polling successfully (it's healthy), so green.
+
+So the header correctly says "amber = we're relying on backup," but the popup shows both sources green because "alive/connected" ≠ "the active source." The popup conflates *health* with *which one you're actually using*.
+
+## Why it's not right
+
+The popup's green dots answer "is this source reachable?" — and both can be reachable simultaneously even while the app is effectively running on backup (NEPTUN socket up but alert feed quiet, so `backupActive` became true). So the user sees: header = amber/backup, popup = both green. Visually contradictory.
+
+The real issue: **the "effective source" (what the pill encodes) isn't visually tied to the dots.** The popup only mentions it as a text line ("Currently on: backup"), which is easy to miss against two green dots.
+
+## Options to fix
+
+**Option A — Highlight the effective source, keep health dots (recommended)**
+Keep each source's health dot (green/amber/red), but make the *active* source visually distinct:
+- Bold + a colored underline/fill, or an "● active" badge next to the effective source row.
+- The pill stays amber with "backup" (it means "effective source = backup").
+
+**Option B — Make the popup dot color reflect "effective source", not health**
+- If on backup → NEPTUN row shows gray/dim (not the active), backup row shows amber (the active source).
+- But then the popup loses the "are both alive" health info the user explicitly asked for ("a system status that shows if both systems are alive"). So this conflicts with the earlier requirement.
+
+**Option C — Reconcile semantics clearly: two separate signals**
+The user's earlier ask was a status showing both systems alive. The cleanest resolution:
+- Health dot per source (green alive / red down) — this is fine and true.
+- Make the **active-source** cue unmistakable: a distinct filled chip/badge "ACTIVE" on the effective row, and dim the non-active row.
+- Optionally, the pill dot should then also reflect "effective source" which it already does (amber backup). The only missing link is making the popup's active row match that same amber semantics.
+
+So the fix is really: **the popup should make clear that "green = healthy" while "amber = the one currently in use"**, and the two aren't the same thing. Right now the active-source cue is just a weak text line.
+
+I recommend **Option A + a badge**: 
+- Keep per-source health dots (green/red) as-is — they're correct.
+- Add a distinct "ACTIVE" / "АКТИВНЕ" badge to the effective source row, and dim (lower alpha/gray text) the inactive source row.
+- This resolves the apparent contradiction: header amber = "you're on backup"; popup green dots = "both services are reachable," with the ACTIVE badge showing which is driving the app.
+
+Let me confirm the exact current code so the plan is precise. Let me re-read the popup block I wrote.
+
+
+## 15/08/2026, 18:39:08
+
+I have enough to confirm the current state. Let me report findings and clarify the intent since "confirm" is ambiguous — it could mean "verify it already does this" or "make it do this."
+
+## Current state (verified)
+
+The threat popup card (`ThreatPopupCard.kt`) currently shows in `SummaryPills` (line 485):
+- **Distance (km)** to the **focus point** — GPS while following, else the pinned city (`MainViewModel.kt:376`).
+- **ETA (min)** to that same focus point (`etaToUserMin`, computed straight-line `distKm / speed`).
+- **Speed (km/h)**.
+
+So:
+- **Mins to GPS/pinned city** ✓ — but it's a *single* ETA to whichever focus is active (GPS **or** pinned city), not both at once.
+- **Mins to red zone** ✗ — there is **no** "minutes until it enters the red zone" number. The red zone is only reflected as the **card border color** (red/amber) based on which zone the threat is currently in (`ThreatPopupCard.kt:98-102`, `MainViewModel.kt:351-355`).
+
+So the card does **not** currently show minutes to the red zone.
+
+Before I plan, I need to clarify what you want:
+
+
+## 15/08/2026, 18:39:19
+
+I've confirmed the code. The root cause is clear:
+
+- The popup's `SourceStatusRow` dots answer **"is this service reachable?"** (health) — both NEPTUN (socket alive) and backup (polling fine) are green.
+- The pill's amber dot answers **"which source is driving alerts?"** (effective source).
+- The popup's only effective-source cue is a plain text line ("Currently on: backup") that reads as weak next to two green dots.
+
+So the two dots and the pill are answering *different questions*, and that's not communicated — hence the confusion.
+
+## Plan to fix
+
+The goal: make the popup's active source visually unmistakable, while keeping per-source health (the user's earlier requirement to show "if both systems are alive").
+
+### Changes (all in `MainScreen.kt`, plus 1–2 strings)
+
+**1. `SourceStatusRow` — add an `active: Boolean` param**
+- When `active`, render a distinct badge next to the status: a small filled chip labeled **"ACTIVE" / "АКТИВНЕ"** (new string `connActiveLabel`), and/or bold the row + tint the name.
+- When not active, dim the row (e.g. `alpha(0.6f)` or gray text) so the active one clearly stands out.
+
+**2. Wire `active` per row**
+- NEPTUN row: `active = !backupActive`
+- Backup row: `active = backupActive`
+
+**3. Keep health dots as-is (green/red/amber)** — they correctly show reachability. To reinforce the distinction, add a tiny legend note or rely on the ACTIVE badge + dimming.
+
+**4. Optionally strengthen the effective-source line**
+- Make "Currently on: X" bold or color it (amber when backup) so it ties to the pill's amber semantics. This bridges header ↔ popup.
+
+### Resulting semantics (clearly conveyed)
+- **Green dot** = service reachable (health).
+- **"ACTIVE" badge + bold row** = the source currently driving alerts (matches the pill's amber).
+- Non-active row dimmed.
+- So: on backup you'd see NEPTUN green-but-dimmed, backup green-and-ACTIVE-badged, pill amber "backup" — all consistent once the badge is understood.
+
+### Files
+- `MainScreen.kt` — `SourceStatusRow` signature, the two call sites, effective-source line styling.
+- `Strings.kt` — add `connActiveLabel` (EN "Active" / UA "Активне").
+- `CHANGELOG.md` — note the clarified status popup.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+### One decision for you
+When the backup is active but NEPTUN is **also healthy** (both green), should the non-active NEPTUN row:
+- **(a)** stay green (reachable) but dimmed with no badge (my recommendation — preserves "both alive" truth), or
+- **(b)** turn amber/gray to imply "not in use"?
+
+I recommend **(a)** — it keeps the honest "both systems alive" status you asked for, and the ACTIVE badge resolves the ambiguity.
+
+Want me to proceed with Option A + the badge approach?
+## 15/08/2026, 18:40:55
+
+The user chose:
+1. **Compact switches** on the right side of each threat.
+2. **Fast vs Slow** grouping.
+3. For the master "all" row: they want it per-group but can be one row if organized well — sketch: `[fast] [slow]` with `map/bell` toggles under each. So a single "All" card with two group columns (Fast, Slow), each column having its own Map/Bell master toggle.
+
+Let me design the layout precisely.
+
+## Plan
+
+### New grouping model
+Add a helper in `SettingsScreen.kt` (or reuse existing `FAST_THREAT_TYPES` from Threat.kt):
+- **Fast** group = `FAST_THREAT_TYPES` = {BALLISTIC, CRUISE_MISSILE, AVIATION, KAB}
+- **Slow** group = all others = {SHAHED, FPV_LOITERING, RECON, UNKNOWN}
+
+Since the list is built from `ThreatType.values().toList()` currently, I'll replace it with two ordered groups rendered as two `item { }` blocks (or grouped via a helper). Each group has:
+- A group header showing the group name ("Fast" / "Slow") — optionally with an expand/collapse.
+- The threat cards for that group.
+
+### Master "All types" row (one row, two groups)
+Replace the current single `allMapOn`/`allAlertsOn` card (SettingsScreen.kt:269-305) with a single card containing **two side-by-side group columns**:
+```
+[ Fast ]          [ Slow ]
+ map  bell        map  bell
+```
+Each group column has its own master Map + Alerts toggle (4 compact switches total). So:
+- `onThreatMapToggleAll(group, Boolean)` and `onThreatAlertToggleAll(group, Boolean)` — but simpler: reuse per-group.
+
+Actually the cleanest: add callbacks scoped by group. I'll define a `ThreatGroup` (enum or just Set<ThreatType>). New ViewModel methods:
+- `setGroupMapVisible(group, visible)` — sets all types in that group's map, and silences alerts if hidden.
+- `setGroupAlertsEnabled(group, enabled)` — sets all types in that group's alerts.
+
+I could repurpose/rename the existing `setAllThreatMapVisible`/`setAllThreatAlertsEnabled` to operate per-group, or add new per-group methods. Given the current "All" row is now per-group, I'll change the wiring: the master row will call per-group methods. I'll keep `setAllThreat*` as the per-group implementation (loop over a passed group), or add `setGroupThreatMapVisible`. Let me plan: add a `ThreatGroup` concept and methods that take the group.
+
+### Per-threat compact switches
+Redesign each threat Card:
+```
+Row:
+  [icon]  [label + description (weight)]  [caret]
+  ...actually the toggles go in this same header row on the right
+```
+But with icon + text + caret + two switches, the right side could get crowded. The user wants switches stacked on the right. Design:
+
+```
+Row (header):
+  [icon]  [label + desc, weight(1f)]   [ Map switch ]
+                                         [ Alerts switch ]
+```
+The caret for expand can move to be part of the row too, or be placed in the text click. Since we made text clickable to expand, we can drop the caret `IconButton` entirely (the text expands) or keep a small caret. The user earlier wanted caret to respond to full text; now with switches on the right, we can remove the standalone caret button and rely on tapping the label/text to expand (already implemented). I'll keep a small caret icon inline with the text click for affordance, but remove the full IconButton to save horizontal space. Actually, to be safe and match "caret responds to full text," I'll keep the label/desc clickable to expand and drop the separate caret button.
+
+New compact switch composable (replacing `ThreatToggleCard` for per-threat):
+```kotlin
+@Composable
+private fun CompactToggleRow(label: String, checked: Boolean, enabled: Boolean, onCheckedChange: (Boolean) -> Unit)
+```
+Renders a small Row: label text + `Switch` (small). Stacked vertically on the right.
+
+For the per-threat alerts switch: `enabled = onMap` (can't enable alerts while type hidden from map — matches coupling). Map switch always enabled.
+
+The group master toggles use the same compact style but bolder.
+
+### Strings to add/change (UA + EN)
+- Group labels: "Fast" / "Slow" (or "Fast threats" / "Slow threats"; UA: "Швидкі" / "Повільні" or "Швидкі загрози" / "Повільні загрози").
+- Maybe rename `allThreatsLabel`. The user said "All types" isn't distinct. With the new one-row two-group design, the master card can be titled clearly. I'll keep a title but maybe drop `allThreatsLabel` or repurpose. Let me keep `allMapLabel`/`allAlertLabel` and add group labels; keep the section title as the Threats header.
+
+### CHANGELOG + build/test
+- Update `[Unreleased]` entry to reflect compact layout + Fast/Slow grouping.
+- `assembleDebug` + `testDebugUnitTest`.
+
+Let me verify the exact strings/fields and current master-row wiring so the plan is precise. Let me check the current new Strings fields and the exact per-threat switch placement constraints (horizontal space).
+
+I have enough. Let me also confirm: should the group be collapsible? The user didn't ask; keep it simple — no collapsible groups, just group headers. Actually, adding group collapse could reduce scrolling further but adds complexity. I'll keep flat-with-headers unless asked.
+
+Let me present the final plan.
+
+One more consideration: the per-threat row now has icon + text + Map/Alerts switches. Where does the expand caret go? I'll make the whole left region (icon + text) clickable to expand (already done for text), and remove the standalone caret IconButton. This frees space for the switches. I'll add a subtle caret glyph in the text column to hint expandability.
+
+Let me also double-check `typicalSpeed`/expanded content stays in the expanded `AnimatedVisibility` section — unchanged.
+
+Let me write the final plan.
+
+
+## 15/08/2026, 18:41:07
+
+The command seems to have had an issue with the pipe. Let me run it directly without the pipe.
+
+
+## 15/08/2026, 18:41:26
+
+The clean rebuild succeeded. The earlier `allThreatsLabel` error was stale incremental state (a pre-existing uncommitted state artifact). 
+
+There's one warning worth fixing: `ThreatPopupCard.kt:92:9 Variable 'distUser' is never used`. The `distUser` val at line 92 (in the band computation) is no longer used since I removed the summary. Let me check — it's used inside the `band` lambda. Let me look.
+
+Line 90-95:
+```
+val distUser = proximity?.distToUserKm
+val band = proximity?.let { p ->
+    val d = p.distToUserKm ?: return@let null
+    radialZone(d, RadialZones(p.redKm, p.yellowKm))
+        ?.let { spatial -> effectiveZone(threat, spatial, fastAlertsSooner) }
+}
+```
+
+The `distUser` at line 92 is indeed now unused (the band lambda uses its own `d`). Let me remove that unused line.
+
+
+## 15/08/2026, 18:41:36
+
+Here's my refined plan.
+
+## Plan: Compact threat toggles + Fast/Slow grouping
+
+### 1. Group model (SettingsScreen.kt)
+- **Fast** = `FAST_THREAT_TYPES` (BALLISTIC, CRUISE_MISSILE, AVIATION, KAB) — reuse the existing set from `Threat.kt:18`.
+- **Slow** = all remaining (`ThreatType.values() - FAST_THREAT_TYPES`): SHAHED, FPV_LOITERING, RECON, UNKNOWN.
+- Render two ordered groups; each with a small group header ("Fast" / "Slow") followed by its threat cards. This replaces the current flat `items(ThreatType.values())` at SettingsScreen.kt:306.
+
+### 2. Per-threat card redesign (SettingsScreen.kt:316-381)
+Replace the two-part layout (header Row + full-width `ThreatToggleCard` Row) with a single compact header row:
+```
+[icon]  [label + description (weight 1f)]   [ Map   ]   ← compact switch
+                                            [ Alerts]   ← compact switch
+```
+- New `CompactToggleRow(label, checked, enabled, onCheckedChange)` composable: a small horizontal Row of a tiny label + a compact `Switch`, stacked vertically on the right.
+- Map switch: always enabled, `checked = onMap`.
+- Alerts switch: `enabled = onMap` (can't enable alerts while the type is hidden from map — preserves the coupling), `checked = onAlerts`.
+- Remove the standalone caret `IconButton` and the full-width toggle row. Keep the icon+text region clickable to expand (already implemented at line 333-345), and add a subtle caret glyph in the text column so expandability stays discoverable.
+- The expanded `AnimatedVisibility` content (details, speed, photo, joke) is unchanged.
+- Remove the now-unused `ThreatToggleCard` composable if nothing else uses it (the master row will use the new compact style too).
+
+### 3. Master "All" row redesign (SettingsScreen.kt:269-305)
+One card, two group columns:
+```
+[ Fast ]           [ Slow ]
+ map  bell          map  bell
+```
+- Each group column: header label ("Fast"/"Slow") + two compact switches (Map, Alerts).
+- State: group Map on = no type in that group is hidden (`groupTypes.none { it in hiddenTypes }`); group Alerts on = none silenced. Same per-group.
+- Group Map switch: `forcedOff=false`; Group Alerts switch: `enabled = groupMapOn` (alerts coupled to map visibility), matching per-type behavior.
+- Remove the now-redundant `allThreatsLabel` title or repurpose the card as a clear, visually-separated master row (I'll keep a concise header inside the card to distinguish it from the per-threat cards).
+
+### 4. ViewModel + wiring
+- Replace `setAllThreatMapVisible(Boolean)` / `setAllThreatAlertsEnabled(Boolean)` with **group-scoped** versions, or add new ones: `setGroupMapVisible(types: Set<ThreatType>, visible)` and `setGroupAlertsEnabled(types: Set<ThreatType>, enabled)` in `MainViewModel.kt` (loop over the passed group; hiding a group also silences that group's alerts — mirrors `setThreatMapVisible` at line 475).
+- Update `MainScreen.kt` wiring (lines 127-128 area) to pass group-scoped callbacks: `onGroupMapToggle(group, Boolean)` / `onGroupAlertToggle(group, Boolean)`.
+
+### 5. Strings (Strings.kt, UA + EN)
+- Add group labels: `fastGroupLabel` ("Fast" / "Швидкі"), `slowGroupLabel` ("Slow" / "Повільні").
+- Keep/reuse `threatMapLabel` / `threatAlertLabel` for the small switch labels.
+- Drop or repurpose `allThreatsLabel`/`allMapLabel`/`allAlertLabel` depending on final master-row text (I'll finalize with the layout).
+
+### 6. CHANGELOG
+Update the `[Unreleased]` entry: compact right-side Map/Alerts switches per threat, Fast/Slow grouping, per-group master toggles.
+
+### 7. Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+**Note on coupling preserved**: turning off a type's (or group's) Map still silences its Alerts, and Alerts can't be re-enabled while Map is off — consistent with the existing design. If you'd rather fully decouple Map and Alerts (allow alerts with map off), tell me and I'll change `setThreatMapVisible` accordingly too.
+
+Shall I proceed with this?
+## 15/08/2026, 18:41:37
+
+Now let me run assembleDebug and the unit tests.
+
+
+## 15/08/2026, 18:41:50
+
+You're right. The core problem is a semantic mismatch I haven't resolved:
+
+- **Header/pill** = amber = "which source is *driving alerts*" (effective source).
+- **Popup dots** = green/red = "is this service *reachable*" (health).
+
+These are two different questions, and the popup never visually ties them together — so on backup you get amber up top but green dots below, which reads as contradictory.
+
+The user's point: the popup dots only ever show green or red (health), but the header shows amber (effective). The popup never conveys amber/effective state at all. So the fix must make the popup **consistent with the header** — i.e., the popup should reflect the effective-source (amber) concept, not just raw health.
+
+## Proposed plan
+
+Make the popup visually consistent with the header by making the **effective source** the primary signal, using the **same amber** as the pill:
+
+**1. Replace the health-only dots with effective-source-driven dot colors, while keeping health as secondary.**
+
+Concretely, per source row:
+- **Active (effective) source** → amber dot (`0xFFF9A825`, same as header) + **"ACTIVE"/"Активне" badge** + bold name. This directly matches the header's amber.
+- **Inactive source** → gray/dimmed dot, so it's clearly not in use.
+
+This makes the popup's amber row = the pill's amber, removing the contradiction.
+
+**2. Keep the "both alive" info the user wanted, but as secondary, not the dots.**
+The user earlier wanted "if both systems are alive." With effective-source dots as primary, health would be lost. So I need to decide how to show health without clashing with the amber effective cue.
+
+Two sub-options for the inactive source's "is it healthy?" info:
+- **(A)** Inactive row shows a gray dot + status text "Connected / Offline · Xm" in the text (so you still see it's reachable, but visually de-emphasized vs the amber active row). The dot is gray (not in use), health lives in the status text.
+- **(B)** Keep health dots for inactive (green if reachable), but only the *active* row gets amber + badge. This reintroduces "green dots" the user disliked.
+
+The user is unhappy that the popup shows green for a source that isn't driving alerts. So **Option A** is right: the **active** source is the only colored (amber) row; the inactive source is gray/dimmed, with its reachability as secondary text.
+
+**3. Pill unchanged** — already amber "backup".
+
+**4. Effective-source line** ("Currently on: X") — make it amber-tinted and bold to tie header ↔ popup.
+
+### Result (on backup)
+- Header: amber "backup".
+- Popup: **backup row = amber dot + "Active" + bold**, NEPTUN row = gray dot + dimmed text (with "Connected/Offline · timer" as secondary info). Consistent — amber means "this is the source in use" everywhere.
+
+### New strings
+- `connActiveLabel` — "Active" / "Активне".
+- Maybe `connInactiveLabel` not needed; dimming suffices.
+
+### Files
+- `MainScreen.kt` — rework `SourceStatusRow` (add `active`, dot color = amber when active else gray), the two call sites, and the effective-source line styling.
+- `Strings.kt` — add `connActiveLabel`.
+- `CHANGELOG.md` — note the consistency fix.
+
+### One open decision
+For the **inactive** source's reachability, do you want:
+- **(A)** gray dot + status text "Connected/Offline · Xm" (health as text, my recommendation), or
+- **(B)** drop the inactive source's health from the popup entirely (only show the active source), or
+- **(C)** keep both green/red health dots but add the amber badge to active (still shows green dots — likely not what you want)?
+
+I recommend **(A)**: one amber active row, one gray inactive row carrying its reachability as text. Shall I proceed with that?
+## 15/08/2026, 18:41:51
+
+Build and tests pass. Let me update the todos and verify the final popup code is correct by reviewing the key changes once more.
+
+
+## 15/08/2026, 18:41:59
+
+Done. Build + unit tests pass (`BUILD SUCCESSFUL`).
+
+Summary of changes:
+
+**`ThreatPopupCard.kt`** — replaced the wordy `summary` line + colored `SpeedPill` with a neutral trio of pills where the number is the hero:
+- New `SummaryPills` composable (wrap-friendly `FlowRow`) with three `MetricPill`s: distance `3 км`, ETA `10 хв`, speed `180 км/год`. Muted colors (`0xFF2A2A2A` bg, near-`onSurfaceVariant` text, number bold). GPS-off falls back to the muted `gpsOffLabel`.
+- Pinned-city context moved to the distance pill's `contentDescription` only (card stays clean) via new `pillDistanceCd` string.
+- Wired into SMALL/MEDIUM/LARGE; removed the old colored `SpeedPill` and unused `distColor`/`distUser`.
+- `formatEtaMinutes` now minutes-only, localized per language via `s.etaUnit` (`хв` / `min`).
+
+**`Strings.kt`** — added `etaUnit`, `approxNote`, `pillDistanceCd` to `StringSet` + UA/EN values (`«Усі числа в застосунку приблизні»` / "All numbers in the app are approximate").
+
+**`SettingsScreen.kt`** — added the `approxNote` line to the threat card-size card (Settings screen only).
+
+**`CHANGELOG.md`** — entry under `[Unreleased]`; **`ARCHITECTURE.md`** — updated the popup module-map line.
+
+Note: I did not touch the pre-existing uncommitted `allThreatsLabel`/`allMapLabel`/`allAlertLabel` work from a prior session (left as-is). The transient "No value passed for parameter 'allThreatsLabel'" error was stale incremental state and cleared on a clean rebuild.
+## 15/08/2026, 18:43:50
+
+Let me examine the current pills and the uncertainty/precision bar logic more carefully.
+
+I already have `SummaryPills` (ThreatPopupCard.kt:485-526) and `UncertaintyBar` (ThreatPopupCard.kt:575-598). Let me look at the precision/uncertainty colors.
+
+Currently:
+- `UncertaintyBar` (line 575-598): uses `UncertaintyFill = Color(0xFF7CB342)` (green) and `UncertaintyEmpty = Color(0xFF3A3A3A)` regardless of bar count. So filled bars are **always green**. The user is right — it should be red if few bars (small), orange if middle, green if 5 bars.
+
+The bars map: `uncertaintyBars` (line 564): 5 bars = km<1, 4 = km<2, 3 = km<4, 2 = km<8, 1 = else.
+
+The user wants:
+- green if 5 bars
+- orange if middle
+- red if small
+
+Let me clarify the mapping and the "organize as min,km,kmh" request.
+
+**Request 1: "organize them as min,km,kmh"** — Currently `SummaryPills` order is: distance (km), ETA (min), speed (km/h). Wait, let me recheck. Lines 508-524: first pill = distance (`formatKm`, unit `kmUnit`), second = eta (unit `etaUnit` = "min"/"хв"), third = speed (unit `speedUnit`).
+
+The user wants order **min, km, km/h** — so: ETA (min) first, then distance (km), then speed (km/h). So I need to reorder the pills to ETA → distance → speed.
+
+**Request 2: precision bar color** — `UncertaintyBar` filled segment color should depend on number of bars:
+- 5 bars → green
+- middle (3-4) → orange
+- small (1-2) → red
+
+Let me verify there's a `speedUnit` string. Let me confirm the current order and the StringSet fields.
+
+Let me look at the Strings for these units to be sure of what exists, and re-read the current pill order precisely.
+
+From what I read:
+```kotlin
+FlowRow(...) {
+    MetricPill(number = formatKm(distUser), unit = s.kmUnit, ...)  // km first
+    proximity.etaToUserMin?.let { eta -> MetricPill(number = formatEtaMinutes(eta), unit = s.etaUnit) }  // min second
+    proximity.speedKmh?.let { speed -> MetricPill(number = speed.roundToInt().toString(), unit = s.speedUnit) }  // km/h third
+}
+```
+
+So yes, currently **km, min, km/h** — user wants **min, km, km/h**.
+
+Now let me confirm the colors needed for uncertainty. There are existing amber/red/green colors in the file. `UncertaintyFill` is currently a single green. I'll define a color function based on bar count.
+
+Let me confirm `speedUnit` and `kmUnit` exist.
+
+I have enough. Let me form the plan. Since I'm in plan mode, I present the plan.
+
+Let me double check the UncertaintyBar - currently it's `UncertaintyFill` green for all filled bars. The change: filled bar color varies. Mapping per user: green=5, orange=middle, red=small. bars=1,2 → red; 3,4 → orange; 5 → green. I'll use existing `DistUserRed`, `DistUserAmber`, `DistUserGreen`.
+
+Present plan.I have everything needed. Here's my plan.
+
+## Findings
+
+**1. Pill order (`ThreatPopupCard.kt` `SummaryPills`, lines 508-524)**
+Currently ordered: **km → min → km/h**:
+- `MetricPill(formatKm(distUser), unit = kmUnit)` (distance)
+- `MetricPill(formatEtaMinutes(eta), unit = etaUnit)` (ETA min)
+- `MetricPill(speed, unit = speedUnit)` (speed km/h)
+
+You want **min, km, km/h** → reorder ETA first, distance second, speed third.
+
+**2. Precision/uncertainty bar (`UncertaintyBar`, lines 575-598)**
+Filled segments use a single constant `UncertaintyFill = Color(0xFF7CB342)` (green) regardless of count — so it's always green. You're right. `uncertaintyBars()` (lines 564-572) yields 1–5 bars by uncertainty km: 5=km<1, 4=km<2, 3=km<4, 2=km<8, 1=else.
+
+## Plan
+
+**Edit `app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt`:**
+
+1. **Reorder pills in `SummaryPills`** (lines 508-524): put the ETA pill first, then distance, then speed → `min, km, km/h`. Also move the `distCd` content-description onto the (now-second) distance pill. Result:
+   - `MetricPill(eta)` — `min`
+   - `MetricPill(formatKm(distUser), kmUnit, contentDescription=distCd)`
+   - `MetricPill(speed, speedUnit)`
+
+2. **Color the precision bar by quality** in `UncertaintyBar`:
+   - Replace fixed `UncertaintyFill` with a per-bar color: **5 bars → green**, **3–4 → amber**, **1–2 → red** (reusing existing `DistUserGreen`/`DistUserAmber`/`DistUserRed` constants already in the file).
+   - Filled segments get that color; empty segments stay `UncertaintyEmpty`.
+   - `UncertaintyFill` constant becomes unused → remove it.
+
+No domain-logic change (this is UI only), so no test/ARCHITECTURE update needed. No string changes.
+
+Confirm and I'll implement.
+## 15/08/2026, 18:45:11
+
+Now the semantics are fully specified. Let me nail down the exact logic.
+
+## Header pill (3 states, priority order)
+
+The header has exactly three mutually-exclusive states:
+1. **Orange dot + "backup"** — when the backup source is the one driving alerts (`backupActive`). *This is the effective-source indicator.*
+2. **Green dot + "online"** — when not on backup AND NEPTUN is connected.
+3. **Red dot + "offline"** — when not on backup AND NEPTUN is down (with the offline timer, per the earlier ask).
+
+Key: the orange "backup" state **takes priority** and represents the effective source, not NEPTUN's raw connection. So if backup is active, we show orange regardless of whether the NEPTUN socket happens to still be alive. That's exactly the current pill behavior — good, no change needed to the pill logic itself.
+
+## Popup (status of each + highlight the effective one)
+
+- Show **each source's own status** (NEPTUN and alerts.com.ua), each with its own dot/Online/Offline-with-timer.
+- **Highlight the helper text of the effective source** — when on backup, the backup row's helper text is highlighted (amber/bold), so the popup visibly matches the orange header. When on NEPTUN, the NEPTUN row's helper is highlighted.
+
+This resolves the earlier confusion: the popup still shows both sources' real health (green/red per source), but the **effective source's line is highlighted with the same orange** as the header. So orange in header = orange-highlighted row in popup = consistent.
+
+## Clarifying question on the popup's per-source dots
+
+The user's spec says header is orange/green/red. For the popup, they said "status of each" — so each source keeps its own health dot (green = reachable, red = down, and for the backup, amber-when-stale as before). The **highlight** is a separate visual cue (orange bold text / badge) on the effective row.
+
+But I should confirm one thing: when the backup row is the effective source AND is healthy (green dot), the row will show a green health dot + orange highlight — is that acceptable, or do they want the effective row's *dot* itself to be orange?
+
+Let me ask this precisely, plus how the "highlight" should look.
+
+
+## 15/08/2026, 18:45:53
+
+I'll implement both changes.
+
+
+## 15/08/2026, 18:45:57
+
+Now the precision bar colors.
+
+
+## 15/08/2026, 18:46:25
+
+Let me verify the build compiles.
+
+
+## 15/08/2026, 18:46:40
+
+Build succeeds. Both changes are done:
+
+1. **Pill order** (`SummaryPills`): now **min → km → km/h** (ETA first, distance second, speed third).
+2. **Precision bar** (`UncertaintyBar`): filled segments are now colored by quality — **5 bars = green**, 3–4 = amber, 1–2 = red. Removed the unused `UncertaintyFill` constant.
+## 15/08/2026, 18:47:16
+
+The user picked the recommended highlight (orange bold text + "Active" label on the effective source, keeping health dots). And they want a **TEMP toggle** to fake NEPTUN online/offline to test the different system states — and if there isn't one in Settings already, put it in the system-status popup instead.
+
+Let me check whether the earlier session actually added the TEMP toggle. In my first-turn plan I proposed one, but in the actual implementation I never created it. Let me verify by searching for any existing temp/force toggle.
+
+Let me check ZonePrefs and the codebase for any force-offline/temp toggle.
+
+
+## 15/08/2026, 18:47:25
+
+Confirmed: **there is no TEMP/force-offline toggle** — I proposed it in the first plan but never implemented it. The user now wants it in the system-status popup.
+
+Let me verify how the popup is currently reached (it's a dialog inside `ConnectionStatus`, which is a `@Composable` in `MainScreen.kt`), and how I'd add an interactive toggle there. The popup is an `AlertDialog` with only a confirm button. To add a toggle, I need a way to write the pref from within it.
+
+Let me understand the data-flow constraint: `NeptunState.backupActive` is a pure getter, and forcing it requires either forcing `connected=false` or a separate `forceOffline` flag in state that both `MainViewModel` (pill/popup) and `AlertService` (notification) read. Let me confirm the current `backupActive` and how I'd plumb a force flag.
+
+I already know `backupActive` = `!connected || now - lastAlertAt > BACKUP_FALLBACK_MS`. To fake offline, the cleanest is a `forceOffline` flag added to `NeptunState`, with `backupActive` becoming `forceOffline || !connected || ...`. Since both consumers read the same state, that's the mirror-safe approach.
+
+Now, how does the popup write a pref? `ConnectionStatus` is in MainScreen.kt which has `s` (strings) and is called with `uiState` values. Writing a pref needs a context + a callback. The cleanest: add an `onToggleForceOffline: (Boolean) -> Unit` callback param to `ConnectionStatus`, threaded from wherever MainScreen is wired (MainActivity/MainScreen), which calls `ZonePrefs` + `NeptunClient`. But the popup is an `AlertDialog` — I can add an interactive `Row`/`Switch` inside it.
+
+Let me check how MainScreen is invoked (who passes callbacks) to know where to thread the toggle callback. Let me look at the MainScreen function signature and its caller.
+
+Let me check the MainScreen signature and MainActivity wiring.
+
+
+
+
+## 15/08/2026, 18:47:30
+
+`MainScreen` uses `viewModel()` internally. Let me look at how `MainScreen` accesses prefs / whether it has a viewModel with access to prefs, and how toggles (e.g. in SettingsScreen) write prefs, so I can plan the cleanest way for the popup toggle to write the force-offline pref.
+
+Let me check MainViewModel — does it expose a way to write prefs (like `setOfficialAlertsEnabled`)? Let me check how SettingsScreen toggles call back.
+
+Actually, the toggle needs to be written and read. Let me check the MainViewModel to see if it has pref-write functions or a reference to ZonePrefs.
+
+
+## 15/08/2026, 18:47:56
+
+I have the full picture. `MainViewModel` has `prefs` and write methods like `setOfficialAlertsEnabled`, exposed to the UI. `MainScreen` uses `viewModel()` and has its own `prefs` reference too. The `ConnectionStatus` popup is inside `MainScreen`, so it can access `viewModel` or a passed callback to toggle the force-offline pref.
+
+Now let me finalize the plan. Key design decisions:
+
+**1. The force-offline flag plumbing (mirror-safe)**
+- Add `forceOfflineKey` pref (`temp_force_offline`, default false) in `ZonePrefs` + `forceOffline()`/`setForceOffline()`.
+- Add `forceOffline: Boolean` field to `NeptunState`. Update `backupActive` getter: `forceOffline || !connected || now - lastAlertAt > BACKUP_FALLBACK_MS`.
+- But `NeptunClient` is a context-less singleton and can't read DataStore. So the toggle is written via `MainViewModel.setForceOffline(...)` which writes the pref AND calls `NeptunClient.setForceOffline(boolean)` to update the in-memory state (so both `MainViewModel` and `AlertService` consumers re-derive `backupActive`). On app/service start, `NeptunClient.start()` should restore the pref — but it has no context. 
+
+Hmm, this is the crux. `AlertService` and `MainActivity` both have context and both start `NeptunClient`. The cleanest: whoever starts `NeptunClient` also pushes the current `forceOffline` pref into it. `MainActivity.onCreate` and `AlertService.onCreate` already call `NeptunClient.start()`. I can have them read the pref and call `NeptunClient.setForceOffline(pref)` right after start.
+
+Actually, even simpler and avoids context-in-singleton: since `NeptunState.forceOffline` is a stored field, and `backupActive` reads it, I push it at start. Let me confirm both `MainActivity` and `AlertService` call `NeptunClient.start()`. AlertService does (`onCreate` → `NeptunClient.start()`). MainActivity — let me confirm. Earlier the architecture says MainActivity starts AlertService which starts NeptunClient. So NeptunClient.start() is called from AlertService.onCreate. And MainViewModel also reads neptun state. If only AlertService starts it, then I push the pref there. But MainViewModel is constructed when the UI opens (possibly before the service). 
+
+This is getting into implementation detail. For the plan, I'll specify: add `NeptunClient.setForceOffline(Boolean)` (updates state) and a `forceOffline()` restore read in both `MainActivity` and `AlertService` onCreate (they have context and can read the DataStore pref, then push to NeptunClient). The toggle switch in the popup calls `viewModel.setForceOffline()`.
+
+Actually — to keep it simplest and avoid stale-state bugs, let me reconsider: instead of storing `forceOffline` in `NeptunState`, I could make `backupActive` account for a force flag that the **consumers** apply. But both consumers reimplement... no, the mirror rule is about zone/focus logic, and `backupActive` is a single shared getter. Adding `forceOffline` to `NeptunState` is the single shared point — clean.
+
+For restore-on-start: MainActivity has `ZonePrefs(applicationContext)` access and already starts the monitoring flow; I'll have it push the persisted value. Since the toggle only affects the UI/pill/popup (which is MainActivity/MainScreen) and the notification source tag (AlertService), and AlertService restarts the process/state, pushing on both starts keeps it consistent.
+
+**2. Header pill — no logic change** (already 3-state: amber backup / green online / red offline with timer).
+
+**3. Popup rework** (`ConnectionStatus` in MainScreen.kt):
+- Per-source `SourceStatusRow`: keep each source's real health dot (green/red; backup amber-when-stale). Add `active: Boolean` param.
+- Effective source row: `active=true` → **orange-bold helper text + "Active"/"Активне" label** (the recommended option), matching the orange header. Non-effective row: normal/dimmed text.
+- The existing "Currently on: X" line can stay or be folded into the highlight (keep it, tinted orange).
+- **Add the TEMP toggle**: a `Switch` row in the popup, labeled e.g. "Test: simulate NEPTUN offline" / "Тест: імітувати офлайн NEPTUN", bound to the force-offline pref. Toggling calls `viewModel.setForceOffline(...)` and re-renders.
+
+**4. Strings**: add `connActiveLabel` ("Active"/"Активне"), `connForceOfflineTitle` (+ maybe desc) for the temp toggle.
+
+**5. ZonePrefs**: `forceOffline()`/`setForceOffline()`.
+
+**6. Tests**: add a test for `backupActive` including `forceOffline=true`.
+
+**7. Docs**: ARCHITECTURE.md (NeptunState.forceOffline, popup temp toggle) + CHANGELOG.md.
+
+Let me verify one thing — whether MainActivity also starts NeptunClient (for the restore-on-start plumbing), and how the popup can reach the viewModel to call setForceOffline.
+
+MainScreen uses `viewModel()` so it already has a `viewModel` reference. The `ConnectionStatus` composable is called from within `MainScreen` — I can pass a `forceOffline` value + `onForceOfflineChange` callback down to it. Good.
+
+Let me confirm MainActivity's start path for NeptunClient.
+
+
+## 15/08/2026, 18:48:02
+
+Let me look at the current Strings fields I added and the exact current state of the master row and toggle wiring before editing.
+
+
+## 15/08/2026, 18:48:07
+
+I'll change the "All" callbacks to be group-scoped. Let me update the ViewModel methods to take a group set, and rename the callbacks. Let me start with the ViewModel.
+
+
+## 15/08/2026, 18:48:11
+
+`NeptunClient.start()` is called only from `AlertService.onCreate` (line 110), and `MainActivity` starts `AlertService` (line 49). So `NeptunClient` is started by the service. For the force-offline pref to be restored on a fresh process, `AlertService.onCreate` (which has context) should read the pref and push it into `NeptunClient` right after `start()`.
+
+For the UI side, `MainViewModel` (constructed when MainScreen opens) also needs the current force state — it already collects `NeptunState` which carries `forceOffline`, so it's automatically in sync once the service pushes it. The toggle writes via `MainViewModel.setForceOffline` which writes the pref + calls `NeptunClient.setForceOffline`. The `NeptunClient.state` change re-emits → both `MainViewModel` (pill/popup) and `AlertService` (notification source tag) react. Mirror-safe.
+
+I have everything. Let me present the final plan.
+
+## Plan
+
+### Header pill (MainScreen.kt) — no logic change, matches spec
+Already 3-state and correct:
+- **Orange dot + "backup"** when `backupActive` (effective source = backup).
+- **Green dot + "online"** when not backup & `connected`.
+- **Red dot + "offline (timer)"** when not backup & NEPTUN down.
+
+### Popup (MainScreen.kt `ConnectionStatus` + new `SourceStatusRow`)
+1. **Per-source health dots kept**: each source shows its own real status (green/red; backup amber-when-stale) with Online/Offline+timer — "status of each".
+2. **Effective-source highlight (recommended option)**: the source that's actually driving alerts (`backupActive` → backup row; else NEPTUN row) gets:
+   - **orange bold helper text** (same `0xFFF9A825` as header),
+   - an **"Active" / "Активне"** label,
+   - the other row stays normal/dimmed.
+   This makes the popup's highlight visibly match the orange header — resolving the earlier contradiction (green dots were health; orange is the effective source).
+3. Keep "Currently on: X" line (tint it orange when on backup).
+
+### TEMP force-offline toggle (in the system-status popup)
+- **`ZonePrefs`**: add `forceOffline()`/`setForceOffline()` (key `temp_force_offline`, default false).
+- **`NeptunState`**: add `forceOffline: Boolean = false`; update `backupActive = forceOffline || !connected || now - lastAlertAt > BACKUP_FALLBACK_MS`.
+- **`NeptunClient`**: add `setForceOffline(Boolean)` (updates `_state`), plus restore-on-start by reading the pref.
+- **Restore-on-start**: `AlertService.onCreate` (has context) reads the pref and pushes it to `NeptunClient` after `start()`, so a fresh process/reboot keeps the test setting. `MainViewModel` picks it up automatically from `NeptunState`.
+- **`MainViewModel`**: add `setForceOffline(Boolean)` (writes pref + calls `NeptunClient.setForceOffline`); expose current `forceOffline` via `UiState` (from `neptun.forceOffline`).
+- **Popup UI**: a `Switch` row inside the dialog — "Test: simulate NEPTUN offline" / «Тест: імітувати офлайн NEPTUN» — bound to the toggle. Flipping it instantly changes the pill (orange "backup") and the popup highlight so you can verify all states.
+
+### Strings (UA + EN)
+- `connActiveLabel` — "Active" / "Активне"
+- `connForceOfflineTitle` — "Test: simulate NEPTUN offline" / «Тест: імітувати офлайн NEPTUN»
+
+### Tests
+- Extend `AlertsUaTest` (or add) for `backupActive` with `forceOffline = true`.
+
+### Docs
+- `ARCHITECTURE.md`: `NeptunState.forceOffline`, popup temp toggle, restore-on-start.
+- `CHANGELOG.md`: note the clarified status popup + temp test toggle.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+### Note
+The TEMP toggle intentionally lives in the system-status popup (not Settings) since no force-offline toggle currently exists anywhere — and you asked to put it in the popup if not already in Settings.
+
+Shall I proceed?
+## 15/08/2026, 18:48:11
+
+Now update the MainScreen wiring to group-scoped callbacks:
+
+
+## 15/08/2026, 18:48:37
+
+Now the SettingsScreen.kt signature — change the callback types to accept a group set:
+
+
+## 15/08/2026, 18:48:41
+
+Now the main redesign. Let me replace the master "All" row and the per-threat card layout. First, let me define the groups. Let me add group definitions near the top of the file and replace the whole Threats section (lines 268-397 area).
+
+Let me re-read the current full Threats block to replace precisely:
+
+
+## 15/08/2026, 18:48:45
+
+Now let me find where the `items(ThreatType.values())` block ends (the closing of AnimatedVisibility/Column/Card/items). Let me read further to find the closing braces.
+
+
+## 15/08/2026, 18:49:09
+
+The whole Threats block spans lines 268-446. I'll replace it entirely with the new design: master row (two group columns) + per-group headers + compact per-threat cards. I'll also extract the per-threat card into a private composable to keep the `item{}`/`items{}` structure clean.
+
+Let me replace lines 268-446. I'll write the new block using `item` for the master row and group headers, and a private composable `ThreatSettingsCard` for each threat.
+
+Let me do the replacement:
+
+
+## 15/08/2026, 18:49:15
+
+Now I need to:
+1. Remove the old `ThreatToggleCard` composable and add the new `CompactToggleRow`, `GroupMasterColumn`, `ThreatSettingsCard`, and `fastAndSlowGroups` helper composables/functions.
+2. Add the group label strings.
+
+Let me first handle the `fastAndSlowGroups` helper and the new composables. Let me find the `ThreatToggleCard` definition to replace it.
+
+
+
+
+## 15/08/2026, 18:49:19
+
+The `ThreatToggleCard` composable is further down. Let me find it:
+
+
+## 15/08/2026, 18:49:30
+
+I'll replace `ThreatToggleCard` (lines 546-587) with the new composables: `CompactToggleRow`, `GroupMasterColumn`, `ThreatSettingsCard`, and the `fastAndSlowGroups` helper.
+
+Let me write the new block. Note `GroupMasterColumn` needs `lang`/strings access — I'll get `Strings.get(lang)` inside. Let me design:
+
+```kotlin
+/** The two threat groupings shown in Settings: fast (missiles etc.) and slow (drones etc.). */
+private fun fastAndSlowGroups(): List<Pair<String, Set<ThreatType>>> {
+    val s = ... // needs lang
+}
+```
+
+`fastAndSlowGroups` needs `lang` to produce labels. I'll make it a composable or pass lang. Simpler: inline the groups in the LazyColumn already done (I used `fastAndSlowGroups()` returning labels). Let me make it a @Composable function that reads Strings.
+
+Actually I called `fastAndSlowGroups()` in the LazyColumn block which has `lang` in scope (it's in the `SettingsScreen` composable body where `s = Strings.get(lang)` and `lang` param). Let me make `fastAndSlowGroups(lang)` a plain function taking lang, returning `List<Pair<String, Set<ThreatType>>>`.
+
+Let me update the call site I already wrote to pass `lang`:
+
+Currently: `fastAndSlowGroups().forEach { (groupTitle, types) ->`
+
+I need it to be `fastAndSlowGroups(lang)`. Let me fix that.
+
+
+## 15/08/2026, 18:50:04
+
+Now replace the `ThreatToggleCard` composable with the new set of composables. Note `ThreatSettingsCard` needs `expanded`, `hiddenTypes`, `silencedTypes` and callbacks — and internally reads the `ThreatTypeCatalog` and builds the compact layout including the `AnimatedVisibility` expanded content. I'll move all that into the new composable.
+
+
+## 15/08/2026, 18:50:16
+
+Now I used `CompactToggleRow(label = "", ...)` in GroupMasterColumn but the label is empty — that would show empty labels. That's awkward. The user's sketch was `[fast] [slow]` with `map/bell` under each. So each group column should have its own "map"/"bell" (i.e. `threatMapLabel`/`threatAlertLabel`) switches. Let me fix `GroupMasterColumn` to use the actual labels instead of empty strings.
+
+Also I need to check that `Icons.Filled.Place` and `Icons.Filled.Notifications` imports are still used elsewhere, and whether `BorderStroke` import is now unused (it was used in ThreatToggleCard and also in CardSizeTile/ThreatCardSizeSelector). Let me check BorderStroke usage.
+
+Let me first fix GroupMasterColumn labels:
+
+
+## 15/08/2026, 18:50:25
+
+I need `lang` in `GroupMasterColumn`. I passed `lang` to the call sites in the LazyColumn (the `SettingsScreen` composable has `lang`). Let me update the two `GroupMasterColumn` calls to pass `lang`, and the composable signature to accept `lang`.
+
+Let me fix the composable signature and the two call sites:
+
+
+## 15/08/2026, 18:50:37
+
+Now I need to add the `fastGroupLabel` / `slowGroupLabel` strings. Let me add them to the StringSet interface and both implementations. Let me update the Strings.kt where I previously added the `allThreatsLabel`/`allMapLabel`/`allAlertLabel` fields. I'll add group labels there too, and since `allMapLabel`/`allAlertLabel`/`allThreatsLabel` may no longer be used, I should clean them up. Let me check what still references them.
+
+
+## 15/08/2026, 18:50:46
+
+The `all*` fields are no longer used in the UI (I removed the master row's use of them). Let me replace those three fields with `fastGroupLabel` and `slowGroupLabel`. Update the interface and both implementations.
+
+
+## 15/08/2026, 18:51:02
+
+Now I need to check for unused imports and whether `Icons.Filled.Place` / `Icons.Filled.Notifications` are still used. Since I removed `ThreatToggleCard` which used both, and the new design uses `s.threatMapLabel`/`s.threatAlertLabel` text labels instead of icons. Let me check if `Place`/`Notifications` are used elsewhere in the file.
+
+Also check `BorderStroke`, `alpha`, `ColorFilter`, etc. Let me grep for these in the file.
+
+
+## 15/08/2026, 18:51:08
+
+In SettingsScreen.kt:
+- `BorderStroke` (line 5) — used at line 905 (in `CardSizeTile`). Keep.
+- `Place` import (line 21) — no longer used in SettingsScreen.kt. Remove.
+- `Notifications` — I don't see a `Notifications` usage line in SettingsScreen.kt anymore (only ZonesSheet uses it). Let me check the import.
+- `ColorFilter` (line 32) — used at line 522 in `AlertToggleRow`. Keep.
+
+Let me check the imports for `Notifications` and `Place` in SettingsScreen.kt:
+
+
+## 15/08/2026, 18:51:12
+
+Both `Notifications` (line 20) and `Place` (line 21) imports are now unused in SettingsScreen.kt. Let me remove them.
+
+
+## 15/08/2026, 18:51:20
+
+Now let me verify `alpha` is still used (yes, line 1030 and CardSizeTile). And `TextAlign` is still used (in CardSizeTile). Let me check if `items` import is still used — yes, I use `items(types.toList())` in the new code. Good.
+
+Now update the CHANGELOG entry to reflect the new design. Let me read the current Unreleased entry I wrote earlier.
+
+
+
+
+## 15/08/2026, 18:51:30
+
+Now let me build. Let me update todos and run the build.
+
+
+## 15/08/2026, 18:51:44
+
+There's a `Notifications` reference at line 324. Let me look — I removed the import but there's still a usage. Let me check line 324.
+
+
+## 15/08/2026, 18:51:56
+
+`Icons.Default.Notifications` is still used at line 324 for the Alerts section header. So I should keep the `Notifications` import. Let me re-add it (but not `Place` which is truly unused).
+
+
+## 15/08/2026, 18:52:17
+
+Build succeeds. Now run the unit tests:
+
+
+## 15/08/2026, 18:52:26
+
+Both build and tests pass.
+
+
+## 15/08/2026, 18:52:31
+
+Done. Build and tests pass.
+
+**What changed:**
+- **Compact per-threat toggles** — Map/Alerts are now small stacked switches on the right of each threat card (`ThreatSettingsCard` + `CompactToggleRow`), replacing the full-width `ThreatToggleCard` row. The standalone caret button is gone; tapping the name/description expands (with an inline caret glyph).
+- **Fast/Slow grouping** — threats split via the existing `FAST_THREAT_TYPES`: **Fast** (Ballistic, Cruise, Aviation/MiG-31K, Guided bomb) and **Slow** (UAV, FPV, Recon, Unknown), each with a header.
+- **Master "All" card** — a single card at the top with two group columns (`Fast` / `Slow`), each with its own Map + Alerts switches, wired to new group-scoped `onThreatMapToggleAll`/`onThreatAlertToggleAll` callbacks → `MainViewModel.setGroupThreatMapVisible`/`setGroupThreatAlertsEnabled` (MainViewModel.kt:486).
+- **Strings** — added `fastGroupLabel`/`slowGroupLabel` (UA: Швидкі/Повільні, EN: Fast/Slow); removed the now-unused `all*` labels.
+- **CHANGELOG** updated under `[Unreleased]`.
+
+The coupling is preserved: turning off a type/group's Map also silences its Alerts, and Alerts can't be re-enabled while Map is off.
+## 15/08/2026, 18:53:26
+
+I'm still in plan mode (read-only). I've already presented the plan and you said "go" — but I cannot make edits while plan mode is active. Let me confirm the plan is finalized and ready to execute once you switch out of plan mode.
+
+The plan is complete and locked in:
+
+**1. Header pill** — no logic change; already matches your 3-state spec (orange "backup" / green "online" / red "offline" with timer).
+
+**2. Popup** — keep each source's own health dot + status (green/red, backup amber-when-stale), and highlight the effective source with orange-bold text + an "Active"/"Активне" label.
+
+**3. TEMP force-offline toggle in the popup** — `ZonePrefs.forceOffline`, `NeptunState.forceOffline` (drives `backupActive`), `NeptunClient.setForceOffline` + restore-on-start in `AlertService.onCreate`, `MainViewModel.setForceOffline`, and a `Switch` in the dialog.
+
+**4. Strings, tests, docs** — `connActiveLabel`, `connForceOfflineTitle`; `backupActive` with `forceOffline` test; ARCHITECTURE.md + CHANGELOG.md.
+
+**5. Verify** — `:app:assembleDebug` + `:app:testDebugUnitTest`.
+
+I can't edit anything until plan mode is turned off. Please switch out of plan mode (or approve the plan) and I'll implement it immediately.
+## 15/08/2026, 18:53:51
+
+I'm now in build mode. Let me implement the plan.
+
+Let me set up todos and start with the data plumbing: `ZonePrefs.forceOffline`, `NeptunState.forceOffline`, `NeptunClient.setForceOffline` + restore-on-start.
+
+
+## 15/08/2026, 18:54:06
+
+Let me add the `forceOffline` pref to ZonePrefs. I'll add the key and the getter/setter.
+
+
+## 15/08/2026, 18:54:24
+
+Now update `NeptunState` to add `forceOffline` and include it in `backupActive`, and add `NeptunClient.setForceOffline`. Let me edit the data class.
+
+
+## 15/08/2026, 18:54:38
+
+Now add `setForceOffline` to `NeptunClient`. Let me add it near `start()`/`stop()`/`retryNow()`. Let me add it after `onForeground` or near `retryNow`. I'll add it right after `startBackupCollector` or near `retryNow`. Let me add it after `retryNow`'s area. Let me find a good insertion point — I'll add it right before `onForeground`.
+
+Actually let me add it right after the `stop()` function. Let me view that region.
+
+
+## 15/08/2026, 18:54:51
+
+Now restore-on-start in `AlertService.onCreate`. Let me read `onCreate` (around line 106-112) and add the pref restore after `NeptunClient.start()`.
+
+Since `AlertService.onCreate` is a suspend-capable context? No, `onCreate` isn't a coroutine. `forceOffline().first()` is suspend. I need to launch a scope to read it. `AlertService` has `scope`. Let me use `scope.launch { NeptunClient.setForceOffline(prefs.forceOffline().first()) }`.
+
+Let me view onCreate.
+
+
+## 15/08/2026, 18:55:03
+
+I need to check that `first()` is imported in AlertService. Let me check imports.
+
+
+## 15/08/2026, 18:55:16
+
+AlertService has `launch` but not `first`. Let me add the `first` import.
+
+Also, `scope` in AlertService — let me confirm it's the `CoroutineScope` used with `launch` (line 61: `private val scope = CoroutineScope(...)`). Yes.
+
+Let me add the `first` import to AlertService.kt.
+
+
+
+
+## 15/08/2026, 18:55:33
+
+Now the `MainViewModel`: add `setForceOffline` and expose `forceOffline` in `UiState`. Let me add the UiState field and populate it.
+
+First, UiState field near `backupActive`:
+
+
+## 15/08/2026, 18:55:45
+
+Now add `setForceOffline` to MainViewModel. Let me add it near `setFollowMe` (around line 463-464). Let me find a good spot — after `setFollowMe`.
+
+
+
+
+## 15/08/2026, 18:55:59
+
+Now the strings: add `connActiveLabel` and `connForceOfflineTitle`. Let me add to the interface and both UA/EN blocks.
+
+First the interface — add near `connBackupLabel`/`connEffectiveFormat` (I added those earlier around line 64-70). Let me add `connActiveLabel` and `connForceOfflineTitle` there.
+
+
+
+
+## 15/08/2026, 18:56:18
+
+Now rework the popup in `MainScreen.kt`. I need to:
+1. Add `forceOffline` + `onForceOfflineChange` params to `ConnectionStatus`.
+2. Pass them at the call site (from MainScreen's viewModel).
+3. Add `active` param to `SourceStatusRow` (orange-bold helper text + "Active" label when active; dim/normal when not).
+4. Wire `active` per source row.
+5. Add the TEMP toggle `Switch` row in the popup.
+
+Let me first update the call site in MainScreen. Let me view how MainScreen calls ConnectionStatus and whether it has the viewModel reference. It's inside MainScreen which has `viewModel: MainViewModel = viewModel()`. Let me check the call site (around line 369-380) and update.
+
+Let me read the call site and the surrounding function to get `viewModel` access.
+
+
+## 15/08/2026, 18:56:41
+
+Let me check that `viewModel` is in scope where ConnectionStatus is called. The call is inside MainScreen's Scaffold content, so `viewModel` (the MainScreen param) should be accessible. Let me confirm the MainScreen signature and that there's no shadowing. Let me check line 64.
+
+`fun MainScreen(viewModel: MainViewModel = viewModel())`. So `viewModel` is accessible. Let me update the call site to pass `forceOffline` and `onForceOfflineChange`.
+
+I need the current `forceOffline` value and a callback. The callback will be `viewModel::setForceOffline`.
+
+Let me update the call site:
+
+
+## 15/08/2026, 18:56:49
+
+Now update the `ConnectionStatus` signature to add `forceOffline` and `onForceOfflineChange`. Let me edit the signature.
+
+
+
+
+## 15/08/2026, 18:56:50
+
+I'm in plan mode. Let me research the relevant code to plan these three changes:
+
+1. **Icons instead of toggles** — the user wants the icon-chip style (like the original `ThreatToggleCard`), not Material switches.
+2. **Lightning + turtle icons** on the Fast/Slow headers.
+3. **First 3 toggles of Map/Alerts toast** a brief explanation.
+
+Let me investigate the codebase for the toast mechanism and icon resources.
+
+
+## 15/08/2026, 18:56:56
+
+Toast is used in MainViewModel. Let me check for existing bolt/lightning icons and how the guide toggles text describes things (for the toast message content). Let me search the res drawable directory and the Strings guide section.
+
+
+## 15/08/2026, 18:56:58
+
+Now let me update the popup content: add the `active` param to the two `SourceStatusRow` calls, and add the TEMP toggle row. Let me view the current popup block (around line 876-947).
+
+The current rows:
+```
+SourceStatusRow(
+    color = if (connected) Color(0xFF4CAF50) else Color(0xFFE57373),
+    name = s.connNeptunLabel,
+    status = neptunStatus
+)
+SourceStatusRow(
+    color = when { backupUp -> ...; backupSeen -> amber; else -> red },
+    name = s.connBackupLabel,
+    status = backupStatus
+)
+```
+
+I need to add `active` to each. NEPTUN active = `!backupActive`; backup active = `backupActive`. Let me update the two call sites and then update the `SourceStatusRow` composable signature/body, then add the toggle.
+
+Let me edit the two SourceStatusRow calls.
+
+
+
+
+## 15/08/2026, 18:57:02
+
+There's an `ic_bolt.xml` icon already. I need a lightning (fast) icon and a turtle (slow) icon. Let me check the `ic_bolt.xml` content and see if there's a turtle icon anywhere. There's no turtle. Let me look at the existing `ic_bolt.xml` and how icons are structured.
+
+Let me check the SettingsScreen current per-threat toggle layout (the `CompactToggleRow` I created) and the group headers, plus the guide strings for the toggle explanation content.
+
+Let me read the current relevant sections of SettingsScreen.kt.
+
+
+
+
+## 15/08/2026, 18:57:04
+
+Now update the `SourceStatusRow` composable to handle `active` (orange-bold text + "Active" label + dim when inactive), and add the TEMP toggle row in the popup.
+
+Let me first update the `SourceStatusRow` composable. It's after the popup block (around line 950). Let me view it.
+
+
+
+
+## 15/08/2026, 18:57:06
+
+Now let me look at the current `ThreatSettingsCard` and `CompactToggleRow` and `GroupMasterColumn` composables to plan the icon change.
+
+
+## 15/08/2026, 18:57:14
+
+I have a clear picture of the current implementation. Now let me understand the original `ThreatToggleCard` (the icon-chip style the user liked) which I replaced. It used icon + label in a bordered card. The user wants the **icons** back — i.e., the Map/Bell icon chips, not Material switches.
+
+Let me check the guide toggles strings (for the toast explanation content) and check whether `setThreatMapVisible`/`setThreatAlertsEnabled` in the ViewModel are good places to trigger the toast (they're called for both per-type and group toggles). Let me look at the guide strings and the Strings structure around guide toggles, plus understand `Role` import (needed for toggleable).
+
+Let me check the guide strings and check how the ViewModel methods are structured (they're suspend-launched). Toast needs a Context — `getApplication()` is available in the ViewModel.
+
+For the "first 3 times they toggle" logic, I need a counter persisted somewhere. Options:
+- A new DataStore-backed counter in `ZonePrefs` (following the app's prefs convention — `ZonePrefs` is the single prefs store per ARCHITECTURE).
+- Or count only within the session (in-memory). But "first 3 times" implies persistent across sessions.
+
+Let me check `ZonePrefs` for an existing settings-hint pattern (`settingsHintRemaining`) which decrements — that's a good model to mirror.
+
+I already saw `settingsHintRemaining` at ZonePrefs.kt:173-179. That's the ideal pattern to mirror for a "toggle-hint remaining" counter.
+
+Let me check the guide toggles strings and the threatMap/threatAlert description text to craft toast copy. Let me look at Strings.kt guide section (lines ~645-660) and the `threatMapLabel`/`threatAlertLabel` descriptions.
+
+Let me look at what text to use for the toast. Let me read the guide toggles block.
+
+
+## 15/08/2026, 18:57:23
+
+I have enough context. Let me check the `Role` import and confirm `ic_bolt.xml` shape for reference, and check whether there's a `Painter`/icon approach for the group headers. Let me look at ic_bolt.xml to model a turtle icon.
+
+Let me also verify the `ZonePrefs` settingsHint pattern to mirror the "first 3 times" counter, and check `AppLanguage`/`Strings` fields pattern.
+
+Let me read the ic_bolt.xml and the settingsHintRemaining usage.
+
+
+## 15/08/2026, 18:57:24
+
+I referenced `s.connActiveLabel` inside `SourceStatusRow`, but `SourceStatusRow` doesn't have `s` in scope. I need to pass the label string in, or pass `s`. Simplest: add an `activeLabel: String` param. Let me update.
+
+Also I need to check `alpha` is imported in MainScreen. Let me update the composable to take `activeLabel` instead of `s`.
+
+
+
+
+
+
+## 15/08/2026, 18:57:31
+
+Now update the two `SourceStatusRow` call sites to pass `activeLabel = s.connActiveLabel`. Let me edit both calls. The NEPTUN call and backup call.
+
+Let me also add the TEMP toggle row in the popup (a `Switch` row) and make the "Currently on" line orange when on backup. Let me first update the two SourceStatusRow calls to add `activeLabel`.
+
+
+
+
+## 15/08/2026, 18:57:42
+
+Now add the TEMP toggle row in the popup. I'll add it after the "Currently on" line (which I'll also tint orange when on backup) and before the divider/legend. Let me view the current popup region to place it precisely.
+
+Let me look at the effective line + divider area (lines ~900-910 in current numbering, but shifted). Let me read around the `connEffectiveFormat` text.
+
+
+
+
+
+
+## 15/08/2026, 18:57:47
+
+Let me update the "Currently on" line to tint orange when on backup, and add the TEMP toggle row after it (before the divider).
+
+I'll change the effective line and insert the toggle. The toggle is a `Row` with a `Switch`. I need `Switch` import — let me check it's available in MainScreen. Actually SettingsScreen uses toggles. Let me check MainScreen imports for Switch/material3.
+
+Let me just add the row using material3 `Switch`. Let me check the import.
+
+
+## 15/08/2026, 18:57:49
+
+I now have all the context needed to build a comprehensive plan. Let me also quickly check how the ViewModel's `setThreatMapVisible`/`setThreatAlertsEnabled` get called — whether I can add the toast there (they're in the ViewModel with `getApplication()`). And I want to confirm the toggleable `Role` import situation for the icon-chip design.
+
+Let me verify the ViewModel toggle methods and check if `MainScreen` holds a scope/context for toasts. Actually the ViewModel already uses `Toast.makeText(getApplication(), ...)` so it's the natural place. Let me confirm the two methods signatures once more (already have them at 475-499).
+
+Now let me formulate the plan.
+
+## Plan
+
+### 1. Replace switches with icon-chips (Map/Bell)
+The user wants the original **icon-chip** style back (like the old `ThreatToggleCard`: icon + label in a small bordered card that's on/off/dimmed), not Material `Switch`es.
+
+**Change `CompactToggleRow` → icon-chip.** I'll replace the `CompactToggleRow` composable's contents: instead of label + `Switch`, render a compact chip with:
+- a map icon (`Icons.Filled.Place`) or bell icon (`Icons.Filled.Notifications`),
+- the small label ("Map"/"Alerts"),
+- on state = primary-tinted + primary border; off/dimmed = muted + reduced alpha,
+- disabled (alerts while map off) = fully dimmed and non-clickable.
+
+This mirrors the removed `ThreatToggleCard` but sized smaller to stay compact on the right side. It applies to **both** the per-threat controls (right side) and the group master columns.
+
+For icons: reintroduce the `Place` and `Notifications` imports (I removed `Place` earlier; `Notifications` is still there).
+
+### 2. Lightning + turtle icons on Fast/Slow headers
+- **Fast header**: use the existing `ic_bolt.xml` (a lightning bolt) — reuse it as a small icon before the "Fast"/"Швидкі" title.
+- **Slow header**: no turtle icon exists → **add a new drawable `ic_turtle.xml`** (a simple Material-style turtle vector path), shown before "Slow"/"Повільні".
+
+Both the master-card group columns (`GroupMasterColumn` title) and the section headers get these icons. I'll add the icons to the group header `Text` rows (SettingsScreen.kt:301-310) and the `GroupMasterColumn` titles (SettingsScreen.kt:586-613). I'll pass the icon into `GroupMasterColumn` and into the section-header builder.
+
+Since `fastAndSlowGroups(lang)` currently returns `(String, Set<ThreatType>)`, I'll extend it to also carry an icon res id — e.g. a small data holder `(label, iconRes, types)` or a `ThreatGroup` class. Simpler: return `List<Triple<Int /*iconRes*/, String /*label*/, Set<ThreatType>>>`.
+
+I need the `ic_turtle.xml` vector. I'll author a simple turtle path (Material "pets"/turtle style). This is a new resource file.
+
+### 3. Toast explanation for first 3 Map/Alerts toggles
+- Add a **persistent counter** in `ZonePrefs` mirroring `settingsHintRemaining` (the app's single prefs store — ARCHITECTURE invariant): `threatToggleHintRemaining` key, default 3, with `threatToggleHintRemaining(): Flow<Int>` + `setThreatToggleHintRemaining(Int)`.
+- In `MainViewModel`, the toggle methods `setThreatMapVisible`, `setThreatAlertsEnabled`, `setGroupThreatMapVisible`, `setGroupThreatAlertsEnabled` are the single chokepoints for all toggles. But they're `viewModelScope.launch` and the counter read is a suspend `dataStore` read. I'll implement a helper `showToggleHintOnce()` that:
+  - reads current remaining count (via prefs),
+  - if `remaining > 0`, shows a `Toast` with the explanation and decrements to `remaining - 1`.
+- Only the **per-type** toggles should toast (the user said "they toggle map/alerts" referring to per-threat). Actually it could apply to group toggles too — but the message ("how they work") is about per-threat semantics. To keep it simple and avoid spamming on the master row, I'll fire the toast only from the **per-type** `setThreatMapVisible`/`setThreatAlertsEnabled` paths (both are already routed through the same methods). Group toggles won't toast (they act on many types at once).
+- **Toast copy** — add two strings (Map vs Alerts specific) to `Strings.kt` UA+EN, e.g.:
+  - Map: "Map off hides the type and silences its alerts. Alerts off keeps it on the map but dimmed." (mirrors guideTogglesD1)
+  - Or a single shared explanation. I'll propose: one toast per toggle type with concise copy. I'll ask the user which copy they prefer, or default to the existing guide text.
+
+The toast is fired inside `viewModelScope.launch`; `Toast.makeText(getApplication(), ...).show()` is already used at MainViewModel.kt:567, so `getApplication()` works there.
+
+**Threading note:** `prefs.threatToggleHintRemaining().first()` is a suspend flow read; fine inside the coroutine. The counter decrement + toast should be sequential.
+
+Let me also confirm the "first 3 times" counting semantics: each of the 3 toggles of map OR alerts triggers a toast (shared budget of 3). That's what I'll implement — a single shared budget of 3, decremented on either map or alerts toggle. I should confirm with the user whether it's a shared 3 or 3 each.
+
+Let me ask a couple of clarifying questions before finalizing.
+
+
+## 15/08/2026, 18:57:57
+
+`Switch` is available via `material3.*` in MainScreen. Now let me update the effective line + add the toggle row. I'll tint the "Currently on" text orange when on backup, and add a `Row` with label + `Switch` for the temp toggle.
+
+Let me edit lines 912-915 (the effective text) to tint orange, and insert the toggle after it (before the divider at 916).
+
+
+
+
+## 15/08/2026, 18:58:06
+
+Now let me add tests for `backupActive` with `forceOffline`, and update docs. First the test — extend `AlertsUaTest.kt`:
+
+
+## 15/08/2026, 18:58:11
+
+Now let me build and run tests to catch any errors before updating docs.
+
+
+## 15/08/2026, 18:58:24
+
+A compile error. Let me get the error details.
+
+
+## 15/08/2026, 18:58:43
+
+The issue: `viewModel` in `MainScreen` — the parameter is named `viewModel` but it shadows the `viewModel()` composable function, and at the call site inside a nested scope, `viewModel` resolves to the `MainScreen` parameter (a `MainViewModel`). The error "Function invocation 'viewModel(...)' expected" suggests that inside `ConnectionStatus(...)` call, the `viewModel` reference isn't the parameter but is being treated as the composable function `viewModel()`.
+
+Wait — the error is at line 378, `onForceOfflineChange = viewModel::setForceOffline`. It says `viewModel(...)` expected and unresolved `setForceOffline`. This suggests the `viewModel` in scope at line 378 is NOT the MainScreen parameter. Let me check — maybe inside the Scaffold content lambda, `viewModel` refers to the imported `viewModel()` function (composable), not the param.
+
+Actually the MainScreen signature is `fun MainScreen(viewModel: MainViewModel = viewModel())`. The parameter IS `viewModel`. But the error says function reference of @Composable functions not supported — meaning `viewModel` at line 378 resolves to the `viewModel()` composable function, not the parameter.
+
+This can happen if the `ConnectionStatus(...)` call is inside a lambda where `viewModel` parameter got shadowed or the lambda's receiver has a different `viewModel`. Let me check the context around line 378 — is it inside a `Scaffold` content lambda that maybe has its own scope? The error "Function References of @Composable functions are not currently supported" strongly implies `viewModel` here is the function reference `viewModel()`.
+
+The simplest fix: capture the MainScreen `viewModel` in a local val before the Scaffold, or use the full `viewModel::setForceOffline` where `viewModel` is the param. Let me check whether the param name might actually be shadowed. Let me look at the MainScreen signature and how `viewModel` is used elsewhere.
+
+Let me check the signature at line 64.
+
+
+## 15/08/2026, 18:59:02
+
+The parameter is `viewModel: MainViewModel`. At line 378 inside `ConnectionStatus(...)`, the `viewModel::setForceOffline` is failing. The error "Function invocation 'viewModel(...)' expected / Function References of @Composable functions are not currently supported" indicates that at line 378, `viewModel` resolves to the **imported `viewModel()` composable function**, not the parameter.
+
+This is strange since the param shadows it. But wait — line 378 is inside the `ConnectionStatus` call which is inside a `Scaffold`/`Box` content lambda. In Kotlin, a lambda can't shadow the outer function's parameter unless redefined. So why does `viewModel` resolve to the function?
+
+Actually, the real issue: the parameter `viewModel` at the call site is fine (`viewModel.setRedZoneKm` works at line 102). But `viewModel::setForceOffline` — a bound method reference — should work. The error says `viewModel(...)` expected, which is bizarre.
+
+Let me reconsider: maybe `setForceOffline` doesn't exist as a method that's resolvable? I added `fun setForceOffline(force: Boolean)` to MainViewModel. Let me verify I actually added it correctly. The error "Unresolved reference: setForceOffline" at 378:55 suggests the method isn't found on whatever `viewModel` resolves to.
+
+Given "Function References of @Composable functions are not currently supported" + "Not enough information to infer type variable VM" — this strongly means `viewModel` at line 378 is the **function** `viewModel()` from `androidx.lifecycle.viewmodel.compose.viewModel`, not the param. 
+
+Why would it be the function? Possibly because inside the `Scaffold` content lambda there's a nested composable context where the param isn't in scope... no. 
+
+Wait — let me re-read: the call is `viewModel::setForceOffline`. If `viewModel` is the param (MainViewModel), `viewModel::setForceOffline` is a valid bound reference. But the compiler says "Function invocation 'viewModel(...)' expected" — this is the error you get when you write `viewModel::setForceOffline` where `viewModel` is a **function** (the composable `viewModel()`), so `viewModel::setForceOffline` is trying to take a reference to a member of the function type, and it suggests calling `viewModel(...)` instead.
+
+So indeed at line 378, `viewModel` is the function, not the param. This means the `ConnectionStatus(...)` call at line 370 is inside a lambda/scope where the `viewModel` param is NOT visible — likely inside a `Box`/`Scaffold` content lambda that's a separate composable function scope where only the function `viewModel()` (imported) is accessible... but no, the param would still be captured by the closure.
+
+Hold on. Let me look — the `ConnectionStatus` call is at line 370, inside the Scaffold topBar. Let me check if maybe there's a local `val viewModel` shadowing, or if the call is actually inside a different function. Let me look at what's around — actually the error is real. The simplest robust fix: **capture the MainScreen `viewModel` into a local val** with a distinct name at the top of the composable, and use that. E.g. `val vm = viewModel` right after line 64, then use `vm::setForceOffline`.
+
+Actually simpler: change the param name usage — pass a lambda `{ viewModel.setForceOffline(it) }` instead of a method reference. That avoids the method-reference-on-function ambiguity. But the root issue is `viewModel` resolving to the function.
+
+Let me just capture it cleanly. Let me add a local `val vm = viewModel` near the top and use `vm::setForceOffline`. That's guaranteed to be the MainViewModel.
+
+Let me check line 70-ish for where to add. I'll add after `val uiState by viewModel.uiState.collectAsState()` at line 65.
+
+Wait, but if `viewModel` param is shadowed by the function only at line 378, why do lines 97-102 work with `viewModel.setRedZoneKm`? Those are direct calls `viewModel.setRedZoneKm(...)`. If `viewModel` were the function, those would also fail. So at lines 97-102 `viewModel` IS the param. Only the **method reference** `viewModel::setForceOffline` fails.
+
+Hmm, actually maybe the issue is specifically that bound callable references to a `@Composable`-context... no, setForceOffline isn't composable.
+
+Let me reconsider: perhaps `MainViewModel.setForceOffline` wasn't added correctly — let me verify it exists. The error "Unresolved reference: setForceOffline" at 378:55 suggests the member isn't found. If `viewModel` resolves to the param (MainViewModel), and `setForceOffline` exists, it'd resolve. So either the method wasn't added, or `viewModel` is the function.
+
+Let me verify the method exists in MainViewModel.
+
+
+## 15/08/2026, 18:59:15
+
+The method exists in MainViewModel. So the problem is that `viewModel` at line 378 resolves to the **composable function** `viewModel()`, not the parameter. This is a known Kotlin/Compose subtlety: inside a composable content lambda, the `viewModel` parameter... no.
+
+Actually, let me reconsider. The real cause: the `ConnectionStatus` call at line 370 is inside the `topBar` lambda of `Scaffold`. The Scaffold content is a `@Composable` lambda. But parameter capture should still work.
+
+Wait — the error mentions "Function References of @Composable functions are not currently supported" and "Function invocation 'viewModel(...)' expected". This is precisely the error when you write a **bound callable reference** `x::member` where `x` is a function value. It's saying `viewModel` is being resolved to the function `viewModel` (the composable `viewModel()`).
+
+This must be a scoping issue: there may be a `val viewModel` shadowing inside the Scaffold content, OR the lambda has a receiver/parameter named `viewModel`. Let me search within the topBar for any `viewModel` redeclaration. Actually, more likely: the `Scaffold` content or `MapScreen` doesn't matter. Let me just use a captured alias to be safe and robust. I'll add `val vm = viewModel` at the top of MainScreen and reference `vm` in the ConnectionStatus call.
+
+Let me add the alias after line 65.
+
+
+
+
+
+
+## 15/08/2026, 18:59:16
+
+The user chose:
+1. **Shared 3 total** budget across Map+Alerts.
+2. **Also group master toggles** should trigger the hint.
+3. Copy: "first is better, but still a little clumsy" — they like the Map-vs-Alerts specific approach but want it polished. Since they mentioned it's "a little clumsy," I'll refine the wording. Let me propose cleaner copy.
+
+Since they want a single shared 3-count that decrements on **any** of the 4 toggle paths (per-type map, per-type alerts, group map, group alerts), I'll implement the hint logic in the ViewModel's four methods. But there's a subtlety: `setThreatMapVisible` (per-type) is also called from `setGroupThreatMapVisible`? No — group methods loop directly over `prefs.setThreatMapVisible`, they don't call `setThreatMapVisible`. Good, so the four methods are distinct entry points, and I can call the hint helper from each.
+
+Wait — the group map toggle calls `prefs.setThreatMapVisible(it, visible)` directly in the loop (MainViewModel.kt:486-493), not the public `setThreatMapVisible` method. So I'll add the hint call to all four public methods independently.
+
+Let me refine the toast copy. Since they said "first is better but a little clumsy," I'll craft cleaner, shorter copy:
+
+- **Map** toast: "Map off hides this type and silences its alerts."  → cleaner: "Map shows it on the map. Map off hides it and silences its alerts."
+- **Alerts** toast: "Alerts off keeps it on the map, just dimmed."
+
+Hmm, these are for the group case too, so "this type" doesn't fit group. I need copy that works for both per-type and group. Let me use neutral copy:
+
+- **Map**: "Map off hides the type and silences its alerts."
+- **Alerts**: "Alerts off keeps it on the map, just dimmed."
+
+That's clean enough. Let me present the final plan.
+
+## Final Plan
+
+### Files to touch
+1. **`app/src/main/res/drawable/ic_turtle.xml`** (new) — turtle vector icon for the Slow header.
+2. **`SettingsScreen.kt`**:
+   - Replace `CompactToggleRow` (switch) with an **icon-chip** control (map/bell icon + label, on/off/dimmed) used for both per-threat and group master controls.
+   - Add lightning (`ic_bolt`) + turtle icons to the Fast/Slow headers (section headers + `GroupMasterColumn` titles). Extend `fastAndSlowGroups` to carry the icon res.
+   - Reintroduce `Icons.Filled.Place` import (and keep `Notifications`).
+3. **`ZonePrefs.kt`** — add `threatToggleHintRemaining` DataStore counter (default 3, mirror `settingsHintRemaining`).
+4. **`MainViewModel.kt`** — add a private `showToggleHint()` helper (reads counter, toasts, decrements) called from all four toggle methods (`setThreatMapVisible`, `setThreatAlertsEnabled`, `setGroupThreatMapVisible`, `setGroupThreatAlertsEnabled`).
+5. **`Strings.kt`** — add 2 toasts + 2 icon-content-description strings (UA+EN), plus `fastGroupLabel`/`slowGroupLabel` already exist.
+6. **`CHANGELOG.md`** — update `[Unreleased]`.
+7. **`ARCHITECTURE.md`** — update `SettingsScreen.kt` responsibility line if needed (minor; the toggles description). No mirrored invariant changed.
+
+### Icon-chip control
+New `ToggleChip(icon, label, on, enabled, onClick)` composable:
+- small bordered `Card`, primary border + primary icon tint when `on`; muted + alpha ~0.55 when off; fully disabled (alpha lower, non-clickable) when `!enabled`.
+- ~56dp wide column: 20dp icon on top, tiny label below — compact enough to keep the right side tidy (replaces the 96dp-wide switch column).
+
+### Group header icons
+- Fast → `ic_bolt` (existing).
+- Slow → new `ic_turtle`.
+- Rendered beside each title in both the master columns and the list section headers.
+
+### Toast logic (shared budget 3)
+- `ZonePrefs.threatToggleHintRemaining(): Flow<Int>` default 3; `setThreatToggleHintRemaining(Int)`.
+- In `MainViewModel`, `private suspend fun maybeShowToggleHint(mapToast: Boolean)`:
+  ```kotlin
+  val remaining = prefs.threatToggleHintRemaining().first()
+  if (remaining > 0) {
+      prefs.setThreatToggleHintRemaining(remaining - 1)
+      val s = Strings.get(prefs.language().first())
+      Toast.makeText(getApplication(), if (mapToast) s.mapToggleHint else s.alertToggleHint, Toast.LENGTH_SHORT).show()
+  }
+  ```
+- Call it at the start of all four toggle methods (passing which copy).
+- **Map toast copy (EN)**: "Map off hides the type and silences its alerts." / **(UA)**: "Вимкнена мапа ховає тип і замовчує його тривоги."
+- **Alerts toast copy (EN)**: "Alerts off keeps it on the map, just dimmed." / **(UA)**: "Вимкнені сповіщення лишають тип на мапі, лише затемненим."
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+One thing to confirm: the user said copy is "a little clumsy" — do they want me to refine it further, or is the above wording good? I'll present this as the plan and let them adjust the exact wording. Let me present the plan concisely.
+
+
+## 15/08/2026, 18:59:37
+
+Here's the complete plan.
+
+## Plan: Icon-chips, Fast/Slow icons, first-3 toggle hint toasts
+
+### 1. Icon-chip toggles (replace switches) — `SettingsScreen.kt`
+Replace `CompactToggleRow` (which renders a label + Material `Switch`) with a **`ToggleChip`** icon-chip control matching the original look you liked:
+- Map chip uses `Icons.Filled.Place`; Alerts chip uses `Icons.Filled.Notifications` (reintroduce the `Place` import).
+- `on` → primary border + primary icon tint; `off` → muted + ~0.55 alpha; `!enabled` (alerts while type hidden from map) → further dimmed and non-clickable.
+- Compact size (~56dp wide column: 20dp icon + tiny label) so the right side stays tidy — applied to **both** per-threat controls and the Fast/Slow master columns.
+
+### 2. Lightning + turtle on Fast/Slow headers — `SettingsScreen.kt` + `ic_turtle.xml`
+- **Fast** header icon: reuse existing `ic_bolt.xml` (lightning).
+- **Slow** header icon: **new `app/src/main/res/drawable/ic_turtle.xml`** (Material-style turtle vector), authored by me.
+- Extend `fastAndSlowGroups(lang)` to carry an icon res id per group, and render the icon beside the title in **both** the list section headers and the `GroupMasterColumn` titles.
+
+### 3. First-3 toggle hint toasts — `ZonePrefs.kt`, `MainViewModel.kt`, `Strings.kt`
+- **ZonePrefs**: add `threatToggleHintRemaining(): Flow<Int>` (default 3) + `setThreatToggleHintRemaining(Int)` — mirrors the existing `settingsHintRemaining` DataStore pattern (the app's single prefs store).
+- **MainViewModel**: add `private suspend fun maybeShowToggleHint(mapToast: Boolean)` that reads the counter; if > 0 it decrements and shows a `Toast` (uses `getApplication()`, already used at MainViewModel.kt:567). Call it from **all four** toggle methods (`setThreatMapVisible`, `setThreatAlertsEnabled`, `setGroupThreatMapVisible`, `setGroupThreatAlertsEnabled`) — **shared budget of 3** total, decremented on any Map or Alerts toggle (per-type or group master), then never again.
+- **Strings (UA+EN)** — 2 toast messages:
+  - Map: *"Map off hides the type and silences its alerts."* / *"Вимкнена мапа ховає тип і замовчує його тривоги."*
+  - Alerts: *"Alerts off keeps it on the map, just dimmed."* / *"Вимкнені сповіщення лишають тип на мапі, лише затемненим."*
+  - Plus content-description strings for the new icons (accessibility).
+
+### 4. Docs — `CHANGELOG.md` (+ minor `ARCHITECTURE.md` line)
+Update `[Unreleased]` with: per-threat toggles are now compact icon-chips (Map/Bell); Fast/Slow grouped with lightning/turtle icons; a one-time (first 3 toggles) toast explains how Map/Alerts work. `ARCHITECTURE.md` `SettingsScreen.kt` line unchanged in substance (no mirrored invariant touched).
+
+### 5. Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+**Copy check:** you said the Map/Alerts copy was "a little clumsy" — I've trimmed it to the two short lines above. If you'd like different exact wording, tell me before I implement. Otherwise I'll use those.
+
+Ready to implement on your "go".
+## 15/08/2026, 18:59:55
+
+The user wants the toast copy to have special words bolded or colorized. But a `Toast` is a system toast — it renders plain `CharSequence` and cannot have bold/colored spans reliably (actually, `SpannableString` works in toasts on most devices, but it's fragile and system-dependent).
+
+Let me consider the options. The user wants emphasis on key words like "Map", "Alerts", "hides", "dimmed", "silences".
+
+Given the constraint that plain toasts can't reliably do rich text, I have a few options:
+
+**Option A — SpannableString in Toast.** `Toast.makeText(context, spannable, ...)` accepts a `CharSequence`, and `SpannableString` with `StyleSpan(BOLD)` or `ForegroundColorSpan` does render in most Android versions (since ~Lollipop, toasts use the same rendering). This is the least invasive — no UI change. Risk: styling can be inconsistent on some OEM skins, and the app's dark theme toast background may clash with colored spans.
+
+**Option B — Replace toast with an in-app styled hint** (a small inline banner/Snackbar in Settings that supports bold/color via AnnotatedString). More work, but fully reliable and matches the app's dark-only Material design. This is more consistent with the app's Compose UI.
+
+Given the app is Compose with a custom dark theme and they've emphasized visual polish, but the user explicitly said "toast" earlier... Now they want emphasis. I should ask which approach they want, since it's a real tradeoff.
+
+Let me check whether the toasts I planned are system toasts. Yes — `Toast.makeText(...)` in MainViewModel. The user asked to "bold or colorize special words" in the toast.
+
+I'll present the tradeoff and ask.
+
+Let me confirm the current plan's toast mechanism and propose the two approaches. Since I'm in plan mode, I should ask a clarifying question.
+
+I have enough context from prior reading. Let me ask the clarifying question about the toast styling approach.
+
+
+## 15/08/2026, 19:00:02
+
+Now `vm` is unresolved at line 379 — meaning line 379 (inside `ConnectionStatus` call) is NOT within the lexical scope of the `MainScreen` function where `vm` is defined. This confirms the `ConnectionStatus(...)` call is inside a **different composable function or a lambda that's a separate function**, where `vm`/`viewModel` aren't in scope.
+
+Let me look at the structure — line 370-380 is inside `Scaffold(topBar = { ... })`. But `Scaffold` is called within `MainScreen`, so its content lambda captures `vm`. Unless... the `ConnectionStatus` call is actually inside a separate composable function that receives `uiState` but not `vm`.
+
+Wait — let me look more carefully. Maybe the header/topBar is extracted into a helper composable `MapHeader(...)` or similar that receives `uiState` and `s` but not the viewModel. Let me check what function contains line 370.
+
+Let me read around line 300-380 to find the enclosing function.
+
+
+
+
+## 15/08/2026, 19:00:17
+
+The `ConnectionStatus` call at line ~370 IS inside the `Scaffold` topBar lambda, which is within `MainScreen`. So `vm` should be in scope. But the error says unresolved at 379. 
+
+Wait — maybe the line numbers shifted and line 379 now refers to a *different* location after my `val vm` insertion shifted things. Let me re-check what's actually at line 379 now. The `val vm = viewModel` insertion added one line, so the ConnectionStatus call moved from 370 to 371, and the `onForceOfflineChange` line moved from 378 to 379. So line 379 should be `onForceOfflineChange = vm::setForceOffline`.
+
+The error "Unresolved reference: vm" at 379:44 — so `vm` is genuinely not in scope there. That's very odd for a lambda inside the same function.
+
+Unless... the `topBar` lambda is `@Composable` and there's something about how `Scaffold` topBar is a separate lambda, but it still captures enclosing locals. This should work.
+
+Let me look at whether there's a `remember` or recomposition capture issue. Actually — could `MapScreen` be a different function and the header be inside `MapScreen`, not `MainScreen`? Let me check: line 88 shows `MapScreen(uiState = uiState, ...)`. The `ConnectionStatus` at line 370 — is it inside `MapScreen` or `MainScreen`? The `Scaffold` at line 316 — let me verify `Scaffold` is in `MainScreen` and `MapScreen` is a separate function called at line 88. 
+
+Wait, if `Scaffold` is at line 316 inside `MainScreen`, then the topBar content is a lambda in `MainScreen`. So `vm` (declared at top of MainScreen) should be captured.
+
+Unless `vm` was declared AFTER the point where it's used? No, `val vm` is at line 65, way before.
+
+Let me actually check — maybe I misread and the `Scaffold` is in `MapScreen`, and `MapScreen` is where the header lives, and it does NOT have `vm`. Let me search for where `ConnectionStatus(` is and what function contains it. Let me grep for the function boundaries. Let me look at whether there's a `MapScreen` composable that contains the Scaffold.
+
+Let me check line 88's `MapScreen` — is `MapScreen` the one with Scaffold? Let me look at the `MapScreen` definition.
+
+Actually, the simplest diagnosis: the topBar lambda's `ConnectionStatus` call might be inside a nested composable. Let me just check whether `vm` is actually accessible by checking if `uiState` (also from MainScreen) resolves at line 379. The error only complains about `vm`, not `uiState` — so `uiState` IS in scope but `vm` is NOT. 
+
+That means line 379 is inside a scope where `uiState` (a MainScreen local) is accessible but `vm` is not. That's impossible if they're both MainScreen locals... unless there's a different `uiState` parameter in an enclosing function.
+
+Let me look at `MapScreen` — it takes `uiState` as a param (line 88: `MapScreen(uiState = uiState, ...)`). So the header/Scaffold with `ConnectionStatus` is likely inside **`MapScreen`**, which has a `uiState` param but NO `viewModel`/`vm`. That's why `uiState` works (it's a MapScreen param) and `vm` doesn't.
+
+So the `ConnectionStatus` call is inside `MapScreen`, not `MainScreen`. I need to pass the toggle callback into `MapScreen`. Let me verify by finding the `MapScreen` function signature.
+
+Let me grep for `fun MapScreen`.
+
+
+
+
+## 15/08/2026, 19:00:25
+
+The `MapScreen` function (line 281) contains the Scaffold with `ConnectionStatus`. It has `uiState` as a param but no `viewModel`/`vm`. Let me read the `MapScreen` signature and its call site (line 88) to thread the toggle callback through.
+
+Let me read the MapScreen signature (line 281-299).
+
+
+
+
+## 15/08/2026, 19:00:33
+
+I need to add an `onForceOfflineChange: (Boolean) -> Unit` param to `MapScreen` and pass it through from `MainScreen` (which has `vm`). Let me:
+
+1. Add the param to `MapScreen` signature.
+2. Update the `ConnectionStatus` call inside MapScreen to use `onForceOfflineChange` instead of `vm`.
+3. Update the `MapScreen(...)` call site in MainScreen to pass `onForceOfflineChange = vm::setForceOffline`.
+4. Remove the now-unneeded `val vm` alias? Actually I can keep it for the call site in MainScreen. Let me keep `vm`.
+
+Let me first revert my `onForceOfflineChange = vm::setForceOffline` in the ConnectionStatus call back to use a new param. Let me edit the MapScreen signature.
+
+
+
+
+
+
+## 15/08/2026, 19:00:50
+
+Now update the `MapScreen(...)` call site in MainScreen (around line 88-103) to pass `onForceOfflineChange = vm::setForceOffline`. Let me view the call site and add the param.
+
+Let me read the MapScreen call at line 88.
+
+The call site (line 88-103) has `MapScreen(uiState=..., settingsOpen=..., onOpenSettings=..., onThreatTapped=..., onDismissPopup=..., onMapTapped=..., onRedZoneChange=..., onYellowZoneChange=..., onRedArmedChange=..., onYellowArmedChange=...)`. Let me find the closing of that call and add the new param.
+
+Let me read lines 88-115.
+
+
+
+
+
+
+## 15/08/2026, 19:00:58
+
+At the call site, `viewModel` resolves correctly (line 98-106 use `viewModel.selectThreat`, etc.). So the method-reference issue earlier was only inside `MapScreen`. Here `viewModel::setForceOffline` will work fine since `viewModel` is the MainScreen param. Let me add the param.
+
+Note: this call site uses `viewModel.` (direct calls) not method references, and it works. Let me add `onForceOfflineChange = viewModel::setForceOffline`.
+
+Actually, to be safe with the earlier ambiguity, I'll use `vm::setForceOffline` since `vm` is the captured alias. Both should work here. Let me use `viewModel::setForceOffline` since direct calls work at this site.
+
+
+## 15/08/2026, 19:01:12
+
+Now `val vm = viewModel` is unused. Let me remove it to avoid an unused-variable warning (though it's not an error). Actually, let me keep the code clean and remove it since it's not needed anymore.
+
+Let me remove the `val vm = viewModel` line.
+
+
+
+
+
+
+## 15/08/2026, 19:01:19
+
+The user chose **bold toast spans** — keep the system Toast, pass a `SpannableString` with bold on the key words.
+
+Let me finalize the plan incorporating this. I need to check the exact Strings/Toast usage to plan the `SpannableString`. Let me verify the current MainViewModel toast usage and imports.
+
+I already know:
+- `MainViewModel.kt:5` imports `android.widget.Toast`
+- Toasts at lines 567, 574 use `Toast.makeText(getApplication(), s.updateUpToDate, Toast.LENGTH_SHORT).show()`
+
+For the hint, I'll build a `SpannableString` in the ViewModel. I need `android.text.SpannableString`, `android.text.style.StyleSpan`, and `android.graphics.Typeface` imports.
+
+The strings will contain the full sentence plus I need to know which words to bold. Since I'll construct the SpannableString programmatically, I need to locate the bold words. Simplest approach: define the toast as a format string with the key word as a separate part, or store the plain string and use `indexOf` to find word boundaries.
+
+Better approach for i18n cleanliness: keep the Strings fields as the full sentence but bold specific known substrings. Since "Map"/"Alerts" appear in the sentence, I can find them by `indexOf("Map")` etc. But UA text differs ("Мапа", "Сповіщення"). 
+
+Cleaner: store in Strings a helper that returns a list of (string, boldWords) — or simpler, I'll store two string parts. Actually the cleanest i18n-safe way: add strings like `mapToggleHint` = full sentence, and bold by scanning for the translated key words. That's fragile.
+
+Let me reconsider. The cleanest approach that keeps bold reliable: define the toast message as a small `data` in Strings as a list of segments, OR add explicit helper strings. Given the app's Strings is a flat StringSet, I'll add a String field containing the whole message and use `indexOf` on the translated keyword. Since the keyword ("Map"/"Мапа", "Alerts"/"Сповіщення", "dimmed"/"затемнен") is a known token, I can bold all occurrences of that token.
+
+Actually, a robust and simple method: store the message as plain text, and in the ViewModel use a helper that bolds every occurrence of a set of keywords passed in. But the keywords are language-specific.
+
+Let me simplify the design decision and note it in the plan: I'll add the toast strings and, for bolding, mark the key words directly in Strings by splitting into segments (label + rest). Concretely, I'll add per-language fields that already separate the boldable word, e.g.:
+
+- Map toast: segments `["Map ", "off hides the type and silences its alerts."]` → bold "Map". UA: `["Мапа ", "вимкнена — ховає тип і замовчує його тривоги."]` → bold "Мапа".
+- Alerts toast: `["Alerts ", "off keeps it on the map, just dimmed."]` → bold "Alerts" and "dimmed"? That's two words.
+
+To keep it clean, I'll bold just the leading keyword ("Map"/"Alerts"/"Мапа"/"Сповіщення") — the most important word. That's the simplest reliable implementation: split message into (boldWord, rest) in Strings, build SpannableString bolding the first segment.
+
+Hmm, but "dimmed" is also worth bolding. Let me allow bolding multiple words by passing the message and a vararg of translated words to bold, using `indexOf`. I'll define in the plan: bold the keywords "Map"/"Alerts" (and "dimmed"/"затемнен" if present). Since I control the copy, I'll structure it so bolding is simple.
+
+Let me finalize with a clean design:
+
+**Design:** Add to Strings, per language, the message plus an explicit `boldTokens` list of translated words to bold. But StringSet is flat strings — I can't easily add lists. 
+
+Alternative clean approach: build the message from parts in Strings so bold boundaries are known:
+- `mapToggleHintPrefix` = "Map" (UA "Мапа")
+- `mapToggleHintRest` = " off hides the type and silences its alerts." (UA " вимкнена — ховає тип і замовчує його тривоги.")
+- `alertToggleHintPrefix` = "Alerts" (UA "Сповіщення")
+- `alertToggleHintRest` = " off keeps it on the map, just dimmed." (UA " вимкнені — лишають тип на мапі, лише затемненим.")
+
+Then build `SpannableString(prefix + rest)` and bold `[0, prefix.length)`. Simple, i18n-safe, no indexOf fragility.
+
+This bolds the leading keyword. That satisfies "bold special words" — Map/Alerts are the special words. If they want "dimmed" too, that's a second span; I can support bolding both prefix and "dimmed" via an additional suffix approach, but I'll keep it to the key word to keep it simple, and mention it.
+
+Actually, to be safe and match their request ("bold or colorize special words"), bolding "Map"/"Alerts" (the two toggle names) is exactly the emphasis that matters. I'll go with that.
+
+Let me update the plan and present it.
+
+## Final Plan (bold toast spans)
+
+### 1. Icon-chip toggles — `SettingsScreen.kt`
+Replace `CompactToggleRow` (switch) with `ToggleChip` icon-chip (map/bell icon + label, on/off/dimmed), used per-threat and in Fast/Slow master columns. Reintroduce `Icons.Filled.Place` import; keep `Notifications`.
+
+### 2. Lightning + turtle icons — `ic_turtle.xml` (new) + `SettingsScreen.kt`
+- Fast header: `ic_bolt` (existing). Slow header: new `ic_turtle.xml`.
+- Extend `fastAndSlowGroups` to carry icon res; render icons beside titles in section headers + `GroupMasterColumn`.
+
+### 3. Bold toast hint (first 3 toggles) — `ZonePrefs.kt`, `MainViewModel.kt`, `Strings.kt`
+- **ZonePrefs**: `threatToggleHintRemaining(): Flow<Int>` default 3 + setter (mirror `settingsHintRemaining`).
+- **Strings (UA+EN)**: split toast copy into prefix (bold) + rest segments:
+  - Map: prefix "Map"/"Мапа" + rest " off hides the type and silences its alerts."/" вимкнена — ховає тип і замовчує його тривоги."
+  - Alerts: prefix "Alerts"/"Сповіщення" + rest " off keeps it on the map, just dimmed."/" вимкнені — лишають тип на мапі, лише затемненим."
+  - Plus icon content-description strings.
+- **MainViewModel**: `maybeShowToggleHint(mapToast: Boolean)` — reads counter; if >0 decrements and shows a `SpannableString` toast bolding the prefix word (via `StyleSpan(BOLD)`); called from all four toggle methods. Shared budget of 3. Add imports `SpannableString`, `StyleSpan`, `Typeface`.
+
+### 4. Docs — `CHANGELOG.md` (+ minor `ARCHITECTURE.md`)
+Update `[Unreleased]`.
+
+### 5. Verify
+- `assembleDebug`, `testDebugUnitTest`.
+
+Ready to implement on "go".
+## 15/08/2026, 19:01:51
+
+Compiles and tests pass. Now let me verify the full assembleDebug build too (to make sure the Compose UI all links), then update docs.
+
+Let me run assembleDebug.
+
+
+## 15/08/2026, 19:02:08
+
+Build passes. Now let me update the docs: ARCHITECTURE.md (NeptunState.forceOffline, popup temp toggle, restore-on-start) and CHANGELOG.md.
+
+Let me update the CHANGELOG Unreleased entry — the "Status" bullet I added. Let me view it.
+
+
+## 15/08/2026, 19:02:15
+
+Let me find my "Status" bullet (the backup one I added earlier).
+
+
+
+
+## 15/08/2026, 19:02:33
+
+Now update ARCHITECTURE.md. Let me update the key-invariant note about the backup to mention `forceOffline` and the temp toggle. Let me view the current invariant.
+
+From earlier it reads:
+```
+- **Backup never overrides a healthy NEPTUN.** The alerts.com.ua backup (`AlertsUaClient`)
+  feeds `NeptunState.oblastAlerts` only when NEPTUN is disconnected or its own alert feed has
+  been silent for >60s (`backupActive`). Both `MainViewModel` and `AlertService` read the same
+  union (`oblastAlerts`), so the backup needs no changes to the mirrored zone/focus logic. The
+  `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body. Backup health
+  (`backupUp`/`backupOfflineElapsedSec`) is surfaced read-only in the system-status popup.
+```
+
+Let me update it to mention `forceOffline` TEMP toggle.
+
+
+
+
+
+
+## 15/08/2026, 19:02:39
+
+Let me mark todos complete and run a final full test to confirm everything.
+

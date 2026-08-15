@@ -2,13 +2,15 @@
 
 ## [Unreleased]
 
-- Settings → Threats: fixed the per-threat "Map" toggle being stuck off once turned off — it can now be switched back on (turning off a type still silences its alerts, and "Alerts" re-enables with it). Added an "All types" master row at the top with "All map" / "All alerts" toggles to switch every type at once.
+- Settings → Threats: each threat's Map/Alerts controls are now compact switches stacked on the right of the card (no more full-width card row), so the list is far shorter to scroll. The threats are grouped into two tiers — Fast (Ballistic, Cruise, Aviation/MiG-31K, Guided bomb) and Slow (UAV, FPV, Recon, Unknown) — each with a header. A master "All" card at the top switches every type's Map/Alerts per group at once.
+- Settings → Threats: fixed the per-threat "Map" toggle being stuck off once turned off — it can now be switched back on (turning off a type still silences its alerts, and "Alerts" re-enables with it).
 - Settings → Threats: tapping a threat's name/description now expands the card, not just the caret. The section helper text is back to the short "Threats — tap to toggle".
 
 - Threat popup: the wordy "Distance / ETA" line and coloured speed pill are replaced with a neutral trio of pills where the number is the hero — «3 км» · «10 хв» · «180 км/год» (EN: `3 km` · `10 min` · `180 km/h`). ETA is shown in minutes only. Pills are muted, wrap-friendly and work in small/medium/large. Settings → threat card size now notes that all numbers in the app are approximate.
 - Zones: red zone radius now adjustable up to 20 km (default 10 km) and yellow zone up to 50 km (default 21 km), for wider-area monitoring.
 - Alerts: oblast alerts now have a real backup system. When the main NEPTUN feed is down or silent for over a minute, the app falls back to an independent official source (alerts.com.ua, the same state data other air-raid aggregators use) so air-raid notifications keep working. When an alert comes from the backup it's tagged in the notification body.
-- Status: the connection pill turns amber and reads "backup" when on the backup source. Tapping it opens a "System status" popup that shows NEPTUN and the backup (alerts.com.ua) each with their own Online/Offline-with-timer indicator, notes that the backup is oblast-level only (no live map positions), and highlights which source is currently in effect.
+- Status: the connection pill shows one of three clear states — amber "backup" when on the backup source, green "online" when NEPTUN is live, or red "offline" with a timer when NEPTUN is down. Tapping it opens a "System status" popup that lists NEPTUN and the backup (alerts.com.ua) each with their own Online/Offline-with-timer indicator, highlights the source actually in effect (orange bold + "Active"), and notes the backup is oblast-level only (no live map positions).
+- Status: a temporary "Test: simulate NEPTUN offline" toggle inside the System status popup forces the backup path so the different online/offline states can be verified (resets on app restart via the same toggle).
 
 - Alerts: when the live feed drops, a silent-but-attentive offline notification appears (after a 30s grace, or immediately when an official air-raid alert is active at drop or fires during the grace) reminding you to rely on official sirens, with a Retry action that forces an immediate reconnect. The ongoing status notification switches to "Offline for Xm" / «Офлайн Xхв» with the same Retry action, and the header connection pill shows the elapsed offline time.
 

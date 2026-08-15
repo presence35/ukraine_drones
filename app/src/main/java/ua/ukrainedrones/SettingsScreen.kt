@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -78,8 +77,8 @@ fun SettingsScreen(
     onLanguageChange: (AppLanguage) -> Unit,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
     onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
-    onThreatMapToggleAll: (Boolean) -> Unit,
-    onThreatAlertToggleAll: (Boolean) -> Unit,
+    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
+    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onFastAlertsSoonerChange: (Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
@@ -267,181 +266,59 @@ fun SettingsScreen(
 
             item { SectionHeader(s.threatsLabel, rememberVectorPainter(Icons.Default.Warning)) }
             item {
-                val allMapOn = hiddenTypes.isEmpty()
-                val allAlertsOn = silencedTypes.isEmpty()
+                val fastTypes = FAST_THREAT_TYPES
+                val slowTypes = ThreatType.values().toSet() - fastTypes
+                val fastMapOn = fastTypes.none { it in hiddenTypes }
+                val fastAlertsOn = fastTypes.none { it in silencedTypes }
+                val slowMapOn = slowTypes.none { it in hiddenTypes }
+                val slowAlertsOn = slowTypes.none { it in silencedTypes }
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        Text(
-                            s.allThreatsLabel,
-                            modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        GroupMasterColumn(
+                            lang = lang,
+                            title = s.fastGroupLabel,
+                            mapOn = fastMapOn,
+                            alertsOn = fastAlertsOn,
+                            onMap = { onThreatMapToggleAll(fastTypes, it) },
+                            onAlerts = { onThreatAlertToggleAll(fastTypes, it) },
+                            modifier = Modifier.weight(1f)
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            ThreatToggleCard(
-                                icon = Icons.Filled.Place,
-                                label = s.allMapLabel,
-                                on = allMapOn,
-                                forcedOff = false,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onThreatMapToggleAll(!allMapOn) }
-                            )
-                            ThreatToggleCard(
-                                icon = Icons.Filled.Notifications,
-                                label = s.allAlertLabel,
-                                on = allAlertsOn,
-                                forcedOff = !allMapOn,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onThreatAlertToggleAll(!allAlertsOn) }
-                            )
-                        }
+                        GroupMasterColumn(
+                            lang = lang,
+                            title = s.slowGroupLabel,
+                            mapOn = slowMapOn,
+                            alertsOn = slowAlertsOn,
+                            onMap = { onThreatMapToggleAll(slowTypes, it) },
+                            onAlerts = { onThreatAlertToggleAll(slowTypes, it) },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
-            items(ThreatType.values().toList()) { type ->
-                val info = ThreatTypeCatalog.INFO.getValue(type)
-                val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
-                val description = if (lang == AppLanguage.UA) info.descriptionUa else info.descriptionEn
-                val details = if (lang == AppLanguage.UA) info.detailsUa else info.detailsEn
-                val joke = if (lang == AppLanguage.UA) info.jokeUa else info.jokeEn
-                val onMap = type !in hiddenTypes
-                val onAlerts = type !in silencedTypes
-                val typicalSpeed = typicalSpeedKmh(type)?.roundToInt()
-                val expanded = expandedType == type
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                painter = painterResource(id = iconResFor(type)),
-                                contentDescription = label,
-                                tint = Color.Unspecified,
-                                modifier = Modifier.size(36.dp)
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { expandedType = if (expanded) null else type }
-                            ) {
-                                Text(label, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    description,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            IconButton(
-                                onClick = { expandedType = if (expanded) null else type },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = s.moreInfoLabel,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            ThreatToggleCard(
-                                icon = Icons.Filled.Place,
-                                label = s.threatMapLabel,
-                                on = onMap,
-                                forcedOff = false,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onThreatMapToggle(type, !onMap) }
-                            )
-                            ThreatToggleCard(
-                                icon = Icons.Filled.Notifications,
-                                label = s.threatAlertLabel,
-                                on = onAlerts,
-                                forcedOff = !onMap,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onThreatAlertToggle(type, !onAlerts) }
-                            )
-                        }
-                        AnimatedVisibility(visible = expanded) {
-                            val context = LocalContext.current
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 14.dp, end = 14.dp, bottom = 16.dp)
-                            ) {
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                Spacer(Modifier.height(12.dp))
-                                Text(
-                                    details,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                typicalSpeed?.let {
-                                    Surface(
-                                        modifier = Modifier.align(Alignment.End),
-                                        shape = RoundedCornerShape(50),
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                                    ) {
-                                        Text(
-                                            "~$it ${s.speedUnit}",
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Medium,
-                                            style = MaterialTheme.typography.labelMedium
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(12.dp))
-                                ThreatImages.drawableRes(type)?.let { resId ->
-                                    Image(
-                                        painter = painterResource(id = resId),
-                                        contentDescription = label,
-                                        contentScale = ContentScale.FillWidth,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                    )
-                                } ?: ThreatImages.url(type)?.let { imgUrl ->
-                                    AsyncImage(
-                                        model = imageRequest(context, imgUrl),
-                                        contentDescription = label,
-                                        placeholder = painterResource(id = iconResFor(type)),
-                                        error = painterResource(id = iconResFor(type)),
-                                        contentScale = ContentScale.FillWidth,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                    )
-                                }
-                                joke.takeIf { it.isNotBlank() }?.let {
-                                    Spacer(Modifier.height(8.dp))
-                                    Text(
-                                        "— $it",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
+            fastAndSlowGroups(lang).forEach { (groupTitle, types) ->
+                item {
+                    Text(
+                        groupTitle,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                items(types.toList()) { type ->
+                    ThreatSettingsCard(
+                        type = type,
+                        lang = lang,
+                        expanded = expandedType == type,
+                        onExpandChange = { expandedType = if (expandedType == type) null else type },
+                        hiddenTypes = hiddenTypes,
+                        silencedTypes = silencedTypes,
+                        onThreatMapToggle = onThreatMapToggle,
+                        onThreatAlertToggle = onThreatAlertToggle
+                    )
                 }
             }
 
@@ -667,48 +544,222 @@ private fun AlertToggleRow(
     }
 }
 
+/** The two threat groupings shown in Settings: fast (missiles, bombs) and slow (drones). */
+private fun fastAndSlowGroups(lang: AppLanguage): List<Pair<String, Set<ThreatType>>> {
+    val s = Strings.get(lang)
+    val fast = FAST_THREAT_TYPES
+    val slow = ThreatType.values().toSet() - fast
+    return listOf(s.fastGroupLabel to fast, s.slowGroupLabel to slow)
+}
+
+/** A compact labelled switch used for the per-threat Map/Alerts controls. */
 @Composable
-private fun ThreatToggleCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun CompactToggleRow(
     label: String,
-    on: Boolean,
-    forcedOff: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
 ) {
-    val enabled = on && !forcedOff
-    Card(
-        modifier = modifier
-            .clickable(enabled = !forcedOff) { onClick() }
-            .alpha(if (enabled) 1f else 0.55f),
-        border = if (enabled) {
-            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        } else null
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (enabled) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(28.dp)
-            )
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(6.dp))
+        Switch(checked = checked, enabled = enabled, onCheckedChange = null)
+    }
+}
+
+/** One group's Map + Alerts master switches in the "All" row at the top of Threats. */
+@Composable
+private fun GroupMasterColumn(
+    lang: AppLanguage,
+    title: String,
+    mapOn: Boolean,
+    alertsOn: Boolean,
+    onMap: (Boolean) -> Unit,
+    onAlerts: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val s = Strings.get(lang)
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        CompactToggleRow(label = s.threatMapLabel, checked = mapOn, enabled = true, onCheckedChange = onMap)
+        CompactToggleRow(label = s.threatAlertLabel, checked = alertsOn, enabled = mapOn, onCheckedChange = onAlerts)
+    }
+}
+
+/** A single threat's settings card: icon + name/desc, compact Map/Alerts switches on the right. */
+@Composable
+private fun ThreatSettingsCard(
+    type: ThreatType,
+    lang: AppLanguage,
+    expanded: Boolean,
+    onExpandChange: () -> Unit,
+    hiddenTypes: Set<ThreatType>,
+    silencedTypes: Set<ThreatType>,
+    onThreatMapToggle: (ThreatType, Boolean) -> Unit,
+    onThreatAlertToggle: (ThreatType, Boolean) -> Unit
+) {
+    val s = Strings.get(lang)
+    val info = ThreatTypeCatalog.INFO.getValue(type)
+    val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+    val description = if (lang == AppLanguage.UA) info.descriptionUa else info.descriptionEn
+    val details = if (lang == AppLanguage.UA) info.detailsUa else info.detailsEn
+    val joke = if (lang == AppLanguage.UA) info.jokeUa else info.jokeEn
+    val onMap = type !in hiddenTypes
+    val onAlerts = type !in silencedTypes
+    val typicalSpeed = typicalSpeedKmh(type)?.roundToInt()
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = iconResFor(type)),
+                    contentDescription = label,
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(36.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onExpandChange)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            label,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = s.moreInfoLabel,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(
+                    modifier = Modifier.width(96.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    CompactToggleRow(
+                        label = s.threatMapLabel,
+                        checked = onMap,
+                        enabled = true,
+                        onCheckedChange = { onThreatMapToggle(type, it) }
+                    )
+                    CompactToggleRow(
+                        label = s.threatAlertLabel,
+                        checked = onAlerts,
+                        enabled = onMap,
+                        onCheckedChange = { onThreatAlertToggle(type, it) }
+                    )
+                }
+            }
+            AnimatedVisibility(visible = expanded) {
+                val context = LocalContext.current
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, bottom = 16.dp)
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        details,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    typicalSpeed?.let {
+                        Surface(
+                            modifier = Modifier.align(Alignment.End),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        ) {
+                            Text(
+                                "~$it ${s.speedUnit}",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    ThreatImages.drawableRes(type)?.let { resId ->
+                        Image(
+                            painter = painterResource(id = resId),
+                            contentDescription = label,
+                            contentScale = ContentScale.FillWidth,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    } ?: ThreatImages.url(type)?.let { imgUrl ->
+                        AsyncImage(
+                            model = imageRequest(context, imgUrl),
+                            contentDescription = label,
+                            placeholder = painterResource(id = iconResFor(type)),
+                            error = painterResource(id = iconResFor(type)),
+                            contentScale = ContentScale.FillWidth,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    }
+                    joke.takeIf { it.isNotBlank() }?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "— $it",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

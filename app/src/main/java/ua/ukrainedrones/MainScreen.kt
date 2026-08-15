@@ -102,7 +102,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onRedZoneChange = { viewModel.setRedZoneKm(it) },
             onYellowZoneChange = { viewModel.setYellowZoneKm(it) },
             onRedArmedChange = { viewModel.setRedArmed(it) },
-            onYellowArmedChange = { viewModel.setYellowArmed(it) }
+            onYellowArmedChange = { viewModel.setYellowArmed(it) },
+            onForceOfflineChange = viewModel::setForceOffline
         )
         if (screen == Screen.SETTINGS) {
             // Composed after MapScreen, so its handler is checked first on Back.
@@ -126,8 +127,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onLanguageChange = { viewModel.setLanguage(it) },
                 onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
                 onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
-                onThreatMapToggleAll = { visible -> viewModel.setAllThreatMapVisible(visible) },
-                onThreatAlertToggleAll = { enabled -> viewModel.setAllThreatAlertsEnabled(enabled) },
+                onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
+                onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
                 onFastAlertsSoonerChange = { viewModel.setFastAlertsSooner(it) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
@@ -287,7 +288,8 @@ private fun MapScreen(
     onRedZoneChange: (Int) -> Unit,
     onYellowZoneChange: (Int) -> Unit,
     onRedArmedChange: (Boolean) -> Unit,
-    onYellowArmedChange: (Boolean) -> Unit
+    onYellowArmedChange: (Boolean) -> Unit,
+    onForceOfflineChange: (Boolean) -> Unit
 ) {
     val s = Strings.get(uiState.language)
     var recenterTick by remember { mutableStateOf(0) }
@@ -374,6 +376,8 @@ private fun MapScreen(
                     backupSeen = uiState.backupSeen,
                     backupOfflineElapsedSec = uiState.backupOfflineElapsedSec,
                     offlineElapsedSec = uiState.offlineElapsedSec,
+                    forceOffline = uiState.forceOffline,
+                    onForceOfflineChange = onForceOfflineChange,
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
                 )
@@ -818,6 +822,8 @@ private fun ConnectionStatus(
     backupSeen: Boolean,
     backupOfflineElapsedSec: Long?,
     offlineElapsedSec: Long?,
+    forceOffline: Boolean,
+    onForceOfflineChange: (Boolean) -> Unit,
     s: Strings.StringSet,
     modifier: Modifier = Modifier
 ) {
@@ -885,7 +891,9 @@ private fun ConnectionStatus(
                     SourceStatusRow(
                         color = if (connected) Color(0xFF4CAF50) else Color(0xFFE57373),
                         name = s.connNeptunLabel,
-                        status = neptunStatus
+                        status = neptunStatus,
+                        active = !backupActive,
+                        activeLabel = s.connActiveLabel
                     )
                     SourceStatusRow(
                         color = when {
@@ -894,7 +902,9 @@ private fun ConnectionStatus(
                             else -> Color(0xFFE57373)
                         },
                         name = s.connBackupLabel,
-                        status = backupStatus
+                        status = backupStatus,
+                        active = backupActive,
+                        activeLabel = s.connActiveLabel
                     )
                     Text(
                         s.connBackupNoMapDesc,
@@ -903,8 +913,24 @@ private fun ConnectionStatus(
                     )
                     Text(
                         String.format(s.connEffectiveFormat, effectiveName),
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (backupActive) FontWeight.Bold else FontWeight.Normal,
+                        color = if (backupActive) Color(0xFFF9A825) else MaterialTheme.colorScheme.onSurface
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            s.connForceOfflineTitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = forceOffline,
+                            onCheckedChange = onForceOfflineChange
+                        )
+                    }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -951,8 +977,15 @@ private fun ConnectionStatus(
 }
 
 @Composable
-private fun SourceStatusRow(color: Color, name: String, status: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun SourceStatusRow(color: Color, name: String, status: String, active: Boolean, activeLabel: String) {
+    val accent = Color(0xFFF9A825)
+    val nameColor = if (active) accent else MaterialTheme.colorScheme.onSurface
+    val statusColor = if (active) accent else MaterialTheme.colorScheme.onSurfaceVariant
+    val statusWeight = if (active) FontWeight.Bold else FontWeight.Normal
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.alpha(if (active) 1f else 0.65f)
+    ) {
         Box(
             modifier = Modifier
                 .size(8.dp)
@@ -960,9 +993,18 @@ private fun SourceStatusRow(color: Color, name: String, status: String) {
                 .background(color)
         )
         Spacer(Modifier.width(8.dp))
-        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = nameColor)
         Spacer(Modifier.width(6.dp))
-        Text(status, style = MaterialTheme.typography.bodyMedium)
+        Text(status, style = MaterialTheme.typography.bodyMedium, fontWeight = statusWeight, color = statusColor)
+        if (active) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                activeLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = accent,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 

@@ -14042,3 +14042,50 @@ go
 ## 15/08/2026, 18:35:22
 
 "all types" is not distinct enough.  and in gneearl the toggle buttons are too big, now the page scrosllf for hours.  prob better to put them stacked, on the right side of each threat.  then the top "all types" will be more distinct.  also, organize them into threat levels, high,med,low, or fast,slow? suggestions?
+## 15/08/2026, 18:38:01
+
+confirm threat cards show number of mins to GPS/pinned city/red zone.
+## 15/08/2026, 18:38:28
+
+why is it an orange dot in header with "backup", but if i open the system status is has green dots for neptun and alerts.com.ua?  that's not right
+## 15/08/2026, 18:41:25
+
+there is only amber in the header, indicating it's on backup.  in the popup it's either green or red for each system.  
+## 15/08/2026, 18:43:18
+
+organize them as min,km,kmh
+and the precision bar is alwasy green? It should be red if small, orange if middle, and green if 5 bars.
+## 15/08/2026, 18:44:59
+
+header:
+[orange dot] Backup
+OR
+[green dot] online
+OR
+[red dot] offline (if all backup system are offline - intenet down or wahtever)
+
+in the popup:
+status of each.   if on backup, the helper text should be hilited.
+## 15/08/2026, 18:45:36
+
+go
+## 15/08/2026, 18:47:56
+
+go
+## 15/08/2026, 18:53:18
+
+go
+## 15/08/2026, 18:53:33
+
+go\
+## 15/08/2026, 18:56:42
+
+you turned them into toggles.  i wanted the icons, but it looks good othreiwse.
+add lighting and turtle icons to the fast/slow headers.
+the first 3 times they toggle map/alerts it toasts a brief explanation of how they work
+## 15/08/2026, 18:59:35
+
+bold or colorize special words
+## 15/08/2026, 19:02:42
+
+go

@@ -22,6 +22,7 @@ import org.osmdroid.util.GeoPoint
 
 data class UiState(
     val connected: Boolean = false,
+    val forceOffline: Boolean = false,             // TEMP test toggle — simulate NEPTUN offline
     val backupActive: Boolean = false,           // oblast alerts fall back to the backup source
     val backupUp: Boolean = false,               // backup source polled successfully recently
     val backupSeen: Boolean = false,             // backup source has polled successfully at least once
@@ -393,6 +394,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         return UiState(
             connected = neptun.connected,
+            forceOffline = neptun.forceOffline,
             backupActive = neptun.backupActive,
             backupUp = neptun.backupUp,
             backupSeen = neptun.backupLastOkAt > 0,
@@ -464,6 +466,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setFollowMe(follow) }
     }
 
+    /** TEMP test toggle: force the app to simulate NEPTUN being offline. */
+    fun setForceOffline(force: Boolean) {
+        viewModelScope.launch {
+            prefs.setForceOffline(force)
+            NeptunClient.setForceOffline(force)
+        }
+    }
+
     /** Pin the map to a city. Pinning auto-disables follow-me so the pin takes effect. */
     fun setPinnedCity(city: City?) {
         viewModelScope.launch {
@@ -483,18 +493,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setThreatAlertsEnabled(type, enabled) }
     }
 
-    fun setAllThreatMapVisible(visible: Boolean) {
+    fun setGroupThreatMapVisible(types: Set<ThreatType>, visible: Boolean) {
         viewModelScope.launch {
-            ThreatType.values().forEach {
+            types.forEach {
                 prefs.setThreatMapVisible(it, visible)
                 if (!visible) prefs.setThreatAlertsEnabled(it, false)
             }
         }
     }
 
-    fun setAllThreatAlertsEnabled(enabled: Boolean) {
+    fun setGroupThreatAlertsEnabled(types: Set<ThreatType>, enabled: Boolean) {
         viewModelScope.launch {
-            ThreatType.values().forEach { prefs.setThreatAlertsEnabled(it, enabled) }
+            types.forEach { prefs.setThreatAlertsEnabled(it, enabled) }
         }
     }
 

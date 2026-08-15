@@ -31,6 +31,7 @@ data class NeptunState(
     val lastError: String? = null,
     val offlineSince: Long? = null,
     val lastAlertAt: Long = 0L,
+    val forceOffline: Boolean = false,   // TEMP test toggle — force backup as if NEPTUN were down
     val backupUp: Boolean = false,      // backup source has polled successfully recently
     val backupLastOkAt: Long = 0L,      // epoch millis of the backup's last successful poll
     val backupError: String? = null
@@ -45,12 +46,13 @@ data class NeptunState(
             ?.let { (System.currentTimeMillis() - it) / 1000 }
 
     /**
-     * The backup (alerts.com.ua) contributes only when NEPTUN is down (disconnected) or its
-     * own alert feed has gone quiet for over [NeptunClient.BACKUP_FALLBACK_MS]. While NEPTUN is
-     * healthy it stays the sole source so we never second-guess a legitimate "no alert".
+     * The backup (alerts.com.ua) contributes only when NEPTUN is down (disconnected), its own
+     * alert feed has gone quiet for over [NeptunClient.BACKUP_FALLBACK_MS], or the TEMP
+     * [forceOffline] test toggle is on. While NEPTUN is healthy it stays the sole source so we
+     * never second-guess a legitimate "no alert".
      */
     val backupActive: Boolean
-        get() = !connected || System.currentTimeMillis() - lastAlertAt > NeptunClient.BACKUP_FALLBACK_MS
+        get() = forceOffline || !connected || System.currentTimeMillis() - lastAlertAt > NeptunClient.BACKUP_FALLBACK_MS
 
     /** Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. */
     val oblastAlerts: List<OblastAlert>
@@ -116,6 +118,14 @@ object NeptunClient {
         ws = null
         AlertsUaClient.stop()
         scope.cancel()
+    }
+
+    /**
+     * TEMP test toggle: force the app to behave as if NEPTUN were offline so the backup path
+     * can be verified. Updates the shared state so both the UI and AlertService re-derive it.
+     */
+    fun setForceOffline(force: Boolean) {
+        _state.value = _state.value.copy(forceOffline = force)
     }
 
     /** Relay the backup source's oblast alerts into our state whenever it updates. */

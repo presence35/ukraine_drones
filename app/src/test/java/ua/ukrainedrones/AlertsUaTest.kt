@@ -104,4 +104,23 @@ class AlertsUaTest {
         val st = NeptunState(backupUp = false, backupLastOkAt = 0L)
         assertNull(st.backupOfflineElapsedSec)
     }
+
+    @Test
+    fun `forceOffline activates backup even while NEPTUN connected`() {
+        val st = NeptunState(
+            connected = true,
+            lastAlertAt = System.currentTimeMillis(),
+            forceOffline = true,
+            backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
+        )
+        assertTrue(st.backupActive)
+        assertTrue(st.oblastAlerts.any { it.inOblast("Одеськ") })
+        assertEquals(AlertSource.BACKUP, st.alertSourceFor("Одеськ"))
+    }
+
+    @Test
+    fun `forceOffline false keeps backup inactive while connected`() {
+        val st = NeptunState(connected = true, lastAlertAt = System.currentTimeMillis(), forceOffline = false)
+        assertFalse(st.backupActive)
+    }
 }

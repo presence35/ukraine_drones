@@ -24,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 /**
  * Foreground, always-on monitoring. Owns the shared NeptunClient connection and
@@ -108,6 +109,7 @@ class AlertService : Service() {
         super.onCreate()
         createChannels()
         NeptunClient.start()
+        scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
         LocationTracker.start(this)
         startForegroundCompat()
     }

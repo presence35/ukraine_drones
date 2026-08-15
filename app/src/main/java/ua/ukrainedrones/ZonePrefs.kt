@@ -34,6 +34,7 @@ class ZonePrefs(private val context: Context) {
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
     private val followMeKey = booleanPreferencesKey("follow_me")
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
+    private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
     private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
@@ -146,6 +147,14 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit {
             if (nameUa == null) it.remove(pinnedCityKey) else it[pinnedCityKey] = nameUa
         }
+    }
+
+    /** TEMP testing toggle: force the app to behave as if NEPTUN is offline (exercises the backup path). */
+    fun forceOffline(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[forceOfflineKey] ?: false }
+
+    suspend fun setForceOffline(force: Boolean) {
+        context.dataStore.edit { it[forceOfflineKey] = force }
     }
 
     fun language(): Flow<AppLanguage> =

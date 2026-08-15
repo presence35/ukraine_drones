@@ -165,7 +165,10 @@ Treat these as a contract. If you change one, update **every** place that relies
   been silent for >60s (`backupActive`). Both `MainViewModel` and `AlertService` read the same
   union (`oblastAlerts`), so the backup needs no changes to the mirrored zone/focus logic. The
   `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body. Backup health
-  (`backupUp`/`backupOfflineElapsedSec`) is surfaced read-only in the system-status popup.
+  (`backupUp`/`backupOfflineElapsedSec`) is surfaced read-only in the system-status popup. A
+  TEMP `NeptunState.forceOffline` flag (persisted as `temp_force_offline`, set via the
+  system-status popup toggle and restored on service start) forces `backupActive` on to let the
+  backup path be tested.
 
 - **No cloud / no push.** Monitoring is a local foreground `dataSync` service. Alerts stop when
   it stops ("Stop Monitoring & Exit"). There is no intermediate server to buffer anything.
