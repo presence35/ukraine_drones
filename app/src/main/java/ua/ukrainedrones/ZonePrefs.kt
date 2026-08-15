@@ -36,7 +36,9 @@ class ZonePrefs(private val context: Context) {
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
     private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
     private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
+    private val threatToggleHintRemainingKey = intPreferencesKey("threat_toggle_hint_remaining")
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
+    private val showMapScaleKey = booleanPreferencesKey("show_map_scale")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
 
     /** Red (inner) zone radius in km — slider range 1–20, default 10. */
@@ -187,6 +189,14 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[settingsHintRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
+    /** How many more Map/Alerts toggles should show the one-time "how it works" hint toast. */
+    fun threatToggleHintRemaining(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[threatToggleHintRemainingKey] ?: 3 }
+
+    suspend fun setThreatToggleHintRemaining(remaining: Int) {
+        context.dataStore.edit { it[threatToggleHintRemainingKey] = remaining.coerceAtLeast(0) }
+    }
+
     /** Density of the threat detail popup. */
     fun threatCardSize(): Flow<ThreatCardSize> =
         context.dataStore.data.map { prefs ->
@@ -197,6 +207,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setThreatCardSize(size: ThreatCardSize) {
         context.dataStore.edit { it[threatCardSizeKey] = size.name }
+    }
+
+    /** Whether the map's bottom-left scale bar is shown — default on. */
+    fun showMapScale(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[showMapScaleKey] ?: true }
+
+    suspend fun setShowMapScale(show: Boolean) {
+        context.dataStore.edit { it[showMapScaleKey] = show }
     }
 
     /** Whether the pre-migration osmdroid tile caches have already been deleted. */

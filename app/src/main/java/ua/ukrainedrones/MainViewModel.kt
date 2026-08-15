@@ -2,6 +2,9 @@ package ua.ukrainedrones
 
 import android.app.Application
 import android.content.Intent
+import android.graphics.Typeface
+import android.text.SpannableString
+import android.text.style.StyleSpan
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -22,6 +25,7 @@ import org.osmdroid.util.GeoPoint
 
 data class UiState(
     val connected: Boolean = false,
+    val neptunDown: Boolean = false,                 // NEPTUN offline (real or simulated via test toggle)
     val forceOffline: Boolean = false,             // TEMP test toggle — simulate NEPTUN offline
     val backupActive: Boolean = false,           // oblast alerts fall back to the backup source
     val backupUp: Boolean = false,               // backup source polled successfully recently
@@ -60,7 +64,8 @@ data class UiState(
     val needsInstallPermission: Boolean = false,
     val latestVersion: String? = null,
     val languageChosen: Boolean = false,
-    val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE
+    val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
+    val showMapScale: Boolean = true
 )
 
 /** Distance/ETA facts for the threat popup, computed from the predicted position. */
@@ -68,6 +73,7 @@ data class ThreatProximity(
     val predicted: LatLng,
     val distToUserKm: Double?,   // null when GPS unavailable
     val etaToUserMin: Double?,   // null when GPS unavailable or no speed
+    val etaToYellowEdgeMin: Double?, // time to cross the yellow circle boundary
     val redKm: Int,
     val yellowKm: Int,
     val speedSource: SpeedSource,
@@ -134,7 +140,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val followMe: Boolean,
         val pinnedCity: String?,
         val languageChosen: Boolean,
-        val cardSize: ThreatCardSize
+        val cardSize: ThreatCardSize,
+        val showMapScale: Boolean
     )
 
     /** Live inputs that change every frame/second: stream, GPS, selection, time. */
@@ -159,7 +166,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val fastAlertsSooner: Boolean,
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
-        val followMe: Boolean
+        val followMe: Boolean,
+        val showMapScale: Boolean
     )
 
     private val liveSnapshot = combine(
@@ -187,9 +195,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.fastAlertsSooner(),
             prefs.officialAlertsEnabled(),
             prefs.sirenOverride(),
-            prefs.followMe()
+            prefs.followMe(),
+            prefs.showMapScale()
         ) { flags: Array<Boolean> ->
-            AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5])
+            AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6])
         },
         combine(
             prefs.pinnedCity(),
@@ -210,7 +219,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             followMe = b.followMe,
             pinnedCity = c.first,
             languageChosen = c.second,
-            cardSize = c.third
+            cardSize = c.third,
+            showMapScale = b.showMapScale
         )
     }
 
@@ -269,7 +279,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             officialAlertsEnabled = prefs.officialAlertsEnabled,
             sirenOverride = prefs.sirenOverride,
             languageChosen = prefs.languageChosen,
-            threatCardSize = prefs.cardSize
+            threatCardSize = prefs.cardSize,
+            showMapScale = prefs.showMapScale
         )
     }.stateIn(
         viewModelScope,
@@ -394,6 +405,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         return UiState(
             connected = neptun.connected,
+            neptunDown = neptun.neptunDown,
             forceOffline = neptun.forceOffline,
             backupActive = neptun.backupActive,
             backupUp = neptun.backupUp,
@@ -486,11 +498,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             prefs.setThreatMapVisible(type, visible)
             if (!visible) prefs.setThreatAlertsEnabled(type, false)
+            maybeShowToggleHint(mapToast = true)
         }
     }
 
     fun setThreatAlertsEnabled(type: ThreatType, enabled: Boolean) {
-        viewModelScope.launch { prefs.setThreatAlertsEnabled(type, enabled) }
+        viewModelScope.launch {
+            prefs.setThreatAlertsEnabled(type, enabled)
+            maybeShowToggleHint(mapToast = false)
+        }
     }
 
     fun setGroupThreatMapVisible(types: Set<ThreatType>, visible: Boolean) {
@@ -499,13 +515,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 prefs.setThreatMapVisible(it, visible)
                 if (!visible) prefs.setThreatAlertsEnabled(it, false)
             }
+            maybeShowToggleHint(mapToast = true)
         }
     }
 
     fun setGroupThreatAlertsEnabled(types: Set<ThreatType>, enabled: Boolean) {
         viewModelScope.launch {
             types.forEach { prefs.setThreatAlertsEnabled(it, enabled) }
+            maybeShowToggleHint(mapToast = false)
         }
+    }
+
+    /** One-time hint (first 3 Map/Alerts toggles ever): a brief toast explaining how they work. */
+    private suspend fun maybeShowToggleHint(mapToast: Boolean) {
+        val remaining = prefs.threatToggleHintRemaining().first()
+        if (remaining <= 0) return
+        prefs.setThreatToggleHintRemaining(remaining - 1)
+        val s = Strings.get(prefs.language().first())
+        val prefix = if (mapToast) s.mapToggleHintPrefix else s.alertToggleHintPrefix
+        val rest = if (mapToast) s.mapToggleHintRest else s.alertToggleHintRest
+        val message = SpannableString(prefix + rest)
+        message.setSpan(StyleSpan(Typeface.BOLD), 0, prefix.length, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE)
+        Toast.makeText(getApplication(), message, Toast.LENGTH_SHORT).show()
     }
 
     fun setDisclaimerCollapsed(collapsed: Boolean) {
@@ -514,6 +545,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setThreatCardSize(size: ThreatCardSize) {
         viewModelScope.launch { prefs.setThreatCardSize(size) }
+    }
+
+    fun setShowMapScale(show: Boolean) {
+        viewModelScope.launch { prefs.setShowMapScale(show) }
     }
 
     fun setLanguage(lang: AppLanguage) {

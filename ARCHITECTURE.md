@@ -51,7 +51,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | `Zones.kt` | `ThreatZone` (INNER/OUTER), `RadialZones`, `radialZone` (distance→tier), `effectiveZone` + `FAST_THREAT_TYPES` (fast objects claim INNER at any zone entry when "alert sooner"). |
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 threat gauge for the popup (severity × distance × reliability × sources × count × quality × staleness × ETA). |
 | `Cities.kt` | Curated city list + `CityLabelOverlay` (draws city names, red when oblast on alert, threat counts). `focusAttribution` maps the focus point (pinned city, else nearest city to GPS) to an oblast stem via `cityOblast`. |
-| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, and the DataStore-backed preference store (`zone_prefs`). All toggles/radii/language/follow/pin/threat map-visibility + alert-enable live here. Also `threatMapFlow` and `threatAlertFlow`. |
+| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, and the DataStore-backed preference store (`zone_prefs`). All toggles/radii/language/follow/pin/threat map-visibility + alert-enable + map-scale live here. Also `threatMapFlow` and `threatAlertFlow`. |
 | `Strings.kt` | `Strings` → `StringSet` — the UA/EN string table (the app never relies on Android resource localization). |
 | `ThreatImages.kt` | Reference photos for the expanded threat card: bundled webp for some types, Wikimedia Commons hotlinks for the rest. |
 
@@ -61,7 +61,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | --- | --- |
 | `MainScreen.kt` | Top-level Compose UI: header (trident glow, title, connection pill, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet`, `UpdateDialog`, first-run `LanguageChooseDialog`. |
 | `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits. |
-| `SettingsScreen.kt` | Language, map centre (pin city / follow me), per-type toggles + reference photos, threat card size, zone radii, alert toggles, updates, battery exemption, feature guide. |
+| `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row, reference photos, threat card size, zone radii, alert toggles, updates, battery exemption, feature guide. |
 | `ZonesSheet.kt` | "Edit zones" bottom sheet with live red/yellow radius sliders. |
 | `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability, wave size, time since seen. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
@@ -141,8 +141,9 @@ Treat these as a contract. If you change one, update **every** place that relies
 - **Threat type gating.** `ZonePrefs.threatMapFlow` gates which types render on the map
   (`MainViewModel`); `threatAlertFlow` gates which types fire alerts (`AlertService`). Turning a
   type's map visibility off also turns its alerts off (coupling); turning alerts off keeps it on
-  the map but dimmed. A type hidden from the map or with alerts off is omitted from the footer
-  threat strip.
+  the map but dimmed. A type hidden from the map is omitted from the footer threat strip. When a
+  type's alerts are off, its detail popup (`ThreatPopupCard`) shows a small grayed-out alarm bell
+  next to the type name (presentational only — no effect on the mirrored zone/alert logic).
 
 - **Focus point.** `followMe` → camera + zones + alerts centre on GPS; otherwise on the pinned
   city (`ZonePrefs.pinnedCity`). Pinning auto-disables follow-me. Oblast attribution goes
@@ -167,8 +168,8 @@ Treat these as a contract. If you change one, update **every** place that relies
   `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body. Backup health
   (`backupUp`/`backupOfflineElapsedSec`) is surfaced read-only in the system-status popup. A
   TEMP `NeptunState.forceOffline` flag (persisted as `temp_force_offline`, set via the
-  system-status popup toggle and restored on service start) forces `backupActive` on to let the
-  backup path be tested.
+  system-status popup toggle and restored on service start) sets `neptunDown` (`!connected ||
+  forceOffline`) so the offline display and backup path can be tested.
 
 - **No cloud / no push.** Monitoring is a local foreground `dataSync` service. Alerts stop when
   it stops ("Stop Monitoring & Exit"). There is no intermediate server to buffer anything.

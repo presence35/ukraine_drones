@@ -120,6 +120,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 pinnedCity = uiState.pinnedCity,
                 redCities = uiState.redCities,
                 threatCardSize = uiState.threatCardSize,
+                showMapScale = uiState.showMapScale,
                 versionName = BuildConfig.VERSION_NAME,
                 isChecking = uiState.update is UpdateState.Checking,
                 latestVersion = uiState.latestVersion,
@@ -136,6 +137,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
+                onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onExit = onExit,
                 onCheckUpdate = { viewModel.checkForUpdates() },
                 onOpenGuide = {
@@ -370,7 +372,7 @@ private fun MapScreen(
                     )
                 }
                 ConnectionStatus(
-                    connected = uiState.connected,
+                    neptunDown = uiState.neptunDown,
                     backupActive = uiState.backupActive,
                     backupUp = uiState.backupUp,
                     backupSeen = uiState.backupSeen,
@@ -408,13 +410,15 @@ private fun MapScreen(
                         paused = settingsOpen,
                         modifier = Modifier.fillMaxSize()
                     )
-                    ScaleIndicator(
-                        metersPerPixel = scaleMpp,
-                        lang = uiState.language,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 12.dp, bottom = 12.dp)
-                    )
+                    if (uiState.showMapScale) {
+                        ScaleIndicator(
+                            metersPerPixel = scaleMpp,
+                            lang = uiState.language,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 12.dp, bottom = 12.dp)
+                        )
+                    }
                     if (!uiState.followMe) {
                         uiState.pinnedCity?.let { city ->
                             val cityName = if (uiState.language == AppLanguage.UA) city.nameUa else city.nameEn
@@ -498,6 +502,7 @@ private fun MapScreen(
                         threatLevel = uiState.threatLevel,
                         fastAlertsSooner = uiState.fastAlertsSooner,
                         cardSize = uiState.threatCardSize,
+                        alertsOff = threat.type in uiState.silencedTypes,
                         onDismiss = onDismissPopup,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -607,17 +612,14 @@ private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: 
     val label = if (chosen >= 1000.0) "${(chosen / 1000.0).roundToInt()} ${s.kmUnit}"
     else "${chosen.roundToInt()} ${s.meterUnit}"
 
-    // Google-Maps-style scale: label above a thin alternating bar, with a white
-    // outline so it stays readable over the map tiles.
+    // Google-Maps-style scale: label above a thin alternating bar. The label is drawn
+    // in a bold white font (no background) so it stays readable over the map tiles.
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             label,
-            modifier = Modifier
-                .background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(3.dp))
-                .padding(horizontal = 4.dp, vertical = 1.dp),
             style = MaterialTheme.typography.labelLarge.copy(
-                color = Color(0xFF222222),
-                fontWeight = FontWeight.SemiBold
+                color = Color.White,
+                fontWeight = FontWeight.Bold
             )
         )
         Spacer(Modifier.height(3.dp))
@@ -816,7 +818,7 @@ private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ConnectionStatus(
-    connected: Boolean,
+    neptunDown: Boolean,
     backupActive: Boolean,
     backupUp: Boolean,
     backupSeen: Boolean,
@@ -828,15 +830,15 @@ private fun ConnectionStatus(
     modifier: Modifier = Modifier
 ) {
     val dotColor = when {
-        backupActive -> Color(0xFFF9A825) // amber — on the backup source
-        connected -> Color(0xFF4CAF50)
-        else -> Color(0xFFE57373)
+        neptunDown -> Color(0xFFE57373) // red — NEPTUN offline (real or simulated)
+        backupActive -> Color(0xFFF9A825) // amber — NEPTUN alive but on the backup source
+        else -> Color(0xFF4CAF50)
     }
     val label = when {
-        backupActive -> s.connBackup
-        connected -> s.connOnline
-        else -> offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
+        neptunDown -> offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
             ?: s.connOffline
+        backupActive -> s.connBackup
+        else -> s.connOnline
     }
     var showInfo by remember { mutableStateOf(false) }
     Row(
@@ -880,16 +882,15 @@ private fun ConnectionStatus(
                 }
             },
             text = {
-                val neptunStatus = if (connected) s.connOnline
+                val neptunStatus = if (!neptunDown) s.connOnline
                 else offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
                     ?: s.connOffline
                 val backupStatus = if (backupUp) s.connOnline
                 else backupOfflineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
                     ?: s.connOffline
-                val effectiveName = if (backupActive) s.connBackupLabel else s.connNeptunLabel
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SourceStatusRow(
-                        color = if (connected) Color(0xFF4CAF50) else Color(0xFFE57373),
+                        color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
                         name = s.connNeptunLabel,
                         status = neptunStatus,
                         active = !backupActive,
@@ -910,12 +911,6 @@ private fun ConnectionStatus(
                         s.connBackupNoMapDesc,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        String.format(s.connEffectiveFormat, effectiveName),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (backupActive) FontWeight.Bold else FontWeight.Normal,
-                        color = if (backupActive) Color(0xFFF9A825) else MaterialTheme.colorScheme.onSurface
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),

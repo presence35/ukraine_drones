@@ -14089,3 +14089,48 @@ bold or colorize special words
 ## 15/08/2026, 19:02:42
 
 go
+## 15/08/2026, 19:07:30
+
+nope.  if neptun is offline nit shoudl have a red dot.  the test toggle just dimmed it.
+the "currently on" is reduednet, there's already the green dot and "Active" pill.
+it's showing "[orange[ backup" in header on every test toggle.
+why does it say "online" next to neptun when my test toggle is on!
+
+mess!
+## 15/08/2026, 19:08:37
+
+go
+## 15/08/2026, 19:10:56
+
+threat cards should show a grayed out alarm bell somewhere if its off in Settings.
+## 15/08/2026, 19:11:25
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 15/08/2026, 19:13:41
+
+in settings, instead of teh fast/slow separete card above fast/slow sections, make small map/alerts, just the icons, on the right edge fore the section titles.
+## 15/08/2026, 19:14:05
+
+go
+## 15/08/2026, 19:14:31
+
+go
+## 15/08/2026, 19:18:38
+
+remove " for " in "offline for 0m"
+remvoe the "offline/online" text in the system status popup.
+## 15/08/2026, 19:18:49
+
+go
+## 15/08/2026, 19:20:00
+
+go
+## 15/08/2026, 19:20:54
+
+go, confirm the little change you just made first.
+## 15/08/2026, 19:21:56
+
+go, but we don't need the red, it's so close to gps it's pointless.  just yellow and gps pills in the card.
+## 15/08/2026, 19:22:21
+
+go

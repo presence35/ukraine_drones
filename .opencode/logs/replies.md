@@ -32623,3 +32623,1213 @@ Let me update it to mention `forceOffline` TEMP toggle.
 
 Let me mark todos complete and run a final full test to confirm everything.
 
+
+## 15/08/2026, 19:03:01
+
+Both tests and build pass. Let me mark the final todo complete.
+
+
+## 15/08/2026, 19:03:02
+
+Let me create the turtle icon drawable first.
+
+
+## 15/08/2026, 19:03:09
+
+Now let me update the Strings.kt. Let me look at the current structure around where I added the group labels, to add the new toast strings and icon descriptions.
+
+Let me read the relevant Strings.kt sections (interface + UA + EN near my earlier edits).
+
+
+## 15/08/2026, 19:03:13
+
+Done. Build and tests are green.
+
+## Summary
+
+**Header pill** — three clear states, no ambiguity:
+- Amber dot + "backup" (on backup source)
+- Green dot + "online" (NEPTUN live)
+- Red dot + "offline · Xm" (NEPTUN down)
+
+**System-status popup** — consistent with the header:
+- Each source (NEPTUN / alerts.com.ua) shows its own health dot + Online/Offline-with-timer.
+- The source actually in effect is highlighted: **orange bold text + "Active"/"Активне" label**, matching the amber header; the other source is dimmed.
+- "Currently on: X" line turns orange/bold when on backup.
+- Notes the backup is oblast-level only (no live map positions).
+
+**TEMP test toggle** (in the popup, as requested):
+- "Test: simulate NEPTUN offline" / «Тест: імітувати офлайн NEPTUN» switch.
+- New `ZonePrefs.forceOffline` (`temp_force_offline`), `NeptunState.forceOffline` drives `backupActive`, `NeptunClient.setForceOffline`, `MainViewModel.setForceOffline`, and it's restored on service start (`AlertService.onCreate`) so the setting survives a reboot.
+- Flipping it instantly toggles the pill (amber "backup") + popup highlight so you can verify all states.
+
+**Files**: `ZonePrefs.kt`, `NeptunClient.kt`, `AlertService.kt`, `MainViewModel.kt`, `MainScreen.kt`, `Strings.kt`, `AlertsUaTest.kt`, `ARCHITECTURE.md`, `CHANGELOG.md`.
+
+Verified: `:app:assembleDebug` + `:app:testDebugUnitTest` both pass.
+## 15/08/2026, 19:03:14
+
+I'll add the toast prefix/rest segments and icon descriptions after the group labels. Let me add to the interface:
+
+
+## 15/08/2026, 19:03:38
+
+Now update ZonePrefs.kt to add the hint counter. Let me add near `settingsHintRemaining` (lines 173-179 in original, may have shifted). Let me read around that area.
+
+
+## 15/08/2026, 19:03:43
+
+Let me check the key declarations section to add a key, then add the flow + setter.
+
+
+## 15/08/2026, 19:04:04
+
+Now update MainViewModel.kt — add the bold toast helper and call it from all four toggle methods. Let me check the imports first.
+
+
+
+
+## 15/08/2026, 19:04:20
+
+I'll add imports for SpannableString, StyleSpan, and Typeface. Then add the helper method and calls. Let me update the imports first.
+
+
+## 15/08/2026, 19:04:28
+
+Now update the four toggle methods and add the helper. Let me view the current toggle methods block (around 475-500).
+
+
+
+
+## 15/08/2026, 19:05:29
+
+Now I'll add the hint call to each of the four methods and add the `maybeShowToggleHint` helper. Let me edit each method:
+
+
+## 15/08/2026, 19:05:51
+
+Now the SettingsScreen.kt — replace `CompactToggleRow` with an icon-chip `ToggleChip`, add lightning/turtle icons to headers. Let me update the todo and make the edits.
+
+First, let me update the group header section (lines ~301-310) to include icons, and the `fastAndSlowGroups` to carry icon res. Let me update `fastAndSlowGroups` and the master-column/header rendering.
+
+Let me view current lines 267-323 again (already have them). I'll rewrite:
+1. `fastAndSlowGroups` → return a triple/list with icon res.
+2. The group header `item` → include icon.
+3. `GroupMasterColumn` → add icon param.
+
+Let me first update the `fastAndSlowGroups` helper and `GroupMasterColumn` composables, then the call sites.
+
+Let me update `fastAndSlowGroups`:
+
+
+## 15/08/2026, 19:06:03
+
+Now update the call site (the section header + items loop) at lines ~301-323:
+
+
+## 15/08/2026, 19:06:13
+
+Now update `GroupMasterColumn` to add the icon param, and pass it from the master card call sites. Let me update the composable and the two call sites (lines ~280-298).
+
+First the composable:
+
+
+## 15/08/2026, 19:06:18
+
+Now update the master card call sites to pass iconRes/iconDesc. Let me view the current master card block (lines ~268-300):
+
+
+
+
+## 15/08/2026, 19:06:31
+
+Now replace `CompactToggleRow` with the new `ToggleChip` composable, and update the per-threat card to use `ToggleChip` instead of `CompactToggleRow`. Let me view the current `CompactToggleRow` and the per-threat toggles usage in `ThreatSettingsCard`.
+
+Let me read the current `CompactToggleRow` and `ThreatSettingsCard` toggles section.
+
+
+
+
+## 15/08/2026, 19:06:44
+
+Now replace `CompactToggleRow` (lines 573-602) with the `ToggleChip` icon-chip composable. I'll use `Icons.Filled.Place` / `Icons.Filled.Notifications` and a compact bordered card style (reminiscent of the old `ThreatToggleCard`).
+
+Let me replace it:
+
+
+## 15/08/2026, 19:06:49
+
+Now update `ThreatSettingsCard`'s per-threat toggles (which used `CompactToggleRow`) to use `ToggleChip`. Let me view that section.
+
+
+
+
+
+
+## 15/08/2026, 19:06:58
+
+The per-threat toggles column width is 96dp and the `CompactToggleRow` used the full width. The `ToggleChip` also uses `fillMaxWidth`, so it works in the 96dp column. Let me replace these two with `ToggleChip`:
+
+
+## 15/08/2026, 19:07:03
+
+Now I need to restore the `Place` import (I removed it earlier). Let me check the imports and re-add `Place`. `Notifications` is already imported. Also check whether `Role`/`toggleable` imports are now unused (I removed `toggleable` usage from `CompactToggleRow`). Let me check imports and remaining usages.
+
+The `toggleable` import (line 11 `androidx.compose.foundation.selection.toggleable`) may now be unused. `Role` import (line 46) — was used in `CompactToggleRow`; let me check if `Role` is used elsewhere. Also `Switch` — the Material3 Switch is via `material3.*` wildcard so no separate import.
+
+Let me grep for `Role` and `toggleable` in SettingsScreen.kt and check the `Place` import status.
+
+
+## 15/08/2026, 19:07:07
+
+`Role` and `toggleable` are still used at line 528 (in `AlertToggleRow`), so those imports stay. `Icons.Filled.Place` is now used (lines 650, 735) and `Notifications` too. But the `Place` import was removed earlier. Let me check the current imports and re-add `Place`.
+
+The `Notifications` import is present (used by section header + chips). Let me add the `Place` import.
+
+
+
+
+## 15/08/2026, 19:07:20
+
+Now update CHANGELOG.md and ARCHITECTURE.md. Let me update the `[Unreleased]` entry. Let me read the current entry.
+
+I already have the Unreleased entry (lines 5-7). Let me update it to reflect icon-chips, group icons, and the toast hint.
+
+
+## 15/08/2026, 19:07:27
+
+ARCHITECTURE.md mentions SettingsScreen.kt responsibility: "per-type toggles + reference photos" — still accurate enough, no mirrored invariant changed. I'll leave ARCHITECTURE.md as-is (the change is UI-only within an existing file). Actually, let me update the one-line to mention grouping + hint to keep docs current per the AGENTS.md rule. Let me check the exact line.
+
+ARCHITECTURE.md line 64: `SettingsScreen.kt` | Language, map centre (pin city / follow me), per-type toggles + reference photos, threat card size, zone radii, alert toggles, updates, battery exemption, feature guide.
+
+I'll update "per-type toggles" to "per-type/group Map-Alerts toggles + first-use hint". Let me edit.
+
+
+## 15/08/2026, 19:07:38
+
+Now let me build. Update todos first.
+
+
+## 15/08/2026, 19:08:06
+
+You're right — this is a mess. Let me untangle the semantics and plan a clean fix.
+
+## The core problem
+
+There are two independent booleans being conflated:
+- **`connected`** = is the NEPTUN *socket/stream* alive (real health).
+- **`backupActive`** = is the backup *driving alerts* (effective source).
+
+When you flip the **test toggle**, I only force `backupActive=true`. That makes the header say "backup", but `connected` stays `true`, so:
+- The NEPTUN row in the popup still shows "online" (because it IS connected).
+- The user expected the toggle to simulate *NEPTUN being offline* → it should make NEPTUN **red/offline**, not just dim it.
+
+So the test toggle's intent is "NEPTUN is down" — but I wired it to only flip the *effective source*, not NEPTUN's *health*. That's the bug.
+
+## The right semantics
+
+The header and popup should both reflect **real health**:
+- **NEPTUN offline** (real or simulated) → NEPTUN red dot + "offline", and since it's down, backup becomes the effective source → header shows... what?
+
+Let me define the clean model:
+
+**Effective source** is *derived*: `backupActive = !connected || forceOffline || quiet`. When NEPTUN is down (real or forced), the backup is the effective source.
+
+**Header** (single status):
+- If NEPTUN is down (real `!connected` OR `forceOffline` test toggle) → **red dot + "offline"** (because NEPTUN, the primary, is offline). This is the user's spec: "red dot offline (if all backup systems are offline - internet down or whatever)".
+- Else if backup is the effective source for another reason (NEPTUN connected but alert feed quiet) → amber "backup".
+- Else → green "online".
+
+Wait, the user earlier said header should be: orange "backup" / green "online" / red "offline (if all backup systems offline — internet down)". And now they say "if neptun is offline it should have a red dot" and "why does it say online next to neptun when my test toggle is on".
+
+So the test toggle should make **NEPTUN show red/offline** everywhere, and the header should reflect that. The key realization: **`forceOffline` should make `connected`-derived displays show offline, i.e. NEPTUN red**.
+
+## Root cause of each complaint
+
+1. **"if neptun is offline it should have a red dot. the test toggle just dimmed it"** → The test toggle must make NEPTUN's *health* look offline (red), not just dim the row. So `forceOffline` must affect the NEPTUN health display, not just `backupActive`.
+
+2. **"the 'currently on' is redundant, there's already the green dot and 'Active' pill"** → Remove the "Currently on: X" text line entirely.
+
+3. **"it's showing '[orange] backup' in header on every test toggle"** → Because `forceOffline` forces `backupActive=true` → header shows amber "backup". But per the user, when NEPTUN is offline (test toggle), the header should show **red "offline"** (since the primary is down), not amber "backup". Amber "backup" should only show when NEPTUN is actually alive but the app is using backup for another reason (quiet feed).
+
+4. **"why does it say 'online' next to neptun when my test toggle is on!"** → Because `connected` is unchanged by the toggle. The toggle must make NEPTUN show offline/red.
+
+## Proposed clean model
+
+**Rename/reframe `forceOffline` → "simulate NEPTUN offline"**. It should feed into the *health* display, not (only) the effective-source flag.
+
+Define derived values on `NeptunState`:
+- `neptunDown = !connected || forceOffline` — NEPTUN appears offline (real or simulated).
+- Keep `backupActive` as is (effective source), but note `forceOffline` already forces it true — that's still correct for alerts, but the *display* of NEPTUN must use `neptunDown`, not `connected`.
+
+**Header pill** — priority order:
+1. `neptunDown` (real or simulated) → **red dot + "offline"** + timer. (The user's spec: red when primary is down / internet down.)
+   - Hmm, but earlier they wanted amber "backup" as a distinct state. When is amber "backup" shown? When NEPTUN is *connected* but the app is on backup (quiet feed) — i.e. `backupActive && !neptunDown`. That's a legit distinct state.
+2. `backupActive && !neptunDown` (NEPTUN alive but backup driving, e.g. quiet) → **amber "backup"**.
+3. else → **green "online"**.
+
+So header:
+```
+when {
+    neptunDown -> red "offline" (+timer)
+    backupActive -> amber "backup"
+    else -> green "online"
+}
+```
+
+**Popup per-source dots** — show REAL health:
+- NEPTUN row: green if `connected` (real), red if `!connected`. The test toggle sets `forceOffline` → but `connected` is real... so NEPTUN would still show green. **That's the complaint.**
+
+The user wants the toggle to make NEPTUN LOOK offline. So the NEPTUN row's health display must use `neptunDown = !connected || forceOffline` → red when simulated too. 
+
+- Backup row: keep its own health (backupUp green / stale amber / red).
+- Remove the dimming; instead just rely on the Active pill? The user said the "Active" pill + green dot is enough to indicate the effective source. So:
+  - Each source shows its true health dot (NEPTUN red when down/simulated, backup green when polling).
+  - The "Active" label marks the effective source (derived from `backupActive`).
+
+So popup:
+- NEPTUN: dot = red if `neptunDown` else green; status text "offline · Xm" / "online"; "Active" label if `!backupActive`.
+- Backup: dot = green/amber/red (its own health); status text; "Active" label if `backupActive`.
+- Remove "Currently on" line. Keep the no-map note + temp toggle. Keep the up/down legend.
+
+Now with test toggle ON:
+- `neptunDown=true` → header red "offline"; NEPTUN row red "offline" + "Active" label (since backupActive → NEPTUN is not active... wait, when backupActive, NEPTUN is NOT the active source, so no Active label on NEPTUN; backup gets Active label). NEPTUN shows red/offline (because simulated down). Backup row green + "Active". Header red "offline". Consistent!
+- With test toggle OFF and NEPTUN really connected: header green "online"; NEPTUN green "online" + "Active"; backup green (if polling) no label.
+
+This resolves all four complaints:
+1. NEPTUN offline (simulated) → red dot. ✓
+2. Remove "Currently on" (redundant). ✓
+3. Header shows red "offline" when NEPTUN down (simulated), not amber "backup". Amber "backup" only when NEPTUN alive-but-backup-driving. ✓
+4. NEPTUN shows "offline" (red) when test toggle on. ✓
+
+## Files to change
+- `NeptunClient.kt` / `NeptunState`: add derived `neptunDown = !connected || forceOffline`. Keep `backupActive` (effective) as-is.
+- `MainViewModel.kt` / `UiState`: add `neptunDown` (or expose it), pass to header + popup. (Header currently uses `connected`.)
+- `MainScreen.kt`:
+  - Header pill: reorder states → red offline when `neptunDown`, amber backup when `backupActive && !neptunDown`, else green online.
+  - Popup: NEPTUN dot/status use `neptunDown` (red/offline); remove "Currently on" line; keep "Active" label per effective source; keep temp toggle + no-map note + legend.
+- `Strings.kt`: no new strings needed (removing the effective line; "Active" already added). Possibly nothing.
+- Tests: update/extend `AlertsUaTest` for `neptunDown` derivation.
+- Docs: update ARCHITECTURE.md note (forceOffline → neptunDown semantics), CHANGELOG.md.
+
+## One question to confirm
+When NEPTUN is genuinely down (real `!connected`, e.g. airplane mode) — header should show red "offline" (per spec "if all backup systems offline — internet down"). And when NEPTUN is connected but the alert feed is quietly stale so backup drives → amber "backup". Is that the intended distinction, or do you want the header to be simply red whenever backup is the effective source?
+
+I'll plan for the distinction above (red = NEPTUN down/simulated; amber = NEPTUN alive but backup driving), since it matches "if neptun is offline it should have a red dot."
+
+Want me to proceed with this cleanup?
+## 15/08/2026, 19:08:12
+
+Build succeeds. Now run unit tests.
+
+
+## 15/08/2026, 19:08:26
+
+Build and tests pass.
+
+
+## 15/08/2026, 19:08:33
+
+Done. Build and tests pass.
+
+**Changes:**
+- **Icon-chips instead of switches** — `CompactToggleRow` (Material switches) replaced with `ToggleChip`: a small bordered card with a map icon (`Place`) / bell icon (`Notifications`) + label, on = primary border/tint, off = dimmed, disabled (alerts while type hidden) = further dimmed + non-clickable. Used for both per-threat controls and the group master columns.
+- **Fast/Slow icons** — new `ic_turtle.xml` drawable for Slow; reused existing `ic_bolt.xml` for Fast. Icons appear in both the list section headers and the master `GroupMasterColumn` titles (with UA/EN content descriptions).
+- **First-3 toggle hint** — new `threatToggleHintRemaining` DataStore counter (default 3) in `ZonePrefs`; `maybeShowToggleHint()` in `MainViewModel` fires a **bold-highlighted** `SpannableString` toast (bold "Map"/"Alerts" prefix) on any of the 4 toggle methods, decrementing a shared budget of 3, then never again.
+- **Docs** — CHANGELOG `[Unreleased]` and ARCHITECTURE.md `SettingsScreen.kt` line updated.
+
+Note: the "first 3 times" counter is persisted, so it survives app restarts. If you want it to reset for testing, the pref is `threat_toggle_hint_remaining`.
+## 15/08/2026, 19:08:46
+
+Let me implement the cleanup. Let me start with `NeptunState` — add the derived `neptunDown` and adjust `backupActive` semantics.
+
+Let me read the current NeptunState.
+
+
+## 15/08/2026, 19:08:56
+
+Let me add the `neptunDown` derived getter. The `offlineElapsedSec` getter currently returns null when `connected` is true, but with `forceOffline` simulated-down, I want the timer to still show. Let me make `neptunDown` and update `offlineElapsedSec` to reflect it.
+
+Let me add `neptunDown` and update `offlineElapsedSec`:
+
+
+## 15/08/2026, 19:09:05
+
+Now `MainViewModel`/`UiState`: add `neptunDown`. Let me add it to UiState and populate it.
+
+The header pill and popup will use `neptunDown`. Let me add the field.
+
+
+
+
+## 15/08/2026, 19:09:30
+
+Now update `MainScreen.kt`. I need to:
+1. Pass `neptunDown` to `ConnectionStatus` (via MapScreen → ConnectionStatus). `MapScreen` has `uiState`, so `ConnectionStatus` can read `uiState.neptunDown` directly. Let me check — `ConnectionStatus` is called inside `MapScreen` with `uiState.*` values passed individually. I'll pass `neptunDown = uiState.neptunDown`.
+2. Update `ConnectionStatus` signature to take `neptunDown`.
+3. Update header pill: red offline when `neptunDown`; amber backup when `backupActive && !neptunDown`; else green online.
+4. Update popup: NEPTUN row uses `neptunDown` for dot + status; remove "Currently on" line; keep "Active" labels + temp toggle + no-map note + legend.
+
+Let me first update the ConnectionStatus call site in MapScreen to pass `neptunDown`. Let me view the current call site.
+
+
+
+
+
+
+## 15/08/2026, 19:09:48
+
+Now update the `ConnectionStatus` signature and its body. Let me read the full current `ConnectionStatus` function.
+
+Let me view it from the signature down through the popup.
+
+
+## 15/08/2026, 19:09:59
+
+Now let me rewrite the `ConnectionStatus` signature and the key parts:
+
+1. **Signature**: add `neptunDown: Boolean`.
+2. **Header pill**: reorder — red offline when `neptunDown`; amber backup when `backupActive && !neptunDown`; else green online.
+3. **Popup NEPTUN row**: use `neptunDown` for dot/status (red/offline when down/simulated).
+4. **Remove "Currently on" line** (redundant).
+5. Keep "Active" labels, temp toggle, no-map note, legend.
+
+Let me update the signature and pill first.
+
+
+
+
+
+
+## 15/08/2026, 19:10:18
+
+Now update the popup: NEPTUN row uses `neptunDown`, remove the "Currently on" text. Let me edit the popup body.
+
+The `neptunStatus` line uses `connected` — change to `!neptunDown`. And the NEPTUN `SourceStatusRow` color uses `connected` — change to `!neptunDown`. Remove the `effectiveName` val and the "Currently on" Text block.
+
+Let me edit the popup content (lines 883-920 region).
+
+
+
+
+## 15/08/2026, 19:10:29
+
+Now `connected` param in `ConnectionStatus` is unused (I only use `neptunDown` now). Let me check — the title dialog uses `dotColor` (fine). `connected` is no longer referenced. Kotlin will warn about unused param but not error. Let me remove the `connected` param to keep it clean, and update the call site.
+
+Actually, let me check if `connected` is still used anywhere in the function. I replaced the pill and popup usages. The title uses `dotColor`. So `connected` is unused now. Let me remove it from the signature and call site.
+
+Wait — but `connEffectiveFormat` string is now unused (I removed the "Currently on" line). That's fine, it's just an unused string field (no compile error). I'll leave it or remove it. Leaving it is harmless but per conventions minimal. I'll leave the string but it's dead. Actually let me remove `connEffectiveFormat` from Strings to keep clean? That's 3 edits (interface + UA + EN). It's dead code. Given "minimal patches", I'll remove it to avoid dead strings. Actually, let me keep focus — removing `connected` param is needed for compile cleanliness. `connEffectiveFormat` unused string won't fail the build. I'll remove `connected` param.
+
+Let me remove `connected` from the signature and call site.
+
+First the signature:`connected` is now unused in `ConnectionStatus`. Let me remove it from the signature and call site.
+
+
+## 15/08/2026, 19:10:59
+
+I'll explore the codebase to understand how threat cards and settings work before forming a plan.
+
+
+## 15/08/2026, 19:11:06
+
+Let me look at the threat card UI and the settings to understand the structure. The threat strip is in `MainScreen.kt`. Let me find where threat cards render.
+
+
+## 15/08/2026, 19:11:12
+
+The threat strip is rendered in `MainScreen.kt` using `ThreatPopupCard.kt`. The invariant says "A type hidden from the map or with alerts off is omitted from the footer threat strip." Let me understand the current behavior. The user wants: when a type's **alerts are off** (but map is on), show a grayed-out alarm bell on its threat card.
+
+Let me look at how the threat strip is built in `MainScreen.kt` and `MainViewModel.kt`, and how `alertEnabled`/`alertedTypes` flows work.
+
+
+## 15/08/2026, 19:11:16
+
+Now let me look at `buildUiState` to understand `threatsInner`/`threatsOuter`/`silencedTypes` and how the threat strip is built in `MainScreen.kt`.
+
+
+## 15/08/2026, 19:11:19
+
+Now let me look at the threat strip rendering in `MainScreen.kt` around line 445-520, and the `UiState` fields (particularly `alertEnabled` and `silencedTypes`).
+
+
+## 15/08/2026, 19:11:24
+
+## Objective
+- Add an independent backup source for oblast air-raid alerts (alerts.com.ua) that activates when the primary NEPTUN feed is down or silent, and make the backup state clearly visible in the UI (header pill + system-status popup).
+- Add a TEMP test toggle that simulates NEPTUN being offline so the developer can verify all system states.
+
+## Important Details
+- alerts.in.ua was rejected: its ToS forbid hardcoding a token in a client app and require a proxy server. alerts.com.ua was chosen instead (keyless/public, `GET https://alerts.com.ua/api/states`).
+- Mirror rule: `MainViewModel` and `AlertService` must derive the same zone/focus/alert logic from shared `NeptunState`; backup only feeds `oblastAlerts` so no mirrored logic is duplicated.
+- Backup contributes to `oblastAlerts` (union) only when `backupActive` = `forceOffline || !connected || now - lastAlertAt > BACKUP_FALLBACK_MS` (60s). A healthy NEPTUN is never overridden.
+- Header pill is 3-state: orange "backup" (when `backupActive`, priority), green "online", red "offline" with timer.
+- Popup (system status) must show each source's own health (green/red; backup amber-when-stale) AND highlight the effective source with orange bold text + "Active"/"Активне" label; the TEMP force-offline toggle switch lives inside this popup (user confirmed no existing Settings toggle).
+- Popup must explain the backup lacks real-time map capabilities (oblast-level only).
+- Backup health: `backupUp` = active && lastOkAt within `BACKUP_HEALTHY_MS` (90s); `backupOfflineElapsedSec` derived.
+- Force-offline pref key `temp_force_offline`; restored on service start.
+
+## Work State
+### Completed
+- `AlertsUaClient.kt` created: object polling `https://alerts.com.ua/api/states` every 20s; `AlertsUaState(alerts, active, lastOkAt, lastError)`; `parseStates()` maps active oblasts to `OblastAlert(key=id, name=name, oblast=name, since=changed)`.
+- `Threat.kt`: added `AlertSource` enum (NEPTUN/BACKUP/BOTH) and `mergeAlerts()` (dedup by oblast, primary wins).
+- `NeptunClient.kt`: `NeptunState` now has `neptunAlerts`, `backupAlerts`, `connected`, `lastError`, `offlineSince`, `lastAlertAt`, `forceOffline`, `backupUp`, `backupLastOkAt`, `backupError`; computed `backupActive`, `oblastAlerts` (union), `alertSourceFor(token)`, `backupOfflineElapsedSec`; `BACKUP_FALLBACK_MS=60_000`, `BACKUP_HEALTHY_MS=90_000`; `setForceOffline(Boolean)`; `start()/stop()` start/stop `AlertsUaClient`; `startBackupCollector()` relays backup health; `onForeground()` refreshes backup.
+- `AlertService.kt`: `MonitorEvent.State.focusAlertSource`; source tag appended to official-alert notification body (`· backup source` / `· NEPTUN + backup source`); `onCreate()` restores force-offline pref via `scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }`; added `import kotlinx.coroutines.flow.first`.
+- `ZonePrefs.kt`: `forceOffline()`/`setForceOffline()` (key `temp_force_offline`).
+- `MainViewModel.kt`: `UiState` gained `forceOffline`, `backupActive`, `backupUp`, `backupSeen`, `backupOfflineElapsedSec`, `backupError`; `setForceOffline()` writes pref + calls `NeptunClient.setForceOffline`.
+- `Strings.kt`: added UA+EN `connBackup`, `connStatusTitle`, `connNeptunLabel`, `connBackupLabel`, `connEffectiveFormat`, `connActiveLabel`, `connForceOfflineTitle`, `connBackupNoMapDesc`, `attributionBackup`, `alertSourceBackup`, `alertSourceBoth`.
+- `MainScreen.kt`: pill shows orange dot + "backup" when `backupActive`; popup rebuilt as system status with two `SourceStatusRow`s (health dots + `active` param for orange-bold text + "Active" label), backup-no-map explanation, "Currently on" line (orange when backup), attribution link swaps to alerts.com.ua, TEMP `Switch` row.
+- `MapScreen` signature gained `onForceOfflineChange: (Boolean) -> Unit`; `MainScreen` added `val vm = viewModel` and passes `onForceOfflineChange = vm::setForceOffline`.
+- `AlertsUaTest.kt`: parsing, merge dedup, `backupActive`, `alertSourceFor`, `backupOfflineElapsedSec`, `forceOffline` activation tests.
+- `ARCHITECTURE.md` + `CHANGELOG.md` updated (module map, data flow, key invariant, Unreleased entries).
+- Verified passing earlier: `:app:assembleDebug` and `:app:testDebugUnitTest` both green before the final force-offline/popup changes.
+
+### Active
+- Implementing the force-offline toggle + popup highlight (in progress).
+- Just fixed a compile error caused by `vm`/`viewModel` not being in scope inside `MapScreen` (the header/`ConnectionStatus` call lives in `MapScreen`, not `MainScreen`): added `onForceOfflineChange` param to `MapScreen` and updated the `ConnectionStatus` call to use it; the `MainScreen` call site still needs the `onForceOfflineChange = vm::setForceOffline` argument added (the `MapScreen(...)` call at `MainScreen.kt` lines 89-107 currently ends at `onYellowArmedChange = { viewModel.setYellowArmed(it) }` — the new param is NOT yet passed).
+
+### Blocked
+- Build currently failing: the `MapScreen(...)` call site in `MainScreen` does not yet pass the newly-added `onForceOfflineChange` param — compile error `Unresolved reference: setForceOffline` / missing argument expected.
+
+## Next Move
+1. Add `onForceOfflineChange = vm::setForceOffline` to the `MapScreen(...)` call in `MainScreen.kt` (after `onYellowArmedChange`, line ~106) so it compiles.
+2. Run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest` to verify green.
+3. Update `ARCHITECTURE.md`/`CHANGELOG.md` if the force-offline/status-popup wording needs a final pass.
+
+## Relevant Files
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\AlertsUaClient.kt`: backup source poller + `parseStates()`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\NeptunClient.kt`: `NeptunState`, `backupActive`/`oblastAlerts`/`alertSourceFor`, `setForceOffline`, backup collector.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainScreen.kt`: pill + system-status popup; `MapScreen` signature/call site (needs the new param wired).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainViewModel.kt`: `UiState` fields + `setForceOffline()`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ZonePrefs.kt`: `forceOffline()`/`setForceOffline()` pref.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\AlertService.kt`: source tag + force-offline restore on start.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Strings.kt`: UA/EN strings for status popup + source tags.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Threat.kt`: `AlertSource`, `mergeAlerts`, `OblastAlert.inOblast`.
+- `D:\Desktop\drones\app\src\test\java\ua\ukrainedrones\AlertsUaTest.kt`: backup/force-offline unit tests.
+- `D:\Desktop\drones\ARCHITECTURE.md`, `D:\Desktop\drones\CHANGELOG.md`: docs updated.
+## 15/08/2026, 19:11:30
+
+Now I understand the threat strip. Interesting — this is a `ThreatStatusCell` (a simple type+count cell), not `ThreatPopupCard`. The "threat cards" the user refers to might be the status cells in the footer strip, OR the popup cards. Let me look at `ThreatStatusCell` and the `UiState` fields `hiddenTypes`/`silencedTypes`.
+
+Also important: the current code at line 473 only shows a type if `alerting` is true (`type !in silencedTypes`). So types with alerts OFF are **hidden** from the strip currently. The user wants them shown but with a grayed-out alarm bell instead.
+
+Let me read `ThreatStatusCell` and the UiState definition.
+
+
+## 15/08/2026, 19:11:31
+
+Now let me check the tests. Let me look at the existing AlertsUaTest to update for the new `neptunDown` semantics and make sure `offlineElapsedSec` behavior with forceOffline is correct.
+
+Let me check the test file for `offlineElapsedSec`/`backupActive` assertions.
+
+
+## 15/08/2026, 19:11:35
+
+Now let me look at `ThreatStatusCell` (line 1005) and the surrounding imports, plus how the Settings alert chip appears (line 658-747) for the grayed-out alarm bell style reference.
+
+
+## 15/08/2026, 19:11:36
+
+The existing tests still pass with the new logic (`neptunDown = forceOffline || !connected`; `backupActive = neptunDown || quiet`). Let me add a test for `neptunDown` and the `offlineElapsedSec` timer with forceOffline. Let me read the test file around line 100-130.
+
+
+
+
+## 15/08/2026, 19:11:41
+
+Now I have a clear picture. Let me look at the SettingsScreen alert chip (line 658-747) for the grayed-out bell style that the user probably wants mirrored, and check what icons are used/imported.
+
+Actually, I have enough. Let me summarize my understanding:
+
+**Current state:**
+- Footer threat strip in `MainScreen.kt:469-480` iterates `ThreatType.values()`, shows a `ThreatStatusCell` per type, but **only when** `count > 0 && visible && alerting` (line 473). So if a type's **alerts are off** (`type in silencedTypes`), it's **hidden entirely** from the strip. This matches the invariant "A type with Alerts or Map off is hidden from the threat strip."
+
+**The user's request:** Show a grayed-out alarm bell on threat cards when alerts are off in Settings.
+
+So the desired behavior: even when alerts are off for a type, still show its card in the strip, but indicate with a grayed-out alarm bell that alerts are disabled.
+
+The settings already have a pattern at `SettingsScreen.kt` — the alert chip (`AlertsToggleRow`?) shows the notification icon grayed when off. Let me check the exact settings alert chip component (line 658-747 region) to mirror the bell style. Let me read that.
+
+
+## 15/08/2026, 19:11:44
+
+Let me check `ToggleChip` to see how it renders the grayed-out state (when `on=false`), to mirror the styling.
+
+
+## 15/08/2026, 19:11:47
+
+Now let me remove the now-unused `connEffectiveFormat` string (dead code) and its usage, and update docs. Let me check where `connEffectiveFormat` is defined/used.
+
+Actually, `connEffectiveFormat` is no longer used in MainScreen. It's defined in Strings. Let me remove it to avoid dead code. Let me find it.
+
+
+## 15/08/2026, 19:11:58
+
+I now have a complete understanding. Let me check whether `Icons.Outlined.Notifications` is already imported in `MainScreen.kt` (yes, line 28).
+
+Let me confirm my plan is clear and present it. Let me also double-check the `ThreatStatusCell` is what's called "threat cards" — the footer strip cells. The user said "threat cards" — could also refer to the popup card (`ThreatPopupCard`). But the strip cells are the ones per-type with alert state. I'll interpret it as the footer threat strip cells.
+
+Let me present the plan.
+
+## Plan
+
+**Goal:** When a threat type has its **Alerts** toggle off in Settings (but Map still on), the threat strip should still show that type's card, but with a grayed-out alarm bell indicating alerts are disabled.
+
+**Current behavior:** `MainScreen.kt:473` filters the strip to `count > 0 && visible && alerting` — types with alerts off (`type in silencedTypes`) are hidden entirely.
+
+### Changes (all in `app/src/main/java/ua/ukrainedrones/MainScreen.kt`)
+
+1. **`ThreatStatusCell` (line 1004-1041)** — add a `bellOff: Boolean` parameter. When true, render a small grayed-out alarm bell (`Icons.Outlined.Notifications`, tint ~`0xFF888888`/`Color(0xFF9E9E9E)`) somewhere on the cell (e.g. overlaid at top-right of the icon, or a small bell beside the count). Also dim the card (the icon already dims via the existing `enabled` path, but this is a distinct "alerts off" visual).
+
+2. **The strip loop (lines 469-480)** — change the condition so a type is shown when `count > 0 && visible`, regardless of `alerting`. Pass `bellOff = !alerting` to `ThreatStatusCell`. So:
+   - Map off → still hidden (unchanged).
+   - Alerts off, map on → shown with grayed-out alarm bell.
+   - Both on → shown normally.
+
+3. **CHANGELOG.md** — add a user-visible line under `## [Unreleased]`.
+
+### Notes / invariants
+- This is a UI-only change in `MainScreen.kt`. It does **not** touch the mirrored `AlertService` logic (no change to `effectiveZone`/`alert` semantics — alerts still don't fire for silenced types; this is purely presentational).
+- The `silencedTypes`/`alertEnabled` data already flows into `UiState`, so no `MainViewModel` change is needed.
+- The invariant text in `ARCHITECTURE.md` (and the feature-guide string `guideTogglesD2`) says "A type with Alerts or Map off is hidden from the threat strip." This behavior is changing for the Alerts-off case. I should update:
+  - `ARCHITECTURE.md` "Threat type gating" invariant.
+  - `Strings.kt` `guideTogglesD2` (line 687) to reflect the new behavior.
+
+Before I finalize, one clarifying question:
+
+
+## 15/08/2026, 19:12:35
+
+Now update ARCHITECTURE.md invariant to mention `neptunDown`. Let me update the note I added earlier.
+
+
+
+
+## 15/08/2026, 19:12:42
+
+Now update the CHANGELOG bullet I added to reflect the corrected semantics (red offline on NEPTUN down, removed "Currently on", NEPTUN shows offline when simulated).
+
+
+
+
+## 15/08/2026, 19:12:45
+
+Now let me verify the build and tests.
+
+
+## 15/08/2026, 19:13:11
+
+There's a compile error. Let me see it.
+
+
+## 15/08/2026, 19:13:26
+
+The test compile failed. Likely `assertNotNull` needs import, or `!` operator in backtick test name. Let me see the actual error.
+
+
+
+
+## 15/08/2026, 19:13:35
+
+`assertNotNull` isn't imported. Let me check imports in the test file.
+
+
+## 15/08/2026, 19:13:48
+
+Let me look at the SettingsScreen.kt to understand the current fast/slow sections.
+
+
+## 15/08/2026, 19:13:55
+
+The user clarified: the **ThreatPopupCard detail popup**. Let me examine `ThreatPopupCard.kt` to understand its structure and how to add the grayed-out bell.
+
+
+## 15/08/2026, 19:13:56
+
+Build and tests pass. Let me update the todos and summarize.
+
+
+## 15/08/2026, 19:14:00
+
+The grep didn't target the file well. Let me read the SettingsScreen.kt directly.
+
+
+## 15/08/2026, 19:14:01
+
+Let me see the header of the card (probably a title/type row) and the LARGE layout, to find the best place for the bell. Let me read the beginning of each size layout, especially the title row.
+
+
+## 15/08/2026, 19:14:05
+
+Fixed. The root cause was conflating real socket health with the effective source. I introduced one derived flag, `neptunDown = forceOffline || !connected`, that drives both the header and the popup:
+
+**Header pill** (priority order):
+- `neptunDown` (real or simulated) → **red dot + "offline"** + timer
+- `backupActive && !neptunDown` (NEPTUN alive but on backup) → amber "backup"
+- else → green "online"
+
+**Popup**:
+- NEPTUN row now uses `neptunDown` → with the test toggle ON it shows **red "offline"**, not green "online"
+- Removed the redundant "Currently on: X" line (the green/red dot + "Active" pill already tells you)
+- The toggle "simulate NEPTUN offline" now makes NEPTUN look genuinely offline everywhere; `offlineElapsedSec` timer also starts under simulation
+
+So flipping the test toggle now shows: header red "offline" + timer, NEPTUN row red "offline", backup row green + "Active". Turn it off: back to green "online". A real disconnect gives the same red states; amber "backup" only appears when NEPTUN is actually alive but the app is on backup (quiet feed).
+
+Verified: `:app:testDebugUnitTest` + `:app:assembleDebug` both pass.
+## 15/08/2026, 19:14:09
+
+I have a clear picture of the popup card layout. The header row (icon + type label) is present in all three sizes. The best place for a grayed-out alarm bell is in the header row, near the type label.
+
+Let me check how `ThreatPopupCard` is invoked in `MainScreen.kt` (line 493) and in `SettingsScreen.kt` (line 982, the preview/`interactive=false`), so I can plan how to pass the "alerts off" state.
+
+The call at `MainScreen.kt:493-503` has access to `uiState.silencedTypes`. The `SettingsScreen.kt:982` call — let me check its context.
+
+
+## 15/08/2026, 19:14:13
+
+I'm in plan mode (read-only), so I'll present the finalized plan for your approval rather than making edits.
+
+## Finalized Plan
+
+### 1. Scale label → white bold font (no white background)
+**`MainScreen.kt`** — `ScaleIndicator` (lines ~602-612):
+- Remove the label's `.background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(3.dp))` and its `.padding(horizontal = 4.dp, vertical = 1.dp)`.
+- Change the label `Text` to `color = Color.White` + `fontWeight = FontWeight.Bold`.
+- Keep the alternating black/white bar below unchanged.
+
+### 2. New collapsible "Additional settings" section + "Show scale" toggle
+**`ZonePrefs.kt`**: add `showMapScaleKey`, `showMapScale(): Flow<Boolean>` (default `true`), `setShowMapScale(Boolean)`.
+
+**`MainViewModel.kt`**:
+- `UiState`: add `showMapScale: Boolean = true`.
+- `PrefsSnapshot`: add `showMapScale`; extend the second `combine` (the `AlertConfig` one, currently 6 booleans) to 7 booleans and thread it into `PrefsSnapshot` + `.copy(showMapScale = ...)`.
+- Add public `setShowMapScale(Boolean)`.
+
+**`MainScreen.kt`**:
+- Gate `ScaleIndicator` with `if (uiState.showMapScale)` (lines 401-407).
+- Pass `showMapScale` + `onShowMapScaleChange` into `SettingsScreen` (line 111 block).
+
+**`SettingsScreen.kt`**:
+- Add params `showMapScale: Boolean`, `onShowMapScaleChange: (Boolean) -> Unit`.
+- Add a collapsible "Additional settings" section near the bottom: `SectionHeader` + a `Card` with a clickable header row toggling an `AnimatedVisibility` body (default collapsed, mirroring the disclaimer-collapse pattern). Body contains:
+  - `AlertToggleRow` "Show scale" with a ruler icon.
+  - The **Battery exemption** card moved here (from its current spot at lines ~433-478).
+
+**`Strings.kt`** UA + EN:
+- `additionalSettingsTitle` ("Додаткові налаштування" / "Additional settings")
+- `showMapScaleTitle` ("Показати масштаб" / "Show scale")
+- `showMapScaleDesc` ("Масштабна шкала в нижньому лівому куті карти" / "Scale bar in the map's bottom-left corner")
+
+**`CHANGELOG.md`**: append two `## [Unreleased]` entries.
+
+**`ARCHITECTURE.md`**: update `ZonePrefs` responsibility line to note the new pref.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+
+No `AlertService` mirroring needed (UI-only setting).
+
+Ready to implement — say "go" to proceed.
+## 15/08/2026, 19:14:19
+
+The settings preview passes a fixed set. I'll give `ThreatPopupCard` a new parameter `alertsOff: Boolean = false` (default false so the settings preview and other callers don't change).
+
+Now I have everything to present a final plan.
+
+## Plan
+
+**Goal:** On the `ThreatPopupCard` detail popup, show a grayed-out alarm bell when the threat's type has **Alerts** off in Settings (`type in silencedTypes`).
+
+### Files & changes
+
+**1. `ThreatPopupCard.kt`**
+- Add param `alertsOff: Boolean = false` to `ThreatPopupCard` (line 52). Default `false` keeps the Settings preview (`SettingsScreen.kt:982`) and any other callers unchanged.
+- In each of the three size layouts (SMALL/MEDIUM/LARGE), in the header row near the type label, render a small grayed-out alarm bell when `alertsOff`:
+  - Icon `Icons.Outlined.Notifications`, tint ~`Color(0xFF9E9E9E)`, size ~`fontAware(14.dp)`.
+  - Add import `androidx.compose.material.icons.outlined.Notifications` (line ~11).
+  - Best spot: beside the type label (LARGE line 252, MEDIUM line 162, SMALL line 126) — a small bell after the label text.
+
+**2. `MainScreen.kt`**
+- At the `ThreatPopupCard` call (lines 493-503), pass `alertsOff = threat.type in uiState.silencedTypes`.
+
+**3. Docs**
+- `ARCHITECTURE.md` — note the presentational bell in the "Threat type gating" invariant (no change to the actual alert/zone logic; UI-only, so **no mirror** into `AlertService` needed).
+- `CHANGELOG.md` — add a line under `## [Unreleased]`.
+
+### Notes
+- This is **UI-only** in `MainScreen.kt` + `ThreatPopupCard.kt`. No change to the mirrored zone/alert logic in `AlertService` (silenced types still don't fire alerts; the bell is purely informational).
+- `silencedTypes` already exists in `UiState`, so no `MainViewModel` change needed.
+- Will verify with `.\gradlew.bat :app:assembleDebug` after implementing.
+
+Shall I proceed with implementation?
+## 15/08/2026, 19:14:19
+
+Now I understand the current structure. Let me analyze the user's request.
+
+Currently:
+- Lines 268-305: A `Card` with the "GroupMasterColumn" — the fast/slow "separate card above fast/slow sections" with two columns (bolt + turtle), each showing a title, a Map toggle chip, and an Alerts toggle chip.
+- Lines 306-339: Then the group section headers (bolt/turtle icon + title) followed by per-type `ThreatSettingsCard`s.
+
+The user wants: **instead of that separate card (GroupMasterColumn card above fast/slow sections), make small map/alerts, just the icons, on the right edge for the section titles.**
+
+So: remove the separate `GroupMasterColumn` card. Instead, for each group section header row (the fast title row and the slow title row at lines 306-325), place small Map and Alerts icon toggles (just icons, no labels) on the right edge of the section title.
+
+Let me check the `ToggleChip` structure and what icons are used. `ToggleChip` currently shows an icon + a label text in a bordered card. The user wants "just the icons" on the right edge of the section title row.
+
+So the plan:
+1. Remove the `GroupMasterColumn` card item (lines 269-305).
+2. In the group header `Row` (lines 308-325), add small icon-only Map/Alerts toggles on the right edge (`Modifier.weight(1f)` spacer then the toggles).
+3. Probably make a small icon-only variant — either modify `ToggleChip` to support icon-only mode, or create a small icon button.
+
+Let me verify there are no other usages of `GroupMasterColumn` and `ToggleChip`. `ToggleChip` is used in `ThreatSettingsCard` too (per-type card). So I shouldn't break `ToggleChip`. I'll add an icon-only variant.
+
+Let me check the strings for threatMapLabel / threatAlertLabel, which already exist. The user wants just icons — contentDescription can be the labels for accessibility.
+
+Let me also confirm the `fastAndSlowGroups` returns the types so I can compute mapOn/alertsOn per group.
+
+Let me check the map/alert semantics — the "enabled" coupling: alerts enabled only when map on.
+
+Let me plan the design. I'll create a small icon-only toggle. Something like:
+
+```kotlin
+@Composable
+private fun IconToggle(
+    icon: ImageVector,
+    contentDescription: String,
+    on: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    IconToggleButton(...)
+}
+```
+
+Actually simpler: a small clickable icon (e.g. IconButton with size ~28dp) tinted primary when on, dimmed when off, alpha when disabled.
+
+Let me confirm the current group header logic is correct and I have the data I need. The `fastAndSlowGroups` returns Triple<iconRes, groupTitle, types>. I need mapOn/alertsOn per group. I can compute those inside the forEach.
+
+Let me now present the plan.
+
+Let me also double-check: is `GroupMasterColumn` used anywhere else? It's only in SettingsScreen.kt. And `ToggleChip` used in both GroupMasterColumn and ThreatSettingsCard. So removing GroupMasterColumn but keeping ToggleChip is fine.
+
+Let me formulate the plan concisely.
+
+
+## 15/08/2026, 19:14:38
+
+I'm now in build mode. Let me set up my todo list and start implementing.
+
+
+## 15/08/2026, 19:14:42
+
+Let me start with ZonePrefs.
+
+
+## 15/08/2026, 19:14:56
+
+Now MainViewModel. Let me add `showMapScale` to UiState, PrefsSnapshot, the combine, `.copy`, and the setter.
+
+
+## 15/08/2026, 19:15:10
+
+Now the `AlertConfig` combine currently has 6 booleans. I'll extend it to include `showMapScale`. Let me update the `AlertConfig` class, the combine, and the `PrefsSnapshot` construction.
+
+
+## 15/08/2026, 19:15:29
+
+Now map into `.copy(showMapScale = ...)`:
+
+
+## 15/08/2026, 19:15:37
+
+Now add the public setter. Let me find where other setters like `setThreatCardSize` are defined in the ViewModel.
+
+
+## 15/08/2026, 19:15:55
+
+Plan confirmed. Here's my plan:
+
+## Plan: Replace fast/slow master card with icon-only toggles on section titles
+
+**File:** `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`
+
+### 1. Remove the master card
+Delete the `item { ... }` block at lines 269–305 that renders the `GroupMasterColumn` Card (the two-column fast/slow master row above the sections).
+
+### 2. Remove the now-unused `GroupMasterColumn` composable
+Delete the `GroupMasterColumn` function (lines 616–665) since it's the only remaining usage removed. `ToggleChip` stays (still used by `ThreatSettingsCard`).
+
+### 3. Add icon-only Map/Alerts toggles to each group section title row
+Modify the group header `Row` (lines 308–325) inside the `fastAndSlowGroups` loop:
+- Compute per-group `mapOn`/`alertsOn` from the group's `types` (mirroring the current logic: map on when none hidden, alerts on when none silenced).
+- Keep the existing bolt/turtle icon + group title on the left.
+- Add a `Spacer(Modifier.weight(1f))` and two small **icon-only** toggles on the right edge: `Icons.Filled.Place` (Map) and `Icons.Filled.Notifications` (Alerts).
+- New private composable `IconToggle(icon, contentDescription, on, enabled, onClick)` — a clickable icon, tinted `primary` when on, dimmed `onSurfaceVariant` when off, `alpha(0.4f)` when disabled.
+- Preserve coupling: Alerts icon `enabled = mapOn` (dimmed when map off), and clicking alerts calls `onThreatAlertToggleAll(types, ...)`, map calls `onThreatMapToggleAll(types, ...)`.
+
+### 4. Verify
+- `.\gradlew.bat :app:assembleDebug`
+
+No changes to domain logic, no Strings changes needed (reuses existing `threatMapLabel`/`threatAlertLabel` as content descriptions). Per-type cards and all callbacks are unchanged.
+
+Shall I proceed with implementation?
+## 15/08/2026, 19:15:56
+
+ZonePrefs and MainViewModel done. Now MainScreen: gate the ScaleIndicator and pass args to SettingsScreen, plus the white bold font change.
+
+
+## 15/08/2026, 19:16:17
+
+Now the white bold font in ScaleIndicator:
+
+
+## 15/08/2026, 19:16:26
+
+Now pass `showMapScale` and `onShowMapScaleChange` into the SettingsScreen call:
+
+
+## 15/08/2026, 19:16:35
+
+Now SettingsScreen. Add the new params to the signature:
+
+
+## 15/08/2026, 19:16:44
+
+Now I need to:
+1. Remove the Battery exemption card from its current position (lines ~433-478).
+2. Add a collapsible "Additional settings" section at the bottom holding the Show-scale toggle + the battery card.
+
+Let me first remove the battery exemption block. Let me re-read the current lines 432-479 to get exact content.
+
+
+## 15/08/2026, 19:16:50
+
+The line numbers shifted (+16 due to added params). Let me re-read the battery block which was around 433-478 originally, now shifted. Let me search for the battery block markers.
+
+
+
+
+## 15/08/2026, 19:16:54
+
+The battery block is now at lines 377-~415 (after the siren override toggle). Let me read lines 368-415 to get the exact block to remove.
+
+
+
+
+## 15/08/2026, 19:17:10
+
+Now I'll remove the battery block (lines 377-422) from its current position. I'll replace it with nothing (removing it from the alerts section).
+
+
+## 15/08/2026, 19:17:19
+
+Now add the collapsible "Additional settings" section. I'll add it right before the "Feature guide" button block (which is now after the removed battery block). Let me read the current area around the guide button to insert the section there.
+
+The guide button block is right after where the battery was. Let me view current lines ~376-395.
+
+
+## 15/08/2026, 19:17:25
+
+I'll insert the collapsible "Additional settings" section between the alerts card (ends at line 375) and the guide button (line 377). The section needs a collapse state. Let me add a `var additionalExpanded by remember { mutableStateOf(false) }` near the other remembered states (around line 105-107), then insert the section markup.
+
+First, add the state variable:
+
+
+## 15/08/2026, 19:17:35
+
+Now insert the section markup between the alerts card close and the guide button. Let me add it after line 375 (the `}` closing the alerts card) and before line 377 (`item {` for the guide button).
+
+I'll insert a `SectionHeader` + a collapsible `Card`. The section body includes the Show-scale toggle and the battery card.
+
+
+## 15/08/2026, 19:17:39
+
+I used `AnimatedVisibility` — I need to verify it's imported. Let me check the imports in SettingsScreen.kt. Also need `Icons.Default.Settings` import (material-icons). Let me check imports.
+
+
+## 15/08/2026, 19:17:44
+
+`AnimatedVisibility` is already imported (line 4), and `Icons.Default.Settings` is available (used in MainScreen line 682, and SettingsScreen line 379 compiles since `Icons.Default` is imported). Let me verify `Icons.Default.Settings` is importable — MainScreen uses `Icons.Default.Settings` and it's in the same material icons default set. Good.
+
+Let me verify the imports for `clickable`, `Icons.Default.KeyboardArrowUp/Down`, `Icon`, `HorizontalDivider`, `AlertToggleRow` are all present (they're used elsewhere in the file already). Yes.
+
+Now the Strings. Let me check the StringSet interface fields and add the new ones. Let me look at the Strings.kt file structure around where `cardSizeLabel` is declared and the UA/EN values.
+
+
+
+
+## 15/08/2026, 19:17:52
+
+I'll add the new string fields after `cardSizeLabel` in the interface, and the UA/EN values after their `cardSizeLabel` entries.
+
+
+## 15/08/2026, 19:17:57
+
+Now the UA values. Let me find the UA `cardSizeLabel` line (was line 343, now shifted by +3).
+
+
+
+
+## 15/08/2026, 19:18:22
+
+Now let me update the todos and then handle CHANGELOG + ARCHITECTURE, then build.
+
+
+## 15/08/2026, 19:18:25
+
+Let me read the CHANGELOG top and ARCHITECTURE ZonePrefs line.
+
+
+## 15/08/2026, 19:18:41
+
+Now ARCHITECTURE.md — update the `ZonePrefs` responsibility line to mention the new pref. Let me update it.
+
+
+## 15/08/2026, 19:18:44
+
+Let me investigate the two changes.
+
+**1. Remove "for " in "offline for 0m"**
+
+The offline pill text is built from `s.offlineUiFormat` and `s.offlineDurMinFormat`. Let me find them.
+
+**2. Remove the "offline/online" status text in the system status popup**
+
+The popup has two `SourceStatusRow`s, each showing `neptunStatus`/`backupStatus` (the "online"/"offline · Xm" text). I'll need to remove that text from the rows.
+
+Let me look at the relevant code.
+
+
+## 15/08/2026, 19:18:46
+
+Now let me build to verify.
+
+
+## 15/08/2026, 19:18:51
+
+Let me look at the `SourceStatusRow` implementation and the `offlineUiFormat` string.
+
+The "offline for 0m" text comes from `s.offlineUiFormat`:
+- UA: `"Офлайн %1\$s"` → "Офлайн 0 хв"
+- EN: `"Offline for %1\$s"` → "Offline for 0 m"
+
+User wants to remove "for " → just "Offline 0 m". So change EN `offlineUiFormat` to `"Offline %1\$s"`.
+
+But wait — `offlineUiFormat` is also used in the **header pill** (line 837) and in **AlertService** notification body (line 309 uses `offlineBodyFormat`, not `offlineUiFormat`). Let me check — line 837 is the header pill. The user's complaint "offline for 0m" is likely in the header pill. So changing `offlineUiFormat` fixes both the header and any other use. Let me check where else `offlineUiFormat` is used — only lines 837, 885, 888 (popup status text, which we're removing) and header line 837.
+
+So: change EN `offlineUiFormat` = `"Offline %1\$s"` (remove "for "). That fixes the header.
+
+**2. Remove the offline/online text in the popup.**
+
+The popup `SourceStatusRow`s pass `status = neptunStatus` / `backupStatus`. The user wants to remove the "offline/online" text from these rows — keeping the color dot + name + "Active" label.
+
+So I'll remove the `status` parameter from `SourceStatusRow` (and the `neptunStatus`/`backupStatus` computations in the popup), keeping `color`, `name`, `active`, `activeLabel`.
+
+Let me read `SourceStatusRow`.
+
+
+## 15/08/2026, 19:18:59
+
+Now I have a full picture. Let me also check the UA format string for offlineUiFormat to confirm the wording (user is English, but both should be consistent).
+
+Let me present the plan.
+
+## Plan
+
+**1. Remove "for " in "offline for 0m"** — `Strings.kt:612`
+- EN `offlineUiFormat = "Offline for %1\$s"` → `"Offline %1\$s"`.
+- This fixes the header pill (and anywhere else that reuses `offlineUiFormat`). The UA version `"Офлайн %1\$s"` is already correct. No other string changes needed since this is the only "for" prefix.
+
+**2. Remove the offline/online status text from the System status popup** — `MainScreen.kt`
+- Remove the `neptunStatus` and `backupStatus` computations (lines ~884-889).
+- Change `SourceStatusRow` calls to drop the `status` argument.
+- Change `SourceStatusRow` signature to remove `status: String` param, and remove the `Text(status, ...)` line (and the now-unused `statusColor`/`statusWeight` locals) at lines 974-992. Keep the color dot, source name, and the orange "Active" pill.
+- The legend rows (green Up / red Down) and the rest of the popup stay.
+
+**Side effects / to verify:**
+- `connOnline`/`connOffline` strings are still used by the header pill fallback (`s.connOffline` at line 838, `s.connOnline` at line 840) so they stay. After removing the popup status text, `connOnline` is used at line 840 (header) and `connOffline` at 838 (header) — both still referenced, so no dead strings.
+- No test changes needed (UI-only; the offline format isn't asserted in unit tests).
+- Build + `:app:testDebugUnitTest` after changes.
+
+One note: removing the status text from the popup means each source row shows only the colored dot + name + optional "Active" pill. The legend at the bottom (green = up, red = down) still explains the dots. That matches your intent — the dot + "Active" already conveys state, and you said the text is redundant.
+
+Shall I proceed?
+## 15/08/2026, 19:19:08
+
+`Icons.Default.Settings` is not available (only a subset of material icons is included). Let me check what icons are actually used/available in SettingsScreen. MainScreen line 682 uses `Icons.Default.Settings`? Let me check that - it might be from a different import or it might not compile either. Let me check MainScreen line 682 context and what's imported.
+
+Let me check what icon imports exist in SettingsScreen and use an available one instead.
+
+
+## 15/08/2026, 19:19:10
+
+Now remove the `GroupMasterColumn` composable and add the `IconToggle` composable.
+
+
+## 15/08/2026, 19:19:20
+
+Now let me verify the build.
+
+
+## 15/08/2026, 19:19:22
+
+SettingsScreen doesn't import `Settings`. I need to add `import androidx.compose.material.icons.filled.Settings` to SettingsScreen.kt. Let me add it after line 23 (the Warning import).
+
+
+
+
+## 15/08/2026, 19:19:56
+
+Build succeeded (no output with `-q` means clean). Done.
+
+Removed the fast/slow master card and `GroupMasterColumn`; now each Fast/Slow section title row has small icon-only Map (`Place`) and Alerts (`Notifications`) toggles on the right edge, tinted when on, dimmed when off, with the Alerts icon disabled when Map is off (preserving the coupling).
+## 15/08/2026, 19:20:07
+
+Let me implement. First, let me set up the todo list and read the CHANGELOG top.
+
+
+## 15/08/2026, 19:20:14
+
+Now add the `alertsOff` parameter:
+
+
+## 15/08/2026, 19:20:19
+
+Now add the bell to each size. SMALL header (after the type label, before the summary pills column weight area). Let me add it in the Column after the typeLabel Text in SMALL:
+
+
+## 15/08/2026, 19:20:58
+
+Here's the change I just made to `ThreatPopupCard.kt` — the SMALL header now shows a small grayed-out bell next to the type label when alerts are off:
+
+```kotlin
+Column(modifier = Modifier.weight(1f)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            typeLabel,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White
+        )
+        if (alertsOff) AlertsOffBell()
+    }
+    Spacer(Modifier.height(2.dp))
+    SummaryPills(...)
+}
+```
+
+Plus the import and the `alertsOff: Boolean = false` param. The `AlertsOffBell()` composable doesn't exist yet — I'll add it now and apply the same pattern to the MEDIUM and LARGE headers.
+
+Let me add the `AlertsOffBell` composable and update MEDIUM/LARGE.
+
+
+## 15/08/2026, 19:21:06
+
+Now the MEDIUM header (type label at line ~161):
+
+
+## 15/08/2026, 19:21:10
+
+Now the LARGE header (type label at line ~252):
+
+
+
+
+## 15/08/2026, 19:21:13
+
+Now update the MainScreen popup call to pass `alertsOff`:
+
+
+## 15/08/2026, 19:21:16
+
+Now update the docs. Let me read the CHANGELOG top and the ARCHITECTURE invariant section.
+
+
+## 15/08/2026, 19:21:25
+
+Now update ARCHITECTURE.md's "Threat type gating" invariant:
+
+
+## 15/08/2026, 19:21:29
+
+Note: there's also a feature-guide string `guideTogglesD2` (line 687) that says "A type with Alerts or Map off is hidden from the threat strip." Since the popup bell doesn't change the strip behavior, that string is still accurate — no change needed there.
+
+Now let me update the todos and build.
+
+
+## 15/08/2026, 19:21:52
+
+Build successful.
+
+
+## 15/08/2026, 19:21:58
+
+Done. The threat detail popup now shows a small grayed-out alarm bell next to the type name in all three card sizes when that type's Alerts are off in Settings.
+
+Changes:
+- `ThreatPopupCard.kt:52` — new `alertsOff: Boolean = false` param; SMALL/MEDIUM/LARGE headers show `AlertsOffBell()` (gray `Icons.Outlined.Notifications`, `0xFF9E9E9E`) next to the type label.
+- `MainScreen.kt:500` — passes `alertsOff = threat.type in uiState.silencedTypes`.
+- `ARCHITECTURE.md` invariant + `CHANGELOG.md` updated.
+- Build passes.
+## 15/08/2026, 19:22:08
+
+Got it — drop red entirely. Just yellow + GPS pills in the card. Here's the updated plan.
+
+## Plan: Threat ETA — Yellow edge + to-you (GPS) pills
+
+### Goal
+Extend `ThreatProximity` with the time-to-cross the **yellow** boundary, and surface a compact row in the threat popup with just two pills: a **yellow circle** + minutes (yellow edge) and a **blue GPS dot** + minutes (to you). No red pill, no banner.
+
+### 1. Prediction.kt — testable helper
+Add:
+```kotlin
+fun etaToCircleEdgeMinutes(
+    from: LatLng, center: LatLng, radiusM: Double,
+    bearingDeg: Double, speedMps: Double
+): Double?
+```
+Ray-to-circle geometry: `d = (v·u) + sqrt((v·u)² − (D²−R²))`, positive root = near-boundary entry. Return `d / speedMps / 60.0`. Null when already inside, heading away, or speed unavailable.
+
+### 2. MainViewModel.kt — extend `ThreatProximity`
+Add one field (MainViewModel.kt:59-67):
+```kotlin
+val etaToYellowEdgeMin: Double?,  // time to cross the yellow circle boundary
+```
+In the proximity block (MainViewModel.kt:346-371), compute it via the helper with `focusLocation` as center, `yellowKm*1000`, `bearingDeg`, and speed. Null when already inside yellow / heading away / no GPS or speed. (No red computation.)
+
+### 3. ThreatPopupCard.kt — the two pills
+In MEDIUM and LARGE cards, add a small row beside the summary with two glyphs:
+- **Yellow circle** (amber `0xFFF9A825`) + `formatEtaMinutes(etaToYellowEdgeMin)`
+- **Blue GPS dot** (`Color(0xFF4FC3F7)`) + `formatEtaMinutes(etaToUserMin)`
+
+Each glyph omitted when its ETA is null. Glyphs drawn as small Compose `Box`/`Canvas` circles — no new drawables. Reuse existing `formatEtaMinutes` (floors to minutes, matches "not precise anyway").
+
+### 4. Strings.kt
+No new strings (icons + existing `formatEtaMinutes` output like `12m`; no words needed).
+
+### 5. Tests — PredictionTest.kt
+Add `etaToCircleEdgeMinutes` tests: direct inbound ≈ `(D−R)/speed`; inside → null; heading away → null; off-center crossing correct.
+
+### 6. Verification
+- `.\gradlew.bat :app:testDebugUnitTest`
+- `.\gradlew.bat :app:assembleDebug`
+
+### Mirror rule
+UI-only logic; no `AlertService` change needed.
+
+### CHANGELOG
+Append a user-visible line under `## [Unreleased]`.
+
+Ready to implement on "go".
+## 15/08/2026, 19:22:34
+
+Let me set up a todo list and start implementing.
+
+
+## 15/08/2026, 19:22:46
+
+Let me add the helper to Prediction.kt.
+
+
+## 15/08/2026, 19:22:57
+
+Now extend `ThreatProximity` and the proximity block in MainViewModel.kt.
+

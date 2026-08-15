@@ -18,7 +18,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -70,6 +72,7 @@ fun SettingsScreen(
     pinnedCity: City?,
     redCities: Set<String>,
     threatCardSize: ThreatCardSize,
+    showMapScale: Boolean,
     versionName: String,
     isChecking: Boolean,
     latestVersion: String?,
@@ -86,6 +89,7 @@ fun SettingsScreen(
     onPinnedCityChange: (City?) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
+    onShowMapScaleChange: (Boolean) -> Unit,
     onExit: () -> Unit,
     onCheckUpdate: () -> Unit,
     onOpenGuide: () -> Unit
@@ -104,6 +108,8 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var expandedType by remember { mutableStateOf<ThreatType?>(null) }
+    // The "Additional settings" section starts collapsed; only the battery/scale live in it so far.
+    var additionalExpanded by remember { mutableStateOf(false) }
     // The "Official signals" card needs two collapse taps before it actually stays collapsed.
     var collapseAttempts by remember { mutableStateOf(0) }
     val onDisclaimerClick: () -> Unit = {
@@ -265,48 +271,43 @@ fun SettingsScreen(
             }
 
             item { SectionHeader(s.threatsLabel, rememberVectorPainter(Icons.Default.Warning)) }
-            item {
-                val fastTypes = FAST_THREAT_TYPES
-                val slowTypes = ThreatType.values().toSet() - fastTypes
-                val fastMapOn = fastTypes.none { it in hiddenTypes }
-                val fastAlertsOn = fastTypes.none { it in silencedTypes }
-                val slowMapOn = slowTypes.none { it in hiddenTypes }
-                val slowAlertsOn = slowTypes.none { it in silencedTypes }
-                Card(modifier = Modifier.fillMaxWidth()) {
+            fastAndSlowGroups(lang).forEach { (iconRes, groupTitle, types) ->
+                val groupMapOn = types.none { it in hiddenTypes }
+                val groupAlertsOn = types.none { it in silencedTypes }
+                item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
                     ) {
-                        GroupMasterColumn(
-                            lang = lang,
-                            title = s.fastGroupLabel,
-                            mapOn = fastMapOn,
-                            alertsOn = fastAlertsOn,
-                            onMap = { onThreatMapToggleAll(fastTypes, it) },
-                            onAlerts = { onThreatAlertToggleAll(fastTypes, it) },
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = if (iconRes == R.drawable.ic_bolt) s.fastGroupIconDesc else s.slowGroupIconDesc,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            groupTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f)
                         )
-                        GroupMasterColumn(
-                            lang = lang,
-                            title = s.slowGroupLabel,
-                            mapOn = slowMapOn,
-                            alertsOn = slowAlertsOn,
-                            onMap = { onThreatMapToggleAll(slowTypes, it) },
-                            onAlerts = { onThreatAlertToggleAll(slowTypes, it) },
-                            modifier = Modifier.weight(1f)
+                        IconToggle(
+                            icon = Icons.Filled.Place,
+                            contentDescription = s.threatMapLabel,
+                            on = groupMapOn,
+                            enabled = true,
+                            onClick = { onThreatMapToggleAll(types, !groupMapOn) }
+                        )
+                        IconToggle(
+                            icon = Icons.Filled.Notifications,
+                            contentDescription = s.threatAlertLabel,
+                            on = groupAlertsOn,
+                            enabled = groupMapOn,
+                            onClick = { onThreatAlertToggleAll(types, !groupAlertsOn) }
                         )
                     }
-                }
-            }
-            fastAndSlowGroups(lang).forEach { (groupTitle, types) ->
-                item {
-                    Text(
-                        groupTitle,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
                 items(types.toList()) { type ->
                     ThreatSettingsCard(
@@ -356,47 +357,82 @@ fun SettingsScreen(
                 }
             }
 
-            if (batteryOptimized) {
-                item {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_check),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            s.batteryGranted,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+            item { SectionHeader(s.additionalSettingsTitle, rememberVectorPainter(Icons.Default.Settings)) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { additionalExpanded = !additionalExpanded }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                s.batteryTitle,
+                                s.additionalSettingsTitle,
+                                fontWeight = FontWeight.SemiBold,
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
+                                modifier = Modifier.weight(1f)
                             )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                s.batteryBody,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Icon(
+                                imageVector = if (additionalExpanded) Icons.Default.KeyboardArrowUp
+                                else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
                             )
-                            Spacer(Modifier.height(12.dp))
-                            Button(
-                                onClick = { BatteryOptimization.requestExemption(appContext) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
+                        }
+                        AnimatedVisibility(visible = additionalExpanded) {
+                            Column {
+                                AlertToggleRow(
+                                    title = s.showMapScaleTitle,
+                                    description = s.showMapScaleDesc,
+                                    checked = showMapScale,
+                                    onCheckedChange = onShowMapScaleChange,
+                                    icon = painterResource(R.drawable.ic_settings_ua),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                if (batteryOptimized) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_check),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            s.batteryGranted,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            s.batteryTitle,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            s.batteryBody,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                        Button(
+                                            onClick = { BatteryOptimization.requestExemption(appContext) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -545,70 +581,80 @@ private fun AlertToggleRow(
 }
 
 /** The two threat groupings shown in Settings: fast (missiles, bombs) and slow (drones). */
-private fun fastAndSlowGroups(lang: AppLanguage): List<Pair<String, Set<ThreatType>>> {
+private fun fastAndSlowGroups(lang: AppLanguage): List<Triple<Int, String, Set<ThreatType>>> {
     val s = Strings.get(lang)
     val fast = FAST_THREAT_TYPES
     val slow = ThreatType.values().toSet() - fast
-    return listOf(s.fastGroupLabel to fast, s.slowGroupLabel to slow)
+    return listOf(
+        Triple(R.drawable.ic_bolt, s.fastGroupLabel, fast),
+        Triple(R.drawable.ic_turtle, s.slowGroupLabel, slow)
+    )
 }
 
-/** A compact labelled switch used for the per-threat Map/Alerts controls. */
+/** A compact icon-chip Map/Alerts toggle: bordered card with an icon and label, on/off/dimmed. */
 @Composable
-private fun CompactToggleRow(
+private fun ToggleChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    checked: Boolean,
+    on: Boolean,
     enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onClick: () -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .toggleable(
-                value = checked,
-                enabled = enabled,
-                role = Role.Switch,
-                onValueChange = onCheckedChange
-            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.4f),
+        border = if (on && enabled) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
-            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(6.dp))
-        Switch(checked = checked, enabled = enabled, onCheckedChange = null)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (on && enabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 0.7f else 0.5f),
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
     }
 }
 
-/** One group's Map + Alerts master switches in the "All" row at the top of Threats. */
+/** A small icon-only toggle for the Fast/Slow section title rows (Map / Alerts). */
 @Composable
-private fun GroupMasterColumn(
-    lang: AppLanguage,
-    title: String,
-    mapOn: Boolean,
-    alertsOn: Boolean,
-    onMap: (Boolean) -> Unit,
-    onAlerts: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+private fun IconToggle(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    on: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
 ) {
-    val s = Strings.get(lang)
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .alpha(if (enabled) 1f else 0.4f)
+            .size(30.dp)
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (on && enabled) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
         )
-        CompactToggleRow(label = s.threatMapLabel, checked = mapOn, enabled = true, onCheckedChange = onMap)
-        CompactToggleRow(label = s.threatAlertLabel, checked = alertsOn, enabled = mapOn, onCheckedChange = onAlerts)
     }
 }
 
@@ -680,17 +726,19 @@ private fun ThreatSettingsCard(
                     modifier = Modifier.width(96.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    CompactToggleRow(
+                    ToggleChip(
+                        icon = Icons.Filled.Place,
                         label = s.threatMapLabel,
-                        checked = onMap,
+                        on = onMap,
                         enabled = true,
-                        onCheckedChange = { onThreatMapToggle(type, it) }
+                        onClick = { onThreatMapToggle(type, !onMap) }
                     )
-                    CompactToggleRow(
+                    ToggleChip(
+                        icon = Icons.Filled.Notifications,
                         label = s.threatAlertLabel,
-                        checked = onAlerts,
+                        on = onAlerts,
                         enabled = onMap,
-                        onCheckedChange = { onThreatAlertToggle(type, it) }
+                        onClick = { onThreatAlertToggle(type, !onAlerts) }
                     )
                 }
             }

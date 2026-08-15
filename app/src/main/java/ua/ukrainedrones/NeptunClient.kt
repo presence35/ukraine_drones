@@ -36,9 +36,18 @@ data class NeptunState(
     val backupLastOkAt: Long = 0L,      // epoch millis of the backup's last successful poll
     val backupError: String? = null
 ) {
-    /** Seconds since the stream dropped, or null while connected. */
+    /** Seconds since the stream dropped, or null while NEPTUN appears online. */
     val offlineElapsedSec: Long?
-        get() = if (connected) null else offlineSince?.let { (System.currentTimeMillis() - it) / 1000 }
+        get() = if (neptunDown) offlineSince?.let { (System.currentTimeMillis() - it) / 1000 }
+            ?: (if (forceOffline) 0L else null)
+        else null
+
+    /**
+     * NEPTUN is offline — the real socket dropped (`!connected`) or the TEMP [forceOffline]
+     * test toggle simulates it. This drives the "offline" display and the backup fallback.
+     */
+    val neptunDown: Boolean
+        get() = forceOffline || !connected
 
     /** Seconds since the backup last polled successfully, or null while it's healthy. */
     val backupOfflineElapsedSec: Long?
@@ -46,13 +55,13 @@ data class NeptunState(
             ?.let { (System.currentTimeMillis() - it) / 1000 }
 
     /**
-     * The backup (alerts.com.ua) contributes only when NEPTUN is down (disconnected), its own
-     * alert feed has gone quiet for over [NeptunClient.BACKUP_FALLBACK_MS], or the TEMP
-     * [forceOffline] test toggle is on. While NEPTUN is healthy it stays the sole source so we
-     * never second-guess a legitimate "no alert".
+     * The backup (alerts.com.ua) is the effective source when NEPTUN is down ([neptunDown]),
+     * its own alert feed has gone quiet for over [NeptunClient.BACKUP_FALLBACK_MS], or the
+     * TEMP [forceOffline] test toggle is on. While NEPTUN is healthy it stays the sole source
+     * so we never second-guess a legitimate "no alert".
      */
     val backupActive: Boolean
-        get() = forceOffline || !connected || System.currentTimeMillis() - lastAlertAt > NeptunClient.BACKUP_FALLBACK_MS
+        get() = neptunDown || System.currentTimeMillis() - lastAlertAt > NeptunClient.BACKUP_FALLBACK_MS
 
     /** Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. */
     val oblastAlerts: List<OblastAlert>

@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.rotate
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +40,18 @@ private val CyrillicRegex = Regex("[\\u0400-\\u04FF]")
 
 private fun containsCyrillic(text: String): Boolean = CyrillicRegex.containsMatchIn(text)
 
+/** Small grayed-out alarm bell marking a type whose alerts are switched off in Settings. */
+@Composable
+private fun AlertsOffBell() {
+    Spacer(Modifier.width(6.dp))
+    Icon(
+        imageVector = Icons.Outlined.Notifications,
+        contentDescription = null,
+        tint = Color(0xFF9E9E9E),
+        modifier = Modifier.size(fontAware(14.dp))
+    )
+}
+
 /** System font scale, capped so extreme accessibility sizes can't break the layout. */
 @Composable
 private fun fontScale(): Float = min(LocalDensity.current.fontScale, 1.5f)
@@ -59,7 +72,8 @@ fun ThreatPopupCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     cardSize: ThreatCardSize = ThreatCardSize.LARGE,
-    interactive: Boolean = true
+    interactive: Boolean = true,
+    alertsOff: Boolean = false
 ) {
     val s = Strings.get(lang)
     val typeInfo = ThreatTypeCatalog.INFO.getValue(threat.type)
@@ -123,12 +137,15 @@ fun ThreatPopupCard(
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            typeLabel,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.White
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                typeLabel,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color.White
+                            )
+                            if (alertsOff) AlertsOffBell()
+                        }
                         Spacer(Modifier.height(2.dp))
                         SummaryPills(
                             proximity = proximity,
@@ -158,12 +175,15 @@ fun ThreatPopupCard(
                         )
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                typeLabel,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = Color.White
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    typeLabel,
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = Color.White
+                                )
+                                if (alertsOff) AlertsOffBell()
+                            }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     displayRegion,
@@ -249,12 +269,15 @@ fun ThreatPopupCard(
                             )
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    typeLabel,
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        typeLabel,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = Color.White
+                                    )
+                                    if (alertsOff) AlertsOffBell()
+                                }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         displayRegion,

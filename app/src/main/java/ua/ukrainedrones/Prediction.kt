@@ -19,6 +19,46 @@ fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Doub
 }
 
 /**
+ * Time in minutes for a point moving from [from] along [bearingDeg] at [speedMps] to cross the
+ * boundary of the circle of radius [radiusM] centered at [center]. Null when the point is already
+ * inside the circle, heading away from it, or has no usable speed. Solves the ray–circle
+ * intersection: the positive root `d = (v·u) + sqrt((v·u)^2 - (D^2 - R^2))` is the distance to the
+ * near boundary along the heading, where `v` = from − center, `u` = unit heading vector,
+ * `D` = distance to center. Returns minutes = `d / speed / 60`.
+ */
+fun etaToCircleEdgeMinutes(
+    from: LatLng,
+    center: LatLng,
+    radiusM: Double,
+    bearingDeg: Double,
+    speedMps: Double
+): Double? {
+    if (speedMps <= 0.0) return null
+    val vx = from.lat - center.lat
+    val vy = from.lon - center.lon
+    val dLatM = vx * 110_574.0
+    val dLonM = vy * 111_320.0 * cos(Math.toRadians((from.lat + center.lat) / 2.0))
+    val dSq = dLatM * dLatM + dLonM * dLonM
+    val d = sqrt(dSq)
+    if (d <= radiusM) return null // already inside
+    val rad = Math.toRadians(bearingDeg)
+    // unit heading vector (latitude/longitude metres), same metre basis as the offset above
+    val uLat = cos(rad)
+    val uLon = sin(rad) * (111_320.0 / 110_574.0) * cos(Math.toRadians(from.lat)).coerceAtLeast(0.01)
+    val uNorm = sqrt(uLat * uLat + uLon * uLon)
+    val ux = uLat / uNorm
+    val uy = uLon / uNorm
+    // v·u where v = center - from (threat -> center is negative along an inbound heading)
+    val vDotU = -(dLatM * ux + dLonM * uy)
+    if (vDotU <= 0.0) return null // heading away from the circle
+    val disc = vDotU * vDotU - (dSq - radiusM * radiusM)
+    if (disc < 0.0) return null // ray misses the circle entirely
+    val dist = vDotU - sqrt(disc)
+    if (dist < 0.0) return null
+    return dist / speedMps / 60.0
+}
+
+/**
  * Per-type dead-reckoning limits, mirroring NEPTUN's SDK `predict()`:
  * [horizonSec] is how long we keep gliding a marker after its last confirmed fix,
  * [maxGhostMeters] caps how far it may run ahead of that fix.

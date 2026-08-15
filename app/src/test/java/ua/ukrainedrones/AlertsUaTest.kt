@@ -3,6 +3,7 @@ package ua.ukrainedrones
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -122,5 +123,32 @@ class AlertsUaTest {
     fun `forceOffline false keeps backup inactive while connected`() {
         val st = NeptunState(connected = true, lastAlertAt = System.currentTimeMillis(), forceOffline = false)
         assertFalse(st.backupActive)
+    }
+
+    @Test
+    fun `forceOffline marks NEPTUN down and starts its offline timer`() {
+        val st = NeptunState(
+            connected = true,
+            offlineSince = System.currentTimeMillis() - 120_000L,
+            lastAlertAt = System.currentTimeMillis(),
+            forceOffline = true
+        )
+        assertTrue(st.neptunDown)
+        assertNotNull(st.offlineElapsedSec)
+        assertTrue(st.offlineElapsedSec!! >= 120L)
+        assertTrue(st.backupActive)
+    }
+
+    @Test
+    fun `neptunDown is true when disconnected`() {
+        val st = NeptunState(connected = false, offlineSince = System.currentTimeMillis() - 60_000L)
+        assertTrue(st.neptunDown)
+        assertTrue(st.backupActive)
+    }
+
+    @Test
+    fun `connected without force marks NEPTUN up`() {
+        val st = NeptunState(connected = true, lastAlertAt = System.currentTimeMillis())
+        assertFalse(st.neptunDown)
     }
 }
