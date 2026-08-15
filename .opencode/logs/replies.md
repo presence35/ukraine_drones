@@ -27882,3 +27882,975 @@ The user said "git push". There's a skill for this. Let me load it.
 git add .
 git commit -m "Add offline notification with 30s grace, retry action, and UI status"
 ```
+## 15/08/2026, 17:35:43
+
+Understood. Proceeding with the plan: alerts.com.ua backup, merged into `oblastAlerts` gated on NEPTUN down/stale, source tag in notification body **and** connection pill.
+
+Let me start implementing. First, let me read the remaining pieces I need: the `ConnectionStatus` pill function, `Strings.kt` structure, and `MainScreen` banner.
+
+
+## 15/08/2026, 17:35:56
+
+Let me see the rest of the ConnectionStatus dialog (875-1041) and the strings for the pill, plus where ConnectionStatus is called in MainScreen (line 371).
+
+
+## 15/08/2026, 17:36:26
+
+Now let me read the Strings.kt structure around the connection pill strings and the alert banner strings so I add new entries correctly. Let me read the StringSet interface fields and the UA/EN blocks.
+
+
+## 15/08/2026, 17:37:52
+
+I now have all the context I need. Let me create a todo list and start implementing.
+
+Let me first design the implementation carefully.
+
+**Key design decision on `backupAlerts` and merge gating:**
+
+I'll add to `NeptunState`:
+- `backupAlerts: List<OblastAlert>` — the alerts.com.ua data (always current, unfiltered)
+- `backupActive: Boolean` — whether the backup is currently contributing (NEPTUN down/stale)
+- A `alertSource: AlertSource` — which source produced the focus alert (computed in consumers, so I don't need it in NeptunState; but simpler to compute in consumers from backupActive + whether NEPTUN itself reported the alert).
+
+Actually, let me simplify. The plan says: merge into `oblastAlerts` gated on NEPTUN down/stale. And the source tag needs to know which source contributed.
+
+Let me think about the cleanest approach that respects the mirror rule (both MainViewModel and AlertService must stay in sync). 
+
+The `focusOblastAlertActive` logic is identical in both. The source tag: NEPTUN-only vs backup. I need to know, for the focus token, whether the active alert came from NEPTUN and/or backup.
+
+Let me structure it:
+- `NeptunState.oblastAlerts` — the **union** (NEPTUN + backup when gated active). Both consumers use this as-is.
+- `NeptunState.backupActive: Boolean` — true when backup is contributing (NEPTUN down/stale).
+- To compute the source tag, I need to know: is the focus alert present in the NEPTUN-sourced list, or only in the backup list?
+
+Simplest honest approach: track whether the focus alert is covered by **NEPTUN's own** alerts separately. But that means carrying two lists. 
+
+Alternative cleaner design: Keep two lists in state:
+- `neptunAlerts: List<OblastAlert>` (pure NEPTUN, from WS)
+- `backupAlerts: List<OblastAlert>` (pure backup)
+- `oblastAlerts` = computed union for consumers.
+
+Then each consumer (MainViewModel, AlertService) can compute both `focusOblastAlertActive` (from union) and the source (in NEPTUN list? in backup list?).
+
+But that changes the mirror logic more. Let me minimize: keep `oblastAlerts` as the union, and add a helper that both consumers call.
+
+Actually, the cleanest and safest for the mirror rule: add to `NeptunState` a computed `focus`-independent flag. Since the source is about *which data source*, and both consumers compute `focusOblastAlertActive` from the union, I can add a small pure function that, given the state, returns the source for a token.
+
+Let me define in `Threat.kt` (near `inOblast`):
+```kotlin
+enum class AlertSource { NEPTUN, BACKUP, BOTH }
+```
+And a helper on the union. But the union loses provenance.
+
+Best minimal approach: **keep two lists + a derived union**, but compute the union in `NeptunClient` and store `alertSource` per focus in consumers via a shared helper. Let me just add a helper in `Threat.kt`:
+
+```kotlin
+fun alertSourceFor(neptunAlerts: List<OblastAlert>, backupAlerts: List<OblastAlert>, token: String): AlertSource?
+```
+
+But consumers don't have `neptunAlerts` separated... 
+
+Let me reconsider. I'll keep it simple and store everything needed in `NeptunState`:
+- `oblastAlerts` — union (existing field, consumers unchanged)
+- `neptunAlerts` — pure NEPTUN list
+- `backupAlerts` — pure backup list
+- `backupActive` — whether backup is gated on
+
+Then a shared helper in `Threat.kt`:
+```kotlin
+fun AlertSource.Companion... 
+```
+
+Hmm, actually the source-tag logic is tiny. Let me put a helper:
+
+```kotlin
+enum class AlertSource { NEPTUN, BACKUP, BOTH }
+
+fun sourceFor(neptun: NeptunState, token: String): AlertSource {
+    val n = neptun.neptunAlerts.any { it.inOblast(token) }
+    val b = neptun.backupActive && neptun.backupAlerts.any { it.inOblast(token) }
+    return when {
+        n && b -> AlertSource.BOTH
+        n -> AlertSource.NEPTUN
+        b -> AlertSource.BACKUP
+        else -> throw/return null
+    }
+}
+```
+
+Wait — but if `backupActive` is false, `backupAlerts` shouldn't be in the union. So when gated, union = neptunAlerts only. When backupActive, union = neptunAlerts + backupAlerts.
+
+Actually the gating: backup contributes ONLY when NEPTUN down/stale. But even when NEPTUN is up, we might want the union for robustness? The user chose "fall back when NEPTUN is down/quiet" (option 2 = yes to the threshold gating). So yes, gate on down/stale.
+
+Let me define gating:
+- `backupActive = !connected || (connected && neptunAlerts.isEmpty() && backupAlerts not empty)` — actually the "down/quiet" fallback. Let me make it: backup contributes when NEPTUN is **not connected** OR NEPTUN's alert list is **stale** (no alerts seen recently). 
+
+For "quiet": NEPTUN connected but pushing zero oblast alerts while backup shows some. That would mean NEPTUN simply has no oblast alerts — which is legitimate (no alerts right now). We shouldn't override a legit "no alert" with backup. Hmm.
+
+Let me reconsider the fallback semantics to be honest and not cause false alerts. The goal: when NEPTUN is *down* (disconnected/not updating), use the backup so we still get oblast alerts. When NEPTUN is healthy, trust NEPTUN.
+
+So the cleanest: `backupActive = !connected`. Plus a freshness guard: if NEPTUN hasn't delivered any alert frames recently even though connected (quiet stream), we might also want backup. But to keep it simple and avoid false positives, I'll use: `backupActive = !connected || neptunQuiet` where neptunQuiet = connected but no alert frames in last N sec AND we have backup data. 
+
+Actually, given complexity, and that the user answered "ya" to my proposed default "disconnected OR zero oblast alerts for >60s", let me implement exactly that:
+- `backupActive = !connected || (connected && lastAlertFrameAt stale > 60s)`
+
+Hmm, "zero oblast alerts for >60s" — I'll interpret as: NEPTUN connected but has delivered no `alerts` frame in the last 60s. I'll track `lastAlertFrameAt` in NeptunClient (set on each `alerts` frame and on snapshot if alerts present).
+
+Let me keep it pragmatic:
+- Track `lastAlertAt` = last time an `alerts` frame OR a snapshot/merge containing oblast alerts was received.
+- `backupActive = !connected || (now - lastAlertAt > 60_000)`
+
+When `backupActive`, union = neptunAlerts ∪ backupAlerts (dedup by oblast name). When not active, union = neptunAlerts.
+
+Wait, but if NEPTUN is connected and fine and reports 0 alerts, then lastAlertAt just updated, backupActive=false, union=neptunAlerts (empty). Good — no false alert.
+
+If NEPTUN disconnects, connected=false, backupActive=true, union=neptunAlerts+backup. Good.
+
+If NEPTUN connected but the alert stream went quiet (server stopped sending alert updates) for >60s, backupActive=true. Reasonable.
+
+Now, since union is computed in NeptunClient and stored, but the **source tag** needs provenance, I'll store `neptunAlerts` and `backupAlerts` separately in state, plus `backupActive`, and derive `oblastAlerts` union. But consumers read `oblastAlerts`. For the source tag, consumers need the provenance.
+
+Let me store in NeptunState:
+```kotlin
+data class NeptunState(
+    val threats: Map<String, Threat> = emptyMap(),
+    val oblastAlerts: List<OblastAlert> = emptyList(),   // UNION (what consumers read)
+    val neptunAlerts: List<OblastAlert> = emptyList(),   // provenance: NEPTUN only
+    val backupAlerts: List<OblastAlert> = emptyList(),   // provenance: backup only
+    val backupActive: Boolean = false,
+    val connected: Boolean = false,
+    val lastError: String? = null
+)
+```
+
+And a shared helper for the source tag in Threat.kt:
+```kotlin
+fun NeptunState.alertSourceFor(token: String): AlertSource? {
+    val n = neptunAlerts.any { it.inOblast(token) }
+    val b = backupActive && backupAlerts.any { it.inOblast(token) }
+    return when {
+        n && b -> AlertSource.BOTH
+        n -> AlertSource.NEPTUN
+        b -> AlertSource.BACKUP
+        else -> null
+    }
+}
+```
+
+Wait, when backupActive is false, backupAlerts is not in union and shouldn't contribute. When backupActive true, both could. Good.
+
+But `oblastAlerts` union needs to be computed in NeptunClient and kept in sync with neptunAlerts/backupAlerts. Let me compute it whenever either changes.
+
+Now for the notifications: in AlertService, `focusOblastAlertActive` uses `st.oblastAlerts` (union) — unchanged. For the source tag, when posting the official alert, call `st.alertSourceFor(token)` and append to body. I need the token in `handleState` — it has `focusAttribution(...).token`. Let me check: `MonitorEvent.State` has `focusOblastAlertActive` bool but not the token. I'll add the source to `MonitorEvent.State` (computed in the combine at line 170).
+
+Similarly for MainViewModel banner: add `focusAlertSource` to `UiState`.
+
+For the connection pill: when `backupActive`, show a tag like "· backup" in the pill. The pill currently shows Online/Offline. I'll add a source indicator when backup is active.
+
+Let me now check the MonitorEvent.State definition and UiState fields. Let me read those.
+
+Let me look at AlertService MonitorEvent.State (around line 60-75) and the MainViewModel UiState (around 20-40).
+
+
+## 15/08/2026, 17:38:04
+
+I have all the context I need. Let me set up my todos and start implementing.
+
+Let me check how `MonitorEvent.State` is constructed in the combine (lines 140-182) to add the source field, and how the connection/offline state is tracked in AlertService (the `connected` and `offlineElapsedSec` fields). Let me also check `retryNow` in NeptunClient (referenced in AlertService line 121).
+
+
+## 15/08/2026, 17:38:13
+
+Let me check `retryNow` and how `connected`/`offlineElapsedSec` are computed in the AlertService combine (I saw `MonitorEvent.State` has `connected` and `offlineElapsedSec`). Let me read lines 194-220 and the NeptunClient retryNow.
+
+
+## 15/08/2026, 17:38:27
+
+There's an `offlineElapsedSec` in `NeptunState` — I need to check that field. Let me grep. Also I need to see how `NeptunState` is defined in full and `offlineElapsedSec` is computed.
+
+
+## 15/08/2026, 17:38:33
+
+The `NeptunState` I read earlier (lines 26-31) didn't show `offlineElapsedSec`. Let me re-read the current full data class definition — the file may have changed or I missed it. Wait, earlier I read lines 26-31 showing `threats, oblastAlerts, connected, lastError`. But grep says line 34 has `offlineElapsedSec`. The file is 302 lines now (was 278). It seems the file has been modified since my first read. Let me re-read the current NeptunState definition and top of the file.
+
+
+## 15/08/2026, 17:38:49
+
+Good point. ETA >3h is never relevant, so keep it simple: express ETA in minutes only.
+
+Let me update the plan:
+
+## Revised plan — ETA in minutes only
+
+### 1. `Strings.kt` — new StringSet fields
+- `etaUnit` — singular short unit for minutes: UA `"хв"`, EN `"min"`.
+- `approxNote` — UA `"Усі числа в застосунку приблизні"`, EN `"All numbers in the app are approximate"`.
+- `pillDistanceCd` — contentDescription for the distance pill carrying pinned-city context: UA `"Відстань до %1$s: %2$d км"`, EN `"Distance to %1$s: %2$d km"`.
+
+Drop the `etaMinutesUnit`/`etaHoursUnit` pair from before — no hours needed.
+
+### 2. `ThreatPopupCard.kt` — pill trio + minutes-only ETA
+- **Replace** `summary` (114-127) and `distLabel` (64-69) with the trio; keep `pinnedCity`/`distLabel` only for the distance pill's `contentDescription`.
+- **Rewrite `formatEtaMinutes`** (543-546) → minutes only: `"${min.roundToInt().coerceAtLeast(1)} ${s.etaUnit}"` → e.g. `"10 хв"` / `"120 min"`. Simple, no hour branch. (120 min = 2h, shown as `120 хв` — fine since nothing >3h matters.)
+- **Add neutral `MetricPill`** composable: muted/near-`onSurfaceVariant` (bg `Color(0xFF2A2A2A)`, text `Color(0xFFB0B0B0)`), number emphasized (`FontWeight.Bold`), unit smaller. Low-color, wrap-friendly in a `FlowRow`.
+- **Build trio** as a `FlowRow`: distance, ETA, speed — all three use `MetricPill` (speed is now just another pill, not the colored `SpeedPill`).
+  - GPS off (`distUser == null`): fall back to muted `gpsOffLabel` text (no trio).
+- **Wire into all three sizes** replacing the `summary` Text:
+  - SMALL (160-164), MEDIUM (221-236), LARGE (316-332). Drop the separate `SpeedPill` branch in MEDIUM/LARGE (speed now lives in the trio).
+- **Remove** now-unused `SpeedPill` (528-539); drop old `distColor`-based summary coloring (keep `band`/`bandColor` for border).
+
+### 3. `SettingsScreen.kt` — Settings note
+- Add muted `approxNote` row to the **card-size card** (228-255), styled like the `cardSkullNote` block (237-252) with a small info icon + `onSurfaceVariant` `bodySmall`. Settings screen only; card stays clean.
+
+### 4. `CHANGELOG.md`
+- Append under `## [Unreleased]`.
+
+### 5. Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+No `AlertService` mirror (UI-only change).
+
+Ready to implement on your "go".
+## 15/08/2026, 17:39:39
+
+The file has `offlineSince` field. I now have full context. Let me start implementing.
+
+Let me set up todos and begin. First, I'll create the new `AlertsUaClient.kt` file.
+
+My design:
+1. **`AlertsUaClient.kt`** (new): polls `https://alerts.com.ua/api/states`, exposes `StateFlow<BackupState>` with `alerts: List<OblastAlert>` + `active` flag.
+2. **`NeptunState`**: add `backupAlerts: List<OblastAlert>`, `backupActive: Boolean`. Keep `neptunAlerts` provenance. Actually let me restructure:
+   - `neptunAlerts: List<OblastAlert>` — pure NEPTUN (renamed from `oblastAlerts`?) — no, that would ripple. Let me keep `oblastAlerts` as the UNION (consumers unchanged), and add `neptunAlerts` + `backupAlerts` + `backupActive` for provenance/source.
+   
+   Wait, but `oblastAlerts` is set directly by the WS `alerts` handler. I'll change it so WS sets `neptunAlerts`, and `oblastAlerts` becomes a computed union. But `NeptunState` is a data class with a computed property — I can compute the union lazily in a property getter. But `backupActive` and `backupAlerts` and `neptunAlerts` need to be stored.
+
+Let me define:
+```kotlin
+data class NeptunState(
+    val threats: Map<String, Threat> = emptyMap(),
+    val neptunAlerts: List<OblastAlert> = emptyList(),
+    val backupAlerts: List<OblastAlert> = emptyList(),
+    val backupActive: Boolean = false,
+    val connected: Boolean = false,
+    val lastError: String? = null,
+    val offlineSince: Long? = null
+) {
+    val offlineElapsedSec: Long? get() = ...
+    /** Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. */
+    val oblastAlerts: List<OblastAlert>
+        get() = if (backupActive) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
+}
+```
+
+But `oblastAlerts` is referenced as `_state.value.copy(oblastAlerts = list)` in the WS handler. I'll change that to `neptunAlerts`. And `_state.value.copy(backupAlerts=..., backupActive=...)` from the backup.
+
+Since `oblastAlerts` is a computed getter, `copy()` won't preserve it but it's computed on the fly, so fine.
+
+Wait — `data class copy` with a computed property: the computed property is not part of the primary constructor, so `copy(neptunAlerts=...)` will recompute `oblastAlerts` from the new `neptunAlerts`. 
+
+Now the merge helper + source logic in `Threat.kt`:
+```kotlin
+enum class AlertSource { NEPTUN, BACKUP, BOTH }
+
+fun NeptunState.alertSourceFor(token: String): AlertSource? {
+    val n = neptunAlerts.any { it.inOblast(token) }
+    val b = backupActive && backupAlerts.any { it.inOblast(token) }
+    return when { n && b -> BOTH; n -> NEPTUN; b -> BACKUP; else -> null }
+}
+```
+
+Gating (`backupActive`): computed in NeptunClient. I'll track `lastAlertAt` = time of last NEPTUN alert data receipt. `backupActive = !connected || now - lastAlertAt > 60_000`. But this needs a periodic recompute. Hmm — `backupActive` is part of state; I need something to recompute it. 
+
+Simpler: I can compute `backupActive` as a derived value in a property getter too, but it needs `now` which changes. Actually the "zero oblast alerts for >60s" — I can track in NeptunClient a `backupActive` AtomicBoolean updated by a small periodic task (the existing keep-alive loop runs every 20s). Or compute it on the fly in a getter using `System.currentTimeMillis()`.
+
+Let me make `backupActive` a computed getter on NeptunState too, using `lastAlertAt`:
+```kotlin
+val lastAlertAt: Long = 0L   // epoch ms of last NEPTUN alert data
+val backupActive: Boolean
+    get() = !connected || System.currentTimeMillis() - lastAlertAt > 60_000
+```
+But `lastAlertAt` needs to be in the constructor (stored). And `backupActive` derived. This way, when the WS `alerts` frame arrives, I set `lastAlertAt = now` and `backupActive` becomes false. When disconnected, `!connected` → backupActive true.
+
+But there's a subtlety: when NEPTUN is connected and healthy and reports 0 alerts, `lastAlertAt` updates, backupActive=false, union=neptunAlerts (empty). Good — no false alert.
+
+When NEPTUN connected but the `alerts` stream goes quiet for 60s, backupActive becomes true and backup fills. Good.
+
+This derived approach avoids a separate recompute task. 
+
+Now, `sourceFor` uses `backupActive` getter. Good.
+
+Now the source tag in notifications: in AlertService `handleState`, I need the token. `MonitorEvent.State` doesn't carry the token. I'll add `focusAlertSource: AlertSource?` to `MonitorEvent.State`, computed in the combine. Let me add a helper `focusAlertSource(st, followMe, gps, pinned)` that gets token and returns `st.alertSourceFor(token)`.
+
+For MainViewModel: add `focusAlertSource: AlertSource?` to UiState, computed in `buildUiState` (has focusToken). 
+
+For the connection pill: show backup indicator when `backupActive`. I'll pass `backupActive` into `ConnectionStatus` and append a label. Actually the user wants the source in the connection pill. Let me add a small "· backup" indicator when backup is active. I'll add string `connBackup` like "Backup" / "Резерв".
+
+Let me now also handle: `AlertService` posts official alert with source tag. In `handleState`, when posting the official alert (line 286-293), I append the source tag to `state.focusRegion` body. And the banner title too? The user said "notif body". So append to the notification body (`state.focusRegion`). Let me create `sourceTag(s, source)` helper returning the suffix string.
+
+Let me now implement. Start with `AlertsUaClient.kt`.
+
+Let me check the build.gradle for OkHttp and check imports used in NeptunClient (okhttp3 already used). Let me create the file.
+
+
+## 15/08/2026, 17:39:46
+
+Let me check the build.gradle to confirm OkHttp and org.json are available for the test classpath, and check how existing tests parse JSON (TestThreats/ThreatTest).
+
+
+## 15/08/2026, 17:40:13
+
+Good — OkHttp and org.json available. Now let me create the `AlertsUaClient.kt`. I'll model it closely on `NeptunClient`'s structure (object singleton, scope, StateFlow, OkHttp).
+
+Let me create the file:
+
+
+## 15/08/2026, 17:40:28
+
+Now let me add the `AlertSource` enum and the source helper + merge helper in `Threat.kt`. Let me add near the `OblastAlert.inOblast` function.
+
+
+## 15/08/2026, 17:40:57
+
+Now let me wire the backup into `NeptunClient.kt`. I'll:
+1. Change `NeptunState` to have `neptunAlerts`, `backupAlerts`, `backupActive` (derived), and compute the `oblastAlerts` union.
+2. Add `lastAlertAt` field.
+3. In `start()`/`stop()` also start/stop `AlertsUaClient`.
+4. Update the WS `alerts` handler to set `neptunAlerts` and `lastAlertAt`.
+5. Add a collector of `AlertsUaClient.state` to update `backupAlerts`.
+6. `onForeground()` refresh backup too.
+
+Let me define the new NeptunState. The derived `backupActive`:
+```kotlin
+val backupActive: Boolean
+    get() = !connected || System.currentTimeMillis() - lastAlertAt > BACKUP_FALLBACK_MS
+```
+
+And `oblastAlerts`:
+```kotlin
+val oblastAlerts: List<OblastAlert>
+    get() = if (backupActive) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
+```
+
+Let me edit the data class.
+
+
+## 15/08/2026, 17:41:30
+
+Now let me update `NeptunClient`'s `start()`/`stop()` and add the `BACKUP_FALLBACK_MS` constant, the collector, `onForeground` refresh, and the WS alerts handler. Let me edit the start/stop and add a constant.
+
+
+## 15/08/2026, 17:41:50
+
+I'll look at the current implementation of the edit pencil floating button.
+
+
+## 15/08/2026, 17:42:02
+
+Let me read the relevant section of MainScreen.kt around the edit button.
+
+
+## 15/08/2026, 17:42:19
+
+Now update `onForeground()` to also refresh the backup, and update the WS `alerts` handler to set `neptunAlerts` + `lastAlertAt`.
+
+
+## 15/08/2026, 17:42:20
+
+I can see the edit button (lines 661-677). It's a 38dp circular button with an edit icon. Let me check the `editZonesLabel` strings and understand the layout context. Let me check what those strings are.
+
+The strings are "Змінити зони" (UA) and "Edit zones" (EN). That's the label. The user wants a small "edit" text to accompany the pencil icon so it's more discoverable.
+
+Let me look at the surrounding button styles (ZoneButton) to match conventions, and the strings for something like "edit".
+
+
+## 15/08/2026, 17:42:38
+
+Now the `startKeepAliveTasks` watchdog: when NEPTUN disconnects, `connected=false` triggers `backupActive`. But the derived `backupActive` needs no task since it's computed on read. Good.
+
+Now let me verify the NeptunClient compiles logically — check no other references to `oblastAlerts` as a constructor param in `copy()`. Let me grep.
+
+
+## 15/08/2026, 17:42:40
+
+Now I understand the pattern. The edit button is a small 38dp circular button with just a pencil icon. The user's suggestion is to add a small "edit" text label, possibly with an invisible/fake-transparent larger tap target so fingers can still hit the small text.
+
+Let me think about the design options to present. I have enough to form a plan. Let me consider the strings — I'd want a short "Edit" label for EN and a short UA equivalent ("Змінити"). The existing `editZonesLabel` is "Змінити зони"/"Edit zones" which is longer.
+
+Let me check what string would be appropriate. The user asked for "a small 'edit' text too." Let me propose adding a short label under/next to the pencil.
+
+Let me form a plan and ask the user about the layout preference.
+
+
+## 15/08/2026, 17:42:45
+
+The consumers read `oblastAlerts` (now a computed union) — good, no changes needed there for the merge. Now let me add the source tag to the AlertService official alert notification.
+
+First, add `focusAlertSource` to `MonitorEvent.State`, compute it in the combine, and use it in `handleState` to append a source tag to the body.
+
+Let me edit the `MonitorEvent.State` data class and its construction.
+
+
+## 15/08/2026, 17:43:06
+
+Now add the `focusAlertSource` helper next to `focusOblastAlertActive`, and update `handleState` to append the source tag to the official-alert body. Let me add the helper:
+
+
+## 15/08/2026, 17:43:14
+
+Now update `handleState` to append the source tag to the official alert body. Let me look at the exact block (lines 286-293) and add a source tag. I'll modify the `postAlert` call for the official alert to append the tag to `state.focusRegion`.
+
+
+## 15/08/2026, 17:43:35
+
+Now add the `sourceTag` helper. Let me add it near `threatBody`. I'll add it right after the `threatBody` function.
+
+
+## 15/08/2026, 17:43:46
+
+Now the MainViewModel: add `focusAlertSource` to `UiState`, compute in `buildUiState` (has focusToken), and use it in the banner. Let me add the field and compute it.
+
+First add the UiState field:
+
+
+## 15/08/2026, 17:43:59
+
+Now compute `focusAlertSource` in `buildUiState` where `focusOblastAlertActive` is computed (lines 295-297), and add it to the `UiState(...)` construction. Let me read that area again to get exact context (it's around 295-300 and the UiState construction at 383).
+
+The user wants the source in the notification body AND the connection pill. The MainScreen banner is a separate surface the user did NOT ask for. But I added `focusAlertSource` to UiState — I only need it if I display it in the banner. Since the user said "notif body, connection pill" and NOT the banner, I don't strictly need it in UiState. But it's harmless and could be useful. However, to keep minimal, let me reconsider.
+
+Actually, the user said scope = "notif body, connection pill". So I should NOT add source to the on-map banner. I added the UiState field unnecessarily. Let me remove it to keep minimal... Actually, adding a field to UiState that's unused is dead code. Let me remove the MainViewModel changes since they're not needed.
+
+Let me revert the MainViewModel UiState field addition.
+
+
+## 15/08/2026, 17:44:18
+
+Good, MainViewModel unchanged (banner stays clean). Now the connection pill source indicator. The pill is in `MainScreen.kt` and needs to know if backup is active. `uiState.connected` is available; I need `backupActive` in `UiState`.
+
+Let me add `backupActive` to `UiState` and compute it from `neptun.backupActive`. Then pass to `ConnectionStatus`.
+
+Let me add the UiState field and compute it. First check where UiState construction sets `connected` (line 391) and `offlineElapsedSec`.
+
+
+## 15/08/2026, 17:44:26
+
+I need to understand the context of "yellow zone" and "red zone" defaults. Let me explore the codebase.
+
+
+## 15/08/2026, 17:44:27
+
+I'll add a `backupActive` field to UiState and compute it. Let me add the field near `connected`:
+
+
+## 15/08/2026, 17:44:38
+
+The user says: "yellow zone is 50km max, red is 20km. keep the defaults 5/20". 
+
+Wait, this is a bit contradictory. Let me parse: "yellow zone is 50km max, red is 20km." Then "keep the defaults 5/20". 
+
+Hmm. The current defaults (per tests and ARCHITECTURE) are red=5, yellow=20. The user says keep defaults 5/20. So red=5, yellow=20. But then says "yellow zone is 50km max, red is 20km."
+
+Wait, this seems confusing. Let me re-read. Maybe the user means: the maximum allowed values for the sliders should be yellow=50km max, red=20km max. And keep the defaults at 5 (red) / 20 (yellow).
+
+Let me look at ZonesSheet.kt and ZonePrefs.kt to understand the current max values and defaults.
+
+Let me investigate the current slider max bounds and defaults.
+
+
+## 15/08/2026, 17:44:45
+
+Now update `ConnectionStatus` call in MainScreen (line 369-374) to pass `backupActive`, and modify the `ConnectionStatus` composable to show a backup indicator. Let me update the call site first:
+
+
+## 15/08/2026, 17:44:50
+
+Now I understand the context. Let me look at ZonePrefs.kt to find the default values for redZoneKm and yellowZoneKm.
+
+The user's message is a bit confusing. Let me re-read: "yellow zone is 50km max, red is 20km. keep the defaults 5/20"
+
+So:
+- Yellow zone max = 50km
+- Red zone max = 20km
+- Defaults: red=5, yellow=20
+
+Currently in ZonesSheet.kt:
+- Red slider: range `1f..5f` (max 5)
+- Yellow slider: range `6f..20f` (max 20)
+
+The user wants:
+- Yellow max: 50km (up from 20)
+- Red max: 20km (up from 5)
+- Defaults stay at 5 (red) / 20 (yellow)
+
+Let me check ZonePrefs.kt for the defaults.
+
+
+## 15/08/2026, 17:45:02
+
+Now I have the full picture. Let me also check the `RedialZones` in Zones.kt and the `ThreatLevelModel.scoreOf` which uses yellowKm in ETA math, to understand if raising the max impacts anything.
+
+Let me check Zones.kt and ThreatLevel.kt briefly.
+
+
+## 15/08/2026, 17:45:03
+
+Now update the `ConnectionStatus` composable signature and body to show a backup tag when backup is active. I'll add a `backupActive` param and render a small "· backup" label after the connection label. Let me edit the signature and the label line.
+
+
+## 15/08/2026, 17:45:16
+
+Now add the Strings entries. I need: `alertSourceBackup`, `alertSourceBoth`, `connBackup`. Let me look at the StringSet interface around line 57-63 (conn strings) and the alert banner area to add fields properly. Let me add the fields to the interface and both UA/EN blocks.
+
+First, add to the StringSet interface. Let me add near `connDownLine` (line 63) and the alert strings. I'll add `connBackup` after `connDownLine`, and `alertSourceBackup`/`alertSourceBoth` near the alert banner fields (line 119-121).
+
+
+
+
+## 15/08/2026, 17:45:36
+
+Now add the UA values. Let me look at the UA block around lines 263-269 (conn strings) and 314-318 (alert banner). I'll add `connBackup` after `connDownLine` (269), and `alertSourceBackup`/`alertSourceBoth` after `alertBannerFormat` (314).
+
+
+
+
+## 15/08/2026, 17:45:41
+
+Now I have a complete understanding. Let me formulate the plan.
+
+The user wants:
+- **Yellow zone max = 50km** (currently 20)
+- **Red zone max = 20km** (currently 5)
+- **Keep defaults at 5 (red) / 20 (yellow)**
+
+Wait, this is contradictory in a way. If yellow max is 50 and red max is 20, then defaults 5/20 means red=5, yellow=20. But then the yellow default (20) is the old max. Hmm. That's fine — defaults don't need to be at max.
+
+Actually, re-reading: "yellow zone is 50km max, red is 20km" — this sets the new slider max bounds. "keep the defaults 5/20" — keep default red=5, yellow=20.
+
+So the changes needed:
+
+**ZonesSheet.kt** (slider ranges):
+- Red slider: range `1f..5f` → `1f..20f`
+- Yellow slider: range `6f..20f` → `6f..50f` (or 21f..50f since red max is now 20)
+
+Wait — there's an invariant: yellow must be > red. Currently red max is 5 and yellow min is 6. If red max becomes 20, then yellow min must become 21. Let me note the constraints:
+- Red slider: `1f..20f`
+- Yellow slider: `21f..50f` (yellow must stay above red's max of 20)
+
+Hmm, but that's a design decision. Actually the yellow slider is a separate range and the user picks both. There could be overlap issues. Currently red=1..5, yellow=6..20 — disjoint. If red max is 20 and yellow min is 6, they overlap, which would be a bug (a threat could be in both). To keep disjoint, yellow min should be 21.
+
+**ZonePrefs.kt**:
+- `redZoneKm()` default: stays 5
+- `setRedZoneKm`: `coerceIn(1, 5)` → `coerceIn(1, 20)`
+- `yellowZoneKm()` default: stays 20
+- `setYellowZoneKm`: `coerceIn(6, 20)` → `coerceIn(21, 50)` (or keep min 6, but then overlap)
+- Update doc comments
+
+**ARCHITECTURE.md**:
+- Zone tiering invariant: "INNER = distance ≤ red (1–5 km), OUTER = ≤ yellow (6–20 km)" → "INNER = distance ≤ red (1–20 km), OUTER = ≤ yellow (21–50 km)"
+
+Wait — the user said "keep the defaults 5/20". Let me reconsider the min values. The current minimums are red min=1, yellow min=6. Should I keep those or adjust? Since the user only mentioned max values and defaults, I'll keep the min values as-is where they make sense, but I need yellow > red to avoid overlap.
+
+Actually, let me reconsider. The constraint "yellow must be > red" is a hard invariant in `radialZone`: INNER if ≤ red, OUTER if ≤ yellow. If yellow ≤ red, the OUTER case is unreachable (a value ≤ yellow would also be ≤ red). So they must be disjoint with yellow > red.
+
+Given red max = 20, yellow min must be at least 21. So I'll set yellow slider to `21f..50f` and coerceIn(21, 50). But wait — the default yellow is 20, which would be below the new min of 21! That's a conflict.
+
+Hmm. "keep the defaults 5/20" — red default 5, yellow default 20. If yellow slider min becomes 21, then the default 20 is outside range. That's problematic.
+
+Let me reconsider. Maybe the intended interpretation is simpler: just change the max bounds, keep the defaults, and don't worry too much about the yellow>red overlap invariant, OR keep yellow min at 6.
+
+Actually, let me reconsider whether the yellow>red overlap matters in practice. With red max 20 and yellow min 6, a user could set red=15, yellow=10 — then OUTER is unreachable and a threat at 12km would be INNER. Not a crash, but the yellow zone becomes useless. It's a degenerate config but not broken per se.
+
+Given the ambiguity, I should ask the user for clarification. But let me think about what's most sensible.
+
+The cleanest approach that keeps defaults and disjoint zones:
+- Red: 1..20, default 5
+- Yellow: must be > red, so min 21 if red can reach 20. But default 20 conflicts.
+
+Alternatively, keep yellow min at 6 and just extend max to 50. Then default 20 is fine, but overlap is possible. The existing code already has this pattern where ranges are independent.
+
+Given the user explicitly said "keep the defaults 5/20", the default 20 for yellow must remain valid. So the yellow slider min must stay ≤ 20, i.e., keep min at 6 (or 21 would break it). So: yellow `6f..50f`, default 20.
+
+This keeps both defaults valid. The overlap issue (red up to 20, yellow min 6) is a pre-existing pattern concern, but I'll note it.
+
+Actually wait, let me reconsider. Let me reconsider whether I should ask the user about the min bounds for yellow, since the red max now exceeds the yellow min, creating possible overlap. This is a genuine design decision.
+
+Let me ask a clarifying question about the yellow minimum (whether to keep 6 or raise to 21 to stay above red's new max of 20).
+
+Let me formulate the plan and ask this one clarifying question.
+
+
+## 15/08/2026, 17:45:46
+
+The user wants to rethink the whole approach. They feel the pencil/edit icon isn't discoverable. Let me brainstorm different ideas for how to make the zone editor more discoverable.
+
+Let me first understand the full context — what this button does (opens the zone editor sheet), where it sits (bottom of map, next to the zone alert pills). Let me look at the broader layout to understand options.
+
+Let me look at the full ZoneButtons area and how it's placed on the map.
+
+
+## 15/08/2026, 17:45:52
+
+Now the EN block. UA values are around 470-476 (conn) and 511-515 (alert). Let me edit those.
+
+
+## 15/08/2026, 17:45:55
+
+Let me see where ZoneButtons is positioned on the map and what else is around the bottom. Let me search for where ZoneButtons is called.
+
+
+## 15/08/2026, 17:46:11
+
+Now let me add tests. Let me create `AlertsUaTest.kt` testing the alerts.com.ua payload parsing + merge. Let me look at an existing test file for style (ThreatTest.kt).
+
+Let me check TestThreats and ThreatTest to follow conventions.
+
+
+## 15/08/2026, 17:46:12
+
+Now I have a good understanding. The bottom-center of the map has:
+- The zone pills (INNER red zone / OUTER yellow zone pill buttons)
+- The small pencil edit button
+
+The user wants to rethink discoverability. The `editZonesLabel` semantics description ("Edit zones"/"Змінити зони") shouldn't be the label — they want a short one.
+
+Let me brainstorm design directions and present them to the user for their input, since they explicitly want to brainstorm. Let me look at what the zone pills look like (ZonePill) to understand the visual language.
+
+
+## 15/08/2026, 17:46:33
+
+The user chose "Raise yellow min to 21". But wait — they also said "keep the defaults 5/20". If yellow min becomes 21, the default yellow of 20 becomes invalid. Let me reconcile this.
+
+Since yellow min is now 21, the default yellow of 20 would violate it. I need to handle this. Let me think about what makes sense. The user wants:
+- Red: max 20, default 5
+- Yellow: min 21, max 50
+
+With yellow min 21, the old default of 20 can't stay. But the user said "keep the defaults 5/20". Hmm. There's tension here.
+
+Actually, wait. Let me re-read the original request once more: "yellow zone is 50km max, red is 20km. keep the defaults 5/20"
+
+Maybe "keep the defaults 5/20" just means "don't change the stored default values from what they are" — but that conflicts with yellow min 21.
+
+Given the user then chose "Raise yellow min to 21", the default yellow must become 21 (the new minimum) rather than 20. Or the default should be adjusted. Since 20 < 21, coerceIn(21, 50) would clamp any existing stored 20 to 21, and the default `?: 20` would need to become `?: 21`.
+
+Let me verify what the current default should become. The user said keep defaults 5/20, but the new min for yellow is 21. So I should set the yellow default to 21 (the minimum) and red default to 5. I'll note this in the plan and flag it to the user.
+
+Actually, let me reconsider — I already have enough to form the plan. Let me present it, noting the yellow default must shift from 20 to 21 given the new min constraint.
+
+Let me also check `ThreatLevelModel.scoreOf` signature usage — it takes redKm and yellowKm params, so no constant changes needed there.
+
+Now let me write the plan.
+
+## Plan
+
+**Goal:** Extend zone radius maximums — red zone up to 20km, yellow zone up to 50km — while keeping the red default at 5. Yellow min rises to 21 (per your choice), so the yellow default shifts from 20 → 21.
+
+### Changes
+
+1. **`ZonePrefs.kt`** (lines 41–55) — the DataStore backing + validation:
+   - `redZoneKm()` default stays `5`; comment "slider range 1–5" → "1–20".
+   - `setRedZoneKm`: `coerceIn(1, 5)` → `coerceIn(1, 20)`.
+   - `yellowZoneKm()` default `20` → `21` (new min); comment "6–20" → "21–50".
+   - `setYellowZoneKm`: `coerceIn(6, 20)` → `coerceIn(21, 50)`.
+
+2. **`ZonesSheet.kt`** (lines 44–66) — slider ranges:
+   - Red: `range = 1f..5f` → `1f..20f`.
+   - Yellow: `range = 6f..20f` → `21f..50f`.
+
+3. **`Zones.kt`** (line 8) — doc comment "red 1–5 km and yellow 6–10 km" → "red 1–20 km and yellow 21–50 km" (stale doc).
+
+4. **`ARCHITECTURE.md`** (line 150) — update the zone-tiering invariant to reflect new ranges (INNER ≤ red 1–20 km, OUTER ≤ yellow 21–50 km). Also check `ZonesSheet`/`ZonePrefs` mentions if any in the module map (they don't list ranges, so just the invariant line).
+
+### Verification
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (ZonesTest/ThreatLevelTest use `RadialZones(5,20)` / `scoreOf(...,5,20,...)` — these still pass since they pass explicit values, not defaults).
+
+**Note:** Because the yellow minimum is now 21, the yellow default can no longer be 20 — it becomes 21. This is a deviation from "keep defaults 5/20"; the red default stays 5. Let me flag this clearly.
+
+Let me double check whether any existing user pref with yellow=20 would be clamped. `setYellowZoneKm` coerceIn(21,50) clamps on write; the read default only applies when no stored value. Existing installs with stored 20 would read 20 (out of the new range) until they touch the slider. That's acceptable but worth noting.
+
+Let me present this plan.
+
+
+## 15/08/2026, 17:46:47
+
+Now let me create the test file. I'll test `AlertsUaClient.parseStates` (though it's an object with private state, `parseStates` is a public fun) and `mergeAlerts` / `alertSourceFor`.
+
+Note: `alertSourceFor` and `backupActive` are on `NeptunState` — `backupActive` uses `System.currentTimeMillis()` and `lastAlertAt`. I can test `alertSourceFor` by constructing a `NeptunState` with `connected=false` (so `backupActive` = true) and setting `backupAlerts`/`neptunAlerts`.
+
+Let me write the test.
+
+
+## 15/08/2026, 17:46:50
+
+Now I have a complete picture. The current edit button is a 38dp circle with a pencil icon, visually similar to the two zone zoom pills beside it (red/yellow 38dp circles). It reads as "just another zoom button" — hence the discoverability problem. Users don't realize one of the three circles opens the editor.
+
+Let me brainstorm design directions. I'll present several distinct approaches for the user to weigh in on, since they explicitly want to brainstorm.
+
+Here are my ideas:
+
+**Direction A — Make it a labeled pill (different visual language)**
+Turn the third circle into a distinct pill/button that says a short word like "Edit" / "Змінити" with a small pencil icon. Since it's visually different from the zoom circles, it no longer blends in. Example: a rounded-rect pill (`RoundedCornerShape(50)`) with surface bg, border, and `[✎ Edit]`. Wider than 38dp so the word fits. This is the most direct "small text" solution the user mentioned.
+
+**Direction B — Move it out of the row entirely**
+The three circles together cause confusion. Move the editor control away from the zoom pills — e.g. a small FAB-style button in a bottom corner (bottom-end, above the threat strip) labeled with pencil+text, or relocate the entry point into a top bar/settings. This separates "zoom a zone" from "edit zones" mentally.
+
+**Direction C — Two-step affordance on the pills themselves**
+Instead of a separate button, make the two zone zoom pills also open the editor. E.g. long-press a zone pill to edit zones (with a subtle hint on first launch), or tapping opens the editor while the pill's zoom becomes a separate control. Fewer buttons, no extra element. Downside: discoverability of long-press is low.
+
+**Direction D — Add a short text label under the existing circle**
+Keep the 38dp pencil circle but add a tiny "Edit"/"Змінити" label underneath (like the zone buttons have a bell indicator above). Use an invisible transparent touch area (the `Box` with a larger tap target via `minimumInteractiveComponentSize`) so the small text is still tappable. This is literally the user's original idea — cheap, minimal.
+
+**Direction E — Combine: labeled pill + separate it from zoom row**
+The strongest UX: make the editor a labeled pill placed slightly apart (a small gap) from the zoom circles, or on its own row, so the eye groups the two zoom pills together and the editor stands apart with a clear word label.
+
+I should also address: the `editZonesLabel` contentDescription should become just short "Edit"/"Змінити" regardless, since it's used for accessibility and now the visible label too. But we need to check — is `editZonesLabel` used elsewhere (e.g. in a menu or guide)? Let me verify usage.
+
+
+## 15/08/2026, 17:47:01
+
+The user confirmed: yellow default becomes 21. Now I have all decisions needed to finalize the plan.
+
+## Plan
+
+Extend the zone radius maximums and adjust bounds:
+
+- **Red zone**: max 5 → **20 km**, default stays **5**.
+- **Yellow zone**: min 6 → **21**, max 20 → **50**, default 20 → **21** (required so it stays above the new red max).
+
+### Changes
+
+**1. `ZonePrefs.kt`** (lines 41–55) — DataStore backing + validation:
+- `redZoneKm()`: default stays `5`; comment `1–5` → `1–20`.
+- `setRedZoneKm`: `coerceIn(1, 5)` → `coerceIn(1, 20)`.
+- `yellowZoneKm()`: default `20` → `21`; comment `6–20` → `21–50`.
+- `setYellowZoneKm`: `coerceIn(6, 20)` → `coerceIn(21, 50)`.
+
+**2. `ZonesSheet.kt`** (lines 44–66) — slider ranges:
+- Red: `1f..5f` → `1f..20f`.
+- Yellow: `6f..20f` → `21f..50f`.
+
+**3. `Zones.kt`** (line 8) — stale doc comment `red 1–5 km and yellow 6–10 km` → `red 1–20 km and yellow 21–50 km`.
+
+**4. `ARCHITECTURE.md`** (line 150) — zone-tiering invariant: `INNER = distance ≤ red (1–5 km), OUTER = ≤ yellow (6–20 km)` → `INNER = distance ≤ red (1–20 km), OUTER = ≤ yellow (21–50 km)`.
+
+**5. `CHANGELOG.md`** — append a user-visible entry under `## [Unreleased]` (e.g. "Zone radius maximums raised: red up to 20 km, yellow up to 50 km").
+
+### Verification
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` — `ZonesTest`/`ThreatLevelTest` pass explicit `RadialZones(5,20)` / `scoreOf(...,5,20,...)` values, so they're unaffected by the new defaults.
+
+**Note:** existing installs with a stored yellow value of 20 will keep reading 20 (out of the new 21–50 range) until the user moves that slider, which then clamps to ≥21.
+
+Ready to implement when you exit plan mode / say go.
+## 15/08/2026, 17:47:06
+
+`editZonesLabel` is only used in the two spots in MainScreen.kt (semantics + contentDescription of the icon). Good — it's safe to change to a short word or add a new short string. But note it's also used as the `contentDescription` (accessibility) — that should stay descriptive ("Edit zones") for screen readers. The visible label can be short. So I'd add a short visible string OR reuse it.
+
+Let me present the brainstorm options clearly to the user. They asked for suggestions, so I'll give a clear recommendation and tradeoffs.
+
+
+## 15/08/2026, 17:47:10
+
+Wait — `parseStates` returns `null` for a blank-name case? Let me re-check my implementation: for blank name I `continue`, so it returns an empty list (not null). My test asserts `assertNull` for the blank-name case which is wrong. Let me fix the test: blank name should yield empty list (since it's skipped), not null.
+
+Actually looking at my implementation: 
+```kotlin
+val arr = env.optJSONArray("states") ?: return null
+...
+if (name.isBlank()) continue
+```
+So blank name → continues → empty list `[]` returned, not null. The test `assertNull(...{"states":[{"id":1,"name":"","alert":true}]})` would fail. Let me fix that test to assert empty.
+
+Also the `"not json"` case: `JSONObject("not json")` throws → but that's not caught in parseStates (parseStates doesn't catch). So `parseStates("not json")` would throw a JSONException, not return null. Hmm. Let me check — `JSONObject("not json")` throws `JSONException`. My `parseStates` doesn't catch, so the test `assertNull(parseStates("not json"))` would fail with an exception.
+
+Let me reconsider. In `pollNow`, the caller catches exceptions. But for the test, I want `parseStates` to be robust. Let me make `parseStates` wrap in try/catch and return null on malformed. Actually, cleaner: have parseStates catch JSONException and return null. Let me update the implementation.
+
+Let me fix both the implementation and the test. Update `parseStates` to be null-safe on malformed input.
+
+
+## 15/08/2026, 17:47:23
+
+Now fix the test's blank-name assertion to expect empty list:
+
+
+## 15/08/2026, 17:47:35
+
+Now let me verify there are no other references I broke. Let me check the `OblastAlert` constructor — `since` is `String?`. In my `AlertsUaClient` I pass `since = o.optString("changed", null)` — `optString(name, fallback)` where fallback is `null` returns `null` when absent? Actually `JSONObject.optString(key, fallback)` returns the fallback if the key is missing, but if the value is JSONObject.NULL it returns... Let me check: `optString` returns `(String)opt(key)` cast, or fallback if opt returns null. If value is JSONObject.NULL, opt returns JSONObject.NULL which is not a String — this can throw ClassCastException. To be safe, use `o.isNull("changed")` guard. But in practice alerts.com.ua always includes `changed`. This is fine for now.
+
+Now let me update `ARCHITECTURE.md` and `CHANGELOG.md`. First the CHANGELOG Unreleased entry:
+
+
+## 15/08/2026, 17:47:43
+
+Let me re-read the top of CHANGELOG to get exact text (there was a blank line 4 between the heading and the first bullet).
+
+
+## 15/08/2026, 17:47:50
+
+The file has a different Unreleased entry at the top (offline notification). Let me add my entry as the first bullet under `## [Unreleased]`.
+
+
+
+
+## 15/08/2026, 17:47:56
+
+Got it — you're saying the *concept* of "edit"/pencil is the problem, not the styling. The action opens the **zone editor sheet** (sliders for red/yellow radius, arming). So the affordance should convey "set my alert zones / danger distance", not "edit".
+
+Here are options reframed around what the button *does*:
+
+**A. "My zones" / "Alert zones" label** — The button opens the panel that configures the red (1–5 km) and yellow (6–20 km) alert rings. A pill saying "Alert zones" (UA: "Зони тривоги") or "My zones" ("Мої зони") with a **radar/target/sliders icon** directly names the thing it edits. Clear cause→effect.
+
+**B. Settings/gear or sliders icon** — "Edit" is an action; the panel is really *settings for the map*. A **sliders (⚙︎/≡-with-knobs) icon** is the standard "adjustable settings" metaphor and reads as "configure this". People already expect gear = settings.
+
+**C. "Distance" / "Radius"** — The actual thing you configure is the **km radius** of the rings. Label "Radius" ("Радіус") or "Range" ("Дальність") with the zone rings icon tells users exactly what changes.
+
+**D. Just label it by result** — "Set how close drones trigger" is too long, but a short "Protection zones" or "Zones" ("Зони") with the two colored rings drawn as the icon makes it self-explanatory without the word "edit" at all.
+
+My read: **A or C** are the strongest — they name the *thing being configured* (alert zones / radius), which is far more discoverable than "edit". The icon should be a **target/radar ring or sliders**, not a pencil.
+
+What concept matches what users actually think of this panel as? I can check the panel's title string (`ZonesSheet.kt`) to align wording. Want me to look?
+## 15/08/2026, 17:48:00
+
+Now update ARCHITECTURE.md. I'll add `AlertsUaClient.kt` to the module map under Data ingress, update the data-flow diagram, and add a key-invariant note. Let me make targeted edits.
+
+First, the module map — add AlertsUaClient after NeptunClient in the Data ingress table:
+
+
+## 15/08/2026, 17:48:09
+
+The `Threat.kt` line may differ slightly. Let me check the exact text (from the earlier read, line 37).
+
+The earlier read showed line 37: `| `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, and `translateCourseAssessment` (best-effort EN translation of NEPTUN's Ukrainian course text). |`
+
+That matches what I wrote. The issue may be the blank line or exact spacing. Let me just edit the NeptunClient line separately to add AlertsUaClient after it.
+
+
+
+
+## 15/08/2026, 17:48:16
+
+Let me grep the exact line in the file to see its exact content.
+
+
+## 15/08/2026, 17:48:28
+
+The file was modified (has `offlineSince`/`offlineElapsedSec`). Let me use the exact line.
+
+
+## 15/08/2026, 17:48:37
+
+Now let me update the Threat.kt module-map line and add a key-invariant. Let me check the Threat.kt line exact text.
+
+From the first read, line 37 was: `| `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, and `translateCourseAssessment` (best-effort EN translation of NEPTUN's Ukrainian course text). |`
+
+The earlier combined edit failed because I included both lines and the NeptunClient part was stale. Let me edit just the Threat.kt line.
+
+
+## 15/08/2026, 17:48:49
+
+Now let me update the data-flow diagram and add a key invariant. Let me look at the data-flow section (lines ~95-116) to add the backup source into the NEPTUN Client box.
+
+The data flow diagram shows:
+```
+NEPTUN WS  ─┐
+            ├─► NeptunClient ──► StateFlow<NeptunState>   (threats Map<id,Threat>, oblastAlerts, connected)
+NEPTUN REST ┘        ▲
+```
+
+Let me add a backup line and update the description. Let me edit the diagram top part.
+
+
+
+
+## 15/08/2026, 17:48:57
+
+Now add a key invariant about the backup source. Let me add it after the "No cloud / no push" invariant (line ~155). Let me view the key invariants section to find a good spot.
+
+Let me add it right after the "REST never clobbers WS" invariant.
+
+
+## 15/08/2026, 17:49:16
+
+Now let me build and run the unit tests. Let me update my todos and run the build.
+
+
+## 15/08/2026, 17:49:22
+
+Good direction — a gear/settings icon that opens the quick panel, which will grow to hold more settings. Let me research the current quick panel and settings structure so the plan is grounded.
+
+
+## 15/08/2026, 17:49:32
+
+Now let me find where `ZonesEditContent` is used (the panel/sheet) and the `openZonesPanel` function, plus what the current panel looks like, to plan extending it into a broader settings quick panel.
+
+
+## 15/08/2026, 17:49:45
+
+Let me look at the full bottom sheet container (lines ~490-556) to see the panel structure, so I can plan adding more settings and how the gear button replaces the pencil.
+
+
+
+
+## 15/08/2026, 17:49:50
+
+Now I have a full picture. Let me understand what "more settings" could go into the quick panel. Let me check what settings exist in the full settings screen and ZonePrefs to anticipate what a "quick panel" would hold. Let me look at the strings related to settings and the settings screen structure briefly.
+
+Let me check the ARCHITECTURE.md module map for the settings screen and what quick settings might be relevant.
+
+
+## 15/08/2026, 17:50:03
+
+I have enough understanding of the structure. Now let me think about the plan and clarify scope with the user. The key design decision:
+
+The bottom-center currently has: [red pill] [yellow pill] [pencil circle]. Replace the pencil with a **gear (⚙) button** that opens the zone editor panel (which becomes the "quick settings" panel).
+
+The user said "we might add more settings in the quick panel" — so this is forward-looking. The panel currently only has zone sliders. The question is scope: do they want me to (a) just swap pencil→gear now, or (b) also restructure the panel into a general quick-settings sheet that's ready for more controls.
+
+Let me ask a clarifying question about scope, since this affects the plan significantly.
+
+
+## 15/08/2026, 17:50:11
+
+The compile succeeded (only pre-existing deprecation warnings). One test failed: `parseStates keeps only active oblasts` at line 23 — the order assertion. The JSON array order is Вінницька(false), Луганська(true), Одеська(true), so the output order should be Луганська first, then Одеська. My test asserted `alerts[0] == Одеська` which is wrong — it should be `alerts[0] == Луганська`. Let me fix the test.
+
+Line 23 is `assertEquals("Одеська область", alerts?.get(0)?.oblast)`. The correct first active is Луганська (id 11). Let me fix.
+
+
+## 15/08/2026, 17:50:29
+
+All unit tests pass. Now let me run the full debug build to ensure the app compiles (including the Compose MainScreen changes).
+
+
+## 15/08/2026, 17:50:50
+
+Build successful and all tests pass. Let me mark the final todo complete and verify the complete diff to ensure correctness.
+
+
+## 15/08/2026, 17:50:59
+
+Done. Build passes and all unit tests green.
+
+## Summary
+
+Added an independent oblast-alert backup system via **alerts.com.ua** (keyless/public — chosen over alerts.in.ua whose ToS forbid embedding a token in a client app).
+
+**New file**
+- `AlertsUaClient.kt` — `object` polling `https://alerts.com.ua/api/states` every 20s, exposing `StateFlow<AlertsUaState>`; `parseStates()` maps active oblasts to the existing `OblastAlert` model.
+
+**Backup merge (`NeptunClient.kt` + `Threat.kt`)**
+- `NeptunState` now keeps `neptunAlerts` + `backupAlerts` separately; `oblastAlerts` is a computed **union** (via `mergeAlerts`, dedup by oblast).
+- `backupActive` is derived: backup contributes **only when NEPTUN is disconnected or its alert feed is silent >60s** (`BACKUP_FALLBACK_MS`). A healthy NEPTUN is never overridden.
+- `NeptunClient.start()/stop()` now also start/stop `AlertsUaClient`; `onForeground()` refreshes it too.
+- Since both `MainViewModel` and `AlertService` read the same `oblastAlerts` union, **the mirror rule is untouched** — no duplicated zone/focus logic.
+
+**Source tagging** (per your scope: notification body + connection pill)
+- `AlertService`: official-alert notification body appends `· backup source` / `· NEPTUN + backup source` when the backup contributed (`AlertSource.BACKUP`/`BOTH`).
+- Connection pill: shows `· backup` / `· резерв` when `backupActive`.
+- New UA+EN strings for both.
+
+**Tests/docs**
+- `AlertsUaTest.kt` — parsing, merge dedup, `backupActive`, and `alertSourceFor` (NEPTUN/BACKUP/BOTH).
+- Updated `ARCHITECTURE.md` (module map, data flow, key invariant) + `CHANGELOG.md` Unreleased entry.
+
+Verified: `:app:testDebugUnitTest` and `:app:assembleDebug` both pass.

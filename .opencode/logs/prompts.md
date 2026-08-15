@@ -13964,3 +13964,23 @@ questions?
 ## 15/08/2026, 17:31:24
 
 git push
+## 15/08/2026, 17:35:29
+
+1 ok
+2 ya
+3 notif body, connection pill
+## 15/08/2026, 17:38:19
+
+a threat that's more than 3h away will never be cared about.  thefore we only need minutes.  120min is 2h, it's just simpler. 
+## 15/08/2026, 17:41:29
+
+the "edit pencil" floating button on the map was not noticed by some ppl.  maybe a small "edit" text too.  it can have a fake transaprent border around it so fingers can still press the small text.  or suggestions?
+## 15/08/2026, 17:44:21
+
+yellow zone is 50km max, red is 20km.  keep the defaults 5/20
+## 15/08/2026, 17:47:27
+
+im saying a pencil is a bad icon, im saying "edit" is a bad word.  options?
+## 15/08/2026, 17:49:16
+
+we might add more settings in the quick panel.  I like the gear idea.

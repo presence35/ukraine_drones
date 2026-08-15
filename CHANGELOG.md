@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Alerts: oblast alerts now have a real backup system. When the main NEPTUN feed is down or silent for over a minute, the app falls back to an independent official source (alerts.com.ua, the same state data other air-raid aggregators use) so air-raid notifications keep working. The source is shown in the connection pill ("backup") and, when the alert came from the backup, tagged in the notification body.
+
 - Alerts: when the live feed drops, a silent-but-attentive offline notification appears (after a 30s grace, or immediately when an official air-raid alert is active at drop or fires during the grace) reminding you to rely on official sirens, with a Retry action that forces an immediate reconnect. The ongoing status notification switches to "Offline for Xm" / «Офлайн Xхв» with the same Retry action, and the header connection pill shows the elapsed offline time.
 
 - Settings → Threats: each threat type now has two separate controls — "Map" and "Alerts" — shown as bordered icon cards. Turning off "Map" hides the type from the map and automatically silences its alerts; turning off "Alerts" keeps the type on the map (dimmed) but stops its alerts. A type with either Map or Alerts off is hidden from the bottom threat strip.

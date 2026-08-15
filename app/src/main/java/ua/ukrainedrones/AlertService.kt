@@ -76,6 +76,7 @@ class AlertService : Service() {
     private sealed class MonitorEvent {
         data class State(
             val focusOblastAlertActive: Boolean,
+            val focusAlertSource: AlertSource?,
             val focusBannerCity: String,
             val focusRegion: String,
             val focusPinned: Boolean,
@@ -182,6 +183,7 @@ class AlertService : Service() {
                 val focus = if (followMe) gps else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
                 MonitorEvent.State(
                     focusOblastAlertActive = focusOblastAlertActive(neptun, followMe, gps, pinned),
+                    focusAlertSource = focusAlertSource(neptun, followMe, gps, pinned),
                     focusBannerCity = focusBannerCity(tail.second, followMe, gps, pinned),
                     focusRegion = focusRegionText(tail.second, followMe, pinned),
                     focusPinned = !followMe && pinned != null,
@@ -202,6 +204,11 @@ class AlertService : Service() {
     private fun focusOblastAlertActive(st: NeptunState, followMe: Boolean, gps: LatLng?, pinned: City?): Boolean {
         val token = focusAttribution(followMe, gps, pinned).token ?: return false
         return st.oblastAlerts.any { it.inOblast(token) }
+    }
+
+    private fun focusAlertSource(st: NeptunState, followMe: Boolean, gps: LatLng?, pinned: City?): AlertSource? {
+        val token = focusAttribution(followMe, gps, pinned).token ?: return null
+        return st.alertSourceFor(token)
     }
 
     private fun focusBannerCity(lang: AppLanguage, followMe: Boolean, gps: LatLng?, pinned: City?): String {
@@ -339,7 +346,7 @@ class AlertService : Service() {
             postAlert(
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
-                state.focusRegion,
+                state.focusRegion + sourceTag(state.focusAlertSource, s),
                 state.sirenOverride
             )
         }
@@ -378,6 +385,13 @@ class AlertService : Service() {
         val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
         val where = t.locality ?: t.district ?: t.region
         return if (where != null) "$label — $where" else label
+    }
+
+    /** Small source tag appended to the official-alert body when it came from the backup. */
+    private fun sourceTag(source: AlertSource?, s: Strings.StringSet): String = when (source) {
+        AlertSource.BACKUP -> s.alertSourceBackup
+        AlertSource.BOTH -> s.alertSourceBoth
+        else -> ""
     }
 
     private fun monitorNotification(title: String, text: String, retryLabel: String?) =

@@ -34,7 +34,8 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | File | Responsibility |
 | --- | --- |
 | `NeptunClient.kt` | `object` singleton. Owns the NEPTUN WebSocket (`wss://neptun.in.ua/api/v1/stream`) with backoff reconnect + keep-alive/watchdog tasks, plus REST merge (`/api/v1/threats`). Exposes `StateFlow<NeptunState>` (threats map, oblastAlerts, connected, `offlineSince`/`offlineElapsedSec`). Handles `snapshot`/`upsert`/`remove`/`alerts`/`heartbeat` frames. `retryNow()` forces an immediate reconnect (used by the offline-notification Retry action). |
-| `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, and `translateCourseAssessment` (best-effort EN translation of NEPTUN's Ukrainian course text). |
+| `AlertsUaClient.kt` | `object` singleton. Independent oblast-alert backup source: polls the keyless public `https://alerts.com.ua/api/states` every ~20s and exposes `StateFlow<AlertsUaState>`. Merged into `NeptunState.oblastAlerts` only when NEPTUN is down or its alert feed is silent (`backupActive`). |
+| `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, `AlertSource`, `mergeAlerts`, and `translateCourseAssessment` (best-effort EN translation of NEPTUN's Ukrainian course text). |
 
 ### State / orchestration
 
@@ -95,9 +96,10 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 ```
 NEPTUN WS  ─┐
-            ├─► NeptunClient ──► StateFlow<NeptunState>   (threats Map<id,Threat>, oblastAlerts, connected)
+            ├─► NeptunClient ──► StateFlow<NeptunState>   (threats Map<id,Threat>, oblastAlerts = NEPTUN ∪ backup, connected)
 NEPTUN REST ┘        ▲
-                     │ (same singleton consumed by both, independently)
+ALERTS.COM.UA REST ──┘   (AlertsUaClient: backup oblast alerts, merged only when NEPTUN down/silent)
+                      │ (same singleton consumed by both, independently)
         ┌────────────┴───────────────┐
         ▼                            ▼
 MainViewModel                  AlertService (foreground)
@@ -157,6 +159,13 @@ Treat these as a contract. If you change one, update **every** place that relies
 
 - **REST never clobbers WS.** REST merge keeps the newer record per threat id
   (`updatedAtMillis` compare); a REST snapshot is CDN-cached and can be older than the stream.
+
+- **Backup never overrides a healthy NEPTUN.** The alerts.com.ua backup (`AlertsUaClient`)
+  feeds `NeptunState.oblastAlerts` only when NEPTUN is disconnected or its own alert feed has
+  been silent for >60s (`backupActive`). Both `MainViewModel` and `AlertService` read the same
+  union (`oblastAlerts`), so the backup needs no changes to the mirrored zone/focus logic. The
+  `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body and the
+  connection pill.
 
 - **No cloud / no push.** Monitoring is a local foreground `dataSync` service. Alerts stop when
   it stops ("Stop Monitoring & Exit"). There is no intermediate server to buffer anything.

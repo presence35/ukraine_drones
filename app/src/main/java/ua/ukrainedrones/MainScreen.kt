@@ -368,6 +368,7 @@ private fun MapScreen(
                 }
                 ConnectionStatus(
                     connected = uiState.connected,
+                    backupActive = uiState.backupActive,
                     offlineElapsedSec = uiState.offlineElapsedSec,
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
@@ -808,6 +809,7 @@ private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun ConnectionStatus(
     connected: Boolean,
+    backupActive: Boolean,
     offlineElapsedSec: Long?,
     s: Strings.StringSet,
     modifier: Modifier = Modifier
@@ -833,7 +835,7 @@ private fun ConnectionStatus(
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = label,
+            text = if (backupActive) "$label · ${s.connBackup}" else label,
             color = Color.White,
             style = MaterialTheme.typography.labelMedium
         )

@@ -298,6 +298,25 @@ data class OblastAlert(
 fun OblastAlert.inOblast(token: String): Boolean =
     oblast.startsWith(token, ignoreCase = true) || name.startsWith(token, ignoreCase = true)
 
+/** Which data source reported the active official alert (used for the notification source tag). */
+enum class AlertSource { NEPTUN, BACKUP, BOTH }
+
+/**
+ * Merge two oblast-alert lists into one, de-duplicated by oblast name. NEPTUN entries win on
+ * tie; the backup only adds oblasts NEPTUN didn't already list.
+ */
+fun mergeAlerts(primary: List<OblastAlert>, backup: List<OblastAlert>): List<OblastAlert> {
+    val seen = HashSet<String>()
+    val out = ArrayList<OblastAlert>(primary.size + backup.size)
+    for (a in primary) {
+        if (seen.add(a.oblast)) out.add(a)
+    }
+    for (a in backup) {
+        if (seen.add(a.oblast)) out.add(a)
+    }
+    return out
+}
+
 private val COURSE_PATTERNS: List<Pair<Regex, String>> = listOf(
     Regex("^Група БпЛА курсом на (.+)$") to "Group of UAVs heading toward {X}",
     Regex("^Шахеди? курсом на (.+)$") to "Shahed heading toward {X}",

@@ -25,17 +25,46 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 data class NeptunState(
     val threats: Map<String, Threat> = emptyMap(),
-    val oblastAlerts: List<OblastAlert> = emptyList(),
+    val neptunAlerts: List<OblastAlert> = emptyList(),
+    val backupAlerts: List<OblastAlert> = emptyList(),
     val connected: Boolean = false,
     val lastError: String? = null,
-    val offlineSince: Long? = null
+    val offlineSince: Long? = null,
+    val lastAlertAt: Long = 0L
 ) {
     /** Seconds since the stream dropped, or null while connected. */
     val offlineElapsedSec: Long?
         get() = if (connected) null else offlineSince?.let { (System.currentTimeMillis() - it) / 1000 }
+
+    /**
+     * The backup (alerts.com.ua) contributes only when NEPTUN is down (disconnected) or its
+     * own alert feed has gone quiet for over [NeptunClient.BACKUP_FALLBACK_MS]. While NEPTUN is
+     * healthy it stays the sole source so we never second-guess a legitimate "no alert".
+     */
+    val backupActive: Boolean
+        get() = !connected || System.currentTimeMillis() - lastAlertAt > NeptunClient.BACKUP_FALLBACK_MS
+
+    /** Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. */
+    val oblastAlerts: List<OblastAlert>
+        get() = if (backupActive) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
+
+    /** Which source(s) report an active official alert for the given oblast stem [token]. */
+    fun alertSourceFor(token: String): AlertSource? {
+        val n = neptunAlerts.any { it.inOblast(token) }
+        val b = backupActive && backupAlerts.any { it.inOblast(token) }
+        return when {
+            n && b -> AlertSource.BOTH
+            n -> AlertSource.NEPTUN
+            b -> AlertSource.BACKUP
+            else -> null
+        }
+    }
 }
 
 object NeptunClient {
+
+    /** How long NEPTUN's own alert feed may stay quiet before the backup source steps in. */
+    const val BACKUP_FALLBACK_MS = 60_000L
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // keep socket open indefinitely
@@ -64,6 +93,8 @@ object NeptunClient {
         manuallyStopped = false
         connect()
         startKeepAliveTasks()
+        startBackupCollector()
+        AlertsUaClient.start()
     }
 
     fun stop() {
@@ -72,7 +103,17 @@ object NeptunClient {
         reconnectJob = null
         ws?.close(1000, "client stop")
         ws = null
+        AlertsUaClient.stop()
         scope.cancel()
+    }
+
+    /** Relay the backup source's oblast alerts into our state whenever it updates. */
+    private fun startBackupCollector() {
+        scope.launch {
+            AlertsUaClient.state.collect { backup ->
+                _state.value = _state.value.copy(backupAlerts = backup.alerts)
+            }
+        }
     }
 
     /**
@@ -86,6 +127,7 @@ object NeptunClient {
         val wsStale = now - lastFrameAt > 5_000
         lastFrameAt = now
         if (wsStale) refreshFromRest()
+        AlertsUaClient.refreshNow()
     }
 
     private val restUrl = "https://neptun.in.ua/api/v1/threats"
@@ -291,7 +333,10 @@ object NeptunClient {
                             )
                         }
                     }
-                    _state.value = _state.value.copy(oblastAlerts = list)
+                    _state.value = _state.value.copy(
+                        neptunAlerts = list,
+                        lastAlertAt = System.currentTimeMillis()
+                    )
                 }
                 "heartbeat" -> { /* no-op, connection alive */ }
             }
