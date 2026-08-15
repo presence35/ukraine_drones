@@ -27,8 +27,13 @@ data class NeptunState(
     val threats: Map<String, Threat> = emptyMap(),
     val oblastAlerts: List<OblastAlert> = emptyList(),
     val connected: Boolean = false,
-    val lastError: String? = null
-)
+    val lastError: String? = null,
+    val offlineSince: Long? = null
+) {
+    /** Seconds since the stream dropped, or null while connected. */
+    val offlineElapsedSec: Long?
+        get() = if (connected) null else offlineSince?.let { (System.currentTimeMillis() - it) / 1000 }
+}
 
 object NeptunClient {
 
@@ -84,6 +89,21 @@ object NeptunClient {
     }
 
     private val restUrl = "https://neptun.in.ua/api/v1/threats"
+
+    /**
+     * Force an immediate reconnect attempt, bypassing the backoff timer. Called by the
+     * "Retry" action on the offline notification. Safe to call anytime: `connect()` is
+     * guarded by `connectInFlight`, so it's a no-op while a connection is already in flight.
+     */
+    fun retryNow() {
+        if (manuallyStopped) return
+        reconnectJob?.cancel()
+        reconnectJob = null
+        // Drop any half-open socket so a fresh one is created, then connect right away.
+        ws?.close(1001, "manual retry")
+        ws = null
+        connect()
+    }
 
     /**
      * Pull the server's current threat list over REST (cache: no-store), mirroring what the
@@ -172,7 +192,7 @@ object NeptunClient {
                 reconnectAttempt = 0
                 openedAt = System.currentTimeMillis()
                 lastFrameAt = System.currentTimeMillis()
-                _state.value = _state.value.copy(connected = true, lastError = null)
+                _state.value = _state.value.copy(connected = true, lastError = null, offlineSince = null)
                 refreshFromRest()
             }
 
@@ -188,14 +208,18 @@ object NeptunClient {
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 ws = null
                 connectInFlight.set(false)
-                _state.value = _state.value.copy(connected = false)
+                _state.value = _state.value.copy(connected = false, offlineSince = System.currentTimeMillis())
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 ws = null
                 connectInFlight.set(false)
-                _state.value = _state.value.copy(connected = false, lastError = t.message)
+                _state.value = _state.value.copy(
+                    connected = false,
+                    lastError = t.message,
+                    offlineSince = System.currentTimeMillis()
+                )
                 scheduleReconnect()
             }
         })

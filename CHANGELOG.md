@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Alerts: when the live feed drops, a silent-but-attentive offline notification appears (after a 30s grace, or immediately when an official air-raid alert is active at drop or fires during the grace) reminding you to rely on official sirens, with a Retry action that forces an immediate reconnect. The ongoing status notification switches to "Offline for Xm" / «Офлайн Xхв» with the same Retry action, and the header connection pill shows the elapsed offline time.
+
+- Settings → Threats: each threat type now has two separate controls — "Map" and "Alerts" — shown as bordered icon cards. Turning off "Map" hides the type from the map and automatically silences its alerts; turning off "Alerts" keeps the type on the map (dimmed) but stops its alerts. A type with either Map or Alerts off is hidden from the bottom threat strip.
+- Large system font sizes (accessibility) no longer break the layout: the threat popup and top banner text wraps instead of truncating, the popup scrolls when it overflows the screen, the gauge/level bars/skulls/course arrow grow with the text, footer pills wrap, and the app caps the effective font scale at 1.5× so extreme settings can't clip.
+
+- App icon: the launcher icon is now our Ukraine trident (blue→gold→blue gradient) instead of the drone graphic.
+
 - First launch: tapping a language in the picker no longer auto-closes it — it just switches the language live so you can read the tips first, then confirm with the new ОК/OK button.
 - First launch: the language picker now shows three short tips — tap any drone on the map to open its details card, Settings (gear) holds zones/language/feature guide, and sirens follow the phone's sound mode (override with "Sirens always sound").
 - Settings → Map centre: the pin-to-city control is now a proper text-field dropdown that opens as a height-constrained scrollable list below the field (no more full-screen box). The title lives in the field label and the description below it; the red alert dots stay.

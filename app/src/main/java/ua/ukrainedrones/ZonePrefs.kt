@@ -94,14 +94,24 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[sirenOverrideKey] = override }
     }
 
-    /** Whether a threat type participates in alerts/map — default on. */
-    fun threatEnabled(type: ThreatType): Flow<Boolean> {
-        val key = booleanPreferencesKey("threat_enabled_${type.name}")
+    /** Whether a threat type is shown on the map — default on. */
+    fun threatMapVisible(type: ThreatType): Flow<Boolean> {
+        val key = booleanPreferencesKey("threat_map_${type.name}")
         return context.dataStore.data.map { prefs -> prefs[key] ?: true }
     }
 
-    suspend fun setThreatEnabled(type: ThreatType, enabled: Boolean) {
-        context.dataStore.edit { it[booleanPreferencesKey("threat_enabled_${type.name}")] = enabled }
+    suspend fun setThreatMapVisible(type: ThreatType, visible: Boolean) {
+        context.dataStore.edit { it[booleanPreferencesKey("threat_map_${type.name}")] = visible }
+    }
+
+    /** Whether a threat type fires alerts — default on. */
+    fun threatAlertsEnabled(type: ThreatType): Flow<Boolean> {
+        val key = booleanPreferencesKey("threat_alert_${type.name}")
+        return context.dataStore.data.map { prefs -> prefs[key] ?: true }
+    }
+
+    suspend fun setThreatAlertsEnabled(type: ThreatType, enabled: Boolean) {
+        context.dataStore.edit { it[booleanPreferencesKey("threat_alert_${type.name}")] = enabled }
     }
 
     /** Whether the "follow official guidelines" disclaimer card is collapsed. */
@@ -189,9 +199,16 @@ class ZonePrefs(private val context: Context) {
     }
 }
 
-/** The set of threat types the user has enabled — flows once per any toggle change. */
-fun threatEnabledFlow(prefs: ZonePrefs): Flow<Set<ThreatType>> {
-    return combine(ThreatType.values().map { prefs.threatEnabled(it) }) { enabled ->
+/** The set of threat types shown on the map — flows once per any map-visibility change. */
+fun threatMapFlow(prefs: ZonePrefs): Flow<Set<ThreatType>> {
+    return combine(ThreatType.values().map { prefs.threatMapVisible(it) }) { visible ->
+        ThreatType.values().filterIndexed { i, _ -> visible[i] }.toSet()
+    }
+}
+
+/** The set of threat types that fire alerts — flows once per any alert-toggle change. */
+fun threatAlertFlow(prefs: ZonePrefs): Flow<Set<ThreatType>> {
+    return combine(ThreatType.values().map { prefs.threatAlertsEnabled(it) }) { enabled ->
         ThreatType.values().filterIndexed { i, _ -> enabled[i] }.toSet()
     }
 }

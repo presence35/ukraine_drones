@@ -13658,3 +13658,309 @@ go
 ## 14/08/2026, 17:36:51
 
 "ok" but cyrclic.
+## 14/08/2026, 21:59:04
+
+settings: Threat toggle should be for map-visible, not alerts.
+Font size bug: on screens that old people use, what do we do? I esp noticed it on the threat popup.
+
+Official alert comes w no reason.  Nobody knows why yet?? I thought we solved this. We might need a small log screen, where you can view the past messages that are relvent to your settings (some fallbacks will be necessary im sure). and a way that after the official alert ocmes, if we don't have a single reason yet, we just wait for the first reason and then update the notification, and somehow display to user in a good way.
+
+
+
+how can we clear old android notifications when "all clear" comes? 
+
+Threat card simpler: instead of "distanct: 3 km ETA: 1h     [speedpill] " it can just be the numbers...it's obvious what they mean.  or maybe super clear: "3km away, 10min @ 180kph"   Does that work in ukriainina? The timer in the bottom right, is it functionally precise? threats disappear after 5min still? I was thinking we'd change that, once data is stale, instead of hiding it: dim it -75%. What else should we think about here?
+
+"where is what right now"? A full map or a list, ranked. don't wanna add too much complexity yet.
+
+
+First launch overhaul! We want 3 steps maybe. Language. Then "What do you care about", which is the threat types seelctor from settings.  but organized more cleanly and ismply.  A grid maybe, we might need better icons! I'll make ai icons for all our threats, wire it. Step 3, what else? They need to know a bit about Settings, so show them a compressed preview of the cool features. put a "rerurn init" button at the bottom. Too many buttons, organize better?
+
+Fast objects should alert IMMEDIATELY.  idk why I even said any zone boundary! clear overishgt, no? 
+## 14/08/2026, 21:59:33
+
+Explore the Android app at D:\Desktop\drones (Kotlin, Jetpack Compose). Thoroughness: medium.
+
+I need to understand two areas precisely, with file:line references:
+
+1. THREAT TYPE TOGGLES: In SettingsScreen.kt and MainViewModel.kt (and any prefs), how are per-threat-type toggles stored and used? Specifically: does a threat type being OFF mean (a) it's hidden from the map entirely, and/or (b) its alerts/sirens are suppressed? Find where the toggle state is read to decide map visibility vs alert firing. Also find where official alerts + zone (red/yellow) alerts get enabled/disabled.
+
+2. THREAT POPUP + FONT SIZES: In ThreatPopupCard.kt and MainScreen.kt, how is the threat card rendered? Note which text sizes are hard-coded sp vs scalable. Is there any fontScale handling? Where does the distance line ("Distance to ...") and ETA/speed pill get drawn? The user reports a font-size bug on the threat popup for people who use large system fonts. Report any fixed-size (non-scaling) text or layout that could clip/overflow with large fontScale.
+
+Also report: is there any existing "map-visible" vs "alert-enabled" separation already? How does MainViewModel decide which threats to show on the map (filters) vs which fire alerts?
+
+Return a concise structured summary with file:line references.
+## 14/08/2026, 21:59:38
+
+Explore the Android app at D:\Desktop\drones (Kotlin, Jetpack Compose, single module, files under app/src/main/java/ua/ukrainedrones/). Thoroughness: medium.
+
+I need to understand the ALERT / NOTIFICATION / OFFICIAL-ALERT pipeline precisely, with file:line references. Key files: AlertService.kt, MainViewModel.kt, NeptunClient.kt, MainActivity.kt, Strings.kt.
+
+Questions to answer:
+1. OFFICIAL ALERT REASON: The changelog claims "the official alert notification now carries the reason — the latest NEPTUN Telegram message mentioning Odesa... with a fallback to the highest-priority active threat". Find exactly where this reason is computed (which function/file/line), where the fallback is, and where the notification text is built. The user says an official alert can arrive with NO reason at all. Trace why the reason could be empty: e.g. does it depend on city-pinning? On having an active threat? On a NEPTUN message? What happens when none of the fallbacks produce text? Is there a "reason" field that can be null/blank?
+
+2. ALL CLEAR + NOTIFICATION CLEARING: Where is the "all clear" detection (official alert end)? Where is the all-clear notification posted? When the alert ends, are the earlier alert notifications (the persistent/official alert notification with siren) dismissed/cleared? Find the NotificationManager calls, notification IDs, and whether any are cancelled on all-clear. The user wants: "how can we clear old android notifications when 'all clear' comes?"
+
+3. NOTIFICATION UPDATES: When an alert is already active and a new reason arrives, how is the existing notification updated (silently)? Show the code that posts/updates notifications and what triggers a re-post.
+
+4. BACKGROUND SERVICE: What data does AlertService hold about the active alert (fields)? Does it persist the active alert so a second process/app restart could know "an alert is active"? Where does the reason get recomputed?
+
+Return a concise structured summary with file:line references, especially noting where empty-reason can occur.
+## 14/08/2026, 21:59:43
+
+Explore the Android app at D:\Desktop\drones (Kotlin, Jetpack Compose). Thoroughness: medium. Key files: MainScreen.kt, MapView.kt, MainViewModel.kt, Threat.kt, Prediction.kt, MainActivity.kt, Strings.kt, SettingsScreen.kt, FeatureGuide.kt.
+
+Answer precisely with file:line references:
+
+1. STALENESS/EXPIRY: How do threats expire? Find the staleness windows (per type), where a threat is removed/hidden when stale (Threat.kt, Prediction.kt, MainViewModel.kt). What is the "timer in the bottom right" on the map (a live elapsed/age counter? ETA countdown?) — find where it's rendered and what it measures. The user says threats "disappear after 5min still" and wants: instead of hiding a stale threat, DIM it (~-75% alpha). Where would that change go? Also: what's the difference between "stale" (hidden) and "expired" (removed)?
+
+2. THREAT CARD FIELDS: In ThreatPopupCard.kt, find where "Distance", "ETA", "speed pill" are shown. What units/strings? Does it show "3 km", "1h", "180 km/h"? Is there a UA translation? The user wants a compact form like "3km away, 10min @ 180kph" — report the current layout/strings and existing pluralization/translation helpers (Strings.kt).
+
+3. THREAT LIST vs MAP: Is there any existing list view of threats, or only the map? How are threats ranked/sorted on the map? Is there an existing "sort by distance/severity" anywhere? The user wants "where is what right now" — a full map or ranked list, minimal complexity.
+
+4. FIRST-LAUNCH FLOW: Find the first-launch onboarding (language picker, tips, feature guide entry). Where in MainScreen.kt/MainActivity.kt is it triggered? What steps exist today? Is there any existing "threat types selector" grid (other than Settings)? Find "replay tour"/"return init" equivalents. Report the current step structure and the strings.
+
+5. FAST OBJECTS + ZONE BOUNDARY: Find the "Fast objects alert sooner" logic (SettingsScreen.kt, AlertService/MainViewModel). The user says fast objects should alert IMMEDIATELY (not only on zone boundary). Find where the boundary check happens and how a "fast object" is identified (type set). Report file:line.
+
+Return a concise structured summary with file:line references.
+## 14/08/2026, 22:36:37
+
+4. skip
+7. zones are irrelevent, code logic shouldn't even care to test what zone the missile is in!
+
+1. all or nothing
+2. hmm, good point.  maybe "red" alert should have to be on, otherwise it's esssentially like the app is shutdown. wait, i am backward?
+## 14/08/2026, 22:44:00
+
+right, so my point is if alerts control the early warning, it's bad design.  Alerts are a user setting they can forget about.  If the user has in settings to watch missiles (default), and a missile is seen, then app will tell you regardless of you having alerts on.  this supposed some stupiditiy on the user.  A power user would know their alerts are off, and it's done intentionally.  but if you truly wanted NO alerts, just shut the app down.  Unless you wanted to just watch for fun, but didn't really care in the moment.  idk, many options.  we need more reasoning.
+
+8. skip
+
+now for each give me a *slightly* more details prompt i'll put individually into new sessions.
+## 14/08/2026, 22:47:14
+
+make an ARCHITECTURE.md 
+## 14/08/2026, 22:50:17
+
+Write D:/Desktop/drones/ARCHITECTURE.md (module map, data flow, invariants) and expand AGENTS.md with conventions + "always build/verify before finishing" + "never paste full logs or data blobs". This kills the re-exploration loop — the single biggest win.
+## 14/08/2026, 22:53:14
+
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, single module app/src/main/java/ua/ukrainedrones/). Keep the existing all-or-nothing threat-type toggles in Settings (one enabledTypes set already gates BOTH map visibility and alert firing — MainViewModel.kt:313 and AlertService.kt:227). No behavior change is wanted.
+
+Task: make the copy say what the toggle does. Users currently misunderstand it as map-only. Update:
+- The Threats section header in SettingsScreen.kt (~line 257): currently "Threats — tap to toggle" / «Загрози — натисни, щоб увімкнути». Make it explicit that OFF hides the type from the map AND silences its alerts.
+- The footer strip OFF chip behavior if wording exists in Strings.kt (~line 589 "shown or silenced").
+- The Feature guide threat-toggles card in FeatureGuide.kt to match.
+Add/update the EN + UA strings in Strings.kt (data class StringSet; UA block ~lines 206-401, EN block ~lines 403-598).
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+## 15/08/2026, 16:22:45
+
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, single module app/src/main/java/ua/ukrainedrones/). Keep the existing all-or-nothing threat-type toggles in Settings (one enabledTypes set already gates BOTH map visibility and alert firing — MainViewModel.kt:313 and AlertService.kt:227). No behavior change is wanted.
+
+Task: make the copy say what the toggle does. Users currently misunderstand it as map-only. Update:
+- The Threats section header in SettingsScreen.kt (~line 257): currently "Threats — tap to toggle" / «Загрози — натисни, щоб увімкнути». Make it explicit that OFF hides the type from the map AND silences its alerts.
+- The footer strip OFF chip behavior if wording exists in Strings.kt (~line 589 "shown or silenced").
+- The Feature guide threat-toggles card in FeatureGuide.kt to match.
+Add/update the EN + UA strings in Strings.kt (data class StringSet; UA block ~lines 206-401, EN block ~lines 403-598).
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+## 15/08/2026, 16:22:49
+
+Write D:/Desktop/drones/ARCHITECTURE.md (module map, data flow, invariants) and expand AGENTS.md with conventions + "always build/verify before finishing" + "never paste full logs or data blobs". This kills the re-exploration loop — the single biggest win.
+## 15/08/2026, 16:22:55
+
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, app/src/main/java/ua/ukrainedrones/). The app has NO fontScale handling — MainActivity.kt:48 wraps MaterialTheme with default typography. All popup text uses MaterialTheme.typography.* (scales fine), but layout clips on phones with large system font size (elderly users).
+
+Task: make the threat popup and top banner robust to large fontScale (test at 1.3 and 2.0).
+- ThreatPopupCard.kt: remove maxLines=1/TextOverflow.Ellipsis on the SMALL/MEDIUM summary and type label and the LARGE header so text wraps instead of truncating; allow the LARGE summary past 2 lines; give the fixed-height elements a font-aware size: ThreatLevelGauge (12dp x 140dp ~lines 514-516), HorizontalLevelBar (56dp x 8dp ~lines 483-484), the skulls (18/24/26dp), and the course arrow; make pills wrap; wrap the whole card in a vertical scroll so it never overflows the screen.
+- MainScreen.kt:338: the alert header has fixed .height(44.dp) + maxLines=1 — make it grow/wrap.
+- MainActivity.kt: clamp LocalDensity fontScale (e.g. minOf(fontScale, 1.5f)) so extreme fonts don't break layout.
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+## 15/08/2026, 16:24:59
+
+Offline notification. Tap to retry.  should also give android notification showing how long it's been offline and indicating backup systems are active but they're much less reliable and blah blah.
+
+Shelter locations feature.  let's find and plan the data.
+
+Play Store features...what's missing in our app?
+
+Ensure threat times are to zones and gps, not just the zones.
+
+Threat history so user can build trust.  idk if we really need this. let's discuss.
+
+Family tracking (multiple alert location).  advanced feature?
+
+## 15/08/2026, 16:28:11
+
+maybe it'd be better to instead of big alert and map buttons on each threat in Settings.  the user turning off maps should auto turn off alerts too, but turning off alerts won't hide it from the map, but it will dim it.
+## 15/08/2026, 16:30:13
+
+the app icon should be our trident.
+## 15/08/2026, 16:34:39
+
+wait, this is confusing.  im redesigign some sthings, but basically the question stands: is our app abel to handel font size increases without being shitt?
+## 15/08/2026, 16:38:12
+
+update the readme to stop being so verbose, esp for simple questions.  
+## 15/08/2026, 16:39:09
+
+update the master agent prompt to stop being so verbose, esp for simple questions.  
+## 15/08/2026, 16:39:47
+
+this will help other agents nav the codebase and save tokens?
+## 15/08/2026, 16:41:16
+
+a
+## 15/08/2026, 16:41:43
+
+go
+## 15/08/2026, 16:42:30
+
+go
+## 15/08/2026, 16:43:03
+
+tell me plan again
+## 15/08/2026, 16:43:28
+
+not just the popups, the whole app.
+## 15/08/2026, 16:44:25
+
+1. Offline notification (build)
+Track the disconnect moment, then notify on a 30s grace — but immediately if an official alert is active.
+
+Detection & state (NeptunClient.kt):
+
+Add var offlineSince: Long? = null to NeptunState.
+On onClosed/onFailure (lines 188-200): set offlineSince = now.
+On onOpen (line 175): clear it.
+Expose an elapsed-offline derived value (seconds since offlineSince, or null when connected).
+Notifications (AlertService.kt + MainScreen.kt):
+
+Both a one-shot alert on drop and the ongoing status update, gated:
+One-shot: post on disconnect only after 30s (a short coroutine delay task) — unless focusOblastAlertActive is true, then post immediately.
+Ongoing monitor notification: text switches to "Offline for Xm" / «Офлайн Xхв» while disconnected, re-posted on the minute, with a Retry action (PendingIntent → NeptunClient.retryNow() — new method forcing an immediate reconnect attempt).
+Content (EN/UA via Strings.kt): "Offline for 12m — backup systems active but less reliable. Tap to retry." / «Офлайн 12хв — резервні системи працюють, але менш надійні. Натисни, щоб повторити.» plus "rely on official sirens" line.
+New notification channel CHANNEL_OFFLINE (IMPORTANCE_HIGH, silent/vibrate — no siren, it's not an alert).
+"Backup systems" wording — grounded by item 3 (real second source).
+## 15/08/2026, 16:46:12
+
+read the new architecture.md file and see if it saves you tokens, then go
+## 15/08/2026, 16:47:22
+
+2. Backup source (research → plan)
+The current "backup" is only NEPTUN's own REST merge. To honestly claim a backup system, add an independent source:
+
+Primary candidate: alerts.in.ua API (alerts.in.ua) — pulls from official OВА / Суспільне / ДСНС; free API key via request form; gives real-time alert state + reason. This is the independent source that other aggregators reference, and it's UA-official-sourced — ideal "backup system, less reliable" framing.
+Falls back to it when the NEPTUN WS+REST path is down/quiet: populate oblastAlerts (and maybe a coarse threat view) from it.
+Plan: (a) request API key, (b) add AlertsUaClient.kt (REST poll every ~20s, mirrors existing cadence), (c) merge into NeptunState.oblastAlerts, (d) gate official-alert notifications on union of both sources with a source tag in the body.
+Alternative kept on the table: alerts.com.ua API. I'll verify endpoints + key requirements before wiring.
+## 15/08/2026, 16:47:31
+
+3. Shelter locations (research first → plan)
+Data research done; recommended path is scoped, matching the app's Odesa-first focus:
+
+Primary: Odesa city open-data portal shelter register (укриття) — the concrete first dataset; export CSV/JSON/GeoJSON with lat/lon.
+Broader/fallback: data.gov.ua unified state open-data portal (shelters published as open data) and OSM amenity=shelter (+ landuse=military bunkers) per-oblast extracts (geo2day PBFs).
+Plan: (a) locate + download the Odesa shelter GeoJSON/CSV, (b) validate schema (name, address, lat/lon, capacity, status), (c) bundle it in the app (res/raw) so it works offline (consistent with the app's offline-first, zero-backend stance), (d) render shelter markers on MapView as an overlay layer with a toggle in the map footer/Settings, (e) nearest-shelter distance from GPS in the threat popup.
+Open question to confirm in research: Odesa dataset licensing + whether to bundle (static snapshot) vs. fetch from our update server. Default = bundle (offline, zero-backend).
+## 15/08/2026, 16:47:45
+
+4. Threat times to zones + GPS (build)
+Currently ETA only to the user. Extend to show ETA to each zone edge + to you:
+
+In MainViewModel.kt / Prediction.kt, compute for each inbound threat:
+etaToRedEdge — time to cross the red circle boundary (distance from focus to red radius, using predicted position + speed).
+etaToYellowEdge — time to cross the yellow boundary.
+etaToUser — existing.
+Surface in ThreatProximity (MainViewModel.kt:59-66) and the popup (ThreatPopupCard.kt): a small row like "Yellow edge 12m · Red edge 6m · You 3m".
+For fast types (already FAST_THREAT_TYPES), the red/yellow edges are seconds apart — keep them but they'll naturally read similarly; the "to you" line stays the anchor.
+Banner (MainScreen.kt alert banner) optionally gains a live "enters red zone in Xm" countdown when a threat is outside but inbound.
+## 15/08/2026, 16:48:31
+
+summarzie the plan
+## 15/08/2026, 16:51:11
+
+but not material toggles, card w medium-sized icons that toggle on/off using our border style.
+footer strip should not show anything if either alerts or map are off.
+## 15/08/2026, 16:52:07
+
+Task:
+1. REASON BUILDER: given the focus oblast (focusAttribution/token from AlertService.kt:186-208), pick the highest-priority ACTIVE non-advisory, non-areaOnly threat whose region/district/locality is in that oblast (use ThreatLevelModel score ordering). Reason text = translated explanationShort (translateCourseAssessment) or "title in locality" — with a localized fallback template like "Threats reported in <region>" / «Загрози в <регіон>». Store the chosen reason + the threat id that produced it.
+2. WAIT-FOR-REASON: when the official alert fires with no reason yet (region-only body), post it, then keep updating the SAME NOTIF_ALERT id silently (no siren re-trigger) as reasons become available — mirror the coalescing pattern at AlertService.kt:271-280 so a same-id re-post doesn't replay the siren.
+3. ALL-CLEAR CLEANUP: on the official-alert falling edge (~line 297), if no zone alert is currently active, call cancelAlert() immediately to dismiss the lingering siren notification (don't wait for the 60s grace path ~305-316), then post the all-clear chime. If a zone alert is still active, leave the notification up.
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+## 15/08/2026, 16:52:23
+
+Task: keep stale/expired threats visible on the map but DIMMED, instead of hidden.
+- MainViewModel.kt buildUiState: don't `continue` stale/expired. Keep them in mapThreats flagged isStale, but EXCLUDE them from threatsInner/threatsOuter/threatScores/cityCounts (footer strip + gauge stay truthful) and keep them out of alerts.
+- MapView.kt:426: marker alpha = 0.25f for stale (1.0f for live); keep them tappable; ensure the marker overlay rebuild key includes the stale flag so alpha updates (MapView.kt:221-230, appendThreatKey ~87-91).
+- TRULY HIDE when: the server sends status resolved / a remove frame, OR a hard cap ~30 min past the staleness window (so no ghost lingers forever). NEPTUN documents no server death-timeout, so the hard cap is our backstop.
+- Threat popup: when the opened threat is stale/expired, show a clear stale indicator (e.g. dimmed card + "Last seen <m:ss> ago" / «Востаннє <m:ss> тому»; elapsed already exists in the footer ~ThreatPopupCard.kt:259-267, 428-436).
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+## 15/08/2026, 16:52:36
+
+Task: replace the summary with a trio of NEUTRAL, low-color pills where the NUMBER is the hero:
+  UA: «3 км» · «10 хв» · «180 км/год»
+  EN: "3 km" · "10 min" · "180 km/h"
+- Drop the "Distance:"/"ETA:" prose; keep the pinned-city distance wording only where needed (e.g. "to <city>" context can live in the pill's contentDescription or a subtle header).
+- Pills must be plain/muted (near-onSurfaceVariant), number emphasized, wrap-friendly, and work in SMALL/MEDIUM/LARGE.
+- Localize formatEtaMinutes (replace hardcoded m/h with per-language units from the StringSet).
+- Add a Settings note (Threats section or the card-size card, SettingsScreen.kt ~228-255) that "all numbers in the app are approximate" / «усі числа в застосунку приблизні».
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+## 15/08/2026, 16:52:47
+
+Task:
+1. In AlertService.kt, add a separate "fast threats anywhere" path: on first appearance of a FAST_THREAT_TYPES threat ANYWHERE in the stream, fire the urgent siren immediately. Gate ONLY on: the type being enabled in Settings (threatEnabledFlow) + the app monitoring + NOT advisory (per NEPTUN docs, advisory = observation, no siren). Do NOT consult redArmed/yellowArmed or any zone radius.
+2. Fire ONCE per threat episode — latch like knownZones so a per-tick snapshot doesn't re-siren; clear the latch when the threat resolves/removes so a new episode can re-fire. Reuse the coalescing at AlertService.kt:271-280 so a zone alert + fast alert in the same tick don't double-play the siren.
+3. Relabel the "Fast objects alert sooner" setting (SettingsScreen.kt ~382-389, prefs fastAlertsSooner ZonePrefs.kt ~73-79) to "Fast objects alert immediately" / «Швидкі об'єкти — сповіщати миттєво», default ON. When ON = fire on detection anywhere (no zone test); when OFF = fall back to the current zone-based behavior for slow/fast alike.
+4. Slow objects (shahed/FPV/recon) keep zone + bell behavior unchanged.
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598) and update the Feature guide card in FeatureGuide.kt if it references "sooner"/zone-boundary.
+
+## 15/08/2026, 16:53:11
+
+Task: replace it with a 3-step full-screen wizard (BottomSheet/scaffold, not a plain dialog):
+- STEP 1 Language: existing two-flag picker, live-switches as today.
+- STEP 2 "What do you care about" / «Що для вас важливе»: a clean GRID (2-3 columns) of threat types — icon + short label per type, tap to enable/disable, synced with the Settings state (threatEnabledFlow / setThreatEnabled). Reuse ThreatTypeCatalog labels + iconResFor; the layout must be simpler/cleaner than the Settings list. A "continue" button; everything defaults ON.
+- STEP 3 Feature preview + Start: compressed preview cards for the key features (alerts, zones, language, guide — reuse copy from FeatureGuide.kt), a single Start button (primary CTA), minimal buttons. No "too many buttons."
+- REPLAY: add "Replay first launch" / «Повторити початкове налаштування» in Settings (near the Feature guide button, SettingsScreen.kt ~459-466) that clears the languageChosen flag and reopens the wizard.
+- ICONS: new AI-generated threat icons will be supplied as vector drawables. Wire them into a single shared iconResFor helper (currently duplicated at SettingsScreen.kt:879 and ThreatPopupCard.kt:590 — consider centralizing) so the grid, Settings, popup and map all pick them up. Use the existing res names as placeholders until assets arrive.
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+
+ we need a clear way of explaining this scenario to users -- when they toggle either of those in Settings it should popup msg to explain and give a visual example and irl scenario of how to use this advanced feature.
+
+## 15/08/2026, 16:54:33
+
+hidden entirely.
+yes, but use a beter map icon (map + gps pin, etc)
+## 15/08/2026, 16:55:48
+
+summarzie
+## 15/08/2026, 17:12:31
+
+go
+## 15/08/2026, 17:15:42
+
+make a new setting to toggle the map's scale (bottom left corner) on/off.  also white thick font instead of a white background is less intrusive.
+
+
+
+## 15/08/2026, 17:18:49
+
+put a new skill in the opencode master.  if i say "git push" it should summarzie the session's changes into a single sentnece (use little tokens it doens't have to be exact) and give me the 3 commands i need to run in my own terminal.  don't run it yourlsef, that's a waste of tool tokens.  i just want a quick way to not have to summairze.
+
+so i say: git push
+you reply with only: 
+git add .
+git commit -m "[your summary]"
+git push
+
+questions?
+## 15/08/2026, 17:20:53
+
+1 "git push" 
+2 you're right, just the commit.
+## 15/08/2026, 17:31:24
+
+git push

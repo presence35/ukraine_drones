@@ -4,7 +4,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.rotate
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -14,14 +16,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 private val ReliabilityRed = Color(0xFFD9737A)
@@ -35,6 +38,15 @@ private val CyrillicRegex = Regex("[\\u0400-\\u04FF]")
 
 private fun containsCyrillic(text: String): Boolean = CyrillicRegex.containsMatchIn(text)
 
+/** System font scale, capped so extreme accessibility sizes can't break the layout. */
+@Composable
+private fun fontScale(): Float = min(LocalDensity.current.fontScale, 1.5f)
+
+/** Scale a fixed size by the (capped) system font scale so it grows with the text. */
+@Composable
+private fun fontAware(dp: Dp): Dp = dp * fontScale()
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ThreatPopupCard(
     threat: Threat,
@@ -115,11 +127,9 @@ fun ThreatPopupCard(
     }
 
     Surface(
-        modifier = if (interactive) {
-            modifier.clickable(onClick = onDismiss)
-        } else {
-            modifier
-        },
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier),
         shape = RoundedCornerShape(16.dp),
         color = Color(0xFF1E1E1E),
         border = BorderStroke(2.dp, bandColor),
@@ -144,22 +154,18 @@ fun ThreatPopupCard(
                             typeLabel,
                             fontWeight = FontWeight.SemiBold,
                             style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = Color.White
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
                             summary,
                             style = MaterialTheme.typography.bodySmall,
-                            color = distColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = distColor
                         )
                     }
                     Spacer(Modifier.width(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        LevelSkullIcon(level = threatLevel, size = 18.dp)
+                        LevelSkullIcon(level = threatLevel, size = fontAware(18.dp))
                         Spacer(Modifier.width(6.dp))
                         HorizontalLevelBar(level = threatLevel)
                     }
@@ -182,17 +188,13 @@ fun ThreatPopupCard(
                                 typeLabel,
                                 fontWeight = FontWeight.SemiBold,
                                 style = MaterialTheme.typography.titleSmall,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = Color.White
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     displayRegion,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFB0B0B0),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false)
                                 )
                                 val course = threat.courseDeg
@@ -202,14 +204,14 @@ fun ThreatPopupCard(
                                     contentDescription = null,
                                     tint = Color(0xFFB0B0B0),
                                     modifier = Modifier
-                                        .size(12.dp)
+                                        .size(fontAware(12.dp))
                                         .rotate(course.toFloat())
                                 )
                             }
                         }
                         Spacer(Modifier.width(10.dp))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            LevelSkullIcon(level = threatLevel, size = 24.dp)
+                            LevelSkullIcon(level = threatLevel, size = fontAware(24.dp))
                             Spacer(Modifier.height(3.dp))
                             HorizontalLevelBar(level = threatLevel)
                         }
@@ -221,8 +223,6 @@ fun ThreatPopupCard(
                             summary,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFB0B0B0),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
                         proximity?.speedKmh?.let { speed ->
@@ -239,10 +239,9 @@ fun ThreatPopupCard(
                     HorizontalDivider(color = Color(0xFF3A3A3A))
                     Spacer(Modifier.height(8.dp))
 
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Surface(
                             shape = RoundedCornerShape(20.dp),
@@ -290,17 +289,13 @@ fun ThreatPopupCard(
                                     typeLabel,
                                     fontWeight = FontWeight.SemiBold,
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    color = Color.White
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         displayRegion,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = Color(0xFFB0B0B0),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
                                     val course = threat.courseDeg
@@ -310,7 +305,7 @@ fun ThreatPopupCard(
                                         contentDescription = null,
                                         tint = Color(0xFFB0B0B0),
                                         modifier = Modifier
-                                            .size(12.dp)
+                                            .size(fontAware(12.dp))
                                             .rotate(course.toFloat())
                                     )
                                 }
@@ -324,8 +319,6 @@ fun ThreatPopupCard(
                                 summary,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFFB0B0B0),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)
                             )
                             proximity?.speedKmh?.let { speed ->
@@ -389,14 +382,12 @@ fun ThreatPopupCard(
                         HorizontalDivider(color = Color(0xFF3A3A3A))
                         Spacer(Modifier.height(8.dp))
 
-                        Row(
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(20.dp),
@@ -478,18 +469,20 @@ private fun LevelSkullIcon(level: Double, size: Dp = 30.dp) {
 @Composable
 private fun HorizontalLevelBar(level: Double) {
     val fraction = (level / 10.0).coerceIn(0.0, 1.0)
+    val barWidth = fontAware(56.dp)
+    val barHeight = fontAware(8.dp)
     Box(
         modifier = Modifier
-            .width(56.dp)
-            .height(8.dp)
+            .width(barWidth)
+            .height(barHeight)
             .clip(RoundedCornerShape(4.dp))
             .background(Color(0xFF3A3A3A))
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .width((56.dp * fraction.toFloat()).coerceAtLeast(6.dp))
-                .height(8.dp)
+                .width((barWidth * fraction.toFloat()).coerceAtLeast(fontAware(6.dp)))
+                .height(barHeight)
                 .clip(RoundedCornerShape(4.dp))
                 .background(levelColor(level))
         )
@@ -507,20 +500,22 @@ private fun ThreatLevelGauge(level: Double) {
             painter = painterResource(id = R.drawable.ic_skull),
             contentDescription = null,
             tint = skullTint,
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier.size(fontAware(26.dp))
         )
         Spacer(Modifier.height(6.dp))
+        val barWidth = fontAware(12.dp)
+        val barHeight = fontAware(140.dp)
         Box(
             modifier = Modifier
-                .width(12.dp)
-                .height(140.dp)
+                .width(barWidth)
+                .height(barHeight)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF3A3A3A))
         ) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .width(12.dp)
+                    .width(barWidth)
                     .fillMaxHeight(fraction.toFloat().coerceAtLeast(0.02f))
                     .clip(RoundedCornerShape(6.dp))
                     .background(color)

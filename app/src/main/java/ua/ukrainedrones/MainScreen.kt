@@ -47,7 +47,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -111,7 +110,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             BackHandler { screen = Screen.MAP }
             SettingsScreen(
                 lang = uiState.language,
-                disabledTypes = uiState.disabledTypes,
+                hiddenTypes = uiState.hiddenTypes,
+                silencedTypes = uiState.silencedTypes,
                 fastAlertsSooner = uiState.fastAlertsSooner,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
                 sirenOverride = uiState.sirenOverride,
@@ -125,7 +125,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 latestVersion = uiState.latestVersion,
                 onBack = { screen = Screen.MAP },
                 onLanguageChange = { viewModel.setLanguage(it) },
-                onThreatToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
+                onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
+                onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
                 onFastAlertsSoonerChange = { viewModel.setFastAlertsSooner(it) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
@@ -335,7 +336,6 @@ private fun MapScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
                     .background(containerColor)
                     .then(
                         if (officialOnly) Modifier.border(2.5.dp, AlertRed)
@@ -363,13 +363,12 @@ private fun MapScreen(
                                     listOf(UkraineBlue, UkraineYellow)
                                 )
                             )
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        }
                     )
                 }
                 ConnectionStatus(
                     connected = uiState.connected,
+                    offlineElapsedSec = uiState.offlineElapsedSec,
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
                 )
@@ -460,11 +459,13 @@ private fun MapScreen(
                         ) {
                             ThreatType.values().forEach { type ->
                                 val count = (innerCounts[type] ?: 0) + (outerCounts[type] ?: 0)
-                                if (count > 0) {
+                                val visible = type !in uiState.hiddenTypes
+                                val alerting = type !in uiState.silencedTypes
+                                if (count > 0 && visible && alerting) {
                                     ThreatStatusCell(
                                         type = type,
                                         count = count,
-                                        enabled = type !in uiState.disabledTypes
+                                        enabled = true
                                     )
                                 }
                             }
@@ -805,8 +806,16 @@ private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ConnectionStatus(connected: Boolean, s: Strings.StringSet, modifier: Modifier = Modifier) {
+private fun ConnectionStatus(
+    connected: Boolean,
+    offlineElapsedSec: Long?,
+    s: Strings.StringSet,
+    modifier: Modifier = Modifier
+) {
     val dotColor = if (connected) Color(0xFF4CAF50) else Color(0xFFE57373)
+    val label = if (connected) s.connOnline
+    else offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
+        ?: s.connOffline
     var showInfo by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
@@ -824,7 +833,7 @@ private fun ConnectionStatus(connected: Boolean, s: Strings.StringSet, modifier:
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (connected) s.connOnline else s.connOffline,
+            text = label,
             color = Color.White,
             style = MaterialTheme.typography.labelMedium
         )

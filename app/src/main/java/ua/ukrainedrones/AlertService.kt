@@ -34,16 +34,20 @@ class AlertService : Service() {
 
     companion object {
         const val ACTION_STOP = "ua.ukrainedrones.STOP"
+        const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
         private const val CHANNEL_MONITOR = "monitor"
         private const val CHANNEL_ALERTS = "alerts_siren2"
         private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer2"
         private const val CHANNEL_ALLCLEAR = "alerts_all_clear2"
         private const val CHANNEL_ALERTS_ALARM = "alerts_siren_alarm"
         private const val CHANNEL_ALERTS_OUTER_ALARM = "alerts_siren_outer_alarm"
+        private const val CHANNEL_OFFLINE = "offline"
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
         private const val NOTIF_ALLCLEAR = 3
+        private const val NOTIF_OFFLINE = 4
         private const val CENTRE_ALERT_GRACE_MS = 60_000L
+        private const val OFFLINE_GRACE_MS = 30_000L
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, AlertService::class.java))
@@ -63,6 +67,10 @@ class AlertService : Service() {
     private var emptySince: Long? = null
     private var lastMonitorTitle: String? = null
     private var lastMonitorText: String? = null
+    private var lastMonitorRetry: String? = null
+    private var wasConnected = true
+    private var offlineNotifShown = false
+    private var offlineAlertJob: Job? = null
     private val speedTracker = ThreatSpeedTracker()
 
     private sealed class MonitorEvent {
@@ -77,7 +85,9 @@ class AlertService : Service() {
             val yellowArmed: Boolean,
             val fastAlertsSooner: Boolean,
             val officialAlertsEnabled: Boolean,
-            val sirenOverride: Boolean
+            val sirenOverride: Boolean,
+            val connected: Boolean,
+            val offlineElapsedSec: Long?
         ) : MonitorEvent()
     }
 
@@ -107,6 +117,9 @@ class AlertService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_RETRY) {
+            NeptunClient.retryNow()
+        }
         startMonitoring()
         return START_STICKY
     }
@@ -114,7 +127,8 @@ class AlertService : Service() {
     private fun startForegroundCompat() {
         val notif = monitorNotification(
             title = Strings.get(AppLanguage.UA).notifOngoingTitle,
-            text = Strings.get(AppLanguage.UA).notifStatusZones
+            text = Strings.get(AppLanguage.UA).notifStatusZones,
+            retryLabel = null
         )
         ServiceCompat.startForeground(
             this,
@@ -155,7 +169,7 @@ class AlertService : Service() {
                     AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5])
                 },
                 combine(
-                    threatEnabledFlow(prefs),
+                    threatAlertFlow(prefs),
                     prefs.language(),
                     prefs.pinnedCity()
                 ) { enabled, lang, pinned -> Triple(enabled, lang, pinned) }
@@ -177,7 +191,9 @@ class AlertService : Service() {
                     yellowArmed = config.yellowArmed,
                     fastAlertsSooner = config.fastAlertsSooner,
                     officialAlertsEnabled = config.officialAlertsEnabled,
-                    sirenOverride = config.sirenOverride
+                    sirenOverride = config.sirenOverride,
+                    connected = neptun.connected,
+                    offlineElapsedSec = neptun.offlineElapsedSec
                 )
             }.collect { handleState(it) }
         }
@@ -245,9 +261,45 @@ class AlertService : Service() {
             updateMonitorChannel(s)
             lastChannelLang = state.lang
         }
+
+        // Offline tracking: fire a one-shot alert on drop (immediately when an official
+        // alert is active at drop or during the 30s grace, else after the grace), and switch
+        // the ongoing status notification to the offline wording with a Retry action.
+        val offline = state.offlineElapsedSec
+        if (state.connected) {
+            offlineNotifShown = false
+            offlineAlertJob?.cancel()
+            offlineAlertJob = null
+        } else if (wasConnected) {
+            // Just dropped: decide whether to alert now or after the grace.
+            offlineAlertJob?.cancel()
+            val alertNow = state.focusOblastAlertActive
+            offlineAlertJob = scope.launch {
+                if (!alertNow) {
+                    delay(OFFLINE_GRACE_MS)
+                    // During the grace an official alert may have fired — alert immediately then.
+                }
+                if (!offlineNotifShown && !NeptunClient.state.value.connected) {
+                    postOfflineAlert(state.lang)
+                    offlineNotifShown = true
+                }
+            }
+        } else if (state.focusOblastAlertActive && !offlineNotifShown) {
+            // An official alert fired while already offline — surface it immediately.
+            offlineAlertJob?.cancel()
+            if (!NeptunClient.state.value.connected) {
+                postOfflineAlert(state.lang)
+                offlineNotifShown = true
+            }
+        }
+        wasConnected = state.connected
+
         notifyMonitor(
-            title = s.notifOngoingTitle,
-            text = if (state.focusPinned) s.notifStatusPinned else s.notifStatusZones
+            title = if (offline != null) s.offlineStatusTitle else s.notifOngoingTitle,
+            text = if (offline != null) {
+                String.format(s.offlineBodyFormat, String.format(s.offlineDurMinFormat, offline / 60))
+            } else if (state.focusPinned) s.notifStatusPinned else s.notifStatusZones,
+            retryLabel = if (offline != null) s.offlineRetryAction else null
         )
 
         val all = NeptunClient.state.value.threats
@@ -328,7 +380,7 @@ class AlertService : Service() {
         return if (where != null) "$label — $where" else label
     }
 
-    private fun monitorNotification(title: String, text: String) =
+    private fun monitorNotification(title: String, text: String, retryLabel: String?) =
         NotificationCompat.Builder(this, CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_launcher_drone)
             .setContentTitle(title)
@@ -336,13 +388,19 @@ class AlertService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(openAppIntent())
+            .apply {
+                if (retryLabel != null) {
+                    addAction(0, retryLabel, retryPendingIntent())
+                }
+            }
             .build()
 
-    private fun notifyMonitor(title: String, text: String) {
-        if (title == lastMonitorTitle && text == lastMonitorText) return
+    private fun notifyMonitor(title: String, text: String, retryLabel: String?) {
+        if (title == lastMonitorTitle && text == lastMonitorText && retryLabel == lastMonitorRetry) return
         lastMonitorTitle = title
         lastMonitorText = text
-        safeNotify(NOTIF_MONITOR, monitorNotification(title, text))
+        lastMonitorRetry = retryLabel
+        safeNotify(NOTIF_MONITOR, monitorNotification(title, text, retryLabel))
     }
 
     private fun postAlert(zone: ThreatZone?, title: String, body: String, sirenOverride: Boolean) {
@@ -372,6 +430,30 @@ class AlertService : Service() {
             NotificationManagerCompat.from(this).cancel(NOTIF_ALERT)
         } catch (_: SecurityException) {
         }
+    }
+
+    /** One-shot "connection dropped" alert on the silent offline channel. */
+    private fun postOfflineAlert(lang: AppLanguage) {
+        val s = Strings.get(lang)
+        val elapsed = NeptunClient.state.value.offlineElapsedSec ?: 0L
+        val body = String.format(
+            s.offlineBodyFormat,
+            String.format(s.offlineDurMinFormat, elapsed / 60)
+        )
+        val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
+            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setContentTitle(s.offlineStatusTitle)
+            .setContentText(body)
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("$body\n\n${s.offlineOfficialSirensLine}")
+            )
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent())
+            .addAction(0, s.offlineRetryAction, retryPendingIntent())
+            .build()
+        safeNotify(NOTIF_OFFLINE, notif)
     }
 
     private fun postAllClear(s: Strings.StringSet, city: String) {
@@ -408,6 +490,15 @@ class AlertService : Service() {
         }
         return PendingIntent.getActivity(
             this, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    /** "Retry" action on the offline notifications: forces an immediate reconnect attempt. */
+    private fun retryPendingIntent(): PendingIntent {
+        val intent = Intent(this, AlertService::class.java).setAction(ACTION_RETRY)
+        return PendingIntent.getService(
+            this, 1, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
     }
@@ -474,13 +565,22 @@ class AlertService : Service() {
                 )
             }
         )
+        // Offline: high importance so it grabs attention, but silent — it's not an alert,
+        // just a "we lost the live feed" heads-up (the official sirens are still the authority).
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_OFFLINE, en.offlineChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = en.offlineChannelDesc
+                enableVibration(true)
+            }
+        )
         val keep = setOf(
             CHANNEL_MONITOR,
             CHANNEL_ALERTS,
             CHANNEL_ALERTS_OUTER,
             CHANNEL_ALLCLEAR,
             CHANNEL_ALERTS_ALARM,
-            CHANNEL_ALERTS_OUTER_ALARM
+            CHANNEL_ALERTS_OUTER_ALARM,
+            CHANNEL_OFFLINE
         )
         nm.notificationChannels
             .filter { it.id !in keep }

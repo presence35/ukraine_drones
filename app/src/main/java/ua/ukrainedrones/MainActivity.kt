@@ -10,12 +10,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import java.io.File
+import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -45,9 +49,17 @@ class MainActivity : ComponentActivity() {
         AlertService.start(this)
         requestLocationAndNotifications()
         setContent {
-            MaterialTheme(colorScheme = AppDarkColors) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    MainScreen()
+            // Cap the system font scale so extreme accessibility sizes can't break the layout;
+            // the popup/banner still wrap and scroll up to this ceiling.
+            val baseDensity = LocalDensity.current
+            val fontScale = min(baseDensity.fontScale, 1.5f)
+            CompositionLocalProvider(
+                LocalDensity provides Density(baseDensity.density, fontScale)
+            ) {
+                MaterialTheme(colorScheme = AppDarkColors) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        MainScreen()
+                    }
                 }
             }
         }

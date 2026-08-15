@@ -23195,3 +23195,4690 @@ Done. README gallery now references only the 4 existing screenshots.
 ## 14/08/2026, 17:37:25
 
 Done. Tapping a language flag now just switches the live preview; the dialog stays open with a new ОК/OK confirm button (MainScreen.kt:202, ZonePrefs.kt:149, Strings.kt).
+## 14/08/2026, 21:59:43
+
+This is a multi-part request. Let me research the codebase to build a concrete plan. I'll launch parallel explorations of the key areas.
+## 14/08/2026, 21:59:49
+
+I'll explore the codebase systematically. Let me start with the overall structure and the key files.
+## 14/08/2026, 21:59:55
+
+Let me read the core files for staleness/expiry logic.
+## 14/08/2026, 21:59:58
+
+Now let me examine NeptunClient.kt, MainActivity.kt, and search for the "reason" logic:
+## 14/08/2026, 22:00:04
+
+Now the ViewModel and MainScreen for staleness filtering and the
+## 14/08/2026, 22:00:08
+
+No "reason" field exists in NeptunClient. Let me search MainViewModel.kt and related files for the reason computation:
+## 14/08/2026, 22:00:09
+
+Now MainScreen.kt — I need to find the "timer bottom right", rendering of threats, and first
+## 14/08/2026, 22:00:16
+
+
+
+
+## 14/08/2026, 22:00:17
+
+The "reason" feature may have been removed or reverted. Let me check the changelog and search
+## 14/08/2026, 22:00:18
+
+Let me read MainScreen.kt in full to understand layout, timer, and onboarding
+## 14/08/2026, 22:00:29
+
+The changelog (line 79, under [Unreleased]) claims the reason feature, but no "reason" code exists. Let me verify via git history:
+## 14/08/2026, 22:00:29
+
+No timer in MainScreen.kt — checking MapView.kt for the bottom-right timer and threat rendering, plus ThreatPopupCard.kt.
+## 14/08/2026, 22:00:38
+
+No timer in MapView either. Let me read ThreatPopupCard.kt and search for any age/elapsed/ETA rendering across the app.
+## 14/08/2026, 22:00:43
+
+Commit b1a939b touched "reason". Let me examine what it did and what happened after:
+## 14/08/2026, 22:00:48
+
+Found the elapsed timer in ThreatPopupCard (formatElapsedMss). Let me check Strings.kt helpers, Zones.kt (effectiveZone), and AlertService.kt for the boundary/fast-object logic.
+## 14/08/2026, 22:00:57
+
+Now AlertService.kt for the fast-object/boundary alert logic, plus SettingsScreen.kt and FeatureGuide.kt.
+## 14/08/2026, 22:01:04
+
+Now MainActivity.kt and FeatureGuide.kt, plus SettingsScreen for the fast toggle and threat-type grid.
+## 14/08/2026, 22:01:13
+
+Now SettingsScreen.kt for the fast-object toggle and threat-type selector.
+## 14/08/2026, 22:01:18
+
+Let me see the rest of SettingsScreen (feature guide entry, exit).
+## 14/08/2026, 22:01:19
+
+Confirmed: the "reason" feature never existed in the code — the changelog entry is stale. Now let me read MainViewModel.kt, MainActivity.kt, and the relevant Strings:
+## 14/08/2026, 22:01:28
+
+Now the focus logic in MainViewModel.kt, the relevant Strings, and the OblastAlert/focusAttribution definitions:
+## 14/08/2026, 22:01:35
+
+Let me verify the NeptunClient threats collection ordering and confirm no other list view or timer exists.
+## 14/08/2026, 22:01:35
+
+Let me confirm the focus attribution and OblastAlert definitions:
+## 14/08/2026, 22:01:44
+
+# Findings
+
+## 1. Threat-type toggles — storage, map visibility, alert firing
+
+**Storage (DataStore prefs)**
+- `ZonePrefs.kt:97-105` — per-type boolean `threat_enabled_<TYPE>` (default `true`); `threatEnabled(type)` / `setThreatEnabled(type, enabled)`.
+- `ZonePrefs.kt:192-197` — `threatEnabledFlow(prefs)` combines all 8 per-type flows into a single `Set<ThreatType>` of enabled types.
+- `MainViewModel.kt:447-449` — `setThreatEnabled` writes the pref; `MainScreen.kt:128` wires the settings callback to it.
+
+**Settings UI**
+- `SettingsScreen.kt:257-376` — one card per `ThreatType`; tapping the row calls `onThreatToggle(type, !enabled)` (`SettingsScreen.kt:277`); disabled cards get `alpha(0.45f)` and no primary border (`SettingsScreen.kt:269-279`).
+- `MainViewModel.kt:381` — `disabledTypes = all types - enabledTypes`, consumed by the strip greying (`MainScreen.kt:467`) and Settings (`SettingsScreen.kt:264`).
+
+**Semantics: OFF = hidden from map AND alerts suppressed — one shared gate, no separation**
+- Map/UI side: `MainViewModel.kt:311-335`, specifically `MainViewModel.kt:313` `if (t.type !in enabledTypes) continue`. This single skip happens *before* all downstream uses: `cityCounts` (314), `mapThreats` (320), zone tiering `inInner`/`inOuter` (330-334), and `threatScores` (328). Disabled types therefore never reach the map markers (`MapView.kt:409-439` and the smoothing loop `MapView.kt:487` draw only `uiState.mapThreats`), nor the bottom threat strip (counts from `threatsInner`/`threatsOuter`, `MainScreen.kt:437-470`).
+- Alert side: `AlertService.kt:214-239`, specifically `AlertService.kt:227` `if (t.type !in enabled) continue` in `zoneThreats()`. A disabled type can never fire a red/yellow zone siren either.
+
+**There is no existing "map-visible" vs "alert-enabled" split per threat type.** The same `enabledTypes` set drives both (guide copy even says "shown or silenced", `Strings.kt:589`).
+
+**Separate global gates (all independent of the per-type toggles)**
+- Red/yellow zone alert arming: `redArmed`/`yellowArmed` (`ZonePrefs.kt:57-71`), setters `MainViewModel.kt:406-420`, gate only the *sound* tier in `AlertService.kt:256-262` (`alertTier`). They do **not** change map visuals — zone rings are drawn from `activeZone` regardless (`MapView.kt:384-405`; `activeZone` computed at `MainViewModel.kt:340-344` without consulting arming).
+- Official oblast alerts: `officialAlertsEnabled` (`ZonePrefs.kt:81-87`), setter `MainViewModel.kt:426-428`, UI toggle `SettingsScreen.kt:391-398`. Gates **only** official-alert notifications — explicitly documented as "never the Red/Yellow zone alerts" (`AlertService.kt:283-285`; checks at `AlertService.kt:286` and `297`). It does **not** gate the in-app banner (`MainScreen.kt:330, 348` uses `focusOblastAlertActive` directly) or map overlays.
+- `sirenOverride` (`ZonePrefs.kt:89-95`) — sound behavior only.
+
+**Map-visibility nuance:** markers exist only while an oblast alert is active — `mapThreats` is populated only `if (neptun.oblastAlerts.isNotEmpty())` (`MainViewModel.kt:320`). With no official alert, no markers are drawn at all; `threatsInner`/`threatsOuter` feed only the strip, banner, and alerts.
+
+## 2. Threat popup + font sizes
+
+**Rendering / placement**
+- `MainScreen.kt:477-495` — popup in a `Box(Alignment.TopCenter)` with `padding(top=12, start=16, end=16)` and `Modifier.fillMaxWidth()`; card size comes from `uiState.threatCardSize` (pref `ZonePrefs.kt:172-181`, default LARGE).
+- `ThreatPopupCard.kt` — three variants: SMALL `:130-167`, MEDIUM `:170-273`, LARGE `:276-445`.
+- **Distance line** ("Distance to <city>: N km" / UA "Відстань до …" — `Strings.kt:294-296`, `491-493`) is built as an `AnnotatedString summary` at `ThreatPopupCard.kt:102-115` and rendered at: SMALL `:152-158`, MEDIUM `:220-227`, LARGE `:323-330`. The ETA is appended to the same line (`:108`).
+- **Speed pill** — `SpeedPill` (`:532-544`), drawn at MEDIUM `:230-234` and LARGE `:333-337`, sitting in a `Row` next to the summary text.
+
+**Font sizes: all scalable, but nothing clamps them**
+- Every text node uses `MaterialTheme.typography.*` (`titleSmall`, `bodySmall`, `titleMedium`, `bodyMedium`, `labelMedium/Large`) — all scale with the system `fontScale`. **No hard-coded `.sp` anywhere in `ThreatPopupCard.kt`.**
+- **There is no `fontScale` handling in the app at all** (grep for `fontScale|FontScale` → 0 hits). `MainActivity.kt:48` just wraps in `MaterialTheme(colorScheme = AppDarkColors)` with default typography. Large system fonts pass through unclamped.
+
+**Fixed-size (non-scaling) elements that clip/overflow at large fontScale**
+- Fixed icons: `28.dp` (`:139`, `:177`), `32.dp` (`:285`), skulls `18/24/26.dp` (`:162`, `:212`, `:510`), course arrow `12.dp` (`:205`, `:313`).
+- Fixed gauges/bars: `HorizontalLevelBar` `56.dp × 8.dp` (`:483-484`, `:491-492`); `ThreatLevelGauge` `12.dp × 140.dp` (`:514-516`) with a `26.dp` skull — none of these scale with text.
+- Hard paddings/spacers (`14.dp`, `10.dp`, `8.dp`) everywhere — row heights are text-driven so they grow, but horizontal space is fixed.
+- `maxLines=1` + `TextOverflow.Ellipsis`: typeLabel (`:148`, `:186`, `:294`), region (`:195`, `:302`), SMALL summary (`:156`), MEDIUM summary (`:224`); LARGE summary is `maxLines=2` (`:327`). With large fonts these truncate to "…" instead of wrapping.
+- LARGE footer pills + elapsed (`:392-440`) use `Arrangement.SpaceBetween` with no weight/ellipsis — wide pill text pushes against the timestamp.
+- **Fixed-height top bar** (not the popup, but same screen): `MainScreen.kt:338` `.height(44.dp)` with `titleMedium` + `maxLines=1` ellipsis (`:355-369`) — the most likely vertical glyph-clip at big fontScale.
+
+**Worst offenders for the reported bug:** the SMALL card (`:130-167`, everything one line), the LARGE summary row where a 2-line-ellipsis text shares a `Row` with the speed pill (`:322-339`), the fixed `140.dp` gauge next to a text column that grows (`:442-444`), and the `44.dp` top banner (`MainScreen.kt:338`). Note the `ThreatCardSize` setting (`SettingsScreen.kt:228-255`) changes layout density but is unrelated to system font scaling.
+## 14/08/2026, 22:01:51
+
+Let me quickly verify there's no persistence of the active alert and check BootReceiver:
+## 14/08/2026, 22:02:13
+
+I have all the information needed. Here is the structured summary.
+
+---
+
+# Ukraine Drones — Search Findings
+
+## 1. STALENESS / EXPIRY
+
+**Staleness windows (per type)** — `Prediction.kt:44-49` (`staleAfterMs`):
+- `BALLISTIC` → 90 s (`Prediction.kt:45`)
+- `CRUISE_MISSILE`, `KAB` → 180 s (`Prediction.kt:46`)
+- `AVIATION` → 240 s (`Prediction.kt:47`)
+- `SHAHED`, `FPV_LOITERING`, `RECON`, `UNKNOWN` → **300 s = 5 min** (`Prediction.kt:48`) — this is exactly the "disappear after 5 min" the user sees for drones.
+
+**Where a stale/expired threat is removed** — the gate is a single `continue` at:
+- `MainViewModel.kt:312` (in `buildUiState`): `if (t.status == "resolved" || t.status == "stale" || isExpired(t, now)) continue` — drops it from `threatsInner`/`threatsOuter`/`mapThreats`, counts, and the map.
+- `AlertService.kt:226` (in `zoneThreats`): same triple-condition filter for notifications.
+
+**`isExpired`** — `Prediction.kt:52-55`: `now - (updatedAtMillis ?: confirmedAtMillis) > staleAfterMs(type)`. Driven live by the 1-second `nowFlow` clock (`MainViewModel.kt:90-98`).
+
+**"stale" vs "expired"** — two distinct mechanisms, but both are hidden identically:
+- `status == "stale"` is a **server-reported** status (field declared `Threat.kt:157`: `active | stale | resolved`) sent by NEPTUN.
+- "Expired" is the **client-side local clock** check (`isExpired`) — the per-type window above. There is no separate rendering treatment; both are just filtered out. (`Threat.flying` at `Threat.kt:177-178` additionally requires `status == "active"`, so a stale threat also stops dead-reckoning.)
+
+**The "timer bottom right"** — the only live counter in the app is the **elapsed-age counter `m:ss` since the threat's last fix**, rendered in the **bottom-right of the threat popup card** (footer row, `Arrangement.SpaceBetween`):
+- `ThreatPopupCard.kt:267` (MEDIUM size) and `ThreatPopupCard.kt:436` (LARGE size)
+- Driven by a per-second `now` loop: `ThreatPopupCard.kt:259-265` and `:428-434`
+- Formatted by `formatElapsedMss` — `Strings.kt:620-624` → `"%d:%02d"` (e.g. `3:47`). It is an **age counter, not an ETA countdown**. (No timer exists elsewhere on the map; bottom-left = scale bar `MainScreen.kt:403-409`, bottom-center = zone buttons `MainScreen.kt:421-433`.)
+
+**Where the dim change goes** — the hiding gate is `MainViewModel.kt:312` (and `AlertService.kt:226`); instead of `continue`, keep stale/expired threats in a new `UiState` list (e.g. `staleThreats`). Marker alpha is set at `MapView.kt:426`: `alpha = 1.0f` — set it to ~0.25 for stale ones there (and add a stale key to the overlay key `MapView.kt:221-230` so dimming updates; note `appendThreatKey` at `MapView.kt:87-91` already includes `status`). Do **not** mark stale as non-tappable; `Marker.setAlpha` is the natural place. Note dead-reckoning won't run for stale (needs `status == "active"`), so stale markers will sit frozen at their last fix.
+
+---
+
+## 2. THREAT CARD FIELDS (`ThreatPopupCard.kt`)
+
+The summary line is built once at `ThreatPopupCard.kt:102-115` and reused in all three sizes:
+- **Distance**: `"$distLabel: ${formatKm(distUser)} ${s.kmUnit}"` (`:105`) → e.g. **"Distance: 3 km"** (EN) / **"Відстань: 3 км"** (UA). `distLabel` = `s.distanceLabel` ("Distance"/"Відстань") or `s.distanceToCityFormat` ("Distance to %1$s"/"Відстань до %1$s") when pinned (`:52-57`). `formatKm` = `roundToInt` (`:546`).
+- **ETA**: appended `" · ${s.etaLabel} ${formatEtaMinutes(eta)}"` (`:107-109`) → **"· ETA 10m"** / "· Час підльоту 10м". `formatEtaMinutes` (`:548-551`) emits `"10m"` or `"1h 5m"` — **hardcoded English `m`/`h`, not localized**.
+- **Speed pill**: `SpeedPill` (`:533-544`) → `"${roundToInt} ${s.speedUnit}"` = **"180 km/h"** / "180 км/год". Rendered in MEDIUM `:228-235` and LARGE `:331-338`.
+
+**Translation/pluralization helpers** (`Strings.kt`):
+- Only real pluralizer: `sourcesWord(count, lang)` — `Strings.kt:606-617` (EN `source/sources`; UA `джерело/джерела/джерел`).
+- Unit strings: `kmUnit` = "км"/"km" (`Strings.kt:303/500`), `speedUnit` = "км/год"/"km/h" (`Strings.kt:262/459`), `meterUnit` (`:304/501`).
+- No "away"/"@"/"kph" phrasing exists; no per-unit pluralization for distance/ETA. A compact form like "3km away, 10min @ 180kph" would need new `StringSet` entries (add fields in the data class `Strings.kt:9-204`, then UA at `:206-401`, EN at `:403-598`) plus a small formatter alongside `formatEtaMinutes` (`:548-551`). The `summary` builder at `:102-115` and `SpeedPill` at `:533-544` are the two render sites to touch.
+
+---
+
+## 3. THREAT LIST vs MAP
+
+- **No list view exists.** Threats appear only as (a) osmdroid map markers (`MapView.kt:409-439`) and (b) the bottom per-type count strip `ThreatStatusCell` (`MainScreen.kt:436-473`, cell `:894-931`) — counts by type, not individual threats.
+- **Ordering is insertion order, no ranking.** `threatsInner`/`threatsOuter`/`mapThreats` are appended in `neptun.threats.values` order (`MainViewModel.kt:311-335`); the source map is a `LinkedHashMap` (`NeptunClient.kt:115, 232`). Markers are drawn in `mapThreats` order (`MapView.kt:409`).
+- **No "sort by distance/severity" anywhere.** The only ranking logic is the aggregate gauge: `ThreatLevelModel.overall` sorts per-threat scores descending (`ThreatLevel.kt:106-109`) but never feeds a list. Distance/ETA per threat is already computed in the ViewModel loop (`MainViewModel.kt:325-329`) and in `ThreatProximity` (`:346-371`), so a "where is what right now" ranked list would reuse that data; a minimal version would sort `mapThreats`/`threatsInner` by `distToUserKm` and render a simple `LazyColumn`.
+
+---
+
+## 4. FIRST-LAUNCH FLOW
+
+**Trigger** — `MainScreen.kt:184-191`: `if (!uiState.languageChosen)` shows `LanguageChooseDialog`. `languageChosen` is persisted via `prefs.setLanguageChosen` (ViewModel `setLanguage` `MainViewModel.kt:459-461`, `skipLanguageChoose` `:464-466`).
+
+**Current steps** (`LanguageChooseDialog`, `MainScreen.kt:195-254`):
+1. Two-language flag picker (UA 🇺🇦 / EN 🇬🇧) — `:207-225`
+2. "A few tips" section (`onboardingTipsTitle`) with 3 tip rows (`:229-250`): tap a drone (`onboardingTipTap`), settings gear (`onboardingTipSettings`), siren behavior (`onboardingTipSiren`). Strings: UA `:216-219`, EN `:413-416`.
+3. Dismiss "Later" = `skipLanguageChoose` (`:189`).
+
+**Feature guide** — entered only from Settings: button at `SettingsScreen.kt:459-466` → `onOpenGuide` (`MainScreen.kt:138-142`) sets `screen = Screen.GUIDE`, `guideFromSettings = true`; screen switch at `MainScreen.kt:145-152`. The guide (`FeatureGuide.kt`) is a **scrollable manual, not a wizard**: 14 features grouped into 5 categories (`FeatureGuide.kt:33-62`), each an expandable card (`FeatureCard` `:139-199`).
+
+**No "replay tour"/"return init" exists.** There is no way to re-show the language picker or first-run tips; the only re-entry point is the Settings → Feature guide button. (There is an unused deep-link param `guideFeatureId` — `MainScreen.kt:75`, consumed at `FeatureGuide.kt:91-96` — but `onOpenGuide` always sets it to `null`.)
+
+**Threat-type selector** — the only selector (besides the read-only strip) is the **vertical list of expandable toggle cards** in Settings: `SettingsScreen.kt:257-376` (`items(ThreatType.values().toList())`, whole row toggles via `onThreatToggle`, disabled rows get `.alpha(0.45f)` at `:279, 317`). It is a list, not a grid.
+
+---
+
+## 5. FAST OBJECTS + ZONE BOUNDARY
+
+**Fast type set** — `Threat.kt:18-23`: `FAST_THREAT_TYPES = { BALLISTIC, CRUISE_MISSILE, AVIATION, KAB }` (doc: `:13-17`).
+
+**The toggle** — Settings `SettingsScreen.kt:382-389` (`fastAlertsSoonerTitle` "Fast objects alert sooner" / `fastAlertsSoonerDesc` "sound the siren the moment they cross any zone boundary"), persisted via `MainViewModel.kt:422-424`, surfaced in `UiState.fastAlertsSooner` (`MainViewModel.kt:33`).
+
+**Where the boundary check happens:**
+- Spatial tier: `radialZone(distKm, zones)` — `Zones.kt:14-18` (`≤ redKm` → INNER, `≤ yellowKm` → OUTER, else null).
+- The "sooner" logic is only a **tier upgrade**: `effectiveZone` — `Zones.kt:25-27` — turns an OUTER fast object into INNER when the toggle is on.
+- Applied in three places: `MainViewModel.kt:330-334` (banner/counts), `AlertService.kt:256-262` (`alertTier`, channel/siren selection), `ThreatPopupCard.kt:85-89` (card band color).
+
+**The critical gap for the user's request:** the notification **only fires when a threat's tier *changes*** — `AlertService.kt:271-280` (`knownZones[id] != zone`). So today "alert sooner" merely means: once a fast object crosses into the **yellow** ring it gets the **urgent siren tier (INNER)** instead of the warning chime. There is **no pre-boundary projection**: a fast object outside the yellow zone never alerts, even if its bearing/speed puts it on course to arrive in seconds. The per-threat zone computation is `zoneThreats` (`AlertService.kt:214-239`) — that's where an "ETA-to-boundary / projected entry" check would go (bearing + speed already exist via `predictPosition`, `Prediction.kt:64-77`), feeding a new event that bypasses the `knownZones` change-gate at `:271-280`.
+## 14/08/2026, 22:02:22
+
+I have everything needed. Here is the structured summary.
+
+---
+
+# ALERT / NOTIFICATION / OFFICIAL-ALERT pipeline — D:\Desktop\drones
+
+All paths under `app\src\main\java\ua\ukrainedrones\`.
+
+## Q1 — OFFICIAL ALERT REASON
+
+**Headline finding: the "reason" feature does not exist in the code.** The changelog entry `CHANGELOG.md:79` ("the official alert notification now carries the reason — the latest NEPTUN Telegram message… fallback to the highest-priority active threat… updates silently") describes code that was never written. Verified via git history: no commit ever introduced a "reason" string into any Kotlin source (`git log -S "reason"` only matches the WebSocket callback parameters at `NeptunClient.kt:184,188`).
+
+Where the notification text is actually built (it is region text, never a reason):
+
+- Official-alert post site: `AlertService.kt:286-293` — fires only on the rising edge (`!wasFocusAlertActive`), gated by `officialAlertsEnabled`, and skipped if a zone alert already posted this tick (`!posted`, `AlertService.kt:286`).
+- Title = banner: `String.format(s.alertBannerFormat, state.focusBannerCity)` → "Odesa: alert" / «Одеса: тривога» (`AlertService.kt:289`, strings `Strings.kt:314,511`).
+- Body = `state.focusRegion` (`AlertService.kt:290`) from `focusRegionText()` (`AlertService.kt:196-208`) → "Odesa region" / «Одеський регіон» (`Strings.kt:447,250`) or the pinned city's region via `notifBodyRegionFormat` (`Strings.kt:315,512`).
+- The notification is posted by `postAlert()` → `safeNotify(NOTIF_ALERT, …)` (`AlertService.kt:348-368, 392-398`).
+
+No NEPTUN message source exists to feed a reason:
+
+- Only REST URL is `restUrl = "https://neptun.in.ua/api/v1/threats"` (`NeptunClient.kt:86`); no Telegram/message endpoint.
+- WebSocket frame types handled: snapshot / upsert / remove / alerts / heartbeat (`NeptunClient.kt:228-273`). The `alerts` frame parses only `key/name/oblast/since` (`NeptunClient.kt:253-271`) into `OblastAlert` (`Threat.kt:290-295`). `since` is parsed but never read anywhere in the app.
+
+So "an official alert with NO reason" is not an edge case — it is the only behavior. Related failure modes that can produce a missing/garbled notification:
+
+- No token → no alert at all: `focusAttribution(...).token ?: return false` (`AlertService.kt:187`); token is `null` when not following, no pinned city, and no GPS fix — fallback is `FocusAttribution(null, "Одеса", "Odesa")` (`Cities.kt:168`).
+- If a pinned city's `Cities.cityOblast[nameUa]` were null, the UA body becomes `String.format(s.notifBodyRegionFormat, "${token ?: ""}а")` → "а область" (`AlertService.kt:202`).
+- Official alert suppressed when a zone alert wins the same tick (`AlertService.kt:286`), and all posts silently dropped if POST_NOTIFICATIONS is denied (`safeNotify`, `AlertService.kt:392-398`).
+
+## Q2 — ALL CLEAR + NOTIFICATION CLEARING
+
+- All-clear detection (official alert end): `AlertService.kt:297-299` — falling edge of `wasFocusAlertActive` (true→false), gated by `officialAlertsEnabled`. State latch updated at `AlertService.kt:300`.
+- All-clear notification: `postAllClear()` (`AlertService.kt:377-387`) → `safeNotify(NOTIF_ALLCLEAR=3, …)` on `CHANNEL_ALLCLEAR` ("alerts_all_clear2", `:40`) with `all_clear` sound (`:449-452`), auto-cancel on tap (`setAutoCancel(true)`, `:383`).
+- **The siren/persistent alert notification (NOTIF_ALERT=2) is NOT cancelled at all-clear.** It is cancelled only by the grace-window path `AlertService.kt:305-316`: once `zoneThreats.isEmpty() && !focusOblastAlertActive` holds for `CENTRE_ALERT_GRACE_MS` = 60s (`:46`), it calls `cancelAlert()` (`:370-375`) which cancels only id `NOTIF_ALERT=2`.
+  - Consequence: after all-clear, the siren notification can linger up to 60s, and it stays indefinitely if a zone threat is still inside the zone map (the same id-2 notification doubles as the zone-alert notification).
+- Notification IDs: `NOTIF_MONITOR=1` (`:43`), `NOTIF_ALERT=2` (`:44`), `NOTIF_ALLCLEAR=3` (`:45`). Channels at `AlertService.kt:37-42`.
+- For "clear old notifications on all clear": the only cancel call is `cancelAlert()` (`AlertService.kt:370-375`); it is not invoked from the all-clear branch (`:297-299`).
+
+## Q3 — NOTIFICATION UPDATES WHILE AN ALERT IS ACTIVE
+
+- **No silent re-post of the official alert exists.** The rising-edge guard `!wasFocusAlertActive` (`AlertService.kt:286`) means the official alert posts exactly once per episode. The changelog's "new reason text updates the notification silently (no siren re-trigger)" (`CHANGELOG.md:79`) has no corresponding code.
+- What does re-post:
+  - Zone alerts: `knownZones` diff at `AlertService.kt:271-281` — re-posts id 2 only when a threat's tier changes (comment at `:264-266` explains coalescing so the siren isn't double-played; a same-id re-post would restart the siren).
+  - Monitor (ongoing status) notification: `notifyMonitor()` (`AlertService.kt:341-346`) re-posts id 1 only when title/text changed (deduped via `lastMonitorTitle/Text`).
+  - Channel name refresh on language change: `AlertService.kt:244-247` → `updateMonitorChannel()` (`:503-511`).
+- All updates reuse the same notification id, so `notify()` replaces in place — but there is no mechanism that updates the official-alert body while ringing.
+
+## Q4 — BACKGROUND SERVICE STATE
+
+- Fields held by `AlertService` (`AlertService.kt:60-66`): `wasFocusAlertActive: Boolean`, `knownZones: Map<String, ThreatZone>`, `lastChannelLang: AppLanguage?`, `emptySince: Long?`, `lastMonitorTitle/Text: String?`, `speedTracker`. Computed per emission: `MonitorEvent.State` carries `focusOblastAlertActive`, `focusBannerCity`, `focusRegion`, `zoneThreats`, etc. (`AlertService.kt:69-82`, built at `:162-182`).
+- **No persistence of the active alert.** Nothing is written to SharedPreferences/DataStore for alert state — the only DataStore is `zone_prefs` for user settings (`ZonePrefs.kt:15`). On restart (START_STICKY, reboot / package-replace via `BootReceiver.kt:12-17`), the service starts fresh: `wasFocusAlertActive=false`, `knownZones=emptyMap()`, `emptySince=null` (`AlertService.kt:60-66`). An already-active official alert's rising edge is missed, so no siren notification is (re)created for it.
+- Reason recomputation: never happens — there is no reason field, function, or data source in the app.
+
+## Where empty-reason can occur (summary)
+
+1. Always — the official alert notification only ever shows the region text ("Odesa region"), never a reason; no reason field exists (`AlertService.kt:286-292`, `Strings.kt:447`).
+2. No notification at all when the focus token is null (no follow, no pin, no GPS) — `AlertService.kt:187`, `Cities.kt:168`.
+3. No notification when a zone alert posts in the same tick — `AlertService.kt:286`.
+4. No notification when the "Official alerts" toggle is off — `AlertService.kt:286,297`.
+5. Silently dropped when POST_NOTIFICATIONS denied — `AlertService.kt:392-398`.
+## 14/08/2026, 22:02:49
+
+Good progress. Let me verify a few key claims — the "reason" feature status and what server-side data exists.
+## 14/08/2026, 22:03:02
+
+Confirmed: the "reason" feature was never actually implemented (changelog overstates it). Let me examine the data model and key files to plan the fixes.
+## 14/08/2026, 22:03:09
+
+Let me look at the Settings threat toggles, MainViewModel's map build, and the first-launch dialog to finalize the plan.
+## 14/08/2026, 22:03:53
+
+I have a thorough picture now. Before writing the plan, a few decisions will materially change the implementation. Key finding to flag up front: **the "reason on official alert" feature was never actually implemented** — the changelog claims it, but no code builds a reason; the notification body is only the region name (`AlertService.kt:290`), and there's no NEPTUN message/Telegram data source in the app at all. That's why alerts arrive with no reason.
+
+Let me resolve the loose ends.
+## 14/08/2026, 22:28:38
+
+Two answers need external verification: the NEPTUN API (reason + stale timeout) and the ballistic math. Let me research.
+
+
+## 14/08/2026, 22:28:57
+
+The NEPTUN docs are the key: `explanationShort` on each threat IS the reason field ("БпЛА курсом на Чорноморськ"), and official alerts carry only `since`. Let me confirm what the app already
+## 14/08/2026, 22:30:00
+
+Research complete. Here's the plan.
+
+## Key findings first (context for decisions)
+
+- **The "reason" feature was never actually built.** The changelog entry describing it was never implemented — the official-alert notification body is only the region name (`AlertService.kt:290`), and there's no reason computation anywhere. That's why alerts arrive with no reason.
+- **But the reason data exists and is already parsed:** NEPTUN's API (`neptun.in.ua/developers`, verified today) puts a per-threat `explanationShort` ("БпЛА курсом на Чорноморськ"), `title`, `region`, `district`, `locality` on every threat, and official alerts carry only `key`/`since` (no reason text). The app already parses `explanationShort` (`Threat.kt:163,237`) and shows it as the popup course line (`ThreatPopupCard.kt:346-355`). So the reason source is local — no new endpoint needed.
+- **Staleness:** NEPTUN documents `status: active | stale | resolved` and a `remove` frame, but **no server "dead threat" timeout** is documented. The app's own per-type windows (`Prediction.kt:44-55`) currently *hide* at 5 min for drones.
+- **Fast-object math is right:** ballistic ~3,300 km/h (0.92 km/s) → ~9 min from 500 km, ~18 min from 1,000 km. Zone-only gives ~20 s — pointless, as you said. Nationwide immediate-fire is correct for ballistic; cruise (850 km/h) is slower but still worth immediate warning.
+- **Threat toggles today are all-or-nothing already** — one `enabledTypes` set gates both map visibility and alert firing (`MainViewModel.kt:313`, `AlertService.kt:227`).
+
+---
+
+## Work items
+
+### 1. Threat toggle semantics — decision needed
+Your reasoning ("if you don't want alerts for drones, you surely don't want it on the map") matches the **recommended: keep one all-or-nothing toggle per type** (already the behavior). The map-off/alerts-on combo is the only sensible half-state, and it's covered by the zone-armed bells + official toggle which gate *sounds* only (`AlertService.kt:256-262`). So:
+- **No logic change** — just improve the toggle's copy so users understand it both hides **and** silences that type (Settings threat header + footer strip).
+- Alternative (if you truly want map-only): drop the `if (t.type !in enabled) continue` at `AlertService.kt:227` so alerts fire for every type; adds a 2×2 matrix users have to reason about. Not recommended.
+
+### 2. Font-size / accessibility (old people's screens)
+No `fontScale` handling exists anywhere (`MainActivity.kt:48` uses default typography; all popup text is Material theme sizes that *do* scale). The clipping comes from fixed-size siblings and `maxLines=1` ellipsis:
+- **ThreatPopupCard.kt:** remove `maxLines=1`/ellipsis on SMALL/MEDIUM summary + type label (wrap instead); let LARGE summary go past 2 lines; give the fixed `12.dp × 140.dp` gauge + `56.dp` level bar + skulls a font-aware height; make pills wrap; allow the whole card to scroll when content exceeds screen height.
+- **MainScreen.kt:338** top banner `.height(44.dp)` + `maxLines=1` → increase height / allow wrap.
+- Set a sane cap (e.g. clamp `fontScale` to ~1.5 in `MainActivity.kt`) so huge fonts don't break layout.
+- Verify manually at fontScale 1.3 / 2.0.
+
+### 3. Official-alert reason pipeline + notification updates + all-clear cleanup
+- **Reason builder** (new): for the focus oblast, pick the highest-priority threat (existing `ThreatLevelModel` ordering) whose `explanationShort`/`title`/`region` references it; fall back to a localized template like "Threats reported in <region>" / «Загрози в <регіон>». Store the chosen reason + the reason-generating threat id.
+- **Wait-for-reason then update:** when the official alert fires with no reason yet, post the current region-only body, but keep a flag "reason pending"; as reasons become available, re-post the **same notification id (`NOTIF_ALERT=2`)** with the reason appended, silently (no siren re-trigger — reuse the tier-change coalescing pattern at `AlertService.kt:271-280`). This is the "wait for the first reason and update" behavior.
+- **All-clear clears old notifications:** on the falling edge (`AlertService.kt:297-299`), call the existing `cancelAlert()` (`:370-375`) to dismiss the siren notification **immediately** instead of waiting for the 60 s grace path — then post the all-clear chime.
+
+### 4. Small log screen
+- New `LogStore` (ring buffer, ~100 entries, persisted to DataStore/file): records alert start/end, all-clear, official alert + reason, zone alerts, reasons as they appear, connection state changes.
+- New screen (Settings → "Log" / «Журнал»): simple `LazyColumn`, newest first, each row a timestamp + localized text. Reason rows show the fallback template when nothing specific arrived ("some fallbacks will be necessary"). This also gives you the visibility to debug "why did this alert fire."
+
+### 5. Stale threats: dim instead of hide
+- `MainViewModel.kt:311-335`: instead of `continue`-ing stale/expired, keep them in a new `staleThreats` list (fed to `mapThreats`) flagged `isStale`, but **exclude from** `threatsInner`/`threatsOuter`/`threatScores`/`cityCounts`/alerts.
+- `MapView.kt:426`: marker `alpha = 0.25f` for stale; keep them tappable.
+- **Truly hide when:** the server sends `status: resolved` or a `remove` frame (server-driven death), or a generous hard cap (~30 min past staleness) so ghosts can't linger forever. Add a "last seen X ago" to the dimmed popup + a visual stale/unknown indicator (the popup you asked for).
+- Footer strip counts stay truthful (stale excluded).
+
+### 6. Compact threat card — pill trio
+- Replace the wordy summary (`ThreatPopupCard.kt:102-115`) with three **neutral, low-color pills**: `3 km`, `10 хв`, `180 км/год` — number is the hero, minimal tint. (UA: «3 км» / «10 хв» / «180 км/год»; EN: `3 km` / `10 min` / `180 km/h`.) Localize `formatEtaMinutes` (`:548-551`, currently hardcoded `m`/`h`).
+- Add the Settings note: "all numbers in the app are approximate" (matches your plan).
+- Works in both languages — pills are unit-first, no prose.
+
+### 7. Fast objects alert immediately (nationwide)
+- Replace the boundary-upgrade logic (`Zones.kt:25-27` + the tier-change gate at `AlertService.kt:271-280`): on first appearance of any `FAST_THREAT_TYPES` (`Threat.kt:18-23`: ballistic, cruise, KAB, aviation) anywhere in the stream, fire the urgent siren immediately (respecting `redArmed`/`yellowArmed` — i.e. only if the user has zone alerts armed at all).
+- Slow types (shahed/FPV/recon) keep zone-boundary behavior.
+- Keep the "Fast objects alert sooner" toggle → re-label to "Fast objects alert immediately" (default on). Math note as above justifies it.
+
+### 8. "Where is what right now" — ranked list (minimal)
+- Simple full-screen list (new `Screen.THREAT_LIST`), sorted by distance to user (dist already computed in `MainViewModel.kt:325-329`), then severity. Each row: type icon, name/locality, the pill trio from #6. Tap → closes list and focuses that marker on the map (existing selection mechanism).
+- Launched from a small floating list button on the map. No extra data, no complexity.
+
+### 9. First-launch → 3-step wizard
+- **Step 1 — Language:** existing `LanguageChooseDialog` content.
+- **Step 2 — "What do you care about":** threat-type **grid** (2–3 cols) with icons + short labels, tap to enable/disable, matching Settings state. Reuse `ThreatTypeCatalog` (`SettingsScreen.kt:258-376`).
+- **Step 3 — Features preview + Start:** compressed preview cards (alerts, zones, language, guide — reused copy from `FeatureGuide.kt`) + a **Start** button. Few buttons, one clear CTA.
+- **Replay in Settings:** "Replay first launch" button resets the wizard flag (`languageChosen`, `MainViewModel.kt:459-466`).
+- **Icons:** you'll supply AI threat icons — I'll wire them into `iconResFor(type)` and the grid when you drop the assets (needs a vector res per type; the 8 existing vector icons already cover this, new ones just swap in).
+
+### 10. Changelog
+Append each finished item to `## [Unreleased]` per the release workflow.
+
+---
+
+**Two things to confirm before I start:**
+1. Threat toggles: keep **all-or-nothing** (recommended) or make them **map-only**?
+2. Fast objects: alert on first appearance **anywhere in Ukraine** for all fast types, gated only by zone-arming being on — correct?
+
+Once you confirm, I'll implement in this order: 3+4 (reason/notifications/log — the "nobody knows why" fix), then 5, 6, 2, 7, then 8, 9, 1.
+## 14/08/2026, 22:37:31
+
+Got it. Mapping your answers (I think you numbered across both my plan items and the two confirm questions):
+
+- **Plan #4 (log screen):** skipped. ✓
+- **Plan #7 (fast objects):** zones are irrelevant — logic won't test any zone. ✓
+- **Confirmation #1 / Plan #1 (threat toggles):** all-or-nothing, keep as-is. ✓
+- **Confirmation #2 (fast-object gate):** your "maybe red has to be on… wait, am I backward?" — that's the open question, answered below.
+
+## On your "am I backward?" — yes, slightly
+
+Here's the current model (`AlertService.kt:256-262`): the red/yellow bells are **zone-radius** arming, not "importance." Red = urgent siren inside the red ring, yellow = chime inside the yellow ring. A ballistic 300 km away is in **no** zone, yet it's the most urgent event there is.
+
+- If fast objects **require the red bell on**: a user who muted red ("I only want warnings for distant stuff") would get **no siren for an incoming ballistic**, while slow drones still chime. That's the backward part — the deadliest event gets silenced by a "radius" setting.
+- The clean rule: fire the urgent siren on any fast object as soon as it appears, gated only by **"is any alerting armed at all?"** (`redArmed || yellowArmed`). Both bells off = fully muted (your "app shutdown" state, which is legit — they can also just disable the ballistic/cruise/KAB/aviation type toggles, now all-or-nothing).
+
+So: **recommended gate = red OR yellow armed** (any monitoring on), not red specifically.
+
+## Updated plan
+
+1. **Threat toggles** — all-or-nothing; no logic change, just clearer Settings/footer copy that OFF means hidden *and* silenced. *(confirmed)*
+2. **Font size** — threat popup: drop `maxLines=1` ellipsis (wrap), font-aware gauge/bar/pills, scrollable card; header banner `.height(44.dp)` → grows; clamp `fontScale` ~1.5 in `MainActivity.kt`. *(unchanged)*
+3. **Official-alert reason + notification updates + all-clear cleanup** — build reason from highest-priority threat over the focus oblast (`explanationShort`/`title`/region, with localized fallback); post region-only first, then silently update the same `NOTIF_ALERT=2` as reasons arrive; on all-clear falling edge call `cancelAlert()` immediately, then chime.
+4. ~~Log screen~~ — **skipped**.
+5. **Stale threats dim (not hide)** — keep stale/expired in `mapThreats` at `alpha=0.25f` (`MapView.kt:426`), exclude from counts/scores/alerts, keep tappable with a "last seen X ago" + stale indicator in the popup; truly hide on server `resolved`/`remove` or a ~30 min cap.
+6. **Compact pill trio** — `3 км` / `10 хв` / `180 км/год`, neutral low-color pills, number-first; localize `formatEtaMinutes`; Settings note "all numbers approximate."
+7. **Fast objects alert immediately** — no zone test; fire urgent siren on first appearance anywhere in the stream for `FAST_THREAT_TYPES`, gated by *any* zone arming (red || yellow) — pending your OK; slow types keep zone behavior.
+8. **Ranked threat list** — full-screen list sorted by distance then severity, tap → focuses marker; floating list button on the map.
+9. **First-launch wizard** — Language → threat-type grid → feature preview + Start; replay in Settings. *(confirmed)*
+10. **Changelog** — append under `## [Unreleased]`.
+
+Confirm **#7's gate** (`red OR yellow armed`) and I'll start with items 3+5+6 (the "nobody knows why" fix, stale dimming, compact card), then 7, 2, 8, 9, 1.
+## 14/08/2026, 22:44:38
+
+Let me verify a few implementation details so the per
+## 14/08/2026, 22:45:58
+
+Good — that resolves it. Here's the reasoning on #7, then the per-item prompts.
+
+## #7 reasoning — what gates a missile siren
+
+The current chain is: **type-enabled → zone membership → bell-armed → siren**. That's three gates, and the last two are "alert" settings a user sets once and forgets. Your point is that early warning shouldn't depend on remembered settings — the *what you care about* toggles are the primary control.
+
+So the design:
+- **Fast objects (ballistic, cruise, KAB, aviation)**: fire the urgent siren on detection **anywhere in Ukraine**, gated *only* by that type being enabled in Settings (default on) + the app monitoring. **No zone test, no bell check.** Zone bells are a "how near is it" preference — irrelevant for a country-wide threat.
+- Two escape hatches remain for "just watching for fun": the phone's sound mode (sirens vibrate on silent unless "Sirens always sound") and disabling the fast types in Settings.
+- Must **skip `advisory` threats** (per NEPTUN docs: MiG-31K takeoff is observation, not take-cover) and respect the existing `knownZones`-style latch so each threat episode fires **once**, not every tick.
+- Slow objects (shahed/FPV/recon) keep zone + bell behavior — they're genuinely local.
+
+I'll bake this in as the assumption; tweak the prompt if you disagree.
+
+---
+
+## Prompts
+
+### 1. Threat toggles — all-or-nothing copy
+```
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, single module app/src/main/java/ua/ukrainedrones/). Keep the existing all-or-nothing threat-type toggles in Settings (one enabledTypes set already gates BOTH map visibility and alert firing — MainViewModel.kt:313 and AlertService.kt:227). No behavior change is wanted.
+
+Task: make the copy say what the toggle does. Users currently misunderstand it as map-only. Update:
+- The Threats section header in SettingsScreen.kt (~line 257): currently "Threats — tap to toggle" / «Загрози — натисни, щоб увімкнути». Make it explicit that OFF hides the type from the map AND silences its alerts.
+- The footer strip OFF chip behavior if wording exists in Strings.kt (~line 589 "shown or silenced").
+- The Feature guide threat-toggles card in FeatureGuide.kt to match.
+Add/update the EN + UA strings in Strings.kt (data class StringSet; UA block ~lines 206-401, EN block ~lines 403-598).
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+```
+
+### 2. Font-size / accessibility (threat popup)
+```
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, app/src/main/java/ua/ukrainedrones/). The app has NO fontScale handling — MainActivity.kt:48 wraps MaterialTheme with default typography. All popup text uses MaterialTheme.typography.* (scales fine), but layout clips on phones with large system font size (elderly users).
+
+Task: make the threat popup and top banner robust to large fontScale (test at 1.3 and 2.0).
+- ThreatPopupCard.kt: remove maxLines=1/TextOverflow.Ellipsis on the SMALL/MEDIUM summary and type label and the LARGE header so text wraps instead of truncating; allow the LARGE summary past 2 lines; give the fixed-height elements a font-aware size: ThreatLevelGauge (12dp x 140dp ~lines 514-516), HorizontalLevelBar (56dp x 8dp ~lines 483-484), the skulls (18/24/26dp), and the course arrow; make pills wrap; wrap the whole card in a vertical scroll so it never overflows the screen.
+- MainScreen.kt:338: the alert header has fixed .height(44.dp) + maxLines=1 — make it grow/wrap.
+- MainActivity.kt: clamp LocalDensity fontScale (e.g. minOf(fontScale, 1.5f)) so extreme fonts don't break layout.
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+```
+
+### 3. Official-alert reason + silent notification updates + all-clear cleanup
+```
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, app/src/main/java/ua/ukrainedrones/). Critical bug: an official alert notification arrives with NO reason. The changelog claims reasons exist, but they were never implemented — the notification body is only the region name (AlertService.kt:290). The reason data IS available: NEPTUN's API puts explanationShort/title/region/district/locality on every threat (already parsed — Threat.kt:163,237; shown in popup via translateCourseAssessment, ThreatPopupCard.kt:346-355). Official alert frames carry only key/since. AlertService.kt is a background service; notifications use IDs NOTIF_MONITOR=1, NOTIF_ALERT=2, NOTIF_ALLCLEAR=3 (posting via postAlert/safeNotify ~348-398, cancelAlert ~370-375, all-clear falling edge ~297-299).
+
+Task:
+1. REASON BUILDER: given the focus oblast (focusAttribution/token from AlertService.kt:186-208), pick the highest-priority ACTIVE non-advisory, non-areaOnly threat whose region/district/locality is in that oblast (use ThreatLevelModel score ordering). Reason text = translated explanationShort (translateCourseAssessment) or "title in locality" — with a localized fallback template like "Threats reported in <region>" / «Загрози в <регіон>». Store the chosen reason + the threat id that produced it.
+2. WAIT-FOR-REASON: when the official alert fires with no reason yet (region-only body), post it, then keep updating the SAME NOTIF_ALERT id silently (no siren re-trigger) as reasons become available — mirror the coalescing pattern at AlertService.kt:271-280 so a same-id re-post doesn't replay the siren.
+3. ALL-CLEAR CLEANUP: on the official-alert falling edge (~line 297), if no zone alert is currently active, call cancelAlert() immediately to dismiss the lingering siren notification (don't wait for the 60s grace path ~305-316), then post the all-clear chime. If a zone alert is still active, leave the notification up.
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+```
+
+### 4. Stale threats: dim instead of hide
+```
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, app/src/main/java/ua/ukrainedrones/). Today threats are hidden when stale/expired: the per-type staleness windows are Prediction.kt:44-55 (drones = 5 min), and MainViewModel.kt:311-335 `continue`s on resolved/stale/expired before building threatsInner/threatsOuter/mapThreats/scores/counts. AlertService.kt:226 filters the same way. NEPTUN reports status: active|stale|resolved and sends a `remove` frame on death (NeptunClient.kt:246-252).
+
+Task: keep stale/expired threats visible on the map but DIMMED, instead of hidden.
+- MainViewModel.kt buildUiState: don't `continue` stale/expired. Keep them in mapThreats flagged isStale, but EXCLUDE them from threatsInner/threatsOuter/threatScores/cityCounts (footer strip + gauge stay truthful) and keep them out of alerts.
+- MapView.kt:426: marker alpha = 0.25f for stale (1.0f for live); keep them tappable; ensure the marker overlay rebuild key includes the stale flag so alpha updates (MapView.kt:221-230, appendThreatKey ~87-91).
+- TRULY HIDE when: the server sends status resolved / a remove frame, OR a hard cap ~30 min past the staleness window (so no ghost lingers forever). NEPTUN documents no server death-timeout, so the hard cap is our backstop.
+- Threat popup: when the opened threat is stale/expired, show a clear stale indicator (e.g. dimmed card + "Last seen <m:ss> ago" / «Востаннє <m:ss> тому»; elapsed already exists in the footer ~ThreatPopupCard.kt:259-267, 428-436).
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+```
+
+### 5. Compact threat card — pill trio
+```
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, app/src/main/java/ua/ukrainedrones/). The threat popup summary line is wordy: "Distance: 3 km · ETA 10m" + a separate speed pill. It's built once at ThreatPopupCard.kt:102-115 and rendered in all three sizes (SMALL ~152-158, MEDIUM ~220-227, LARGE ~323-330); SpeedPill is ~533-544; formatEtaMinutes at Strings.kt:548-551 is hardcoded English "m"/"h".
+
+Task: replace the summary with a trio of NEUTRAL, low-color pills where the NUMBER is the hero:
+  UA: «3 км» · «10 хв» · «180 км/год»
+  EN: "3 km" · "10 min" · "180 km/h"
+- Drop the "Distance:"/"ETA:" prose; keep the pinned-city distance wording only where needed (e.g. "to <city>" context can live in the pill's contentDescription or a subtle header).
+- Pills must be plain/muted (near-onSurfaceVariant), number emphasized, wrap-friendly, and work in SMALL/MEDIUM/LARGE.
+- Localize formatEtaMinutes (replace hardcoded m/h with per-language units from the StringSet).
+- Add a Settings note (Threats section or the card-size card, SettingsScreen.kt ~228-255) that "all numbers in the app are approximate" / «усі числа в застосунку приблизні».
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+```
+
+### 6. Fast objects alert immediately (no zone, no bells)
+```
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, app/src/main/java/ua/ukrainedrones/). FAST_THREAT_TYPES = {BALLISTIC, CRUISE_MISSILE, AVIATION, KAB} (Threat.kt:18-23). Today they only "alert sooner" via a zone-tier upgrade (effectiveZone, Zones.kt:25-27) and the notification only fires when a tier CHANGES (AlertService.kt:271-280) — so a fast object outside the zones never alerts at all. User decision: zones are irrelevant for fast objects; logic must not test any zone.
+
+Task:
+1. In AlertService.kt, add a separate "fast threats anywhere" path: on first appearance of a FAST_THREAT_TYPES threat ANYWHERE in the stream, fire the urgent siren immediately. Gate ONLY on: the type being enabled in Settings (threatEnabledFlow) + the app monitoring + NOT advisory (per NEPTUN docs, advisory = observation, no siren). Do NOT consult redArmed/yellowArmed or any zone radius.
+2. Fire ONCE per threat episode — latch like knownZones so a per-tick snapshot doesn't re-siren; clear the latch when the threat resolves/removes so a new episode can re-fire. Reuse the coalescing at AlertService.kt:271-280 so a zone alert + fast alert in the same tick don't double-play the siren.
+3. Relabel the "Fast objects alert sooner" setting (SettingsScreen.kt ~382-389, prefs fastAlertsSooner ZonePrefs.kt ~73-79) to "Fast objects alert immediately" / «Швидкі об'єкти — сповіщати миттєво», default ON. When ON = fire on detection anywhere (no zone test); when OFF = fall back to the current zone-based behavior for slow/fast alike.
+4. Slow objects (shahed/FPV/recon) keep zone + bell behavior unchanged.
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598) and update the Feature guide card in FeatureGuide.kt if it references "sooner"/zone-boundary.
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+```
+
+### 7. First-launch → 3-step wizard + replay + new icons
+```
+Context: Ukraine Drones Android app (Kotlin, Jetpack Compose, app/src/main/java/ua/ukrainedrones/). First launch currently shows a single LanguageChooseDialog (MainScreen.kt:184-254) with a flag picker + 3 tip rows + a Later button. languageChosen flag is set via setLanguage/skipLanguageChoose (MainViewModel.kt:459-466). Threat-type toggles live in Settings as a vertical expandable list (SettingsScreen.kt:257-376, iconResFor at SettingsScreen.kt:879 and ThreatPopupCard.kt:590).
+
+Task: replace it with a 3-step full-screen wizard (BottomSheet/scaffold, not a plain dialog):
+- STEP 1 Language: existing two-flag picker, live-switches as today.
+- STEP 2 "What do you care about" / «Що для вас важливе»: a clean GRID (2-3 columns) of threat types — icon + short label per type, tap to enable/disable, synced with the Settings state (threatEnabledFlow / setThreatEnabled). Reuse ThreatTypeCatalog labels + iconResFor; the layout must be simpler/cleaner than the Settings list. A "continue" button; everything defaults ON.
+- STEP 3 Feature preview + Start: compressed preview cards for the key features (alerts, zones, language, guide — reuse copy from FeatureGuide.kt), a single Start button (primary CTA), minimal buttons. No "too many buttons."
+- REPLAY: add "Replay first launch" / «Повторити початкове налаштування» in Settings (near the Feature guide button, SettingsScreen.kt ~459-466) that clears the languageChosen flag and reopens the wizard.
+- ICONS: new AI-generated threat icons will be supplied as vector drawables. Wire them into a single shared iconResFor helper (currently duplicated at SettingsScreen.kt:879 and ThreatPopupCard.kt:590 — consider centralizing) so the grid, Settings, popup and map all pick them up. Use the existing res names as placeholders until assets arrive.
+Add EN + UA strings in Strings.kt (UA ~206-401, EN ~403-598).
+
+Rules: no code comments; append changes to CHANGELOG.md under ## [Unreleased]; run .\gradlew.bat :app:test after.
+```
+
+Each prompt is self-contained. Want me to also fold the "all numbers approximate" note into #7's step 3 preview, or keep it only in #5?
+## 14/08/2026, 22:47:18
+
+I'll research the project structure first to plan the ARCHITECTURE.md content.
+## 14/08/2026, 22:47:27
+
+Let me examine the source structure and key build/config files.
+## 14/08/2026, 22:47:31
+
+Let me look at the key source files and manifest to understand the architecture deeply.
+## 14/08/2026, 22:48:03
+
+Let me get quick overviews of the remaining UI files and resources.
+## 15/08/2026, 16:23:18
+
+I'll research the codebase to build a plan. Let me examine the relevant files.
+
+
+## 15/08/2026, 16:23:23
+
+Now let me examine MainScreen.kt around line 338 and find the pills (SpeedPill, etc.).
+
+
+## 15/08/2026, 16:23:27
+
+I'll investigate the relevant files to construct a plan.
+
+
+## 15/08/2026, 16:23:28
+
+Now let me look at the pills in ThreatPopupCard. The SpeedPill is one. Let me check what other "pills" exist — the task says "make pills wrap". There's SpeedPill, reliability pill, confirmations pill, advisory pill. Let me check where ThreatPopupCard is used (the LARGE card usage) to understand the scroll wrapping context.
+
+
+## 15/08/2026, 16:23:34
+
+Let me check how ThreatPopupCard is used in MainScreen.kt (the popup context) to know how to wrap in vertical scroll.
+
+
+## 15/08/2026, 16:23:36
+
+Let me look at the relevant string blocks and the FeatureGuide.kt usage.
+
+
+## 15/08/2026, 16:23:45
+
+The popup is a `Box` with `align(Alignment.TopCenter)`. To make the card scrollable when it overflows, I'd wrap the `ThreatPopupCard` in a vertical scroll container with a max height constraint. Since it's inside a full-screen Box, I need to constrain its height.
+
+Let me check the SettingsScreen usage (line 764) to ensure the scroll change doesn't break it.
+
+
+## 15/08/2026, 16:23:46
+
+Now let me check the footer strip OFF chip in SettingsScreen and how the section header is structured, and check the CHANGELOG.
+
+
+## 15/08/2026, 16:23:50
+
+I have a thorough understanding of the codebase now. Let me present the plan for creating `ARCHITECTURE.md` and expanding `AGENTS.md`.
+
+## Plan
+
+### 1. Create `ARCHITECTURE.md` (root)
+
+A technical document capturing the module map, data flow, and invariants. Structure:
+
+**Sections:**
+1. **Overview** — Single-module Android app (`:app`), Jetpack Compose + OSMdroid, Kotlin 1.9.24, JDK 17, minSdk 26 / targetSdk 34, namespace `ua.ukrainedrones`. Zero-backend design (only NEPTUN public API + an FTP-hosted static update feed).
+
+2. **Module map** — table of the 26 source files under `app/src/main/java/ua/ukrainedrones/` grouped by responsibility:
+   - **Data ingress**: `NeptunClient` (WS + REST), `Threat.kt` (model + catalog + course translation)
+   - **State / orchestration**: `MainViewModel`, `UiState`, `ThreatSpeedTracker` (in `Prediction.kt`)
+   - **UI (Compose)**: `MainActivity`, `MainScreen`, `MapView` (+`NeptunMapView`), `SettingsScreen`, `ZonesSheet`, `ThreatPopupCard`, `FeatureGuide`, `FeatureDiagrams`
+   - **Alerting / background**: `AlertService`, `BootReceiver`, `LocationTracker`, `BatteryOptimization`
+   - **Persistence / prefs**: `ZonePrefs` (DataStore)
+   - **Updates**: `UpdateManager`
+   - **Domain logic**: `Zones`/`RadialZones`, `Prediction`/`predictPosition`, `ThreatLevel`, `Cities`, `Translate`, `Strings`, `ThreatImages`, `UkraineTileProvider`
+   - **Build/release**: `app/build.gradle.kts` (bumpVersion/release/uploadRelease), `version.properties`, notes files, `server/version.json`
+
+3. **Data flow** — the key pipeline:
+   - `NeptunClient` → `StateFlow<NeptunState>` (threats map + oblastAlerts + connected) via WS snapshot/upsert/remove/alerts frames + REST merge.
+   - Combined in `MainViewModel` (liveSnapshot: neptun + radii + location + selection + 1s clock) → `buildUiState` → `StateFlow<UiState>`.
+   - Same `NeptunClient.state` + `LocationTracker.location` consumed independently by `AlertService` (background) and UI — they never share one code path.
+   - Location: `LocationTracker` (coarse NETWORK_PROVIDER, ~2 min / 250 m).
+   - Dead-reckoning: `ThreatSpeedTracker` → `predictPosition` (per-type fly horizon/ghost cap).
+   - Update: `UpdateManager` → version.json → download → install intent.
+
+4. **Key invariants** (the "don't break these" contract):
+   - **Alert logic runs in TWO independent places** (`MainViewModel` for UI state + `AlertService` for notifications) — any change to zone/effectiveZone/focus attribution must be mirrored in both.
+   - `effectiveZone`/`FAST_THREAT_TYPES`: fast objects (ballistic/cruise/KAB/aviation) claim INNER at any zone entry — used everywhere (banner, counts, popup, notifications).
+   - Focus point: `followMe` → GPS; else pinned city; `focusAttribution` maps to an oblast stem via `Cities.cityOblast`.
+   - Zone semantics: `RadialZones` INNER ≤ redKm, OUTER ≤ yellowKm; red 1–5, yellow 6–20.
+   - Staleness/expiry: `staleAfterMs` per type; `isExpired` drops ghosts; 1s `nowFlow` in ViewModel, 60s grace window in AlertService.
+   - REST merge never replaces fresher WS data (merge by `updatedAtMillis`).
+   - No cloud of ours / no push — monitoring is a local foreground `dataSync` service.
+   - Coarse location only; `sirenOverride` alarm-stream vs notification-stream channel selection.
+
+5. **Build & release** — gradle tasks (`bumpVersion`, `release`, `uploadRelease`), git-ignored secrets (`keystore.properties`, `upload.properties`), `version.properties` → `server/version.json`.
+
+6. **Testing** — `app/src/test` JUnit tests (PredictionTest, ThreatTest, ThreatLevelTest, ZonesTest, UpdateManagerTest, shared TestThreats).
+
+### 2. Expand `AGENTS.md`
+
+Add a new section with:
+- **Conventions**: coding style (no comments unless asked, minimal patches, dark-only theme, UA/EN via `Strings`), DataStore-backed prefs pattern, file responsibilities (pointing to ARCHITECTURE.md), and the critical mirror rule (ViewModel + AlertService).
+- **"Always build/verify before finishing"**: run `.\gradlew.bat :app:assembleDebug` (and `:app:testDebugUnitTest` when touching domain logic) after meaningful changes before declaring done.
+- **"Never paste full logs or data blobs"**: in responses, summarize errors/logs; don't dump full stack traces, build logs, or large JSON/API payloads into the chat — reference the file/line instead.
+
+### Key tradeoffs to confirm
+
+Let me ask a couple of clarifying questions before writing.
+
+
+## 15/08/2026, 16:23:53
+
+I have enough information. The task mentions "footer strip OFF chip behavior if wording exists in Strings.kt (~line 589 'shown or silenced')". Line 589 is actually `guideTogglesSummary`. Let me check whether there's an OFF chip wording in SettingsScreen footer. The grep for OFF chip showed `offLabel = "OFF"` in Strings.kt line 503. Let me check how that's used and whether there's wording related to the footer strip.
+
+Let me check the footer strip in SettingsScreen and the offLabel usage.
+
+
+## 15/08/2026, 16:23:56
+
+Let me check where offLabel is used (the footer strip OFF chip) to understand the wording context.
+
+
+## 15/08/2026, 16:24:03
+
+`offLabel` ("OFF"/"ВИМК") is defined in Strings but not referenced elsewhere — likely a leftover/not currently displayed, or used only in a place not matched. The task says "footer strip OFF chip behavior if wording exists in Strings.kt (~line 589 'shown or silenced')". Line 589 is `guideTogglesSummary` = "Each of the 8 threat types can be shown or silenced." That's the wording that exists. So the footer strip OFF chip wording isn't actually present; the closest existing wording is `guideTogglesSummary`. I'll update that one to be explicit, plus the section header and the FeatureGuide.
+
+Let me look at the FeatureGuide.kt toggles card lines 55-60 for context.
+
+
+## 15/08/2026, 16:24:17
+
+I now have a complete picture. Let me present the plan.
+
+## Plan: Clarify threat-toggle copy (EN + UA)
+
+**Goal:** Make the copy explicitly say that turning a threat type OFF hides it from the map **and** silences its alerts.
+
+### 1. `Strings.kt` — UA block (~line 240)
+- `threatsLabel` (line 240): `"Загрози — натисни, щоб увімкнути"` → explicit that OFF hides from map + silences alerts. e.g. `"Загрози — вимкнено: приховати з мапи та замовкнути тривоги"` (adjust wording to fit).
+- `guideTogglesSummary` (line 392): `"Кожен із 8 типів загроз можна показати чи вимкнути."` → make explicit: disabling hides from map and silences its alerts.
+- `guideTogglesD1` (line 393): already says enable/disable; keep or slightly clarify that OFF both hides and silences.
+
+### 2. `Strings.kt` — EN block (lines 437, 589)
+- `threatsLabel` (line 437): `"Threats — tap to toggle"` → explicit. e.g. `"Threats — off hides from the map and silences alerts"`.
+- `guideTogglesSummary` (line 589): `"Each of the 8 threat types can be shown or silenced."` → clarify that disabling both hides it from the map and silences its alerts.
+- `guideTogglesD1` (line 590): keep/clarify.
+
+### 3. `SettingsScreen.kt` (line 257)
+- No code change needed — it uses `s.threatsLabel` already, so the header text updates automatically via the Strings change.
+
+### 4. Footer strip OFF chip
+- Investigated: `offLabel` = "OFF"/"ВИМК" exists in Strings.kt but is **not referenced anywhere** (dead string). There is no separate footer OFF-chip wording beyond `guideTogglesSummary`. So the only place to fix that wording is `guideTogglesSummary` (both languages). No other footer string exists to update.
+
+### 5. `FeatureGuide.kt`
+- No code change needed — the toggles card uses `s.guideTogglesSummary`/`s.guideTogglesD1` which update automatically. The card text becomes explicit via the Strings edits.
+
+### 6. `CHANGELOG.md`
+- Append a line under `## [Unreleased]` describing the copy change (EN note).
+
+### 7. Verify
+- Run `.\gradlew.bat :app:test`.
+
+**Note:** No code comments added; the "footer strip OFF chip wording" resolves to the existing `guideTogglesSummary` string, since no other footer wording exists.
+
+Should I proceed with this plan (exact UA/EN wording TBD during implementation)?
+## 15/08/2026, 16:24:50
+
+The SettingsScreen uses `ThreatPopupCard` inside a fixed-width scaled preview (measure with `Constraints.Infinity` maxHeight). If I add a vertical scroll *inside* the card, it would change the preview behavior (the scroll container would measure to fill available height = Infinity, and the preview measures `cardPlaceable.height` which would become infinite/fill). This could break the preview.
+
+The task says "wrap the whole card in a vertical scroll so it never overflows the screen." I should think about where to place the scroll. Options:
+1. Wrap inside `ThreatPopupCard` itself — but that breaks the SettingsScreen preview measurement (Infinity height).
+2. Wrap at the call site in MainScreen.kt (the popup Box).
+
+Given the preview measures with `maxHeight = Constraints.Infinity`, placing the scroll inside the card composable would cause problems there. The safer approach is to wrap at the popup call site in MainScreen.kt. But the task explicitly says "wrap the whole card in a vertical scroll" — it might mean within the composable.
+
+Let me reconsider. The scroll inside the card with `Modifier.verticalScroll` requires a bounded height. In SettingsScreen, maxHeight is Infinity, so `verticalScroll` would throw "infinity" height / not scroll (verticalScroll with infinite constraint just doesn't scroll, it wraps content). Actually `verticalScroll` measures children with infinite height and shows all — it works with Infinity constraint by giving the child infinite height, so it won't scroll in the preview but won't crash either. In the popup, the Box has bounded height (screen), so it would scroll. Actually that behavior is acceptable — in preview it just renders full (same as today), in popup it scrolls.
+
+However, there's a subtlety: the card is `interactive` clickable. Putting verticalScroll on the outer modifier combined with clickable — need order care. Let me think about the cleanest minimal approach.
+
+Given the popup Box in MainScreen has no explicit height, but it's inside a full-screen Box — the default Box gives children unbounded constraints? No — a `Box` measures children with the incoming constraints (bounded by parent). The popup Box is inside `Box(modifier = Modifier.padding(padding).fillMaxSize())` which is bounded, so the popup Box gets bounded maxHeight. Good. So a `verticalScroll` inside would get bounded height and scroll.
+
+But wait — the Surface in ThreatPopupCard wraps `when(cardSize)`. The scroll needs to wrap the Surface content. I'll wrap inside ThreatPopupCard.
+
+Actually, let me reconsider whether to put scroll inside the composable or at the call site. Given the constraint from SettingsScreen preview, and to keep the change localized per the task ("wrap the whole card"), I'll add the vertical scroll inside `ThreatPopupCard` around the Surface, applied to a content box. But the Surface has the border/clickable. Let me design:
+
+```kotlin
+Box(
+    modifier = Modifier
+        .verticalScroll(rememberScrollState())
+        .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier)
+) {
+    Surface(...) { ... }
+}
+```
+
+Hmm, but then the Surface border would still draw full height. That's fine.
+
+Actually there's a concern: with `verticalScroll`, the child (Surface) gets infinite max height, so the Surface will size to its content — the scroll just makes content scrollable if it exceeds available. The Surface content will lay out fully (not truncated). Good — this is exactly what "never overflows the screen" wants.
+
+But the preview measures `cardPlaceable.height` — with verticalScroll and Infinity maxHeight constraint, the scroll container reports the content height, so preview works. Good.
+
+Let me verify imports needed: `verticalScroll`, `rememberScrollState` from `androidx.compose.foundation.rememberScrollState` and `androidx.compose.foundation.verticalScroll`. `androidx.compose.foundation.layout.*` already imported; `verticalScroll` is in `androidx.compose.foundation` — need to import. Let me check the imports in ThreatPopupCard. Currently imports `androidx.compose.foundation.*`? No — it imports `androidx.compose.foundation.BorderStroke`, `.background`, `.clickable`, and `androidx.compose.foundation.layout.*`, `.shape.RoundedCornerShape`. Need to add `verticalScroll` and `rememberScrollState`.
+
+Now for the font-aware sizes. The task wants fixed-height elements scaled with fontScale. I need `LocalDensity.current` to read fontScale and apply a scale factor. Let me plan each:
+
+- **ThreatLevelGauge**: `12dp x 140dp` → multiply by fontScale factor. `Modifier.width((12.dp * scale).coerceIn(...))` etc. The skull is 26dp → `26.dp * scale`. The fill fraction `fillMaxHeight` stays.
+- **HorizontalLevelBar**: `56dp x 8dp` → scale.
+- **Skulls**: 18/24/26dp → scale.
+- **Course arrow**: 12dp → scale.
+
+Rather than duplicate fontScale reads in each helper, I'll create a small scale factor. But helpers like `LevelSkullIcon` are separate composables. I can read `LocalDensity.current.fontScale` inside each composable and define a `fontAware(dp)` helper.
+
+Let me think about the cleanest implementation. I'll add a `@Composable private fun scaled(dp: Dp): Dp` that reads fontScale and multiplies (with a sensible cap). Then replace the fixed sizes.
+
+Now let me look at the specific elements to scale:
+- Line 139: SMALL icon `Modifier.size(28.dp)` — task doesn't mention, leave? Task lists: gauge, horizontal bar, skulls, course arrow. The main threat icon (28/32dp) not mentioned. Keep as-is.
+- SMALL: skull 18dp (line 162), HorizontalLevelBar (164), course arrow — SMALL has no course arrow.
+- MEDIUM: skull 24dp (212), HorizontalLevelBar (214), course arrow 12dp (205).
+- LARGE: gauge (443), skull 26dp in gauge (510), course arrow 12dp (313).
+
+Pills wrap: SpeedPill, reliability pill, confirmations pill. Currently they're in Rows that use `Arrangement.SpaceBetween` with a Text `weight(1f)`. "make pills wrap" — use `FlowRow` for the pill rows so pills wrap instead of overflowing. Let me check FlowRow availability. `androidx.compose.foundation.layout.FlowRow` exists in foundation. Need import.
+
+The pills relevant:
+- MEDIUM footer: reliability Surface + elapsed Text in SpaceBetween Row (242-271). Elapsed is a Text not a pill.
+- LARGE footer: reliability + confirmations in a Row `Arrangement.spacedBy(6.dp)` (397-427), plus elapsed Text in SpaceBetween.
+- SpeedPill appears inline next to summary text (rows 219-236 MEDIUM, 322-339 LARGE).
+
+"make pills wrap" — I'll convert the pill Row(s) to FlowRow so multiple pills wrap to new lines when they don't fit. The main ones: LARGE footer row of reliability+confirmations, and MEDIUM footer. Also the SpeedPill is inline with summary weight(1f) so it doesn't overflow (it has weight on text). 
+
+Let me focus: The Rows at 242-271 (MEDIUM footer) and 392-440 (LARGE footer) use `fillMaxWidth()` + `SpaceBetween`. If text is large, the reliability pill + elapsed could overflow. Convert the inner pill row (397-427) to FlowRow, and the whole footer Row could become a FlowRow too.
+
+Let me keep it targeted: convert the LARGE inner pill row (397-427) to FlowRow, and the MEDIUM footer Row (242-271) to FlowRow. The SpeedPill next to weighted text won't overflow.
+
+Now the MainScreen header: line 335-384, remove `.height(44.dp)` and `maxLines=1`/Ellipsis so it wraps/grows.
+
+MainActivity: clamp fontScale. In `setContent`, I need to provide a custom density. Wrap with `CompositionLocalProvider(LocalDensity provides ...)`:
+
+```kotlin
+setContent {
+    val density = LocalDensity.current
+    val fontScale = minOf(density.fontScale, 1.5f)
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density, fontScale)
+    ) {
+        MaterialTheme(colorScheme = AppDarkColors) { ... }
+    }
+}
+```
+
+Wait — `LocalDensity.current` inside setContent; need `@Composable` context. setContent lambda is composable. Good. Need imports: `CompositionLocalProvider`, `LocalDensity`, `Density`, `androidx.compose.ui.unit.Density`.
+
+Now, one concern: clamping fontScale to 1.5f while the task also wants things to work at fontScale 2.0. But clamping handles 2.0 → 1.5, plus text wraps + scroll handle the rest. The task explicitly asks to clamp in MainActivity, so fine.
+
+Let me also reconsider the scroll wrapping with the clickable. The Surface has `modifier.clickable` when interactive. If I put verticalScroll outside, need to preserve clickable. Let me structure:
+
+```kotlin
+Box(
+    modifier = Modifier.verticalScroll(rememberScrollState())
+) {
+    Surface(
+        modifier = if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier,
+        ...
+    ) { ... }
+}
+```
+
+Now the scroll is on the outer Box; clickable stays on Surface. Good.
+
+But wait — in SettingsScreen the preview, `verticalScroll` + `Constraints.Infinity` maxHeight works (renders full). Good.
+
+However, there's a subtlety: the popup Box in MainScreen. Currently the Box wraps ThreatPopupCard with fillMaxWidth, and ThreatPopupCard's Surface has fillMaxWidth via modifier. With verticalScroll added inside, the Box (scroll container) needs `fillMaxWidth` too so the Surface fills width. The Surface gets `modifier` (fillMaxWidth) passed in. With verticalScroll on an outer Box, the Box will measure child with unbounded height but bounded width — Surface fillMaxWidth still works. But the outer Box itself — does it have width? In the call site, `modifier = Modifier.fillMaxWidth()` is applied to the Surface, not the outer Box. So the outer scroll Box would wrap content width. Let me instead apply verticalScroll to the modifier chain appropriately.
+
+Better approach: keep the scroll on the Surface's modifier? No, scroll must wrap the content that overflows. The Surface is the content. Actually I can apply verticalScroll to the passed-in modifier:
+
+```kotlin
+Surface(
+    modifier = modifier
+        .verticalScroll(rememberScrollState())
+        .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier),
+    ...
+)
+```
+
+Wait but the passed `modifier` includes `fillMaxWidth()` from the call site, so applying verticalScroll to it gives bounded width (fillMaxWidth) and the Surface content scrolls. That's cleaner — the scroll is on the Surface itself. In the preview, modifier is just `Modifier` (no fillMaxWidth) and maxHeight Infinity — scroll renders full. 
+
+But careful: `verticalScroll` then `clickable` — click still works. And `fillMaxWidth` before scroll is fine.
+
+Hmm, but the Surface is what has the border/shape/background. Applying verticalScroll to it means the scroll viewport is the Surface itself. The Surface will be at least as tall as available (if bounded) and content scrolls within. Actually Surface doesn't impose min height, so with bounded constraints it'd be... verticalScroll makes the child infinite; Surface sizes to content. Good.
+
+I think applying to the modifier is cleanest. Let me go with that.
+
+Now let me verify imports for ThreatPopupCard. Currently no verticalScroll/rememberScrollState. Let me also check FlowRow import.
+
+Let me check existing test files to know test approach.
+
+
+## 15/08/2026, 16:24:53
+
+I have enough understanding. Let me check the CHANGELOG current Unreleased section format.
+
+
+## 15/08/2026, 16:25:04
+
+I'll research the codebase to understand the current app structure before planning. Let me explore the project.
+
+
+## 15/08/2026, 16:25:10
+
+Let me explore the app source and docs structure.
+
+
+## 15/08/2026, 16:25:15
+
+Let me read the key files to understand the app. This is a Kotlin Android app (not Compose — uses osmdroid MapView). Let me examine the core data/threat/notification code.
+
+
+## 15/08/2026, 16:25:21
+
+I now have a complete understanding. Let me formulate the plan.
+
+The tests are pure unit tests (no Compose UI tests), so adding fontScale work in Compose won't have dedicated unit tests — the `:app:test` run just verifies nothing breaks compilation/logic.
+
+Let me present the plan.
+
+## Plan: fontScale robustness for threat popup + header
+
+### 1. `ThreatPopupCard.kt` — make text wrap and sizes font-aware
+
+**Add imports:** `androidx.compose.foundation.rememberScrollState`, `androidx.compose.foundation.verticalScroll`, `androidx.compose.foundation.layout.FlowRow` (and `ExperimentalLayoutApi` annotation where used), `androidx.compose.ui.platform.LocalDensity`.
+
+**Add a shared font-scale helper** (top of file):
+```kotlin
+@Composable
+private fun fontScale(): Float = minOf(LocalDensity.current.fontScale, 1.5f)
+
+@Composable
+private fun fontAware(dp: Dp): Dp = dp * fontScale()
+```
+
+**Remove truncation so text wraps:**
+- SMALL type label (148-150): remove `maxLines = 1` + `overflow = TextOverflow.Ellipsis`.
+- SMALL summary (156-158): same.
+- MEDIUM type label (186-188): same.
+- MEDIUM displayRegion (194-196): same.
+- MEDIUM summary (224-226): same.
+- LARGE type label (294-296): same.
+- LARGE displayRegion (302-304): same.
+- LARGE summary (327-329): currently `maxLines = 2` → remove both `maxLines` and `overflow` so it can exceed 2 lines.
+- Keep `TextOverflow` import only if still used anywhere — check: after removal, `TextOverflow` may become unused; remove import if so.
+
+**Font-aware fixed-size elements** (replace `dp` literals with `fontAware(...)`):
+- HorizontalLevelBar: `56.dp × 8.dp` (483-484) and inner width `56.dp`/`height(8.dp)` (491-492).
+- ThreatLevelGauge: skull `26.dp` (510), bar `12.dp × 140.dp` (515-516), inner `12.dp` (524).
+- SMALL skull `18.dp` (162); MEDIUM skull `24.dp` (212).
+- Course arrows: `12.dp` at lines 205 and 313.
+
+**Make pills wrap** (convert footer pill Rows to `FlowRow` so they wrap to a new line instead of overflowing):
+- MEDIUM footer row (242-271): convert outer `Row(fillMaxWidth, SpaceBetween)` to `FlowRow(fillMaxWidth, ...)`.
+- LARGE footer row (392-440): convert to `FlowRow(fillMaxWidth, ...)`, and the inner pill `Row(spacedBy(6.dp))` (397-427) to `FlowRow`.
+- (SpeedPill rows use a weighted text so they can't overflow — leave.)
+
+**Wrap whole card in vertical scroll** so it never overflows the screen. Apply to the Surface's modifier chain so the popup (bounded height in MainScreen) scrolls, while the Settings preview (infinite maxHeight) still renders fully:
+```kotlin
+modifier = modifier
+    .verticalScroll(rememberScrollState())
+    .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier),
+```
+(annotation `@OptIn(ExperimentalLayoutApi::class)` on the composable for `FlowRow`.)
+
+### 2. `MainScreen.kt` — alert header grows/wraps
+- Remove `.height(44.dp)` from the header Row modifier (line 338).
+- Remove `maxLines = 1` + `overflow = TextOverflow.Ellipsis` on the alert Text (367-368).
+
+### 3. `MainActivity.kt` — clamp fontScale
+Wrap the theme in a `CompositionLocalProvider` that clamps `LocalDensity` fontScale to `1.5f`:
+```kotlin
+setContent {
+    val baseDensity = LocalDensity.current
+    val clamped = Density(baseDensity.density, minOf(baseDensity.fontScale, 1.5f))
+    CompositionLocalProvider(LocalDensity provides clamped) {
+        MaterialTheme(colorScheme = AppDarkColors) { ... }
+    }
+}
+```
+Add imports: `androidx.compose.runtime.CompositionLocalProvider`, `androidx.compose.ui.platform.LocalDensity`, `androidx.compose.ui.unit.Density`, `kotlin.math.min`.
+
+### 4. `CHANGELOG.md`
+Append one line under `## [Unreleased]` describing the fontScale robustness (threat popup + header wrap/scroll, sizes scale, extreme fonts clamped).
+
+### 5. Verify
+Run `.\gradlew.bat :app:test`.
+
+Note: the unit tests are non-UI (ZonesTest, ThreatTest, etc.), so this is a compile + regression check. Manual device verification at fontScale 1.3/2.0 would be the real confirmation.
+
+One decision to flag: the task says "test at 1.3 and 2.0" but also says clamp to `1.5f`. Since 2.0 gets clamped to 1.5, the scroll + wrapping handle the residual. That's the intended design. 
+
+Let me confirm the plan is acceptable before implementing.
+
+
+## 15/08/2026, 16:25:22
+
+I have a good understanding of the threat data. Let me read the AlertService (notifications) and the MainViewModel to understand how offline/retry and notifications currently work.
+
+
+## 15/08/2026, 16:25:31
+
+Now I understand the notification architecture. Let me look at the MainScreen (UI, especially the "Offline notification. Tap to retry." banner) and the Strings.kt to understand translations, plus the README/CHANGELOG for context.
+
+
+## 15/08/2026, 16:25:38
+
+So there's currently an "Offline" text label but no "Tap to retry" banner in the app. Let me read the relevant MainScreen section (around the connectivity indicator) and the Strings.kt structure. Let me look at the connectivity UI region.
+
+
+## 15/08/2026, 16:25:43
+
+Now I have a clear picture of the connectivity UI. Let me look at the CHANGELOG and README to understand what features exist / are documented, and check the settings screen for feature inventory.
+
+
+## 15/08/2026, 16:25:47
+
+I now have a comprehensive understanding of the app. Let me look at the settings screen and feature guide to fully understand what exists, plus the version.properties and the Strings.kt full set, to inform the "what's missing" discussion. Let me also check the SettingsScreen for the feature inventory and how a shelter feature might integrate.
+
+Let me delegate exploration of remaining relevant files to the explore agent to be efficient, and check a few specifics myself.
+
+
+## 15/08/2026, 16:26:28
+
+I now have a comprehensive understanding. Let me check the version — it says 0.3.47 in version.properties but CHANGELOG ends at 0.3.9. Interesting mismatch; the version.properties is authoritative. Let me confirm the git log to understand the current released version.
+
+Let me now think about the user's requests. The user is in plan mode and has raised 6 distinct topics, several marked as "let's discuss." I should present a plan and ask clarifying questions on the ambiguous ones. Let me organize:
+
+1. **Offline notification** — Currently there's a red/offline pill and reconnect logic (silent retry), but the user wants: an Android notification showing how long it's been offline, indicating backup systems are active but less reliable, etc. This is a concrete implementation task.
+
+2. **Shelter locations feature** — "let's find and plan the data." Needs research on data sources.
+
+3. **Play Store features — what's missing?** — discussion.
+
+4. **Ensure threat times are to zones and GPS, not just the zones.** — Currently zone membership is distance from focus (GPS/pinned). "Threat times" likely means ETA. Let me think about what this means — currently the popup shows ETA to user (GPS). The zones are radial around focus. Perhaps they want per-zone ETA. This needs discussion.
+
+5. **Threat history** — "let's discuss."
+
+6. **Family tracking** — "advanced feature?" — discussion.
+
+Given the breadth, I should present a structured plan and use the question tool to gather preferences on the discussion items. Let me ask clarifying questions on the items that need decisions.
+
+Let me first verify a couple more details to make the plan concrete — the offline detection: `connected` flag in NeptunState and how reconnect works. I already have that. There's no current "how long offline" tracking. Also backup systems — the app has REST merge as a "backup" of sorts. Let me check if there's anything about "backup systems."
+
+Let me check the Prediction.kt / speed tracker briefly and confirm how ETA is currently computed, and whether there's per-zone time. I have enough. ETA is `distKm / (speed*3.6) * 60` to user GPS only.
+
+Now let me formulate the questions. I'll ask about the discussion items in a batched question tool. But I should first present research findings concisely, then ask.
+
+Let me ask focused questions on the ambiguous items (2, 3, 4, 5, 6), since those are explicitly "let's discuss" / planning items. Items 1 is fairly concrete but has decisions too.
+
+Let me structure a plan document response plus questions.
+
+
+## 15/08/2026, 16:28:23
+
+The user is proposing a design change: instead of the current all-or-nothing single toggle per threat type, add **two separate controls per threat** — one for map visibility, one for alerts. But with a coupling rule:
+
+- Turning OFF **map** also auto-turns OFF **alerts** (for that type).
+- Turning OFF **alerts** does NOT hide it from the map, but **dims** it.
+
+Wait — let me re-read. "the user turning off maps should auto turn off alerts too, but turning off alerts won't hide it from the map, but it will dim it."
+
+So: two toggles per threat — a map toggle and an alert toggle.
+- Map OFF → alerts also go OFF (coupled, can't have alerts on when map off).
+- Alerts OFF → map still shows it, but dimmed.
+
+This is a significant behavior change from the current "all-or-nothing" single toggle described in the original task. The original task explicitly said "No behavior change is wanted." The user is now proposing a behavior change.
+
+I need to understand the current data model. Let me investigate how `disabledTypes` and the enabledTypes set work — MainViewModel.kt:313 and AlertService.kt:227 — to understand the coupling constraints and whether a two-toggle model fits.
+
+Let me read the relevant code.
+
+
+## 15/08/2026, 16:28:29
+
+Both use a single `enabled: Set<ThreatType>`. Currently one set gates both map visibility and alert firing. The user's proposal requires **two** sets: a "shown on map" set and an "alerting" set, with a coupling constraint.
+
+Let me understand how `enabledTypes` is derived/stored and how `disabledTypes` is used in Settings. Let me search for where these are set.
+
+
+## 15/08/2026, 16:28:43
+
+The user is proposing a significant redesign: split the single per-threat toggle into two controls (map visibility + alerts). This is a substantial behavior change from the original "copy-only, no behavior change" task. Let me look at the ZonePrefs threat persistence to understand the data model.
+
+
+## 15/08/2026, 16:28:47
+
+Now let me look at the SettingsScreen threat card UI (lines 260-330) to understand the current single-toggle layout, and MainScreen line 467 footer strip.
+
+
+## 15/08/2026, 16:29:10
+
+I now have a thorough understanding. This is a major design change that contradicts the original task's "no behavior change" constraint. Let me confirm the user's intent and the implications before finalizing a plan.
+
+Let me clarify the semantics of the user's proposed model and check how the footer strip / disabledTypes interplay with the map filter. Currently the footer strip's `enabled` (dims cell when disabled) uses the same `disabledTypes` set. Under the new model, the strip dimming should reflect the **alert** state (dim when alerts off but still shown on map).
+
+Let me also check the feature guide diagram and MainViewModel `enabledTypes` flow to understand what needs splitting.
+
+I have enough. Let me present a clarifying question because there are a couple of ambiguities in the proposed model.
+
+
+## 15/08/2026, 16:30:22
+
+I'll research the current app icon setup before planning the change to use the trident.
+
+
+## 15/08/2026, 16:30:28
+
+There's already an `ic_trident.xml` drawable. Let me examine the relevant files.
+
+
+## 15/08/2026, 16:30:32
+
+The trident drawable already exists in the codebase. Let me check the current foreground icon and understand how the icon is currently built.
+
+
+## 15/08/2026, 16:30:36
+
+I can't view the image contents (my model doesn't support image input), but I can inspect the PNG dimensions and metadata. Let me check the current icon PNGs and how the foreground is used.
+
+
+## 15/08/2026, 16:30:46
+
+Let me understand how the current icon looks and where `ic_launcher_foreground` comes from. Let me check the git history and whether there's a source for the foreground, plus check the `mipmap-nodpi/ic_launcher.png` legacy icon.
+
+
+## 15/08/2026, 16:30:55
+
+Let me check the root trident.tsx referenced in the drawable and look at the existing foreground image's visual content via pixel analysis (since I can't view images). Let me also check where ic_launcher_foreground is defined vs the drone png. Actually, let me check the source of these PNGs - they may be generated. Let me look at the build/tooling.
+
+
+## 15/08/2026, 16:31:04
+
+The two PNGs (`ic_launcher_foreground.png` and `ic_launcher_drone.png`) are pixel-identical. They show the current icon: mostly transparent, with a light gray (243,243,243) shape plus red (205,50,32) and blue (3,62,164) accents — that's likely a drone graphic, not a trident.
+
+The `ic_trident.xml` drawable exists (blue→gold→blue gradient trident) but isn't referenced anywhere as the launcher. The legacy `mipmap-nodpi/ic_launcher.png` is a 512x512 raster.
+
+Let me check what `trident.tsx` was, since the comment references it (root). It doesn't exist in the repo now. Let me check the app's AndroidManifest and build config to understand what needs to change.
+
+
+## 15/08/2026, 16:31:10
+
+I now have a clear picture. Let me confirm the current icon is a drone (not a trident) by checking the app's screenshot references or the Compose header. Actually, the pixel analysis clearly shows it's NOT the trident (which is blue/gold). The current icon has gray + red + blue — the drone graphic. The trident vector (`ic_trident.xml`) exists but is only used in-app (the Compose header), not as the launcher icon.
+
+Let me verify the trident XML is used in the app's Compose UI to confirm it's the intended "our trident."
+
+
+## 15/08/2026, 16:31:22
+
+Confirmed. The trident (`ic_trident.xml`) is "our trident" — it's the app's brand mark used in the Compose header and settings. The current launcher icon is a drone graphic (gray/red/blue), not the trident.
+
+Now I have enough to form a plan. Let me also check the build.gradle for any minSdk (relevant for adaptive icons) and confirm the app icon config.
+
+
+## 15/08/2026, 16:31:50
+
+minSdk = 26 means adaptive icons (API 26+) are fully supported. On API 26+, the `mipmap-anydpi-v26/ic_launcher.xml` adaptive icon is used; the legacy `mipmap-nodpi/ic_launcher.png` only matters for API < 26 (which won't occur here since minSdk=26).
+
+So the cleanest path is to make the adaptive icon use the trident vector.
+
+Let me verify the adaptive icon foreground needs to be a vector. Currently `ic_launcher_foreground.png` is used. Since minSdk=26, I can replace the foreground with a vector drawable referencing the trident. But the trident's viewport (165x230.5) is tall/narrow — adaptive icon foreground safe zone is a 66dp circle within 108dp canvas. The trident shape fits roughly (its height ~230 units vs width 165). I'll need to wrap it with proper scaling/translation so it fits within the safe zone.
+
+Let me check the trident's aspect: 165x230.5 ≈ 0.716 aspect (w/h). The adaptive icon foreground safe zone: circle diameter 66dp in a 108dp canvas. I need to scale the trident to fit within the safe circle.
+
+Let me now present the plan. I should confirm design intent with the user since there are a couple of approaches (use the blue→gold trident, or a solid color). Let me ask.
+
+Actually, let me think about what's cleanest and present a clear plan. Since I'm in plan mode, I'll present the plan and ask clarifying questions about visual details (background color, use of the gradient trident).
+
+Let me look at the current foreground PNG's overall content more — is it a drone on transparent background? The dominant color besides transparent is light gray (243) = the drone body. For the trident icon we'd want a background. Options:
+
+1. **Solid background + white/solid trident foreground** — classic launcher look.
+2. **Use the blue→gold→blue gradient trident as foreground on a background.**
+
+I'll ask the user about the desired look.
+
+Let me present the plan concisely and ask a clarifying question.
+
+
+## 15/08/2026, 16:32:01
+
+I have the answers. Let me finalize the design decisions and write the plan.
+
+**Confirmed model:**
+- Two new prefs per type: `threat_map_<type>` (map visibility) and `threat_alert_<type>` (alerts).
+- No migration — old `threat_enabled_<type>` prefs are just ignored (both new prefs default to `true`).
+- Coupling: turning **map OFF** also forces **alerts OFF**. Turning **alerts OFF** does not change map visibility — the type stays visible but dimmed.
+- Strip: dims a cell whenever alerts are OFF for that type (independent of map visibility).
+
+Let me verify a few remaining integration points before writing the plan: the footer strip cell dimming (ThreatStatusCell / MainScreen.kt:467 uses `disabledTypes`), and where `enabledTypes` flows into AlertService (prefs.enabled). Let me check MainViewModel around 200-260 and the strip cell.
+
+
+## 15/08/2026, 16:32:07
+
+I now have a full picture of the integration. Let me look at the prefsSnapshot in ZonePrefs (line ~194) and MainViewModel prefsSnapshot combine to see how `enabled` set is built, since I'll need to build both `mapEnabled` and `alertEnabled` sets.
+
+Let me read ZonePrefs around 190-197 and MainViewModel around 150-180.
+
+
+## 15/08/2026, 16:32:11
+
+I now have a complete understanding of the architecture. Let me also check how AlertService consumes `prefs.enabled` (the `combine` at line 146-153 and where `enabled` set is passed to the zone computation). And the AlertService signature around line 145-165.
+
+
+## 15/08/2026, 16:32:39
+
+I now have everything needed. Both MainViewModel and AlertService consume `threatEnabledFlow(prefs)` → a `Set<ThreatType>` as the single `enabled`/`disabledTypes` gate. The redesign requires replacing this with two sets.
+
+I have a complete understanding. Let me write the final plan.
+
+---
+
+# Plan: Split per-threat toggle into Map + Alerts controls
+
+## Confirmed model (from your answers)
+- **Two new independent prefs per type**: `threat_map_<type>` (map visibility) and `threat_alert_<type>` (alerts). Both default `true`. **No migration** — old `threat_enabled_<type>` keys are simply ignored.
+- **Coupling**: turning **map OFF** also forces **alerts OFF** for that type. Turning **alerts OFF** leaves map ON — the type stays visible on the map but **dimmed**.
+- **Footer strip** dims a cell whenever **alerts are OFF** for that type (independent of map visibility).
+
+## Behavior mapping
+| Map | Alerts | Map visibility | Alerts fire | Strip cell |
+|---|---|---|---|---|
+| ON | ON | normal | yes | normal |
+| ON | OFF | **dimmed** | no | **dimmed** |
+| OFF | OFF (auto) | hidden | no | hidden |
+
+## Files & changes
+
+### 1. `ZonePrefs.kt`
+- Add two persisted accessors per type:
+  - `threatMapVisible(type): Flow<Boolean>` (key `threat_map_<type>`, default `true`) + `setThreatMapVisible`.
+  - `threatAlertsEnabled(type): Flow<Boolean>` (key `threat_alert_<type>`, default `true`) + `setThreatAlertsEnabled`.
+- Replace `threatEnabledFlow` (line 193-197) with two flows:
+  - `threatMapFlow(prefs): Flow<Set<ThreatType>>`
+  - `threatAlertFlow(prefs): Flow<Set<ThreatType>>`
+  - Keep the old `threatEnabled`/`setThreatEnabled` or remove them (they're now unused; removing is cleaner — the old keys remain inert in DataStore).
+
+### 2. `MainViewModel.kt`
+- `UiState` (line 36): replace `disabledTypes: Set<ThreatType>` with two derived sets, e.g. `hiddenTypes` (map-off) and `silencedTypes` (alerts-off).
+- `prefsSnapshot` (lines 159-184) / `PrefsSnapshot` (line 110): replace single `enabled` with `mapEnabled` + `alertEnabled` (from the two new flows).
+- `buildUiState` (line 230, 263): take both sets.
+  - **Map filter** (line 313): `if (t.type !in mapEnabled) continue` — unchanged gate but now against the map set.
+  - **Line 381**: `hiddenTypes = all - mapEnabled; silencedTypes = all - alertEnabled`.
+- `setThreatEnabled(type, enabled)` (line 447) → split into:
+  - `setThreatMapVisible(type, visible)` → `prefs.setThreatMapVisible`; **if visible==false also call `prefs.setThreatAlertsEnabled(type, false)`** (the coupling rule).
+  - `setThreatAlertsEnabled(type, enabled)` → `prefs.setThreatAlertsEnabled`.
+
+### 3. `MainScreen.kt`
+- Pass both sets down (line 114 `disabledTypes` → e.g. `hiddenTypes` + `silencedTypes`).
+- Footer strip (line 467): `ThreatStatusCell(enabled = type !in uiState.silencedTypes)` — dims when alerts off (per your rule), not on map visibility.
+- Update `onThreatToggle` wiring (line 128) to the two new VM methods.
+
+### 4. `SettingsScreen.kt`
+- `SettingsScreen` signature (lines 63, 77): accept `hiddenTypes`/`silencedTypes` and two callbacks: `onMapToggle(type, visible)` and `onAlertToggle(type, enabled)`.
+- Threat card (lines 264-310): replace the single whole-card toggle with **two controls**:
+  - A **"Show on map"** toggle.
+  - An **"Alerts"** toggle.
+  - Map OFF → auto-radio alerts OFF (UI reflects the forced-off state, disabled/dimmed until map re-enabled).
+  - Alerts OFF with map ON → card shows dimmed styling.
+
+### 5. `AlertService.kt`
+- Line 158: replace `threatEnabledFlow(prefs)` with `threatAlertFlow(prefs)`.
+- `zoneThreats` gate (line 227): `if (t.type !in enabled)` now uses the **alerts** set only (map visibility no longer suppresses alert firing — but coupling already guarantees map-off ⇒ alerts-off).
+
+### 6. `Strings.kt` — UA (lines 206-401) + EN (lines 403-598)
+- Add/update strings for the two new controls: e.g. `threatMapLabel` ("Show on map" / «Показувати на мапі»), `threatAlertLabel` ("Alerts" / «Сповіщення»), plus descriptions explaining: *map off also silences alerts; alerts off keeps it on the map but dimmed*.
+- Update the section header `threatsLabel` (lines 240/437) and `guideTogglesSummary`/`guideTogglesD1` (lines 392-393 / 589-590) to describe the map+alerts split and the coupling rule.
+- Update footer-strip wording if needed (the "shown or silenced" summary — line 589).
+
+### 7. `FeatureGuide.kt`
+- `guideTogglesSummary`/`guideTogglesD1` update automatically via Strings; no code change unless the card wants to mention the two toggles explicitly (it already references the strings, so just the Strings edits cover it).
+
+### 8. `CHANGELOG.md`
+- Append a line under `## [Unreleased]` describing the new per-type Map + Alerts controls and the coupling/dimming rule.
+
+### 9. Verify
+- Run `.\gradlew.bat :app:test`.
+- No code comments added.
+
+---
+
+**Open consideration:** This is a notable behavior change vs. the original "copy-only, no behavior change" task. It touches the core toggle model, UI layout, and both consumers (MainViewModel + AlertService). Are you happy to proceed with this redesign? If yes, I'll implement once you switch out of plan mode.
+## 15/08/2026, 16:34:45
+
+User chose: gradient trident on solid background, but background = keep transparent. There's a slight tension — "gradient trident on solid background" but "transparent background". I'll interpret it as: use the gradient trident (ic_trident.xml) as the foreground, and use a transparent background (matching current transparent-bg style). The "solid background" part of the first option conflicts with "keep transparent," so the second answer (transparent) wins for the background.
+
+Let me verify the current transparent background is indeed what `ic_launcher.xml` uses — yes, it uses `@android:color/transparent`. So the plan: keep transparent background, replace the foreground drone PNG with the gradient trident vector.
+
+Now I need to figure out the scaling for the adaptive icon safe zone. Let me look at the foreground PNG's actual safe-zone content to understand how the drone is currently positioned (it's 512x588, which is odd — not the standard 108dp adaptive size; it's a full-size image). Actually the adaptive icon scales whatever foreground to the full 108dp canvas. The drone is centered in the 512x588 canvas.
+
+For the trident vector (165x230.5), I need to place it within the adaptive icon's 108x108 viewport so the trident fits inside the 66dp safe circle. The trident is taller than wide (aspect 0.716). To fit the tall trident in the safe circle: max dimension = 66dp. If height = 66dp, then width = 66*0.716 = 47dp. So centered, it fits.
+
+Plan: create a new vector foreground that wraps `ic_trident` scaled into the 108dp adaptive viewport. But `ic_trident` uses aapt gradients which work fine in adaptive icons. I could either:
+- Create a new `ic_launcher_trident_foreground.xml` vector with a 108x108 viewport that references/embeds the trident paths scaled and translated to center within the safe zone.
+
+Let me design the foreground vector. The adaptive icon foreground is drawn on a 108x108 viewport. The trident native viewport is 165x230.5 with group translateX 82.5, so trident spans roughly x[-82.5,82.5] = 165 wide, y[12.5,212.5+] ≈ up to 230.5 tall. Actually let me compute the trident's bounding box: paths span y from ~12.5 to ~212.5 (based on path data `0 212.5` and `...v145H0...` etc.). Height ~230.5 total viewport.
+
+To place in 108x108 adaptive viewport:
+- Scale factor to fit height 66 (safe zone): but let me instead scale to fit within safe circle radius 33dp around center (54,54). 
+
+Trident width: 165, height: ~200 (y from ~12.5 to ~212.5). Aspect (w/h) = 165/200 = 0.825. To fit within a 66dp diameter circle: the trident's bounding box must fit within circle. Conservative: scale so that half-diagonal fits. Simpler: scale so max(width, height) maps to ~66*0.9 ≈ 60 for margin. Height 200 → scale 60/200 = 0.3. Then width = 165*0.3 = 49.5, fits within circle diameter 66 (49.5<66). Good.
+
+So wrap: group scale=0.3, translate to center (54,54). Original trident center x=0 (because of translateX 82.5 group, the trident is centered at x=0), y center ≈ (12.5+212.5)/2 = 112.5.
+
+Apply: scale 0.3, then translate x by 54, y by 54 - 112.5*0.3 = 54 - 33.75 = 20.25. But order matters. In Android vector groups, scale/translate are applied... I'd write nested groups.
+
+This is getting into implementation detail. The plan will note: create a new foreground vector that renders the trident centered and scaled into the adaptive icon safe zone, with transparent background.
+
+Actually, a cleaner and more maintainable approach: create `ic_launcher_foreground.xml` as a vector (108x108 viewport) that contains a scaled/translated copy of the trident path data, OR simply reference the existing `ic_trident.xml` via a nested `<vector>`... but vectors can't embed other vector drawables directly (no <include>). So I must inline the trident paths into the new foreground vector with the transform.
+
+Given the trident has 3 paths (one mirrored), I can copy them into the new vector with a wrapping group that does the scale/translate.
+
+Let me finalize the plan. I have enough. Let me write the plan.
+
+Plan:
+
+## Goal
+Replace the current drone launcher icon with the trident (ic_trident.xml, blue→gold→blue gradient) as the adaptive-icon foreground, keeping a transparent background. Since minSdk=26, adaptive icons cover all supported devices, so only the adaptive icon (mipmap-anydpi-v26) needs to change; the legacy mipmap-nodpi PNG can be updated for completeness but isn't strictly required.
+
+## Steps
+1. **Create `app/src/main/res/drawable/ic_launcher_foreground.xml`** (new vector, 108x108 viewport, transparent background) containing the trident's 3 paths (copied from `ic_trident.xml`, including the mirrored group and the blue→gold→blue aapt gradient), wrapped in a `<group>` that scales (~0.3x) and translates to center the trident inside the adaptive icon's 66dp safe zone.
+
+   *Note:* `ic_trident.xml` can't be <include>-d into a vector, so the paths are inlined with the transform applied. The 3 paths map exactly: the two asymmetric body paths and the mirrored right arm (`scaleX=-1`).
+
+2. **Update `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`** to point foreground at the new vector:
+   ```
+   <foreground android:drawable="@drawable/ic_launcher_foreground" />
+   ```
+   Background stays `@android:color/transparent`.
+
+   Since the new foreground is now a drawable (not the old PNG resource name collision — the new file is `ic_launcher_foreground.xml` in `drawable/` vs old `ic_launcher_foreground.png` in `drawable-nodpi/`, which would conflict as the same resource name in different configs). I'll instead name the new vector `ic_launcher_foreground_trident.xml` to avoid a duplicate-resource conflict with the existing `drawable-nodpi/ic_launcher_foreground.png`.
+
+3. **(Optional) Update legacy `mipmap-nodpi/ic_launcher.png`** to a trident raster for pre-26 devices — not needed since minSdk=26, so skip unless desired.
+
+4. **Remove/unused**: the old `drawable-nodpi/ic_launcher_foreground.png` and `ic_launcher_drone.png` can be left (unreferenced) or removed for cleanliness.
+
+5. **Append to CHANGELOG.md** under `## [Unreleased]` per AGENTS.md workflow.
+
+6. **Verify**: run `.\gradlew.bat :app:assembleDebug` (or release) to confirm resources compile without errors.
+
+Wait — resource name conflict: if I name the new vector `ic_launcher_foreground.xml` in `drawable/`, and there's `ic_launcher_foreground.png` in `drawable-nodpi/`, that IS a resource collision (same name, different drawable configs). Android allows the same name in different config buckets but the PNG in drawable-nodpi would override/specific vs drawable in default bucket — the default `drawable/` XML would be the fallback and `drawable-nodpi/` PNG more specific. That's messy. Better to name the new vector distinctly, e.g. `ic_launcher_foreground_trident.xml`, and update ic_launcher.xml accordingly.
+
+Let me present this plan.## Plan: Replace launcher icon with the trident
+
+**Current state:** The launcher icon (`@mipmap/ic_launcher`) uses an adaptive icon whose foreground is a **drone** graphic (`drawable-nodpi/ic_launcher_foreground.png` — gray/red/blue, pixel-identical to `ic_launcher_drone.png`) over a transparent background. Our trident already exists as `drawable/ic_trident.xml` (blue→gold→blue gradient), used in the in-app header/settings but never as the icon.
+
+Since `minSdk = 26`, adaptive icons cover every supported device, so only the adaptive icon needs to change.
+
+### Changes
+
+1. **New file `app/src/main/res/drawable/ic_launcher_foreground_trident.xml`** — a 108×108 vector (transparent bg) containing the trident's 3 paths copied from `ic_trident.xml` (the two body paths + the mirrored `scaleX=-1` arm, including the `aapt` blue→gold→blue gradient), wrapped in a `<group>` that scales (~0.3×) and translates to center the trident inside the adaptive icon's 66dp safe zone.
+
+   *Note:* a vector can't `<include>` another vector, so paths are inlined with the transform. I'll use a distinct filename to avoid a resource-name collision with the existing `drawable-nodpi/ic_launcher_foreground.png`.
+
+2. **Edit `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`** — point the foreground at the new trident vector:
+   ```xml
+   <foreground android:drawable="@drawable/ic_launcher_foreground_trident" />
+   ```
+   Background stays `@android:color/transparent` (your choice).
+
+3. **Legacy `mipmap-nodpi/ic_launcher.png`** — not needed (minSdk 26), skip.
+
+4. **Cleanup** — old `drawable-nodpi/ic_launcher_foreground.png` / `ic_launcher_drone.png` become unreferenced; can be removed or left.
+
+5. **CHANGELOG.md** — append an `## [Unreleased]` entry per the release workflow.
+
+6. **Verify** — `.\gradlew.bat :app:assembleDebug` to confirm resources compile.
+
+Note: the trident renders in blue→gold→blue gradient on a transparent background (matching the in-app brand mark and current transparent style).
+
+Want me to proceed with this?
+## 15/08/2026, 16:34:48
+
+Direct answer: **No, not today.** The app handles font increases poorly because:
+
+1. **Text truncates instead of wrapping.** Many labels have `maxLines = 1` + `TextOverflow.Ellipsis` (threat popup type labels, summaries, region; the top banner header). At large font sizes these just get cut off ("Shahe…") rather than growing.
+
+2. **Fixed-height layout elements don't scale.** The threat gauge, horizontal level bars, skulls, and course arrows are hardcoded `dp` sizes (e.g. `140dp`, `12dp`, `26dp`). They stay tiny while text grows, so proportions break.
+
+3. **The banner header has a fixed `.height(44.dp)`** — text can't grow, it clips.
+
+4. **No fontScale cap** — at extreme sizes (2.0+) the whole layout can overflow the screen with no scroll, so the popup gets cut off.
+
+The good news: it's very fixable. The layout already uses `MaterialTheme.typography.*` everywhere (which scales fine); only a few explicit truncation constraints, fixed sizes, and the missing scroll/cap are the problems. The plan I outlined addresses all four points directly.
+
+I don't need to re-plan — the plan stands and is ready to implement whenever you say go. Want me to proceed?
+## 15/08/2026, 16:36:41
+
+The user made decisions. Let me research the two "research" items now:
+1. Backup sources for threat data (real backup beyond NEPTUN WebSocket).
+2. Shelter location data sources.
+
+Let me do web research on both in parallel.
+
+
+## 15/08/2026, 16:36:54
+
+I have good research results. Key findings:
+
+**Backup sources (threat data):**
+- **alerts.in.ua API** (`api.ukrainealarm.com`) — official-sourced (ОВА, Суспільне, ДСНС), needs a free API key, provides real-time air raid alerts + reasons. This is the strongest candidate as an actual independent backup source (it's the one NEPTUN-style aggregators reference, and it's the widely-used standard).
+- `alerts.com.ua` (and3rson/raid) — another API.
+- NEPTUN already merges REST.
+
+**Shelter data:**
+- **data.gov.ua** — Ukrainian state open-data portal; many cities publish shelter (укриття) registers as CSV/JSON/GeoJSON. There are known datasets for Odesa, Kyiv, Kharkiv shelters.
+- **OSM** — `amenity=shelter` + `landuse=military` (bunker). Extractable per-oblast PBF.
+- The app targets **Odesa** primarily (focus region), so a scoped Odesa shelter dataset (Odesa city open-data portal) is the most concrete first target.
+
+I now have enough to write a complete plan. Let me also quickly confirm the "ETA to zone edges" logic — I already saw the code computes `distKm` and `eta` only to the focus. For per-zone ETAs I'll compute distance to the zone-circle crossing.
+
+Now let me present the full plan. This is a plan-mode response. I'll present it concisely but completely, organized by the 6 topics, then note the release workflow implications.
+
+Let me write the plan.
+
+
+## 15/08/2026, 16:37:39
+
+Thank you. Here is the finalized plan.
+
+## Plan
+
+### File 1: `D:/Desktop/drones/ARCHITECTURE.md` (new)
+
+**Scope:** Android app only (per your choice) — no deep FTP server documentation.
+
+**Sections:**
+
+1. **Overview** — single-`app` module, Compose + OSMdroid, Kotlin 1.9.24 / JDK 17, minSdk 26 / targetSdk 34, `ua.ukrainedrones`. Zero-backend runtime: data from NEPTUN public API; static update feed from `odesaplay.com.ua`. Dark-only theme.
+
+2. **Module map** — a full table, every file, grouped by subsystem:
+   - *App entry / theme*: `MainActivity`
+   - *Data ingress*: `NeptunClient`, `Threat` (model + `ThreatTypeCatalog` + course translation)
+   - *State / orchestration*: `MainViewModel` (+`UiState`), `Prediction` (`ThreatSpeedTracker`, `predictPosition`, `LatLng`)
+   - *Domain logic*: `Zones` (`RadialZones`, `effectiveZone`, `FAST_THREAT_TYPES`), `ThreatLevel`, `Cities` (+`CityLabelOverlay`, `focusAttribution`), `ZonePrefs` (DataStore), `Strings`, `ThreatImages`
+   - *UI (Compose)*: `MainScreen`, `MapView` (`NeptunMapView`, `DARK_TILE_SOURCE`), `SettingsScreen`, `ZonesSheet`, `ThreatPopupCard`, `FeatureGuide`, `FeatureDiagrams`
+   - *Background / alerting*: `AlertService`, `BootReceiver`, `LocationTracker`, `BatteryOptimization`
+   - *Updates / misc*: `UpdateManager`, `UkraineTileProvider`, `Translate` (Google translate endpoint)
+   - *Build/release*: `app/build.gradle.kts` tasks, `version.properties`
+
+3. **Data flow** — the core pipeline:
+   - `NeptunClient` → `StateFlow<NeptunState>` (threats `Map<id,Threat>`, oblastAlerts, connected). WS frames (`snapshot`/`upsert`/`remove`/`alerts`/`heartbeat`) + REST merge on `onForeground`/keep-alive.
+   - `MainViewModel` combines live (neptun + radii + GPS + selection + 1s `nowFlow`) with prefs snapshot → `buildUiState` → `StateFlow<UiState>`.
+   - `AlertService` independently consumes the same `NeptunClient.state` + `LocationTracker.location` + prefs to post notifications (grace window, coalescing).
+   - Dead-reckoning: `ThreatSpeedTracker.record` → `estimate` (server speed → measured fixes → nominal) → `predictPosition` (per-type horizon/ghost cap).
+   - Update flow: `UpdateManager.check` → `version.json` → `Available`/`download`/`install`.
+
+4. **Key invariants** (contract to preserve):
+   - **Two independent alert paths** — `MainViewModel` (UI) and `AlertService` (notifications) reimplement zone/focus logic; a change to `effectiveZone`, `FAST_THREAT_TYPES`, `focusAttribution`, `RadialZones`, or stale windows must be applied in **both**.
+   - Focus point rule: `followMe` → GPS, else pinned city; attribution via `Cities.cityOblast` stem match.
+   - Zone tiering: INNER ≤ red (1–5), OUTER ≤ yellow (6–20); fast objects claim INNER at any entry when `fastAlertsSooner`.
+   - Expiry: `staleAfterMs` per type; ghosts dropped; REST merge never clobbers fresher WS data (`updatedAtMillis` compare).
+   - No cloud/push: local foreground `dataSync` service only; coarse `NETWORK_PROVIDER` location (~2 min / 250 m).
+   - Siren channel selection: alarm-stream only when `sirenOverride`; else notification-stream.
+
+5. **Testing** — `app/src/test`: `PredictionTest`, `ThreatTest`, `ThreatLevelTest`, `ZonesTest`, `UpdateManagerTest`, shared `TestThreats`. Run `:app:testDebugUnitTest`.
+
+6. **Build & release (brief)** — `bumpVersion` (patch auto-bump), `release` (bump→assemble→upload), `uploadRelease` (FTP APK + generated `version.json`); git-ignored `keystore.properties` / `upload.properties`.
+
+### File 2: `D:/Desktop/drones/AGENTS.md` (edit)
+
+Append a new "Development conventions" section after the release-workflow block:
+
+1. **Coding conventions** — minimal patches, no comments unless asked, dark-only theme, UA/EN through `Strings`, DataStore-backed prefs via `ZonePrefs`, and the **AlertService/ViewModel mirror rule** (link to `ARCHITECTURE.md#key-invariants`).
+
+2. **Always build/verify before finishing** — after meaningful changes run:
+   - `.\gradlew.bat :app:assembleDebug`
+   - `.\gradlew.bat :app:testDebugUnitTest` when touching domain logic (`Prediction`/`Zones`/`ThreatLevel`/`Threat`/`UpdateManager`)
+   Fix failures before declaring the task done.
+
+3. **Never paste full logs or data blobs** — in responses summarize errors/build output rather than dumping full logs, stack traces, or large API/JSON payloads; reference `file:line` or the saved tool-output file instead.
+
+### Verification
+After writing, I'll confirm both files are in place (read them back) — no build run needed for a docs change.
+
+Ready to implement when you switch out of plan mode.
+## 15/08/2026, 16:37:42
+
+I have everything I need. Let me present the comprehensive plan.
+
+# Plan — Ukraine Drones feature round
+
+## Current state (verified)
+- **Connection**: `NeptunClient` (`NeptunClient.kt:54-201`) exposes `connected` flag; on drop it silently reconnects with backoff and REST-merge fallback. The only offline UI is the small in-app pill (`MainScreen.kt:808`) and the ongoing monitor notification's static text (`AlertService.kt:248`). No elapsed-offline time, no retry action, no dedicated offline notification.
+- **Zones**: `Zones.kt` radial model (`radialZone`), membership computed by distance from focus (GPS or pinned city). ETA to user already computed (`MainViewModel.kt:326-327`) but **only** to the user, not to zone edges.
+- **Threat history / family tracking**: not present — per your call, **skipped**.
+- **Release workflow**: `AGENTS.md` — "release it" flow; currently `versionName=0.3.47`.
+
+---
+
+## 1. Offline notification (build)
+Track the disconnect moment, then notify on a **30s grace** — but **immediately if an official alert is active**.
+
+**Detection & state** (`NeptunClient.kt`):
+- Add `var offlineSince: Long? = null` to `NeptunState`.
+- On `onClosed`/`onFailure` (lines 188-200): set `offlineSince = now`.
+- On `onOpen` (line 175): clear it.
+- Expose an elapsed-offline derived value (seconds since `offlineSince`, or null when connected).
+
+**Notifications** (`AlertService.kt` + `MainScreen.kt`):
+- **Both** a one-shot alert on drop **and** the ongoing status update, gated:
+  - One-shot: post on disconnect **only after** 30s (a short coroutine delay task) — unless `focusOblastAlertActive` is true, then post immediately.
+  - Ongoing monitor notification: text switches to `"Offline for Xm"` / «Офлайн Xхв» while disconnected, re-posted on the minute, with a **Retry** action (`PendingIntent` → `NeptunClient.retryNow()` — new method forcing an immediate reconnect attempt).
+- Content (EN/UA via `Strings.kt`): "Offline for 12m — backup systems active but less reliable. Tap to retry." / «Офлайн 12хв — резервні системи працюють, але менш надійні. Натисни, щоб повторити.» plus "rely on official sirens" line.
+- New notification channel `CHANNEL_OFFLINE` (IMPORTANCE_HIGH, silent/vibrate — **no siren**, it's not an alert).
+
+**"Backup systems" wording** — grounded by item 3 (real second source).
+
+## 2. Backup source (research → plan)
+The current "backup" is only NEPTUN's own REST merge. To honestly claim a backup system, add an **independent** source:
+- **Primary candidate: [alerts.in.ua API](https://api.ukrainealarm.com)** (`alerts.in.ua`) — pulls from official OВА / Суспільне / ДСНС; free API key via request form; gives real-time alert state + reason. This is the independent source that other aggregators reference, and it's UA-official-sourced — ideal "backup system, less reliable" framing.
+- Falls back to it when the NEPTUN WS+REST path is down/quiet: populate `oblastAlerts` (and maybe a coarse threat view) from it.
+- **Plan**: (a) request API key, (b) add `AlertsUaClient.kt` (REST poll every ~20s, mirrors existing cadence), (c) merge into `NeptunState.oblastAlerts`, (d) gate official-alert notifications on union of both sources with a source tag in the body.
+- Alternative kept on the table: `alerts.com.ua` API. I'll verify endpoints + key requirements before wiring.
+
+## 3. Shelter locations (research first → plan)
+Data research done; recommended path is **scoped**, matching the app's Odesa-first focus:
+- **Primary**: **Odesa city open-data portal** shelter register (укриття) — the concrete first dataset; export CSV/JSON/GeoJSON with lat/lon.
+- **Broader/fallback**: **data.gov.ua** unified state open-data portal (shelters published as open data) and **OSM** `amenity=shelter` (+ `landuse=military` bunkers) per-oblast extracts (geo2day PBFs).
+- **Plan**: (a) locate + download the Odesa shelter GeoJSON/CSV, (b) validate schema (name, address, lat/lon, capacity, status), (c) **bundle** it in the app (`res/raw`) so it works offline (consistent with the app's offline-first, zero-backend stance), (d) render shelter markers on `MapView` as an overlay layer with a toggle in the map footer/Settings, (e) nearest-shelter distance from GPS in the threat popup.
+- **Open question to confirm in research**: Odesa dataset licensing + whether to bundle (static snapshot) vs. fetch from our update server. Default = bundle (offline, zero-backend).
+
+## 4. Threat times to zones + GPS (build)
+Currently ETA only to the user. Extend to show **ETA to each zone edge + to you**:
+- In `MainViewModel.kt` / `Prediction.kt`, compute for each inbound threat:
+  - `etaToRedEdge` — time to cross the red circle boundary (distance from focus to red radius, using predicted position + speed).
+  - `etaToYellowEdge` — time to cross the yellow boundary.
+  - `etaToUser` — existing.
+- Surface in `ThreatProximity` (`MainViewModel.kt:59-66`) and the popup (`ThreatPopupCard.kt`): a small row like "Yellow edge 12m · Red edge 6m · You 3m".
+- For fast types (already `FAST_THREAT_TYPES`), the red/yellow edges are seconds apart — keep them but they'll naturally read similarly; the "to you" line stays the anchor.
+- Banner (`MainScreen.kt` alert banner) optionally gains a live "enters red zone in Xm" countdown when a threat is outside but inbound.
+
+## 5. Threat history — **skipped** (per decision)
+Noted in the roadmap; revisit later if trust becomes a concern.
+
+## 6. Family tracking — **skipped** (per decision)
+Multi-city pinning already covers the on-device use case.
+
+---
+
+## Release implications
+- All builds go through the `AGENTS.md` "release it" flow (notes EN/UA, version bump, verify `version.json`).
+- New UI strings → add to `Strings.kt` (EN+UA) and CHANGELOG under `## [Unreleased]`.
+
+## Open questions before implementation
+1. **Backup source**: OK to sign up for a free alerts.in.ua API key (needed for the "real backup systems" claim)? Or prefer the no-key `alerts.com.ua`?
+2. **Shelters**: Bundle a static Odesa shelter snapshot in-app (offline, recommended) vs. fetch from your update server?
+3. **Offline retry**: Should the retry action live in both the monitor notification and the new offline notification, or just the offline one?
+
+Want me to proceed with the research/verification phase (item 2 endpoints + item 3 Odesa dataset) and then start implementing in this order: **1 (offline) → 4 (zone ETAs) → 3 (shelters) → 2 (backup source)**? I'll hold until you confirm the three questions above.
+## 15/08/2026, 16:38:15
+
+I'll look at the README to understand what needs updating.
+
+
+## 15/08/2026, 16:38:30
+
+I have the full README. The user wants it less verbose, especially for simple questions. Let me plan the revision.
+
+Here's my plan:
+
+## Plan: Condense README.md
+
+The current README is 131 lines with heavily detailed prose in nearly every section. I'll tighten it throughout while keeping the essential info. Key cuts:
+
+1. **Intro (lines 3–9)** — collapse the two paragraphs into a single punchy blurb (keep the NEPTUN + no-account/API-key point).
+2. **Features** — trim each bullet to its essence; remove redundant explanations (e.g., "with REST merge when the stream goes quiet", "Canadian spelling" detail, "coarse network fix only (~2 min / ~250 m) so the rings stay honest").
+3. **How alerts work** — currently a sprawling 4-paragraph block. Tighten to the three sources + short notes on pins, fast-objects, and sound-mode behavior.
+4. **What it deliberately does not do** — keep the 4 bullets but shorten each to one line.
+5. **Build from source** — already concise, leave mostly as-is.
+6. **Architecture** — keep file list but shorten each entry's description.
+7. **Attribution & safety** — shorten.
+
+**Goal:** roughly halve the length (~60-70 lines) with no loss of actionable info.
+
+A couple of choices to confirm:
+
+
+## 15/08/2026, 16:39:11
+
+I'll find the master agent prompt first.
+
+
+## 15/08/2026, 16:39:16
+
+The "master agent prompt" likely refers to the global AGENTS.md or the opencode config. Let me check.
+
+
+## 15/08/2026, 16:39:20
+
+The global AGENTS.md is `C:\Users\Bodi\.config\opencode\AGENTS.md`. Let me read it and the opencode.json to understand the "master agent prompt".
+
+
+## 15/08/2026, 16:39:56
+
+The user says "master agent prompt" — this likely refers to the main agent/system prompt. The global AGENTS.md is only about tool conservatism. Let me check if there's a master agent definition, possibly in opencode.json or a config for a "master" agent.
+
+The opencode.json only has watcher config. There's no "master" agent defined there. Let me search for agent configs.
+
+
+## 15/08/2026, 16:40:16
+
+Yes. Here's the honest analysis:
+
+**Yes, it saves tokens on future sessions:**
+
+- **ARCHITECTURE.md** is exactly the artifact that kills the re-exploration loop you saw in this session — I read ~15 source files (several thousand lines) to reconstruct what could be summarized in ~150 lines of docs. A future agent reads one file instead of fifteen. That's the single biggest saving.
+- The **module map table** means agents do a targeted `Read` on only the 1–2 files relevant to a task instead of guessing from filenames + reading blindly.
+- **Key invariants** save the most *expensive* kind of token spend: the subtle cross-cutting rules (the AlertService/ViewModel mirror, focus-attribution, effectiveZone, stale windows). Without these written down, every agent re-derives them by reading `MainViewModel`, `AlertService`, `Zones`, and `Prediction` in full — the four biggest logic files. Documenting them avoids that whole class of re-reading.
+- **AGENTS.md conventions** (verify before finishing, don't paste log blobs, mirror rule) further cut tokens: agents won't re-verify builds unnecessarily, won't dump huge outputs into context, and won't re-derive the mirror rule.
+
+**The caveat — it only pays off if it stays current:**
+
+- These docs have a **decay cost**: if ARCHITECTURE.md drifts from the code (e.g. a new file or a changed invariant isn't reflected), a trusting agent makes wrong assumptions and wastes *more* tokens debugging than if it had just read the code. The mitigation is in the plan: the "while working" culture in AGENTS.md should note to keep the module map/invariants updated when files or core rules change.
+- AGENTS.md is already loaded into every session (it's your instruction file), so its additions cost **zero extra token overhead to fetch** — pure win. ARCHITECTURE.md is only read on demand, so it only costs tokens when it saves more than it consumes — which it does for any non-trivial navigation task.
+
+**Net:** worth it, provided one rule is added — "update ARCHITECTURE.md's module map/invariants when adding a file or changing a documented invariant." I'll fold that into the AGENTS.md expansion so the docs don't rot.
+
+Ready to implement once you exit plan mode.
+## 15/08/2026, 16:40:18
+
+No "master" agent is defined in config files. The user is most likely referring to the **main/primary agent prompt** — which, in opencode, is the system prompt. But that's not stored in a config file here.
+
+Let me reconsider. The user says "update the master agent prompt to stop being so verbose, esp for simple questions." 
+
+There are a few candidates:
+1. The global `AGENTS.md` (already read — it's about tool conservatism, not verbosity of responses)
+2. The project `AGENTS.md` (about release workflow)
+3. Some "master" agent definition
+
+Since there's no separate master agent file, the most likely intent is to modify the **global AGENTS.md** to add guidance about being concise/not verbose for simple questions. The global AGENTS.md already has "Prefer concise summaries over verbose explanations" but the user wants more emphasis on response verbosity for simple questions.
+
+Let me check the opencode docs on how agents are configured — but actually, since there's no agent config, "master agent prompt" most likely = the global AGENTS.md, which is the closest thing to a persistent "master" instruction the user controls.
+
+Let me ask the user to clarify which prompt they mean, since it's ambiguous and this is plan mode.
+
+
+## 15/08/2026, 16:40:36
+
+I'll plan an edit to the global AGENTS.md to add concise-response guidance for simple questions.
+
+## Plan
+
+**File:** `C:\Users\Bodi\.config\opencode\AGENTS.md` (global)
+
+**Goal:** Reinforce that responses should be short — especially for simple questions — so the agent doesn't over-explain.
+
+The current file focuses only on *tool* conservatism. It has one line about concise summaries, but nothing governing **response verbosity**. I'll add a short "Response brevity" section:
+
+### Proposed additions
+
+Add a new section near the top (after the intro) or under a new heading:
+
+```markdown
+# Concise responses
+
+- Answer directly and briefly.
+- Simple questions get short answers (1-3 lines), not explanations.
+- Don't restate the question, add preambles, or summarize your work unless asked.
+- Match the depth of the question: brief question → brief answer.
+```
+
+I'd keep it tight (~5 lines) to match the file's existing style and avoid being verbose about brevity.
+
+### Verification
+- Read the file back to confirm formatting is intact.
+
+Would you like me to:
+- **(A)** Add the new "Concise responses" section as above, or
+- **(B)** Also tighten the existing wording to fold brevity in throughout?
+
+Let me know and I'll make the edit once you approve (I'm in plan mode, so no changes yet).
+## 15/08/2026, 16:41:30
+
+Done.
+## 15/08/2026, 16:41:47
+
+I'll implement the plan. Let me set up my todos and start.
+
+
+## 15/08/2026, 16:42:55
+
+Let me compute the trident's bounding box to determine the exact scale/translate. The trident is in a 165×230.5 viewport, with a `group translateX=82.5` so it's centered at x=0. Let me analyze the path bounds.
+
+From the path data:
+- Body path: spans y from 12.5 to 212.5, and the third path (left arm, mirrored) 
+- Let me determine precise x/y bounds.
+
+The two asymmetric paths (path 2 and its mirror) have `M27.779818 75.17546 ... 60 27.5v145...` — x from 0 to 60 (plus mirror gives -60 to 60), y from 27.5 to 162.5 area, plus the `M42 122.5h10v10H42z` dot at y 122.5-132.5.
+
+Path 1 (center stem): y from 12.5 to 212.5, x around -11.4 to 11.4.
+
+So overall trident bounds: x ∈ [-60, 60] (width 120), y ∈ [12.5, 212.5] (height 200).
+
+Wait, but the viewport is 165 wide (from -82.5 to 82.5). Actual content is narrower (x ∈ [-60,60]). Height 200.
+
+For the adaptive icon: 108×108 viewport, safe zone is a circle of diameter 66dp centered at (54,54).
+
+To fit the trident (width 120, height 200) in the safe circle: I'll center it at (54,54) and scale so it fits. Aspect: 200/120 = 1.667 (tall). 
+
+To fit height 200 within circle, I want the trident's bounding box to fit inside the circle. Let me use a target such that the trident fits with margin. The safe circle radius is 33. The trident's corner (half-width, half-height) = (60s, 100s). For corners to be within circle radius 33: (60s)² + (100s)² ≤ 33² → s²(3600+10000) ≤ 1089 → 13600s² ≤ 1089 → s² ≤ 0.0801 → s ≤ 0.283.
+
+So scale s ≈ 0.283. Then trident: width 120*0.283 = 34dp, height 200*0.283 = 56.6dp. Centered at (54,54). That fits in the 66dp circle nicely (56.6 < 66).
+
+Let me use s = 0.28 for a bit of margin. Width 33.6, height 56, well within circle and safe zone.
+
+Transform: trident center in original coords = (0, 112.5) (since x centered at 0, y from 12.5 to 212.5 → center 112.5).
+
+To place at (54,54): 
+- scale by s = 0.28
+- then translate: new_center_x = 0*s + tx = 54 → tx = 54. new_center_y = 112.5*s + ty = 54 → ty = 54 - 112.5*0.28 = 54 - 31.5 = 22.5.
+
+So group: scale 0.28, translateX 54, translateY 22.5. But the trident already has an inner group `translateX=82.5`. In Android vector group transforms, scale/translate apply to child group coordinates. Let me structure it carefully.
+
+Original structure:
+```
+<vector viewport 165x230.5>
+  <group translateX=82.5>
+    <path/>            // center stem (path 1)
+    <path/>            // right arm (path 2)
+    <group scaleX=-1>
+      <path/>          // left arm (path 3, mirrored)
+    </group>
+  </group>
+</vector>
+```
+
+For the new vector (108×108 viewport), I need to first apply the trident's native transform then my scale/translate. Easiest: put everything inside a group that does my transform, then the original structure. So:
+
+```
+<vector viewport 108x108>
+  <group scaleX=0.28 scaleY=0.28 translateX=54 translateY=22.5>
+    <group translateX=82.5>
+      ... same paths ...
+    </group>
+  </group>
+</vector>
+```
+
+Wait, but order of transform application. In Android vectors, a `<group>` transform maps its children. Multiple nested groups compose. The inner `translateX=82.5` shifts by 82.5 in the parent's (scaled) coordinate space. Then the outer group scales and translates. Let me verify the composite: a point in path coords p → inner group translate → (p + 82.5) → outer group: scale*that + translate → (p+82.5)*0.28 + (54,22.5). For p=(0,112.5): x = 82.5*0.28 + 54 = 23.1+54 = 77.1. Hmm that's not centered at 54.
+
+I need center at 54. Let me reconsider. Actually the inner translateX=82.5 centers content at x=0 in the 165-wide viewport (content was at -82.5..82.5 originally? No). Let me recompute the trident's coordinate space properly.
+
+Original trident without the translateX group: the paths use coordinates like x from -11 to 11 (path1), x from 0 to 60 (path2), and path3 mirrored. So without translate, content spans x ∈ [-60, 60], y ∈ [12.5, 212.5]. The `translateX=82.5` moves it to x ∈ [22.5, 142.5] — centering it in the 165-wide viewport (0..165). Wait, that makes x range 22.5..142.5, centered at 82.5 = viewport center. Yes.
+
+So in the original vector's coordinate space, after translateX=82.5, the trident is centered at (82.5, 112.5) in the 165×230.5 viewport.
+
+For my new vector, I want to scale that whole thing down and center at (54,54) in 108×108.
+
+Composite transform on a point q (in the 165-wide, translateX-applied space): I want final = (q - (82.5,112.5)) * s + (54,54).
+
+So: outer group should do: translate by -(82.5,112.5), then scale s, then translate (54,54). But Android groups apply scale then translate (in that order relative to child coords): transform = translate(translateX,translateY) ∘ scale(scaleX,scaleY). Meaning point → scale first, then translate: p' = scale*p + translate.
+
+To get final = s*(q - c) + target = s*q + (target - s*c), where c=(82.5,112.5), target=(54,54):
+- scale = s
+- translate = target - s*c = (54 - s*82.5, 54 - s*112.5)
+
+With s=0.28: translate = (54 - 23.1, 54 - 31.5) = (30.9, 22.5).
+
+So outer group: scaleX=0.28, scaleY=0.28, translateX=30.9, translateY=22.5, wrapping the original `<group translateX=82.5>`.
+
+Let me verify: point q=82.5 (center x in original). Final x = 0.28*82.5 + 30.9 = 23.1+30.9 = 54. ✓. Left edge q=22.5 → 0.28*22.5+30.9 = 6.3+30.9 = 37.2. Right edge q=142.5 → 39.9+30.9=70.8. So x spans 37.2..70.8, centered 54, width 33.6. ✓
+y center 112.5 → 0.28*112.5+22.5 = 31.5+22.5=54 ✓. Top y=12.5 → 3.5+22.5=26. Bottom 212.5 → 59.5+22.5=82. So y spans 26..82, centered 54, height 56. ✓ Fits in safe circle (radius 33 from center: corners (33.6/2, 56/2)=(16.8,28) → distance √(16.8²+28²)=√(282+784)=√1066=32.6 < 33 ✓).
+
+Great, that fits within the safe zone circle.
+
+Now let me create the new vector file. I'll copy the 3 paths with their aapt gradients.
+
+Let me write the file.
+
+
+## 15/08/2026, 16:43:00
+
+Now update the adaptive icon XML to point at the new foreground.
+
+
+## 15/08/2026, 16:43:09
+
+Now let me check the CHANGELOG.md and remove the unreferenced drone PNGs. First, let me verify the drone PNGs are truly unreferenced before removing.
+
+
+## 15/08/2026, 16:43:19
+
+Here's the plan again:
+
+## Goal
+Make the threat popup + top banner robust to large system font sizes (elderly users), so text wraps instead of truncating, fixed-size elements scale, and nothing overflows the screen.
+
+## 1. `ThreatPopupCard.kt`
+
+**A. Remove truncation so text wraps** — drop `maxLines = 1` / `TextOverflow.Ellipsis` from:
+- SMALL type label (148-150) + summary (156-158)
+- MEDIUM type label (186-188), region (194-196), summary (224-226)
+- LARGE type label (294-296), region (302-304), summary (327-329) — also remove the `maxLines = 2` cap so it can exceed 2 lines
+
+**B. Font-aware fixed sizes** — add a `fontAware(dp)` helper reading `LocalDensity.fontScale` (capped at 1.5), and scale:
+- HorizontalLevelBar `56×8dp` (483-484, 491-492)
+- ThreatLevelGauge skull `26dp` + bar `12×140dp` (510, 515-516, 524)
+- Skulls `18dp` (162), `24dp` (212)
+- Course arrows `12dp` (205, 313)
+
+**C. Make pills wrap** — convert the footer pill rows (MEDIUM 242-271, LARGE 392-440) to `FlowRow` so they wrap instead of overflowing.
+
+**D. Wrap whole card in vertical scroll** — add `verticalScroll(rememberScrollState())` to the Surface's modifier chain so the popup scrolls when it exceeds the screen (Settings preview with infinite height still renders fully).
+
+## 2. `MainScreen.kt`
+Remove `.height(44.dp)` (338) and `maxLines = 1` / Ellipsis (367-368) from the alert header so it grows and wraps.
+
+## 3. `MainActivity.kt`
+Clamp fontScale: wrap the theme in `CompositionLocalProvider(LocalDensity provides Density(density, minOf(fontScale, 1.5f)))` so extreme fonts don't break layout.
+
+## 4. `CHANGELOG.md`
+Append one line under `## [Unreleased]` describing the fontScale robustness.
+
+## 5. Verify
+Run `.\gradlew.bat :app:test` (unit tests only — no Compose UI tests exist; real device check at 1.3/2.0 is manual).
+
+Ready to implement when you give the go.
+## 15/08/2026, 16:43:20
+
+Important finding: `ic_launcher_drone.png` is **still used** as the notification small icon (`R.drawable.ic_launcher_drone` in AlertService.kt). So I must NOT delete it. Only `ic_launcher_foreground.png` is now unreferenced (was the launcher foreground).
+
+Let me update the CHANGELOG and remove only `ic_launcher_foreground.png`.
+
+
+## 15/08/2026, 16:43:25
+
+The old foreground PNG is removed; `ic_launcher_drone.png` stays (still used as the notification small icon). Now let me verify the build.
+
+
+## 15/08/2026, 16:43:30
+
+Let me verify the resource compilation by building the app (or at least the resource merging step).
+
+
+## 15/08/2026, 16:43:30
+
+The user wants a whole-app fontScale audit, not just popups. Let me explore the whole app for truncation patterns and fixed-size issues before revising the plan.
+
+
+## 15/08/2026, 16:43:36
+
+Let me audit the UI-heavy files for truncation patterns, fixed heights, and maxLines. Let me search across the codebase for the key anti-patterns.
+
+
+## 15/08/2026, 16:43:42
+
+Let me search for the truncation patterns specifically (maxLines with TextOverflow) and `.height(...)` with fixed dp across the codebase, focusing on the UI-heavy screens. Let me get the full maxLines list and check SettingsScreen and FeatureGuide more thoroughly.
+
+
+## 15/08/2026, 16:43:46
+
+I'll create ARCHITECTURE.md and expand AGENTS.md as planned.
+
+
+## 15/08/2026, 16:43:51
+
+Good — truncation (`maxLines`/`TextOverflow`) is only in MainScreen header + ThreatPopupCard. So the rest of the app doesn't truncate text. Now let me check for fixed-height layout containers that could clip at large font sizes. The key concerns are: fixed `.height()` on rows/columns containing text, and the overall screen scrollability. Let me check SettingsScreen structure (it's a big settings list) and FeatureGuide, plus MapView overlays.
+
+Let me check whether SettingsScreen/FeatureGuide are wrapped in scrollable containers and if there are any fixed-height text containers.
+
+
+## 15/08/2026, 16:44:00
+
+Now expand AGENTS.md with the development conventions section.
+
+
+## 15/08/2026, 16:44:21
+
+The main screens (Settings, FeatureGuide) already use `LazyColumn` (scrollable), and ZonesSheet uses a Column. So most of the app is scrollable and text wraps naturally (no maxLines anywhere else). The primary structural issues are:
+
+1. **Truncation** (only 2 places): MainScreen header + ThreatPopupCard. Already planned.
+2. **Fixed-height header** in MainScreen (44dp). Planned.
+3. **FontScale cap** in MainActivity. Planned.
+4. **Fixed-size graphical elements** that look wrong when scaled (gauge, bars, skulls, arrows in popup). Planned.
+5. **Pills wrap** in popup. Planned.
+
+Now let me check the MapView overlays (the popup sits over the map) and the threat status cells / bottom pills in MainScreen that might have layout concerns. Let me look at the areas around lines 560-1000 of MainScreen to check for fixed-size text-adjacent elements that could clip, and how the popup Box is constrained.
+
+Actually, the user's real question is whether the whole app handles font increases. The audit shows:
+- Settings, FeatureGuide: LazyColumn scrollable ✓, no truncation ✓
+- Map area: map is scrollable/pannable ✓
+- Threat popup: truncates + fixed sizes + no scroll ✗ (planned)
+- Header: fixed height + truncates ✗ (planned)
+- No fontScale cap ✗ (planned)
+
+Let me verify the popup Box in MainScreen isn't height-constrained in a way that would prevent scroll. It's `align(Alignment.TopCenter).padding(top=12, start/end=16)` inside a full-size Box — it gets bounded by the screen, so verticalScroll will work. Good.
+
+Let me check the bottom status pills / threat cells region of MainScreen (around 560-1000) to confirm they aren't clipping text at large fonts. Let me read that section.
+
+
+## 15/08/2026, 16:44:23
+
+Both files are done.
+
+**Created `ARCHITECTURE.md`** — full module map (all 26 files grouped by subsystem), the data-flow pipeline (NEPTUN → NeptunClient → MainViewModel + AlertService → UI/notifications), and the key invariants (especially the two-independent-alert-paths mirror rule).
+
+**Expanded `AGENTS.md`** with a Development conventions section:
+- Read `ARCHITECTURE.md` first
+- Coding conventions (minimal patches, `Strings`, `ZonePrefs`, dark-only, mirror rule)
+- Always build/verify before finishing (`assembleDebug` + `testDebugUnitTest`)
+- Never paste full logs/data blobs
+- Keep `ARCHITECTURE.md` current
+
+No build run needed — docs-only change.
+## 15/08/2026, 16:44:27
+
+The bottom control bar and zone buttons are icon-driven circles with no text that would clip. The app's text is largely in scrollable containers.
+
+Now let me check the `ZonesSheet.kt` — the zone editor is a bottom panel (non-modal). And the `SettingsScreen` uses LazyColumn. Let me check the ZonesSheet structure around line 43-130 to confirm it handles large text (it's a bottom sheet, might have fixed height or overflow).
+
+
+
+
+## 15/08/2026, 16:44:28
+
+I'll research the codebase to build a comprehensive plan. Let me start by reading the key files mentioned in the task.
+
+
+## 15/08/2026, 16:44:34
+
+Let me find the actual file paths.
+
+
+## 15/08/2026, 16:44:38
+
+Let me read the key files: NeptunClient.kt, AlertService.kt, Strings.kt, and MainScreen.kt.
+
+
+## 15/08/2026, 16:44:42
+
+Now let me read Strings.kt and MainScreen.kt (for the ongoing status display) to understand the structure.
+
+
+## 15/08/2026, 16:44:48
+
+Now let me look at MainScreen.kt for the ongoing status display, and check how `retryNow` might connect. Let me also look at how the connection pill and `connOffline` are used, plus check the CHANGELOG.
+
+
+## 15/08/2026, 16:44:53
+
+The ZonesSheet is a bottom panel with a Column — text wraps and there's no fixed-height clipping; the panel is content-sized. Fine.
+
+I now have a comprehensive whole-app picture. The audit conclusion:
+
+**Whole-app fontScale health:**
+- ✅ Settings, Feature Guide: scrollable LazyColumns, no truncation → handle large fonts well.
+- ✅ ZonesSheet, bottom controls: icon-driven, text wraps, no fixed-height clipping.
+- ⚠️ **MainScreen header**: fixed 44dp height + maxLines=1 truncation.
+- ⚠️ **ThreatPopupCard**: multiple maxLines/ellipsis truncations + fixed-size graphics (gauge/bar/skull/arrow) + footer pills that can overflow + no scroll.
+- ⚠️ **No fontScale cap** anywhere — extreme (2.0+) sizes can break row layouts (e.g. header row with emblem+status+settings in one Row could get cramped, and the popup SMALL card's single-line Row).
+
+Note one more subtlety: the whole-app clamp in MainActivity caps at 1.5, which is the global safety net. Beyond that, the only truncations in the entire app are the header + popup, both already in the plan.
+
+So the plan is essentially the same as before — the whole app audit confirms those two files are the *only* places with truncation/fixed-height problems. Let me present the revised full-app plan.
+
+Let me verify the MainScreen header Row: it has emblem + weighted text + ConnectionStatus + settings IconButton all in one Row. At 1.5 clamped fontScale, the weighted text will wrap to multiple lines (once we remove maxLines) — the Row will grow since height(44) is removed. Good.
+
+Also need to confirm the threat popup `Box` in MainScreen can scroll — since we add `verticalScroll` to the Surface modifier, and the popup Box has bounded height from the screen. Confirmed earlier.
+
+One more: the SMALL popup card is a single `Row` (icon + column + skull/bar). With wrapped type label it could get tall — fine, scroll handles it. The task's original scope for small/medium was just text wrap + font-aware sizes, which stands.
+
+Let me finalize the plan.
+
+## Revised Plan: whole-app fontScale robustness
+
+### Audit result
+Searched all 25 source files. The only places with text truncation (`maxLines`/`TextOverflow.Ellipsis`) are **MainScreen.kt** (header) and **ThreatPopupCard.kt** (popup). Everywhere else (Settings LazyColumn, Feature Guide LazyColumn, ZonesSheet, map overlays, bottom controls) is already scrollable and wraps text naturally. So the fixes concentrate on those two files, plus a global fontScale cap in MainActivity.
+
+### 1. `ThreatPopupCard.kt`
+- **Remove truncation → wrap**: drop `maxLines`/`TextOverflow.Ellipsis` from SMALL type label + summary, MEDIUM type label/region/summary, LARGE type label/region, and LARGE summary (also remove its `maxLines = 2` cap).
+- **Font-aware fixed sizes**: add `fontAware(dp)` helper (reads `LocalDensity.fontScale`, capped 1.5). Scale: HorizontalLevelBar (56×8dp), ThreatLevelGauge (12×140dp + 26dp skull), skulls 18/24dp, course arrows 12dp.
+- **Pills wrap**: convert MEDIUM + LARGE footer rows (and the LARGE pill sub-row) to `FlowRow`.
+- **Vertical scroll**: add `verticalScroll(rememberScrollState())` to the card's modifier so the popup scrolls instead of overflowing the screen (Settings preview unaffected since it measures with infinite height).
+
+### 2. `MainScreen.kt`
+- Header (335-384): remove `.height(44.dp)`; remove `maxLines=1`/Ellipsis on the alert text so it grows and wraps.
+
+### 3. `MainActivity.kt`
+- Wrap the theme in `CompositionLocalProvider` that clamps `LocalDensity` fontScale to `1.5f` (`Density(density, minOf(fontScale, 1.5f))`) — global safety net so extreme sizes (2.0+) never break row layouts.
+
+### 4. `CHANGELOG.md`
+- Append one line under `## [Unreleased]` about whole-app font-size robustness (header + popup wrap/scroll, gauge/bar/skull sizes scale, fonts capped at 1.5×).
+
+### 5. Verify
+- Run `.\gradlew.bat :app:test` (unit tests; no Compose UI tests exist, so device check at 1.3/2.0 is manual).
+
+Shall I proceed with implementation?
+## 15/08/2026, 16:44:54
+
+I now have a good understanding of the codebase. Let me examine the MainViewModel to understand the UI-side status display and the mirror rule, and check the `focusOblastAlertActive` usage there. Let me also understand the `retryNow()` need — I need to see how reconnect currently works.
+
+Let me look at MainViewModel for its `connected` handling and any existing offline display.
+
+
+## 15/08/2026, 16:45:00
+
+I now have enough understanding. Let me check the `MainViewModel` around the connected state and how the 1s clock works, and understand how AlertService `nowFlow` ticks (60s). I have enough to form the plan. Let me verify a couple of details about how `retryNow()` should be implemented in NeptunClient — the reconnect uses `connect()` guarded by `connectInFlight`. A `retryNow()` would cancel the reconnectJob and call `connect()` immediately.
+
+Let me check the MainViewModel around lines 270-290 and 370-390 to understand focus/connected UI.
+
+
+## 15/08/2026, 16:45:18
+
+I have enough understanding to form a complete plan. Let me also verify how `nowFlow` ticks in the ViewModel (1s clock) and how the UI gets `connected` for the offline display. The task's UI portion is "MainScreen.kt" for notifications; but the ongoing monitor notification is in AlertService, and MainScreen's ConnectionStatus already shows Online/Offline.
+
+The task says:
+- **Detection & state (NeptunClient.kt)**: add `offlineSince`, elapsed-offline derived value.
+- **Notifications (AlertService.kt + MainScreen.kt)**: one-shot alert on drop (30s delay unless official alert active), ongoing monitor notification text switching to offline, Retry action → `NeptunClient.retryNow()`.
+- Strings content.
+- New channel CHANNEL_OFFLINE.
+
+Let me confirm the MainScreen involvement — the task groups MainScreen with AlertService under "Notifications". The ongoing status notification is in AlertService; MainScreen doesn't post notifications. But MainScreen's `ConnectionStatus` already displays offline via `uiState.connected`. I'll interpret the MainScreen mention as the ongoing monitor notification's "Retry" PendingIntent targeting the app, plus possibly surfacing the elapsed-offline in the UI. Let me check whether there's an existing `retryNow`-like method and how PendingIntent to a service action is done.
+
+I have enough to write the plan. Let me now present the plan to the user.
+
+Since the task is quite well-specified, I'll present a focused plan. Let me also confirm one thing about the Retry action - it needs a PendingIntent to a Service action. AlertService uses ACTION_STOP pattern. I'll add ACTION_RETRY.
+
+Let me write the plan.
+
+
+## 15/08/2026, 16:46:26
+
+The ARCHITECTURE.md confirms my audit — `MainScreen.kt` and `ThreatPopupCard.kt` are the two UI files with the header/popup; there are no other truncation files. It confirms the module map and no fontScale invariant documented. This doesn't change my plan, it confirms it. The docs note `AGENTS.md` says keep ARCHITECTURE.md current when changing invariants — I'm not changing a documented invariant, so no ARCHITECTURE.md update needed.
+
+Let me proceed. Starting with `ThreatPopupCard.kt`.
+
+
+## 15/08/2026, 16:46:34
+
+Now let me implement ThreatPopupCard. First, add imports and a font-scale helper.
+
+
+## 15/08/2026, 16:46:39
+
+Now add the font-scale helper and update the composable signature/scroll. Let me add the helper near `containsCyrillic` and update the Surface modifier.
+
+
+## 15/08/2026, 16:46:45
+
+Now update the Surface modifier to add verticalScroll, and add `@OptIn(ExperimentalLayoutApi::class)` to the composable for FlowRow. Let me update the composable annotation and Surface.
+
+
+## 15/08/2026, 16:46:56
+
+The user wants to also surface elapsed-offline in the UI. Let me look at the MainViewModel UiState and how the 1s clock works so I can plan that wiring.
+
+
+## 15/08/2026, 16:46:56
+
+Now SMALL card: remove truncation on type label and summary; scale skull and bar. Let me edit the SMALL block.
+
+
+## 15/08/2026, 16:47:08
+
+Now MEDIUM card: type label, region (with course arrow), skull 24dp, summary, and footer row → FlowRow. Let me edit the MEDIUM type label + region + arrow + skull/bar, then summary, then footer.
+
+
+## 15/08/2026, 16:47:15
+
+Now the MEDIUM summary row (remove truncation) and the footer row → FlowRow.
+
+
+## 15/08/2026, 16:47:21
+
+Now the LARGE card: type label, region + arrow, summary (remove maxLines=2), and footer (outer FlowRow + inner FlowRow).
+
+
+
+
+## 15/08/2026, 16:47:28
+
+I'm in plan mode. Let me research the codebase and the alerts.in.ua API to build a solid plan.
+
+Let me start by reading the architecture doc and understanding the current NEPTUN integration.
+
+
+## 15/08/2026, 16:47:32
+
+Let me read the key files: NeptunClient.kt, Threat.kt (for oblastAlerts model), and how oblastAlerts is consumed.
+
+
+## 15/08/2026, 16:47:34
+
+Now the LARGE footer: outer `Row(fillMaxWidth, SpaceBetween)` → FlowRow, and inner pill `Row(spacedBy(6.dp))` → FlowRow.
+
+
+## 15/08/2026, 16:47:34
+
+I'll research the Odesa shelter dataset before planning. Let me start by understanding the app structure and then research the data sources.
+
+Let me look at the architecture and the key files first.
+
+
+## 15/08/2026, 16:47:35
+
+I now have a full picture. The ViewModel's `nowFlow` ticks every 1s, so it can compute `offlineSeconds` from `NeptunState.offlineSince` in `buildUiState` and surface it in `UiState`. The `ConnectionStatus` composable in MainScreen can then show the elapsed-offline.
+
+Let me present the complete plan now.
+
+## Plan: Offline Notification & Status
+
+### 1. `NeptunClient.kt` — offline state & retry
+
+**`NeptunState`** (line 26): add `val offlineSince: Long? = null`.
+
+**Derived elapsed value** (expose on the state or as a helper): a `Long?` in seconds since `offlineSince`, or `null` when connected. I'll add it as a derived property on `NeptunState`:
+
+```kotlin
+val offlineElapsedSec: Long?
+    get() = if (connected) null else offlineSince?.let { (System.currentTimeMillis() - it) / 1000 }
+```
+
+**Detection points:**
+- `onOpen` (line 175): add `offlineSince = null` to the `copy(connected = true, ...)`.
+- `onClosed` (line 188-192): add `offlineSince = System.currentTimeMillis()`.
+- `onFailure` (line 195-199): add `offlineSince = System.currentTimeMillis()`.
+
+**New `retryNow()`** public method: forces an immediate reconnect attempt regardless of backoff — cancel any pending `reconnectJob` and call `connect()` (which is already guarded by `connectInFlight` so a call while connected is a no-op; also close the stale socket first if one exists). Returns early if `manuallyStopped`.
+
+### 2. `Strings.kt` — new strings (both `UA` and `EN` StringSet + data-class fields)
+
+Add fields to `StringSet` (line 9) and both `UA`/`EN` instances:
+- `offlineStatusTitle` — ongoing monitor title while offline (e.g. `"Offline"` / `«Офлайн»`).
+- `offlineBodyFormat` — `"Offline for %1$s — backup systems active but less reliable. Tap to retry."` / `«Офлайн %1$s — резервні системи працюють, але менш надійні. Натисни, щоб повторити.»`
+- `offlineOfficialSirensLine` — `"Rely on official sirens."` / `«Покладайся на офіційні сирени.»`
+- `offlineRetryAction` — `"Retry"` / `«Повторити»`.
+- `offlineDurMinFormat` — `"%1$d m"` / `«%1$d хв»` for the ongoing "Offline for Xm" / «Офлайн Xхв» monitor text.
+- `offlineChannelName` / `offlineChannelDesc` — channel name/desc (EN + UA).
+- `offlineUiFormat` — for the UI pill, e.g. `"Offline for %1$s"` / `«Офлайн %1$s»`.
+
+Note the UA minute suffix: the task says «Офлайн 12хв» (no space) while the English is "12m". I'll keep these as literal format strings per language.
+
+### 3. `AlertService.kt` — notifications
+
+**New channel** `CHANNEL_OFFLINE` (`IMPORTANCE_HIGH`, `enableVibration(true)`, silent — no `setSound`/siren; added to `createChannels()` and the `keep` set).
+
+**New constants:** `CHANNEL_OFFLINE`, `NOTIF_OFFLINE = 4`, `ACTION_RETRY = "ua.ukrainedrones.RETRY"`, `OFFLINE_GRACE_MS = 30_000L`.
+
+**One-shot alert on drop (30s grace):** In `handleState`, track the disconnect transition. Since `MonitorEvent.State` doesn't currently carry connectivity, add `connected: Boolean` and `offlineElapsedSec: Long?` to it. On a `connected true→false` transition:
+- Start a scoped coroutine `delay(30_000)` then post the one-shot offline alert — **unless** `focusOblastAlertActive` becomes true in the meantime (the task: post immediately if an official alert is active; i.e. if an official alert is active at drop time or becomes active during the 30s, post immediately / don't gate).
+- Implementation: a `offlineAlertJob: Job?` launched in `scope`. Cancel/restart on each transition. If `focusOblastAlertActive` is true at drop, post immediately; else delay 30s and post (cancelled if reconnected first). If the official alert fires during the grace, post immediately and cancel the delay job.
+
+The one-shot alert uses `CHANNEL_OFFLINE`, content = offline body + official-sirens line, `setAutoCancel(true)`, content intent = app, plus a Retry action.
+
+**Ongoing monitor notification text:** in `notifyMonitor(...)`, when `offlineElapsedSec != null`, use the offline title/body (with minute count) instead of the normal status text, and add a Retry action (`ACTION_RETRY` PendingIntent → service). Since `nowFlow` ticks every 60s and the ongoing notification re-posts on the minute, the elapsed minutes refresh. Need to make the minute count increase — the offline body uses `offlineElapsedSec/60`.
+
+**Retry PendingIntent:** `ACTION_RETRY` → `PendingIntent.getService(...)` targeting `AlertService` with the retry action. In `onStartCommand`, handle `ACTION_RETRY` by calling `NeptunClient.retryNow()` (and still keep monitoring alive).
+
+**MonitorEvent.State** gains `connected` + `offlineElapsedSec`; `handleState` wires them in.
+
+### 4. `MainViewModel.kt` + `MainScreen.kt` — UI surfacing
+
+**`UiState`** (line 23): add `val offlineElapsedSec: Long? = null`.
+
+**`buildUiState`** (around line 373): set `offlineElapsedSec = neptun.offlineElapsedSec`. Because `nowFlow` ticks every 1s and `buildUiState` recomputes on each tick, the elapsed value stays live.
+
+**`ConnectionStatus`** (MainScreen.kt:808): change signature to accept `offlineElapsedSec: Long?` in addition to `connected`. When offline, show `String.format(s.offlineUiFormat, minutes)` instead of just `s.connOffline`. Keep the existing green/red dot.
+
+**Header call** (MainScreen.kt:371): pass `offlineElapsedSec = uiState.offlineElapsedSec`.
+
+### 5. `CHANGELOG.md`
+
+Append a user-visible entry under `## [Unreleased]`.
+
+### 6. `ARCHITECTURE.md`
+
+Update the `NeptunClient.kt` module-map line (mentions offline state + `retryNow`) and `AlertService.kt` line (offline notification + `CHANNEL_OFFLINE`), and `MainViewModel.kt` line (offline UI state).
+
+### Verification
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (no domain-logic changes to Prediction/Zones/ThreatLevel, but run to be safe)
+
+### Mirror-rule note
+This change adds a *new* disconnected state that both `MainViewModel` (UI) and `AlertService` (notifications) read directly from the shared `NeptunClient.state` — it does **not** touch `effectiveZone`/`FAST_THREAT_TYPES`/`focusAttribution`/`RadialZones`/`staleAfterMs`/`predictPosition`, so the mirror rule isn't newly implicated; the `offlineElapsedSec` computation lives in one place (`NeptunState`) and both consumers just read it.
+
+---
+
+One decision worth confirming before I build: the one-shot alert's 30s grace and immediate-post-when-official-alert logic. The task says "notify on a 30s grace — but immediately if an official alert is active." I read this as: post immediately if an official alert is active *at the moment of disconnect*, and also post immediately (instead of waiting) if an official alert fires during the 30s window. Does that match your intent, or should the "immediately" case only cover the state at drop time? Also, should the one-shot also be cancelled if reconnection succeeds within 30s?
+
+
+## 15/08/2026, 16:47:36
+
+Let me read the OblastAlert model and how the alert notification is composed (AlertService), plus the Strings and MainViewModel alert-related parts.
+
+
+## 15/08/2026, 16:47:45
+
+Now let me research the Odesa shelter dataset. Let me look at the key files that would be involved (MapView, Strings, ZonePrefs, SettingsScreen, MainViewModel) and research the data source in parallel.
+
+Let me first check the Odesa open data portal for the shelter register, and look at key code files.
+
+
+## 15/08/2026, 16:47:46
+
+Now the `HorizontalLevelBar` and `ThreatLevelGauge` fixed sizes.
+
+
+## 15/08/2026, 16:47:46
+
+Now let me research the alerts.in.ua API to understand its endpoints and data format. Let me also check the `OblastAlert` model - NEPTUN's has `key`, `name`, `oblast`, `since`. The alerts.in.ua API has a different structure.
+
+Let me research alerts.in.ua API and check how `focusAttribution` and `inOblast` work, plus the Strings file for the notification body / source tag.
+
+
+## 15/08/2026, 16:47:47
+
+I'll research the codebase to build a plan. Let me start by reading the architecture doc and the key files.
+
+
+## 15/08/2026, 16:47:50
+
+The path is different. Let me find the actual files.
+
+
+## 15/08/2026, 16:47:54
+
+I have a good understanding now. Let me check the `Cities.kt` `focusAttribution` and `inOblast` semantics, and the Strings file for the alert notification strings, plus check how the connection pill / "source" is displayed. Let me also verify the alerts.in.ua key requirement and the exact API shape for the "active.json" endpoint.
+
+Let me look at the key remaining pieces: `focusAttribution` (token mapping to oblast stem), and the Strings for alert banner text where we'd add a source tag.
+
+
+## 15/08/2026, 16:47:54
+
+I need to find the Odesa city-specific dataset. The key finding is that Odesa has an open data portal and data.gov.ua. Let me search specifically for the Odesa city council's open data on shelters, and check the Odesa open data portal. Let me also look at the relevant app code files.
+
+
+## 15/08/2026, 16:47:56
+
+Now `TextOverflow` import is unused. Let me check if `TextOverflow` is still referenced anywhere in the file.
+
+
+## 15/08/2026, 16:47:58
+
+Now let me read the ThreatPopupCard.kt, MainScreen.kt (banner part), and Zones.kt for the zone logic.
+
+
+## 15/08/2026, 16:48:01
+
+I now have enough understanding. Let me verify the `focusAttribution` token structure and the oblast alert `inOblast` matching, plus confirm the alerts.in.ua API's exact response for the `active.json` endpoint and key requirements. Let me fetch the actual API docs to confirm the exact endpoint and the `location_oblast` field.
+
+Let me look at `Cities.kt` lines 140-170 for focusAttribution token semantics, and fetch the alerts.in.ua API request page to confirm key requirements.
+
+
+## 15/08/2026, 16:48:03
+
+I removed the `TextOverflow` import from ThreatPopupCard already (it's no longer in the import list I wrote). The grep shows matches only in MainScreen.kt now — good, ThreatPopupCard no longer uses it. Let me verify no leftover `TextOverflow` references in ThreatPopupCard specifically.
+
+The grep returned only MainScreen matches, so ThreatPopupCard is clean. Now MainScreen.kt header.
+
+
+## 15/08/2026, 16:48:03
+
+The research confirms there IS a published dataset for Odesa. The key finding: Odesa city council published "Дані про розташування захисних споруд цивільного захисту комунальної власності" — the registry of protective structures. The Odesa city council open data portal (omr.gov.ua / data.gov.ua). Let me find the exact dataset resource. Let me look at the Odesa city council's open data portal directly and check the existing app's map rendering code to understand integration points.
+
+Let me look at the actual Odesa open data portal URL. Odesa's portal is at `omr.gov.ua` and its open data. Let me search data.gov.ua for Odesa's shelter dataset specifically.
+
+
+## 15/08/2026, 16:48:04
+
+Now let me look at the MainScreen.kt alert banner and the Strings.kt for localization strings. Let me find the banner section.
+
+
+## 15/08/2026, 16:48:10
+
+Let me look at the MainScreen banner area (around line 330) and the Strings.kt structure more fully.
+
+
+## 15/08/2026, 16:48:10
+
+Now edit MainScreen.kt header: remove `.height(44.dp)` and truncation. The Row's `verticalAlignment = Alignment.CenterVertically` keeps alignment. I need to keep padding. Let me update.
+
+
+## 15/08/2026, 16:48:11
+
+The API-request page is JS-rendered. I have enough from the search results about the API shape. Let me confirm the exact active.json response shape and the token requirement. I already have this from the search: endpoint `https://api.alerts.in.ua/v1/alerts/active.json`, auth via `Authorization: Bearer <token>` or `?token=`, returns `{"alerts":[{id, location_title, location_type, started_at, finished_at, alert_type, location_uid, location_oblast, location_raion, notes, calculated}]}`.
+
+Let me check how the `inOblast` token matches against the alerts.in.ua `location_oblast` value. NEPTUN's `OblastAlert.oblast` is like `"Харківська область"` and `inOblast(token)` checks `oblast.startsWith(token)` where token is like `"Харківськ"`. So alerts.in.ua's `location_oblast` ("Луганська область") would match the same way — great, compatible.
+
+Now let me check the build.gradle for OkHttp availability (already used) and the CHANGELOG to follow conventions, and understand how NEPTUN detects "down/quiet" to trigger fallback.
+
+I have enough to write the plan. Let me check the current CHANGELOG Unreleased section and the connection pill display for how "source" would be surfaced.
+
+
+## 15/08/2026, 16:48:12
+
+I have enough research on the data sources. The key finding: **Odesa city has an ArcGIS REST server** (`service.ombk.omr.gov.ua/arcgis/rest/services`) that serves shelter layers in GeoJSON/JSON — this is the Odesa city geoportal. This is exactly the concrete dataset the user mentioned. Let me confirm the exact shelter layer exists there, and look at the app's map rendering code to plan integration.
+
+Let me fetch the Odesa ArcGIS service to find the shelter layer, and look at MapView.kt, ZonePrefs.kt, Strings.kt, SettingsScreen.kt to understand integration points.
+
+Let me check the Odesa ArcGIS services list and the app's MapView.
+
+
+## 15/08/2026, 16:48:13
+
+I have enough understanding of the banner. Now let me check the Strings.kt structure to understand how to add new strings, and check whether there's a `yellowZoneAlert` string. Let me view the Strings file structure around relevant lines.
+
+
+## 15/08/2026, 16:48:15
+
+I now have a comprehensive understanding. Let me confirm the alerts.in.ua API key acquisition path and rate limits via one more targeted search, since the user explicitly wants me to "verify endpoints + key requirements before wiring."
+
+
+## 15/08/2026, 16:48:18
+
+I have a good understanding of the map rendering. Now let me examine the Odesa ArcGIS folders to find the actual shelter layer, and look at the other key integration files (ZonePrefs, Strings, SettingsScreen, MainViewModel, MainScreen footer).
+
+Let me check the Odesa ArcGIS folders for shelter data and look at the remaining files.
+
+
+## 15/08/2026, 16:48:20
+
+I have a good understanding now. Let me also check the PredictionTest.kt to understand the test conventions, and check `formatEtaMinutes` — I'll want a seconds-level formatter for the edges. Let me also confirm the AlertService side (per the mirror rule) — but the task is specifically about MainViewModel/ThreatProximity/popup/banner, which are UI-side only. The mirror rule applies to `predictPosition` etc., which I'm not changing. ETA edge computation is new UI-only logic, so no AlertService mirror needed.
+
+Let me check the CHANGELOG to follow conventions and the test file quickly.
+
+
+## 15/08/2026, 16:48:20
+
+Now `TextOverflow` import in MainScreen.kt may be unused. Let me check if it's used elsewhere in the file.
+
+The grep earlier showed only line 50 (import) and 368 (usage) in MainScreen. I removed line 368 usage. Let me verify and remove the import if unused.
+
+
+## 15/08/2026, 16:48:28
+
+Now unused. Remove the import.
+
+
+## 15/08/2026, 16:48:28
+
+I have everything I need. Key finding: **alerts.in.ua explicitly forbids hardcoding the token in a client app** ("Не харкодьте токен в коді, що отримує користувач (мобільний застосунок...)") and requires a proxy server for public services. This is a significant constraint that affects the plan. Let me verify the proxy requirement interpretation and check whether alerts.com.ua (the alternative) has a public keyless endpoint.
+
+From the earlier search, alerts.com.ua has `https://alerts.com.ua/api/states` returning `{"states":[{"id","name","name_en","alert","changed"}]}` — and it appears to be **keyless/public**. That's actually a much better fit for a client app since it needs no token, no proxy. Let me confirm alerts.com.ua is public/keyless.
+
+
+## 15/08/2026, 16:48:37
+
+The Odessa_MSK51 folder is empty. The Odesa ArcGIS server's shelter layers are likely in a different folder. Let me check the "External" folder and the main folder's nested folders. Actually, the Odesa geoportal (`service.ombk.omr.gov.ua`) may not be the best source — the shelter data is more reliably on data.gov.ua under the Odesa city council.
+
+Let me note the research findings so far and check a couple more critical integration files, then determine the concrete dataset. Let me check the data.gov.ua dataset for Odesa city council shelters — the `8ae4aa5c-a891-415e-9c54-da9f839611e7` dataset appeared in results. Let me also check the Strings and SettingsScreen and MainScreen to understand where a toggle/overlay would fit.
+
+Given plan mode, I have enough to build a solid plan. Let me verify the concrete data.gov.ua resource for Odesa and check a few code integration points. Let me look at the Odesa data.gov.ua dataset and the Strings file.
+
+
+## 15/08/2026, 16:48:42
+
+Now MainActivity.kt: clamp fontScale. Update the setContent and imports.
+
+
+## 15/08/2026, 16:48:42
+
+## Summary: Split per-threat toggle into Map + Alerts
+
+Replace each threat type's single on/off toggle in Settings with **two independent controls** per type — **"Show on map"** and **"Alerts"** — with these rules:
+
+- **Map OFF → alerts also forced OFF** (coupling).
+- **Alerts OFF → stays on map but dimmed**.
+- **Footer strip** dims a cell whenever its **alerts are OFF** (independent of map visibility).
+- Two new prefs per type (`threat_map_<type>`, `threat_alert_<type>`, both default true); **no migration** — old `threat_enabled_*` keys ignored.
+
+### Changes by file
+1. **`ZonePrefs.kt`** — add two persisted accessors per type; replace `threatEnabledFlow` with `threatMapFlow` + `threatAlertFlow` (two `Set<ThreatType>` flows).
+2. **`MainViewModel.kt`** — UiState/prefs now carry both sets; map filter (line 313) gates on the **map** set, alerts path on the **alerts** set; derive `hiddenTypes`/`silencedTypes`; split `setThreatEnabled` into `setThreatMapVisible` (forces alerts off when map off) + `setThreatAlertsEnabled`.
+3. **`MainScreen.kt`** — pass both sets; strip cell (line 467) dims on `silencedTypes`; rewire callbacks.
+4. **`SettingsScreen.kt`** — threat card gets two toggles (map + alerts) with the forced-off/dimmed UI; accept two callbacks + both sets.
+5. **`AlertService.kt`** — `zoneThreats` gate (line 227) uses the **alerts** set via `threatAlertFlow`.
+6. **`Strings.kt`** (UA + EN) — add labels/descriptions for the two controls and the coupling/dimming rule; update `threatsLabel` + `guideTogglesSummary`/`guideTogglesD1`.
+7. **`FeatureGuide.kt`** — updates automatically via Strings (no code change).
+8. **`CHANGELOG.md`** — append a line under `## [Unreleased]`.
+9. **Verify** — run `.\gradlew.bat :app:test`; no code comments added.
+
+**Note:** This is a behavior change vs. the original copy-only task — it touches the core toggle model, Settings UI layout, and both consumers (MainViewModel + AlertService).
+## 15/08/2026, 16:48:48
+
+Confirmed: **alerts.com.ua/api/states is keyless/public** — returns oblast alert booleans with `name` in Ukrainian (e.g. `"Одеська область"`), `name_en`, and a `changed` timestamp. This matches the `inOblast` stem-matching perfectly and needs **no token, no proxy**. 
+
+This is a critical finding that changes the recommendation. The user's primary candidate (alerts.in.ua) has a real blocker: its terms **forbid hardcoding the token in a client app** and require a proxy server for public services — plus it needs an API key request and has strict rate limits (8-10 req/min). The alternative (alerts.com.ua) is keyless and directly suitable.
+
+Let me present my plan with this finding clearly and ask the user which direction to take.
+
+Let me finalize my research with the key facts about both and present a well-formed plan.
+
+---
+
+## Research findings
+
+I've verified both candidate APIs:
+
+**alerts.in.ua** (your primary candidate)
+- Endpoint: `GET https://api.alerts.in.ua/v1/alerts/active.json`, auth via `Authorization: Bearer <token>` (or `?token=`)
+- Returns `{"alerts":[{id, location_title, location_type, started_at, finished_at, alert_type, location_uid, location_oblast, location_raion, notes, calculated}]}`
+- **Blocker**: The official docs explicitly forbid hardcoding the token into a client-side mobile app ("Не харкодьте токен в коді, що отримує користувач") and require a **proxy server** for public services. Strict rate limits (8–10 req/min/IP; 429 + possible token ban).
+- Requires an API key via request form.
+
+**alerts.com.ua** (your alternative — **now recommended**)
+- Endpoint: `GET https://alerts.com.ua/api/states` — **keyless, public, no auth**
+- Returns `{"states":[{"id","name","name_en","alert","changed"}],"last_update":...}` — 25 entries (24 oblasts + Kyiv city), `name` in Ukrainian (`"Одеська область"`), `alert` boolean, `changed` timestamp.
+- Matches our existing `OblastAlert.inOblast` stem logic directly (`"Харківська область"` vs token `"Харківськ"`).
+- No token to leak, no proxy needed, no rate-limit ban risk.
+
+Because alerts.in.ua has a hard term-of-service blocker for a client app, **alerts.com.ua is the honest "independent source" fit** — same official-oblast data, zero key management.
+
+Let me ask you which path before finalizing the plan.
+
+
+## 15/08/2026, 16:48:49
+
+That `8ae4aa5c` dataset is for Volochyska (Khmelnytskyi region), not Odesa. I need to find the actual Odesa city council dataset on data.gov.ua. Let me note the key research facts I've gathered so far:
+
+**Key research findings:**
+1. **Odesa city council** publishes the mandatory open-data dataset "Дані про розташування захисних споруд цивільного захисту комунальної власності" (shelters register) — required by Resolution 835.
+2. The Odesa geoportal (`service.ombk.omr.gov.ua/arcgis`) hosts ArcGIS layers, but the shelter layer location is uncertain.
+3. data.gov.ua hosts per-municipality `shelters.csv` datasets (I saw Kryvyi Rih, Chornomorsk, Volochyska examples).
+4. There's also the **DSNS national system** `shelters.dsns.gov.ua`.
+5. Odesa has ~1189 registered protective structures per the 2025 decision, ~900+ simplest shelters.
+
+I need to find the exact Odesa city dataset. Let me search data.gov.ua for the Odesa city council specifically. The Odesa city council's data.gov.ua organization page would list it. Let me also confirm the map footer (MainScreen) and SettingsScreen integration points.
+
+Let me do a targeted search for the Odesa city council's data.gov.ua organization/shelter dataset.
+
+
+## 15/08/2026, 16:48:58
+
+Now I need to verify `ExperimentalLayoutApi` import for FlowRow in ThreatPopupCard. FlowRow is in `androidx.compose.foundation.layout` which is wildcard-imported (`layout.*`). But `ExperimentalLayoutApi` is in `androidx.compose.foundation.layout`. The `@OptIn(ExperimentalLayoutApi::class)` references it — since `layout.*` is imported, it resolves. Good.
+
+Let me verify the ThreatPopupCard edits compile-consistently by viewing the relevant sections. Let me update the todos and run the build.
+
+
+## 15/08/2026, 16:49:03
+
+I have enough understanding of the architecture now. The data.gov.ua search didn't return the Odesa city council dataset directly, but I've confirmed the following concrete facts:
+
+1. **data.gov.ua** hosts per-municipality `shelters.csv` datasets (I confirmed Chornomorsk/Volochyska/Kryvyi Rih, all Odesa-oblast or similar) — the standardized national schema for "Дані про розташування захисних споруд цивільного захисту".
+2. The Odesa city council is a **mandated publisher** of this dataset under Resolution 835.
+3. Odesa city's official open-data geoportal is at `service.ombk.omr.gov.ua/arcgis` (ArcGIS server).
+
+The exact URL for the Odesa city council dataset on data.gov.ua is what remains to be pinned down during implementation. Let me do one more focused search to try to find the exact Odesa dataset resource, then look at the MainScreen footer and SettingsScreen to finalize integration points.
+
+Actually, I have enough research to present a solid plan. The precise dataset URL can be located during implementation (step a of the plan). Let me check the MainScreen and SettingsScreen integration points quickly to make the plan concrete.
+
+Let me look at the map footer toggle location (MainScreen) and the Settings structure.
+
+
+## 15/08/2026, 16:49:03
+
+Append a CHANGELOG entry under `## [Unreleased]`.
+
+
+## 15/08/2026, 16:49:07
+
+I now have a comprehensive understanding. Let me think about the geometry for ETA to zone edges.
+
+The threat is at predicted position `P`, moving along `bearingDeg` at `speedMps`. The focus (user) is at `F`. The red circle radius is `redKm` (in meters: `redKm*1000`), yellow is `yellowKm*1000`.
+
+We need the **time to cross the boundary circle** — the distance from the threat's current position to the circle, along its direction of travel.
+
+For a threat moving in a straight line at position P, direction vector u, toward a circle of radius R centered at F: the distance to the circle boundary along the ray is the smaller positive root of `|P + d*u - F| = R`.
+
+Let `v = P - F` (vector from focus to threat). Distance from threat to center = `|v| = D`. The ray from P in direction u. Solve `|v - d*u| = R`:
+- `(v - d*u)·(v - d*u) = R²`
+- `|v|² - 2d(v·u) + d² = R²` (since |u|=1)
+- `d² - 2d(v·u) + (D² - R²) = 0`
+- `d = (v·u) ± sqrt((v·u)² - (D² - R²))`
+
+We want the distance to the boundary along the direction of travel. If the threat is outside the circle (D > R) and heading inward (v·u < 0), the crossing distance is the positive root: `d = (v·u) + sqrt((v·u)² - (D² - R²))`. This gives the distance to the far-side boundary point where it enters. Actually for entering a circle from outside heading inward: the ray first hits the circle at `d = -(v·u) - sqrt(...)` if that's positive... let me be careful.
+
+For a point at distance D > R from center, heading toward the center, the distance to the circle boundary is `D - R` (when heading directly). The general formula: the smaller positive intersection. For D > R, the two roots have the product `D²-R² > 0` and sum `2(v·u)`. If v·u < 0 (heading inward), the product positive and both roots... Actually roots are `(v·u) ± sqrt((v·u)² - (D²-R²))`. Since `D² - R² > 0`, and v·u < 0, sqrt term > |v·u|, so one root negative, one positive. The positive root is the near-boundary crossing: `d_near = (v·u) + sqrt(...)`.
+
+Then `etaToEdge = d_near / speed`. Convert to minutes for the display (or seconds). The example shows "Yellow edge 12m · Red edge 6m · You 3m" — these are in minutes (12 min, 6 min, 3 min). Wait, the spec example: "Yellow edge 12m · Red edge 6m · You 3m". These are minutes (m suffix). So for the fast types they'd read similarly/close.
+
+Note: `etaToUser` currently = `distUser / speed`, i.e., time to reach the **center**. The "You" ETA is time to reach the focus point, not the edge. Good — that stays as anchor.
+
+So computation in MainViewModel's proximity block: given predicted, bearing, speed, focusLocation, redKm, yellowKm.
+
+If the threat is already inside a circle (D <= R), the "time to cross the boundary" is... it's already inside. Should we show 0 or negative, or show time to cross the *far* side? The spec says "time to cross the red circle boundary" and "time to cross the yellow boundary". For a threat inside the red circle, crossing the red boundary is the far-side exit. But logically, the more useful is: for a threat outside yellow, ETA to yellow edge then red edge. For a threat between red and yellow, it's in the yellow ring — the red edge ETA is meaningful (approaching red), yellow edge is behind. 
+
+I think the sensible approach: compute time-to-reach the boundary only when the threat is **outside** that boundary; if already inside, the ETA is effectively 0/already-in. Given the task focus ("time to cross the ... boundary"), I'll compute the positive crossing distance along the heading. If the threat is already inside the circle, the boundary is already crossed → show the threat as "in" (ETA 0 or absent). Let me define:
+
+- `etaToRedEdge`: time to reach red circle. If D ≤ redRadius → already in red (null or 0, e.g. show "in"). Otherwise crossing distance.
+- `etaToYellowEdge`: time to reach yellow circle. If D ≤ yellowRadius → already in yellow ring → null (or show 0). Otherwise crossing.
+
+For the display row "Yellow edge 12m · Red edge 6m · You 3m", we show both edges. If a threat is inside yellow already, showing "Yellow edge" would be odd. But the task explicitly wants this small row always with the three values for inbound threats. For threats already in red, the edges are moot. 
+
+Given the mirror rule only concerns existing invariants (predictPosition etc. unchanged), this new ETA-to-edge logic is UI-only. I'll compute crossing distances via a small helper in Prediction.kt (`distanceToCircleEdge` or `etaToCircleEdge`) so it's testable.
+
+Now let me consider the banner countdown: "enters red zone in Xm" — this is optional. It requires computing, for the nearest inbound threat currently outside the red zone, the time to red edge. This adds a UiState field like `redZoneEtaSec/Min` and `redZoneInboundThreat`. The banner shows a live countdown. I'll include this as part of the plan (the task says "optionally").
+
+Let me think about where to compute in MainViewModel: The loop iterates threats; for the banner countdown I'd need the minimum red-edge ETA among threats outside red but inbound. I could compute per-threat crossing in the main loop and pick the min for threats whose red-edge ETA is positive (outside red, heading in).
+
+Actually, simpler: compute etaToRedEdge for all threats; the banner picks the min positive one. Let me design the plan.
+
+Let me also check the test file for conventions, and check if there's an existing `yellowZoneAlert` string used at line 328.
+
+Let me now verify the format helpers and the PredictionTest to plan tests.
+
+
+## 15/08/2026, 16:49:07
+
+Now run the tests.
+
+
+## 15/08/2026, 16:49:07
+
+Let me read the MainScreen map footer area (the floating zone buttons around line 700-760) to understand where a shelter overlay toggle button could go.
+
+
+## 15/08/2026, 16:49:13
+
+Let me see where the zone buttons row is placed (the map footer with zoom buttons / zone pills), to know where a shelter toggle could live. Let me read around lines 560-680.
+
+
+## 15/08/2026, 16:49:17
+
+I now have everything I need to construct the plan. Let me verify one thing about the mirror rule — this new edge-ETA logic is UI-only (ThreatProximity lives in MainViewModel), and it does not alter `predictPosition`/`effectiveZone`/etc., so no AlertService mirror is required. The banner countdown is also UI-only. Good.
+
+Let me also double check: does the spec's `formatEtaMinutes` (minutes) suffice for edges? The example "Yellow edge 12m · Red edge 6m · You 3m" uses minutes. For fast types edges are seconds apart. I'll reuse `formatEtaMinutes` for consistency (it floors to minutes, min 1m). That matches the example style. Good.
+
+Let me confirm there's no issue with the `etaToUser` being distance-to-center vs the edges. The spec keeps "to you" as the anchor (existing). Fine.
+
+Now let me present the plan.
+
+
+## 15/08/2026, 16:49:22
+
+I now have a clear picture of the map footer: `ZoneButtons` (lines 632-669) is a floating bottom-right column with two zone pills + an edit button. This is the natural place for a shelter toggle.
+
+I now have enough to construct a well-formed plan. Let me verify one thing about the exact Odesa dataset — let me do a final targeted search to pin down the Odesa city council's data.gov.ua dataset URL so the plan's step (a) is concrete. Let me check the data.gov.ua organization page for Odesa city council.
+
+Actually, I have sufficient research to present the plan. The exact dataset URL can be confirmed during implementation (step a). Let me also confirm the app's res/raw directory exists / how assets are bundled.
+
+Let me quickly check what's in res/ to confirm bundling approach.
+
+
+## 15/08/2026, 16:49:27
+
+`FlowRow` doesn't have a `verticalAlignment` parameter in this Compose version. Let me check the correct FlowRow API — in this version it likely uses `verticalArrangement` instead. Let me check the available parameters.
+
+The error: `Cannot find a parameter with this name: verticalAlignment`. FlowRow's cross-axis alignment is `verticalArrangement`. Let me check what version is in use and the correct param. FlowRow signature in Compose foundation 1.x: `FlowRow(horizontalArrangement, verticalArrangement, ...)`. There's no `verticalAlignment` for the outer FlowRow (it aligns items along cross axis via `verticalArrangement`).
+
+Let me fix the three FlowRow calls. For the outer footer FlowRows (which used `verticalAlignment = Alignment.CenterVertically`), the cross-axis of a FlowRow (horizontal flow) is vertical. `verticalArrangement` positions rows along the cross axis. To center items vertically within their line, I should use `verticalArrangement` — but that arranges the rows relative to the container height, not per-line items. 
+
+Actually for FlowRow, the `verticalArrangement` controls spacing between flow lines, and `verticalAlignment` doesn't exist. To keep items vertically centered I can drop the alignment (default Top) or use `verticalArrangement = Arrangement.Center` which centers the flow lines in the container.
+
+Let me look at line 245 and 389/393 context. Line 245 is the MEDIUM footer FlowRow. Lines 389/393 are the LARGE footer outer FlowRow + inner FlowRow.
+
+The simplest fix preserving intended layout: remove `verticalAlignment` from the FlowRows. For the inner pill FlowRow, without verticalAlignment the pills align to top of their line — fine since they're similar height. For the outer ones, the elapsed text and pills would top-align instead of center — minor. Better to use `verticalArrangement = Arrangement.Center`? No, that centers the whole group vertically in available space which isn't right for fillMaxWidth content rows.
+
+Let me just remove the `verticalAlignment` parameters. The rows have small, similar-height children so top alignment is acceptable and matches typical FlowRow usage. Let me fix all three.
+
+
+## 15/08/2026, 16:49:28
+
+There's already a `res/raw` directory. Good — that's where the bundled shelter dataset would go. Let me check what's in it and the build.gradle to confirm JSON parsing libraries available (kotlinx.serialization / org.json).
+
+
+## 15/08/2026, 16:49:34
+
+Now `Alignment` import may still be used elsewhere in ThreatPopupCard (yes, `Alignment.CenterVertically`, `Alignment.BottomCenter`, `Alignment.CenterStart`, `Alignment.CenterHorizontally` are used). It's still needed. Let me rerun the test.
+
+
+## 15/08/2026, 16:49:38
+
+The app uses `org.json` (JSONObject) — that's what `Threat.kt` parsing uses. So a bundled GeoJSON/JSON can be parsed with `org.json` with no new dependencies. res/raw already contains bundled audio, so bundling a `shelters.json` there fits the established pattern.
+
+I now have a complete picture. Let me present the plan. Since this is plan mode, I should present the research findings + plan and ask the key open question (bundle vs. fetch), as the user flagged it as the default.
+
+Let me present the plan concisely.
+
+
+## 15/08/2026, 16:49:51
+
+Build and tests pass (warnings are pre-existing deprecation warnings unrelated to my change).
+
+Let me verify the `main` build too since the task mentions `.\gradlew.bat :app:test` — that maps to `testDebugUnitTest` which passed. Let me also run a quick `assembleDebug` to be safe per AGENTS.md conventions.
+
+
+## 15/08/2026, 16:50:10
+
+Done. All tasks complete, build + tests pass.
+
+## Summary
+
+Whole-app font-size audit confirmed the two files I flagged (MainScreen header + ThreatPopupCard) are the *only* places with truncation/fixed-height problems — everything else (Settings, Feature Guide LazyColumns, ZonesSheet, map overlays) already scrolls and wraps. Fixed those plus a global cap:
+
+**`ThreatPopupCard.kt`**
+- Removed `maxLines`/`TextOverflow.Ellipsis` on all SMALL/MEDIUM labels + summaries and the LARGE type/region labels; LARGE summary now wraps past 2 lines.
+- Added `fontAware(dp)` helper (scales by capped fontScale) applied to the gauge (`12×140dp`), level bars (`56×8dp`), skulls (18/24/26dp), and course arrows (12dp).
+- Footer pill rows → `FlowRow` so pills wrap.
+- Card wrapped in `verticalScroll` so it never overflows the screen.
+
+**`MainScreen.kt`**
+- Header: removed fixed `.height(44.dp)` and `maxLines=1` so it grows/wraps.
+
+**`MainActivity.kt`**
+- Clamped `LocalDensity` fontScale to `1.5f` via `CompositionLocalProvider` as a global safety net.
+
+**`CHANGELOG.md`** — appended one entry under `## [Unreleased]`.
+
+Verified with `.\gradlew.bat :app:testDebugUnitTest` and `:app:assembleDebug` — both pass. No ARCHITECTURE.md change needed (no documented invariant touched). Real device check at fontScale 1.3/2.0 is the remaining manual verification.
+## 15/08/2026, 16:51:30
+
+Understood — two refinements to the plan:
+
+1. **No Material toggle switches.** The two controls per threat card should be **cards with medium-sized icons** that toggle on/off using the app's existing **border style** (the same bordered-card treatment already used elsewhere — e.g. the current enabled-card `BorderStroke(2.dp, primary)` on the threat cards).
+
+2. **Footer strip**: hide a cell entirely if **either** alerts **or** map is off (not just dim-when-alerts-off). So:
+   - Map OFF → cell hidden.
+   - Alerts OFF → cell hidden.
+
+This replaces the earlier "strip dims when alerts off" rule. The new strip rule: **show cell only when both map ON and alerts ON**.
+
+Let me confirm the exact visual treatment I should mirror. The current threat card uses `BorderStroke(2.dp, primary)` when `enabled` and no border when disabled (SettingsScreen.kt:269-271). So the icon cards would follow that: bordered-highlight when on, plain/dimmed when off.
+
+Let me update the plan accordingly.
+
+---
+
+# Plan: Split per-threat toggle into Map + Alerts (icon-card controls)
+
+## Confirmed model
+- Two independent controls per threat type: **"Show on map"** and **"Alerts"**.
+- **Coupling**: Map OFF → forces Alerts OFF. Alerts OFF → type stays on map but **dimmed**.
+- **Footer strip**: a type's cell is **hidden** if **either map OR alerts is OFF** (only shows when both ON).
+- Two new prefs per type (`threat_map_<type>`, `threat_alert_<type>`, default true); **no migration**.
+- **UI controls**: NOT Material toggles. Each control is a **card with a medium-sized icon** that toggles on/off using the app's existing **border style** (2dp primary border when on, none/dimmed when off — mirroring the current threat-card border treatment at SettingsScreen.kt:269-271).
+
+### Files & changes
+
+**1. `ZonePrefs.kt`**
+- Add per-type accessors: `threatMapVisible`/`setThreatMapVisible` (key `threat_map_<type>`, default true) and `threatAlertsEnabled`/`setThreatAlertsEnabled` (key `threat_alert_<type>`, default true).
+- Replace `threatEnabledFlow` with `threatMapFlow(prefs)` and `threatAlertFlow(prefs)` → two `Set<ThreatType>` flows.
+
+**2. `MainViewModel.kt`**
+- `UiState` (line 36) / `PrefsSnapshot` (line 110): replace single `enabled`/`disabledTypes` with `mapEnabled` + `alertEnabled`; derive `hiddenTypes = all - mapEnabled` and `silencedTypes = all - alertEnabled`.
+- Map filter (line 313): gate on `mapEnabled`.
+- `buildUiState` (lines 230, 263, 381): pass/derive both sets.
+- Split `setThreatEnabled` (line 447) into `setThreatMapVisible(type, visible)` — which when `visible==false` also calls `setThreatAlertsEnabled(type,false)` — and `setThreatAlertsEnabled(type, enabled)`.
+
+**3. `MainScreen.kt`**
+- Pass both sets (line 114).
+- Footer strip (line 467): hide the cell when `type !in mapEnabled || type !in alertEnabled` (either off → hidden). Pass appropriate enabled/visibility flag to `ThreatStatusCell`.
+- Rewire `onThreatToggle` (line 128) to the two new VM methods.
+
+**4. `SettingsScreen.kt`**
+- Signature (lines 63, 77): accept `hiddenTypes`/`silencedTypes` + two callbacks `onMapToggle`, `onAlertToggle`.
+- Threat card (lines 264-310): replace the single whole-card toggle with **two bordered icon cards** ("Show on map" and "Alerts"). On = 2dp primary border; Off = dimmed/no border. Map card OFF visually forces Alerts OFF (alerts control shown disabled until map re-enabled).
+- Add labels/icons for both controls.
+
+**5. `AlertService.kt`**
+- Line 158: `threatEnabledFlow(prefs)` → `threatAlertFlow(prefs)`.
+- `zoneThreats` gate (line 227): gate on the **alerts** set (coupling already ensures map-off ⇒ alerts-off).
+
+**6. `Strings.kt`** (UA 206-401, EN 403-598)
+- Add labels/descriptions for the two icon-card controls + the coupling/dimming rule; update `threatsLabel` (240/437) and `guideTogglesSummary`/`guideTogglesD1` (392-393/589-590).
+
+**7. `FeatureGuide.kt`** — auto-updates via Strings; no code change.
+
+**8. `CHANGELOG.md`** — append line under `## [Unreleased]`.
+
+**9. Verify** — `.\gradlew.bat :app:test`; no comments added.
+
+---
+
+Two quick confirmations before I finalize:
+
+- For the strip rule, the cell should be **hidden entirely** when map or alerts is off — confirmed, correct?
+- For the icon-card controls: each control shows a **medium-sized icon** (map-eye icon for map, bell/alert icon for alerts) in a bordered card, bordered when ON / dimmed-no-border when OFF — does that match your intent?
+## 15/08/2026, 16:52:09
+
+I'll research the codebase to understand the current implementation before planning.
+
+
+## 15/08/2026, 16:52:13
+
+The package is `ua.ukrainedrones`, not `ua.odesa.drones`. Let me find the correct paths.
+
+
+## 15/08/2026, 16:52:24
+
+Let me read the rest of AlertService and the relevant helper functions, plus the Strings and ThreatLevel files.
+
+
+## 15/08/2026, 16:52:26
+
+I'll research the codebase to construct a plan. Let me start by reading the relevant files.
+
+
+## 15/08/2026, 16:52:49
+
+Let me read the key files, focusing on the relevant sections.
+
+
+## 15/08/2026, 16:52:49
+
+Now let me look at the relevant data structures: `focusAttribution`, `OblastAlert.inOblast`, `translateCourseAssessment`, and the `Threat` model (region/district/locality, areaOnly, type). Let me find these in Cities.kt and Threat.kt.
+
+
+## 15/08/2026, 16:52:52
+
+I'll research the codebase to construct a plan. Let me read the key files.
+
+
+## 15/08/2026, 16:52:53
+
+Now let me read the ThreatPopupCard.kt and the relevant Strings.kt sections, plus the Threat model for status/stale handling.
+
+
+## 15/08/2026, 16:52:54
+
+I'll research the codebase to build a plan. Let me start by reading the architecture doc and finding the relevant files.
+
+
+## 15/08/2026, 16:52:55
+
+Let me read the key files.
+
+
+## 15/08/2026, 16:52:58
+
+Now let me look at the Threat model and the Strings.kt file. Let me check the Threat.kt for status handling and Strings.kt sections.
+
+
+## 15/08/2026, 16:53:01
+
+Let me read the key files in detail.
+
+
+## 15/08/2026, 16:53:02
+
+Now let me look at the Strings.kt to understand the structure (StringSet and both UA/EN). Let me read the relevant sections.
+
+
+## 15/08/2026, 16:53:02
+
+Now let me read the other files: SettingsScreen (relevant section), ZonePrefs, Strings (relevant sections), FeatureGuide, and Zones.kt.
+
+
+## 15/08/2026, 16:53:03
+
+Now let me look at the Strings.kt file to understand the string table structure, and the NeptunClient remove frame handling. Let me read the relevant Strings.kt sections around formatElapsedMss and the string table, plus how "remove" frames work.
+
+
+## 15/08/2026, 16:53:09
+
+Let me read the StringSet fields (lines 120-204), the UA/EN sections, and the SettingsScreen threats section.
+
+
+## 15/08/2026, 16:53:10
+
+Now let me look at the Threat data model (fields like `type`, `region`, `district`, `locality`, `areaOnly`, `status`, `explanationShort`) and how `region`/`district`/`locality` relate to oblast. Let me read Threat.kt around the model.
+
+
+## 15/08/2026, 16:53:10
+
+Now let me look at the Strings.kt for the fastAlertsSooner strings and the FeatureGuide, plus the Zones.kt for FAST_THREAT_TYPES and effectiveZone.
+
+
+## 15/08/2026, 16:53:10
+
+Let me see the StringSet class definition to understand the parameter names, and check the NeptunClient remove frame handling.
+
+
+## 15/08/2026, 16:53:14
+
+Now let me look at the UA strings section for the card/distance/eta related strings, and the SettingsScreen threats section.
+
+
+## 15/08/2026, 16:53:16
+
+Now I need to understand how `region`/`district`/`locality` map to oblast. Let me check how MainViewModel uses these for oblast attribution (line 314 area: `t.locality?.takeIf { it in Cities.cityOblast }`). Let me look at that part of MainViewModel and check how `uaToEn` and `cityOblast` work, plus how to determine if a threat's region belongs to the focus oblast.
+
+Let me look at how MainViewModel does oblast attribution for threats.
+
+
+## 15/08/2026, 16:53:18
+
+Let me look at the rest of NeptunClient handleFrame to understand "remove" frame handling.
+
+
+## 15/08/2026, 16:53:18
+
+I'll explore the codebase to understand the current structure before planning. Let me start by reading the key files.
+
+
+## 15/08/2026, 16:53:19
+
+Let me read the relevant sections of Strings.kt (around lines 31-32, 225-235, 420-430), the FAST_THREAT_TYPES definition in Threat.kt, FeatureGuide.kt, and the `threatEnabledFlow` + `Threat` model (status/advisory fields).
+
+
+## 15/08/2026, 16:53:21
+
+I have enough understanding of the popup, strings, and settings. Let me check the remaining relevant Strings.kt lines (distanceLabel/etaLabel in UA section, and the StringSet fields between 204 and 400), and confirm the exact UA/EN lines for distanceLabel etc. Let me grep for the UA distanceLabel values.
+
+
+## 15/08/2026, 16:53:23
+
+I now have a good understanding of the codebase. Let me check the `cityOblast` map structure and how to map a threat's region/district/locality to an oblast token. The task says: "pick the highest-priority ACTIVE non-advisory, non-areaOnly threat whose region/district/locality is in that oblast (use ThreatLevelModel score ordering)."
+
+Let me check `Cities.cityOblast` and `uaToEn` to understand matching. Let me also check how the existing code matches region to oblast — there's `inOblast` which does prefix matching against oblast/name. But for threats, we have `region`/`district`/`locality` strings (Ukrainian). The focus token is like `"Харківськ"` (adjective stem).
+
+Let me look at the `cityOblast` map keys to understand the token format.
+
+
+## 15/08/2026, 16:53:28
+
+Let me read the key files: MainScreen.kt (for LanguageChooseDialog), SettingsScreen.kt (language choose + threat toggles + iconResFor), ThreatPopupCard.kt (iconResFor), ZonePrefs.kt, Strings.kt, FeatureGuide.kt, Threat.kt.
+
+
+## 15/08/2026, 16:53:28
+
+Now I have a full picture. Let me examine the `MainScreen.kt` to understand how the threat strip/footer and mapThreats are consumed, and how the popup's `ThreatPopupCard` gets its `now`/stale info. I want to confirm what feeds the popup and whether `UiState` carries staleness info.
+
+Let me check how `selectedThreat` and `ThreatPopupCard` are wired in MainScreen, and how mapThreats/threatsInner/threatsOuter feed the strip.
+
+
+## 15/08/2026, 16:53:28
+
+Now let me look at the `Threat` model to understand the `status` field and what "advisory"/"observation" means (NEPTUN docs). Let me check the Threat model status handling and the zoneThreats filtering (status == "resolved"/"stale"/areaOnly).
+
+Let me read the Threat model's status-related parts and check what fields exist (areaOnly, status).
+
+
+## 15/08/2026, 16:53:32
+
+I now have a comprehensive understanding. Let me verify how `StringSet` is constructed (positional params) — I'll need to add new fields carefully. The StringSet constructor uses named params, so adding new fields is safe as long as I add the declaration to the data class and values to both UA and EN.
+
+Let me check the exact insertion point in the data class (after line 203) and confirm field ordering doesn't break named-arg usage.
+
+The StringSet uses named arguments throughout, so field ordering doesn't matter for correctness. I'll add fields right after `cardSkullNote` (or near distanceLabel). Let me check the UA section around 294-304 to see exact context for placement.
+
+I have all I need. Let me confirm the current summary render sites and check the `distLabel` usage — the task says drop the "Distance:"/"ETA:" prose but keep pinned-city wording only where needed ("to <city>" context can live in contentDescription or subtle header). Let me also verify `MainViewModel` proximity type (`ThreatProximity`) fields.
+
+Let me quickly check the ThreatProximity definition.
+
+
+## 15/08/2026, 16:53:34
+
+Now let me read the relevant parts of SettingsScreen.kt (language choose area ~459-466, threat toggles, iconResFor at 879), ThreatPopupCard.kt (iconResFor ~590), Threat.kt (ThreatTypeCatalog), Strings.kt, and FeatureGuide.kt.
+
+
+## 15/08/2026, 16:53:40
+
+Now let me read the threat toggles section in SettingsScreen.kt (the per-type toggles list) and the beginning of SettingsScreen to understand structure. Let me also read ThreatPopupCard.kt iconResFor, Threat.kt ThreatTypeCatalog, Strings.kt, and FeatureGuide.kt.
+
+
+## 15/08/2026, 16:53:44
+
+I have all the information needed. Let me formulate the plan.
+
+Key facts gathered:
+- **`ThreatPopupCard.kt`** builds the `summary` annotated string at lines 114-127 (uses `distLabel`/`formatKm`/`kmUnit`/`etaLabel`/`formatEtaMinutes`). This `summary` is rendered in SMALL (line 160-164), MEDIUM (222-227), and LARGE (318-323). `SpeedPill` (528-539) renders speed separately. `formatEtaMinutes` at 543-546 hardcodes `m`/`h`.
+- **`Strings.kt`**: `StringSet` data class (9-204). UA (206-401), EN (403-598). Relevant: `distanceLabel`/`distanceToCityFormat`/`etaLabel`/`kmUnit`/`meterUnit`/`speedUnit`.
+- **`SettingsScreen.kt`**: card-size card at 228-255 (contains `cardSkullNote`). Threats section starts at 257.
+
+Now the plan.
+
+
+## 15/08/2026, 16:53:45
+
+There are actually **three** duplicate icon-mapping helpers: `SettingsScreen.iconResFor` (879), `ThreatPopupCard.iconResFor` (585), and `MainScreen.threatIconRes` (929). All are identical. Let me read the threat toggle item in SettingsScreen (~250-300), the threat catalog in Threat.kt, the Strings.kt language/onboarding sections, and FeatureGuide.kt.
+
+
+## 15/08/2026, 16:53:49
+
+Now let me read the ThreatTypeCatalog fully, the Strings.kt onboarding/language sections and relevant string locations, and FeatureGuide.kt.
+
+
+## 15/08/2026, 16:53:49
+
+I now have a comprehensive understanding. Let me think through the design and consider a clarifying question about the oblast-matching approach for the reason builder.
+
+Key facts I've gathered:
+
+1. **Focus token**: `focusAttribution(followMe, gps, pinned).token` — e.g. `"Одеськ"` for Odesa, `"Харківськ"` for Kharkiv. This is an adjectival stem used with `OblastAlert.inOblast(token)` which does `oblast.startsWith(token)` / `name.startsWith(token)`.
+
+2. **Threat model**: has `region`, `district`, `locality` (Ukrainian strings), `advisory`, `areaOnly`, `status`, `explanationShort`, `type`. `ThreatLevelModel.scoreOf(t, distKm, etaMin, redKm, yellowKm, now)` gives a score. But the reason builder is not necessarily distance-to-focus based — task says "pick highest-priority ACTIVE non-advisory, non-areaOnly threat whose region/district/locality is in that oblast". 
+
+3. The task explicitly says "use ThreatLevelModel score ordering". `scoreOf` requires distKm and etaMin — but for a country-wide reason builder, we'd need to compute distance from focus to the threat. Actually the AlertService already computes zoneThreats using focus. But the reason builder needs threats in the *oblast*, not necessarily within zone radius. 
+
+Actually, `scoreOf` returns 0.0 for threats beyond yellowKm. So to "use score ordering" across oblast threats, we'd need a distance from the focus point to each threat and compute scoreOf with the actual radii. The task says "use ThreatLevelModel score ordering" — meaning order by score descending, pick the highest. Since scoreOf already encodes severity ordering, this works if we compute distKm for each candidate.
+
+Now the matching problem: how to determine that a threat's `region`/`district`/`locality` is in the focus oblast. The token is like `"Одеськ"`. Threat region strings from NEPTUN are like `"Одеська область"`, `"Одеса"`, or district names. The `inOblast` prefix-match approach (`startsWith(token)`) works for `"Одеська область"` (starts with `"Одеськ"`), and for locality like `"Одеса"` — but `"Одеса"` does NOT start with `"Одеськ"`. Hmm.
+
+Actually `inOblast` matches against `OblastAlert.oblast`/`name`. For threats we need a different matching since we're matching a threat's region/district/locality against the token. Let me think about what matching makes sense:
+
+- `region` might be `"Одеська область"` → startsWith `"Одеськ"` ✓
+- `locality` might be `"Одеса"` → the reverse: token `"Одеськ"` startsWith... no. We'd check if token is contained in, or if the locality corresponds to the token. `Cities.cityOblast[locality] == token` would work when locality is a curated city (e.g. `cityOblast["Одеса"] == "Одеськ"`).
+- `district` similar.
+
+So a robust matcher: a threat is in the focus oblast if:
+- `region` matches via `inOblast`-style prefix (`region.startsWith(token)`), OR
+- `district` matches similarly, OR
+- `locality` maps via `Cities.cityOblast[locality] == token`, OR `locality` itself starts with token.
+
+I have enough to design. But this is a planning task — let me consider whether to ask a clarifying question about the matching semantics and the reason text fallback, or whether to just present a solid plan. Given the AGENTS.md emphasizes concise and the task is fairly prescriptive, I'll present a plan. But there's one genuinely ambiguous design decision worth confirming: **how threats are matched to the focus oblast** (the token is an adjectival stem; threats have region/district/locality strings). Let me check the test file for `inOblast` to understand matching expectations, and check `MainViewModel` threat popup for how it displays `noRegion`.
+
+Actually, I think I have enough. Let me formulate the plan. Let me also double check the `NeptunState` type for `threats` and `oblastAlerts`.
+
+Let me check NeptunState quickly.
+
+
+## 15/08/2026, 16:53:53
+
+Now let me read the Strings.kt to understand the structure and find the language/onboarding strings, and the UA/EN ranges. Let me look at the relevant sections.
+
+
+## 15/08/2026, 16:53:59
+
+Let me read the Strings.kt file structure, especially the languageChoose and onboarding strings and the surrounding areas (UA ~206-401, EN ~403-598), plus how strings are declared.
+
+
+## 15/08/2026, 16:54:09
+
+Now let me read the UA and EN implementations around the languageChoose/onboarding strings to know exact insertion points and how they're structured. Let me read lines 195-240 (UA) and 395-440 (EN).
+
+
+## 15/08/2026, 16:54:16
+
+I now have enough understanding of the strings. Let me check the MainViewModel for `setThreatEnabled`, `setLanguageChosen`/`skipLanguageChoose`, and how the languageChosen/disabledTypes flows into UiState, plus the SettingsScreen function signature and how it gets `disabledTypes` and `onThreatToggle`, and how it launches into the guide. Let me read MainViewModel relevant lines.
+
+
+## 15/08/2026, 16:54:18
+
+I have a full picture now. Let me formulate the plan. I'll present it clearly, referencing exact locations.
+
+## Plan
+
+### Overview
+Enhance the **official oblast alert** notification in `AlertService.kt` with a "reason" line derived from the best threat in the focus oblast, then implement wait-for-reason coalescing and all-clear cleanup.
+
+### 1. Reason builder (`AlertService.kt`)
+Add a helper that picks the highest-priority ACTIVE, non-`advisory`, non-`areaOnly` threat whose `region`/`district`/`locality` belongs to the focus oblast:
+
+- **Oblast matching** (mirror the `inOblast` prefix idiom, `Threat.kt:298-299`): a threat is "in the focus oblast" if any of `region`/`district`/`locality` either
+  - `startsWith(token, ignoreCase=true)`, or
+  - maps via `Cities.cityOblast[value] == token` (handles curated-city locality like `"Одеса"` → `"Одеськ"`).
+  New private helper `inFocusOblast(t: Threat, token: String): Boolean`.
+- **Ordering**: for each candidate, compute `distKm` from the focus point to the (predicted) threat position, `etaMin` via the speed tracker, then `ThreatLevelModel.scoreOf(t, distKm, etaMin, redKm, yellowKm, now)` — pick the max score (fall back to 0.0 for no-focus). Store the chosen threat.
+- **Reason text** (new private `buildReason(t: Threat?, lang, token): String?`):
+  - If a threat was chosen: `translateCourseAssessment(t.explanationShort, lang)` if non-null, else `"<label> in <locality>"` where label = type label (`ThreatTypeCatalog`), locality = `locality ?: district ?: region`.
+  - Else (no threat): localized fallback template `"Threats reported in <region>"` / `«Загрози в <регіон>»`, where `<region>` = the focus region (`state.focusRegion`).
+
+Return both the reason string and the chosen threat id.
+
+### 2. WAIT-FOR-REASON (`handleState`, `AlertService.kt:286-293`)
+- Add service fields: `private var currentReason: String?`, `private var currentReasonThreatId: String?`, `private var postedOfficialAlert = false`.
+- On official alert **rising edge** (existing `!wasFocusAlertActive && !posted`): `postAlert(...)` with body = `reason ?: state.focusRegion` (post now even if no reason yet).
+- On **ongoing** official alert (already `wasFocusAlertActive`, alert still active): if a new reason became available and `reason != currentReason`, **re-post the same `NOTIF_ALERT` silently** (no siren re-trigger) — the siren only plays when a notification with that id is *first* shown or when the channel/sound changes; re-notifying the same id with the same channel does not replay sound. Guard against re-posting the identical reason via `currentReason` comparison.
+
+### 3. ALL-CLEAR CLEANUP (`handleState`, `AlertService.kt:297-299`)
+- On the official-alert **falling edge** (`wasFocusAlertActive && !focusOblastAlertActive`), before/instead of the existing path:
+  - If `state.zoneThreats.isEmpty()` (no zone alert active): call `cancelAlert()` **immediately** to dismiss the lingering `NOTIF_ALERT` siren notification (do not wait for the 60s grace path at 305-316), then `postAllClear(s, state.focusBannerCity)`.
+  - If a zone alert **is** still active: leave the notification up (do not cancel); still post the all-clear chime.
+- Reset `currentReason`/`currentReasonThreatId`/`postedOfficialAlert` on this edge.
+
+### 4. Strings (`Strings.kt`)
+Add fields to `StringSet` (near `notifBodyRegion`, ~line 54/118) and values in both `UA` (~206-401) and `EN` (~403-598):
+- `reasonNoThreatFormat` — EN `"Threats reported in %1$s"`, UA `"Загрози в %1$s"` (used in `buildReason` fallback).
+
+### 5. ARCHITECTURE.md
+Note the new reason-builder behavior in the `AlertService.kt` row / key-invariants (per AGENTS.md rule to keep docs current).
+
+### Verification
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (touches domain-ish logic in AlertService only; add a unit test for `inFocusOblast` if a clean seam is extracted).
+
+---
+
+One design point I want to confirm before writing code:
+
+
+## 15/08/2026, 16:54:22
+
+I now have a comprehensive understanding. Let me check the CHANGELOG for the [Unreleased] section and the res drawable names (to confirm the placeholder icon names used by `iconResFor`), and check the drawable resources present.
+
+
+## 15/08/2026, 16:54:25
+
+I have enough context. The `Threat` model has `advisory` field, `status`, and `areaOnly`. NEPTUN `advisory = observation, no siren` per the task.
+
+Now I have a complete understanding. Let me check the `handleState` grace-window clearing logic and how `knownZones` latch works — I have that. I also need to verify how the fast-anywhere path should latch.
+
+Let me confirm the design understanding of the existing coalescing at lines 270-280 and think about the plan. I have enough info to construct the plan.
+
+Let me also verify the FeatureGuide strings and the "zoneExplain" string line 436. I have them. 
+
+Now, one design consideration: the task says the new fast-anywhere path gates ONLY on type-enabled + monitoring + NOT advisory. It should NOT consult redArmed/yellowArmed or zone radius. But it should still coalesce with zone alerts via the existing `posted` flag. And the official-alert check uses `!posted`.
+
+Let me think about the latch. We need a per-threat-episode latch. The cleanest: maintain a `Set<String>` of fast-threat ids that have already fired (like `knownZones`). When a FAST_THREAT_TYPES threat appears anywhere (enabled + not advisory + not resolved/stale/expired/areaOnly), and it's not already in the fired set, fire the siren once and add to the set. Clear from the set when the threat resolves/removes (so a new episode re-fires).
+
+Now let me also consider the `knownZones`-style clearing via `emptySince` grace window. The task says "clear the latch when the threat resolves/removes". I'll tie latch clearing to when the threat is no longer present in the active stream.
+
+Now let me consider how to feed this into `handleState`. Currently `zoneThreats` returns zone map and `handleState` computes `alertable`. I'll add a fast-anywhere computation. 
+
+Let me also consider the coalescing: the existing `posted` flag is set when a zone alert fires. The official check at 286 already uses `!posted`. For the fast-anywhere path, I want it to also respect the coalescing so a zone alert + fast alert in the same tick don't double-play. So the fast-anywhere firing should also set `posted = true` and be checked together with the zone path.
+
+Design: compute the fast-anywhere fire decision first (or after zone). Let me structure:
+
+```kotlin
+// Fast-anywhere: fire urgent siren on first appearance of a fast threat anywhere.
+val activeFastIds = all.values
+    .filter { it.type in FAST_THREAT_TYPES && it.type in state.enabledTypes }
+    .filter { it.status != "resolved" && it.status != "stale" && !it.advisory && !it.areaOnly && !isExpired(it, now) }
+    .map { it.id }
+    .toSet()
+val newlyFired = activeFastIds.filter { it !in fastFiredIds }
+if (newlyFired.isNotEmpty() && !posted) {
+    // pick first, post siren
+    ...
+    posted = true
+}
+fastFiredIds = activeFastIds
+```
+
+But there's a wrinkle: we need `enabled` types in the State, and `now`. The State currently has `zoneThreats` and `fastAlertsSooner` but not the enabled set or `now`. I'll need to add the enabled set to `MonitorEvent.State`.
+
+Wait — but the new path is gated on `fastAlertsSooner` being ON. When OFF, fall back to current zone-based behavior (effectiveZone already handles fast types at OUTER → INNER). So the fast-anywhere path only activates when `fastAlertsSooner == true`.
+
+Actually, re-reading task item 3: "When ON = fire on detection anywhere (no zone test); when OFF = fall back to the current zone-based behavior for slow/fast alike." So when ON, fast types fire anywhere. When OFF, fast types use the zone-based behavior (which is `effectiveZone` with fastAlertsSooner=false → just spatial zone). Good, `effectiveZone` already handles this.
+
+So in the new fast-anywhere path, gate on `state.fastAlertsSooner && enabled && !advisory && active`. But should it still consult redArmed? Task says NO — gate only on type-enabled + monitoring + NOT advisory. So it fires the urgent siren regardless of redArmed/yellowArmed. Good.
+
+I need `enabled` set in the State. Currently `zoneThreats` is computed with `enabled` (tail.first) inside `startMonitoring`, but it's not passed to State. I'll add `enabledTypes: Set<ThreatType>` to `MonitorEvent.State`.
+
+Also need `now` in State, or recompute `isExpired`. Actually the fast path can use `isExpired(t, now)` — need `now`. Currently State doesn't carry `now`. I could pass `now` too, or just rely on status filtering. Simpler to add `now` to State. Actually `isExpired` is per-type staleness; for correctness a stale fast threat shouldn't keep the latch alive. I'll pass `now`.
+
+Let me now also check: the grace-window clearing at 305-316 resets `knownZones`. Should the fast latch also be cleared by the grace window? The task says clear the latch when the threat resolves/removes. Since the latch is keyed per-id and recomputed from active ids each tick, when the threat leaves active stream the id drops from `activeFastIds` and thus from the latch. So a new episode re-fires. That handles removal. The grace-window reset of knownZones is for zone map; the fast latch is recomputed from active ids so it self-cleans. Good.
+
+Now the coalescing: I'll integrate fast firing into the same `posted`-based logic. Let me place the fast-anywhere check right after the zone check, before the official check, so `posted` reflects it.
+
+Now let me consider whether to post via `postAlert(INNER, ...)`. The fast-anywhere siren is the urgent siren = INNER channel (CHANNEL_ALERTS / CHANNEL_ALERTS_ALARM). banner = redZoneAlert. body = threatBody. So `postAlert(ThreatZone.INNER, s.redZoneAlert, threatBody(t, lang), sirenOverride)`.
+
+Now, let me write the plan. Let me also verify FeatureGuide references and the settings toggle description strings to relabel.
+
+I have all I need. Let me also double check `isExpired` signature and `isExpired` usage. It's `isExpired(t, now)`. Good.
+
+Let me now check whether there's anything in MainViewModel that I should worry about for mirror rule. The task only asks about AlertService (notifications). The mirror rule says changes to `effectiveZone`, `FAST_THREAT_TYPES`, etc. must be mirrored. But the new fast-anywhere path is a notification-only behavior; MainViewModel builds UI state, not notifications. The task explicitly scopes to AlertService. However the `effectiveZone`/`FAST_THREAT_TYPES` aren't being changed — the behavior is additive in AlertService. So no mirroring needed. But I should note this in the plan.
+
+Also `fastAlertsSooner` default is already true everywhere.
+
+Now let me verify the strings UA ~206-401 / EN ~403-598 line refs to update. The fastAlertsSoonerTitle/Desc are at 228-229 (UA) and 425-426 (EN). I'll relabel:
+- UA title: "Швидкі об'єкти — сповіщати миттєво"
+- UA desc: update to "Ракети (балістика, крилаті, КАБ, МіГ-31К) піднімають сирену одразу, щойно з'являються будь-де в потоці."
+- EN title: "Fast objects alert immediately"
+- EN desc: "Missiles (ballistic, cruise, guided bombs, MiG-31K) sound the siren the moment they appear anywhere in the stream."
+
+And FeatureGuide:
+- UA guideFastD1 (line 363): "Швидкі об'єкти раніше: ракети піднімають сирену на вході в будь-яку зону." → "Швидкі об'єкти миттєво: ракети піднімають сирену одразу, щойно з'являються будь-де."
+- EN guideFastD1 (line 560): "Fast objects sooner: missiles sound the siren the moment they cross any zone edge." → "Fast objects immediately: missiles sound the siren the moment they appear anywhere."
+- UA guideFastSummary (362) / EN (559) "aggressiveness" — fine but could tweak. Also `zoneExplain` EN line 436 mentions "as soon as they cross any zone boundary" — task says update FeatureGuide card if it references "sooner"/zone-boundary. `zoneExplain` is a separate string, not the guide card. Task scopes to FeatureGuide card. I'll update guideFastD1 (and optionally the fast title/desc in guideFastTitle which says "Перемикачі тривог"/"Alert toggles" — generic, fine).
+
+Now the description field. The task says default ON (already true). Good.
+
+Now the `SettingsScreen` relabel is purely via Strings (title/desc pulled from `s.fastAlertsSoonerTitle`/Desc), so no code change needed in SettingsScreen itself — the labels come from Strings. Good. But task says "Relabel the ... setting (SettingsScreen.kt ~382-389, prefs fastAlertsSooner ZonePrefs.kt ~73-79)". The labels are in Strings; ZonePrefs has just a comment (line 73). I should update the ZonePrefs comment too for clarity. No functional change.
+
+I have enough to present the plan. Let me present it.I have enough context. Here's my plan.
+
+## Plan: Fast-threat "alert immediately" anywhere
+
+### 1. `AlertService.kt` — new fast-anywhere path
+
+**State plumbing** (`startMonitoring` + `MonitorEvent.State`):
+- Add `enabledTypes: Set<ThreatType>` and `now: Long` to `MonitorEvent.State` (currently only `zoneThreats` and `fastAlertsSooner` are carried). Wire them in the `combine` at AlertService.kt:169-181 — `tail.first` is the enabled set, `core.third` is `now`.
+
+**New member state** (near `knownZones`, line 61):
+- `private var fastFiredIds: Set<String> = emptySet()` — the per-episode latch.
+
+**New logic in `handleState`** (after the zone alert block at 267-281, before the official check at 286), gated on `state.fastAlertsSooner`:
+- Compute active fast ids from `NeptunClient.state.value.threats`:
+  - `t.type in FAST_THREAT_TYPES && t.type in state.enabledTypes`
+  - active only: `status != "resolved" && status != "stale" && !t.advisory && !t.areaOnly && !isExpired(t, state.now)`
+- `newlyFired = activeFastIds - fastFiredIds`
+- If `newlyFired.isNotEmpty() && !posted`: post urgent siren via existing `postAlert(ThreatZone.INNER, s.redZoneAlert, threatBody(t, lang), state.sirenOverride)` for the first id, set `posted = true`.
+- `fastFiredIds = activeFastIds` — this both latches fired ids and clears them the instant a threat resolves/removes from the active stream (new episode re-fires). No zone radius or redArmed/yellowArmed consulted.
+- Because it shares the `posted` flag with the zone block, a zone alert + fast alert in the same tick coalesce into a single siren play (per task item 2).
+
+### 2. `ZonePrefs.kt`
+- Update the comment at line 73 ("Fast objects ... sound the siren at any zone entry") to reflect the new anywhere/immediately semantics. No functional change; default already `true`.
+
+### 3. `Strings.kt` — relabel EN+UA
+- UA (lines 228-229): title → `"Швидкі об'єкти — сповіщати миттєво"`; desc → "Ракети (балістика, крилаті, КАБ, МіГ-31К) піднімають сирену одразу, щойно з'являються будь-де в потоці."
+- EN (lines 425-426): title → `"Fast objects alert immediately"`; desc → "Missiles (ballistic, cruise, guided bombs, MiG-31K) sound the siren the moment they appear anywhere in the stream."
+
+### 4. `FeatureGuide.kt` strings (in `Strings.kt`)
+- UA `guideFastD1` (363): → "Швидкі об'єкти миттєво: ракети піднімають сирену одразу, щойно з'являються будь-де."
+- EN `guideFastD1` (560): → "Fast objects immediately: missiles sound the siren the moment they appear anywhere."
+
+### Notes / no changes
+- `SettingsScreen.kt` needs no code edit — the labels come from `s.fastAlertsSoonerTitle/Desc`.
+- `effectiveZone` / `FAST_THREAT_TYPES` / `Zones.kt` are **not** changed; the new path is additive and notification-only in `AlertService`, so no mirror-rule changes needed in `MainViewModel`.
+- Slow objects (shahed/FPV/recon) keep the zone + bell path untouched.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (domain untouched, but per AGENTS.md)
+- Append a CHANGELOG entry under `## [Unreleased]`.
+
+One design question before I build:
+
+
+## 15/08/2026, 16:54:28
+
+I now have a comprehensive understanding of the codebase. Let me also check the `MainViewModel` UiState fields for `languageChosen` and `disabledTypes` handling, and confirm the res names for the icons: currently the shared helper uses `shahed` (webp) for SHAHED, but there's also `ic_threat_shahed.xml`. Let me confirm which resource is used. The helpers use `R.drawable.shahed` (webp) for SHAHED and `ic_threat_*` for the rest.
+
+Let me also verify the strings UA/EN line ranges for the wizard strings insertion and confirm the exact location near line 219 (after onboardingTipSiren) where wizard strings would go.
+
+I have enough context now. Let me also quickly confirm the FeatureGuide copy reuse — the guide uses `s.guideLiveTitle/summary`, `guideZonesTitle/summary`, `guideLangTitle/summary`, etc. Those are the feature preview copy to reuse.
+
+Now let me check what ThreatPopupCard iconResFor looks like at 585 to confirm it's identical.
+
+
+## 15/08/2026, 16:54:39
+
+Confirmed. Let me start implementing. First let me set up the todo list and read the key files in detail.
+
+
+## 15/08/2026, 16:54:40
+
+I now have enough understanding to construct the plan. Let me verify the `NeptunState` and how `isExpired` interacts with the `areaOnly` flag in AlertService (I should note the mirror rule, but the task only touches MainViewModel for the strip/UI — not AlertService which stays as-is since it must keep excluding stale from alerts). The task is UI-side only.
+
+Let me also check `hasActiveAlert()` uses `mapThreats` — this matters because stale threats will now be in `mapThreats`, which would keep the update dialog hidden. That's a minor consideration to note.
+
+Let me quickly check the `NeptunState` definition and whether `selectedThreatInfo` proximity is computed for stale threats (it computes regardless of stale since it's after the loop).
+
+Now I have a full understanding. Let me formulate the plan.
+
+Key design considerations:
+
+1. **MainViewModel `buildUiState`** (lines 300-335): The current loop does `if (t.status == "resolved" || t.status == "stale" || isExpired(t, now)) continue`. I need to:
+   - Define staleness: `t.status == "stale" || isExpired(t, now)`. (Note: `resolved` threats are already removed from `neptun.threats` by NeptunClient upsert handler line 243, so resolved never reaches here. But keep the guard for safety.)
+   - Keep stale threats in `mapThreats` flagged `isStale`.
+   - Exclude stale from `threatsInner`/`threatsOuter`/`threatScores`/`cityCounts`.
+   - Hard cap: hide entirely when `now - updated > staleAfterMs + STALE_HIDE_MS` (~30 min).
+   - Need an `isStale` flag on the `Threat` that flows to the map. Since `Threat` is a data model from NEPTUN, I should NOT mutate it. Instead, add an `isStale` field to `UiState` — either a `Set<String>` of stale ids, or wrap. Cleanest: add `staleThreatIds: Set<String>` to `UiState` and derive stale status in MapView/popup from a helper.
+
+Actually, let me think about the cleanest approach. The map needs to know staleness per marker, and the popup needs it too. Options:
+- (A) Add `isStale: Boolean` to `Threat` (data class copy) — but `Threat` is the wire model; polluting it is ugly but `data class copy` makes it easy. NeptunClient builds threats though; the VM would need to `.copy(isStale = ...)`.
+- (B) Add `staleIds: Set<String>` to `UiState`. MapView and popup look up staleness by id. But the popup gets `threat` directly (selectedThreat), which is a `Threat` not a UiState wrapper. The popup signature is `ThreatPopupCard(threat: Threat, ...)`.
+
+Given the popup only receives `Threat`, the cleanest is (A): add a transient `isStale` field to `Threat` defaulting to `false`. Then `mapThreats` carries stale threats with `isStale=true`, `selectedThreat` refreshed from `neptun.threats` — but wait, `refreshedSelected` comes from `neptun.threats[s.id]` which is the raw model without the flag.
+
+Hmm. Let me reconsider. The popup computes staleness itself from `threat.updatedAtMillis` + `now`. Actually the popup already has a live `now` timer (lines 258-264, 419-425). It can compute staleness via `isExpired(threat, now) || threat.status == "stale"` directly. That's clean and doesn't require plumbing the flag through `selectedThreat`. Same for the map: MapView has `System.currentTimeMillis()` available and can compute `isExpired(t, now)`. But the map's marker alpha needs to be based on the same staleness definition, and the overlay rebuild key needs to include it.
+
+So actually the cleanest design: **add a helper** `fun Threat.isStale(now: Long): Boolean = status == "stale" || isExpired(this, now)` in Prediction.kt (where isExpired lives). Then:
+- MapView uses it for alpha + key.
+- ThreatPopupCard uses it (with its live `now`) for the stale indicator.
+- MainViewModel uses it for the filter logic + cap.
+
+This avoids polluting the model and keeps the mirror-consistent definition. 
+
+But wait — the task says "Keep them in mapThreats flagged isStale". "flagged isStale" suggests carrying a flag. But I think computing on-the-fly via the helper is cleaner and equivalent. However, to make the marker key include the stale flag, MapView just needs `t.isStale(now)` in appendThreatKey — but the key is built once per compose (in `overlayKey`), not per second. The alpha changes when a threat crosses from live to stale, which needs a rebuild. Since `overlayKey` rebuilds only when its inputs change, and staleness is time-based, I need the key to change at the moment a threat becomes stale. 
+
+Options: include a coarse timestamp in the key, or make staleness a field in UiState. The task explicitly says "ensure the marker overlay rebuild key includes the stale flag so alpha updates (MapView.kt:221-230, appendThreatKey ~87-91)". 
+
+The current `overlayKey` is built in the composable body (lines 221-230) from `uiState.mapThreats` via `appendThreatKey`. It rebuilds every recomposition, but recomposition only happens when state changes. The 1s clock in the VM (`nowFlow`) drives `uiState` changes every second, so `buildUiState` runs every second, and `mapThreats` list is recreated each time (it's a fresh mutableListOf each call), so the `overlayKey` changes each second anyway (new list instances). Wait — does `uiState.mapThreats` change identity every second? The `now` flows through `nowFlow` which is part of `liveSnapshot`, so `buildUiState` runs every 1s and creates new lists. So `uiState` is a new object every second, causing recomposition, and `overlayKey` gets rebuilt every second. So the key *would* naturally include the stale transition.
+
+But to be explicit and correct per the task, `appendThreatKey` should include `isStale`. Since `Threat` doesn't have it as a field, I'll compute in appendThreatKey using `System.currentTimeMillis()`. Actually `appendThreatKey` is a private top-level function taking `Threat`. I can change it to also take a `now` or compute staleness. Simplest: change signature to `appendThreatKey(t: Threat, stale: Boolean)` or compute inside with current time.
+
+Let me design cleanly. I'll present the plan with concrete changes.
+
+Let me also consider the hard cap. "a hard cap ~30 min past the staleness window (so no ghost lingers forever)". So hide when `now - updated > staleAfterMs + 30*60*1000`. I'll add a constant `STALE_GHOST_CAP_MS = 30 * 60 * 1000L` in Prediction.kt and a helper `isGhost(t, now)` = `now - updated > staleAfterMs + STALE_GHOST_CAP_MS`.
+
+Note: `status == "resolved"` threats are removed in NeptunClient (line 243), so resolved never reaches buildUiState. The `t.status == "resolved"` guard in the current loop is effectively dead for map purposes but keep it (it doesn't hurt). Actually the task says "TRULY HIDE when: server sends status resolved / a remove frame" — that's already handled in NeptunClient. Good.
+
+Now, the AlertService (line 226) still does `if (t.status == "resolved" || t.status == "stale" || isExpired(t, now) || t.areaOnly) continue` — this is correct and should stay (stale threats must NOT trigger alerts). The mirror rule: we're NOT changing the alert logic, only the UI display logic, so no mirror change needed. Good — this is consistent with the task ("keep them out of alerts").
+
+Let me now also check: does `cityCounts`/threat strip need stale excluded — yes, task says exclude from cityCounts. And the strip uses `threatsInner`/`threatsOuter`, so excluding stale from those handles it.
+
+Also `mapThreats` currently only adds `t` when `neptun.oblastAlerts.isNotEmpty()` (line 320). The task wants stale threats visible on map. But should stale threats be shown only during alerts (like mapThreats is)? The current `mapThreats` is gated by "any oblast alert active" so the map shows all of Europe during alerts. But the local threats are shown via... wait, actually let me re-check. The map only renders `uiState.mapThreats`. So markers are ONLY drawn when `neptun.oblastAlerts.isNotEmpty()`. Hmm, but `threatsInner`/`threatsOuter` drive the strip but are they drawn as markers?
+
+Looking at MapView line 409: `for (t in uiState.mapThreats)`. So only mapThreats are drawn. And mapThreats is gated by `neptun.oblastAlerts.isNotEmpty()`. Interesting — so normally (no official alert), NO markers are drawn at all? That seems odd but it's the current design per the comment "All active threats across the whole country, shown while any air-raid alert is active — lets the user pan to other regions during alerts."
+
+Wait, but that means when there's no oblast alert, the map shows no threats even if a drone is in the red zone? That can't be right for a threat map. Let me re-read... Actually maybe there's always an oblast alert in Ukraine, so practically mapThreats is always populated. Regardless, for this task I keep the existing gating behavior for mapThreats and just ensure stale ones that WOULD be in mapThreats remain but flagged stale.
+
+Actually, the key requirement: "MainViewModel.kt buildUiState: don't `continue` stale/expired. Keep them in mapThreats flagged isStale". So stale threats should appear in mapThreats subject to the same existing gating (oblast alerts active). I'll preserve the existing `mapThreats` gating logic and simply not skip stale/expired ones (within the hard cap).
+
+Let me now write the plan. Let me also double check: `refreshedSelected` and popup. When user taps a stale marker, `selectThreat(t)` sets selectedThreat to the mapThreats instance. `refreshedSelected = neptun.threats[s.id]` — this is the raw model. The popup computes staleness via `now` live timer, so it'll show stale indicator correctly. Good — I need to pass a `now`-derived stale flag into ThreatPopupCard, or compute inside. ThreatPopupCard already has a live `now` in MEDIUM/LARGE. I'll compute `isStale = threat.status == "stale" || isExpired(threat, now)` in each branch (or a shared value computed once at top with the live now... but the live `now` is inside the branch). Better: hoist the live `now` computation to the top of the composable so it's shared, then compute `isStale` once.
+
+Let me finalize. I have enough. Let me write the plan.
+
+Let me check the `NeptunState` definition quickly to be thorough about `mapThreats` and whether stale flag needs to be added there.
+
+Actually I have enough. Let me present the plan.
+
+Let me reconsider one thing about the overlay key and per-second recomposition. Since `buildUiState` recreates lists every second, `mapThreats` identity changes every second → recomposition every second → `overlayKey` rebuilt every second → the `remember { mutableStateOf<String?> }` `lastOverlayKey` changes → full map rebuild every second! That would be terrible for performance/flicker (the whole point of the key optimization was to avoid rebuilds). Wait, but that's the current behavior too. Let me check — does `uiState.mapThreats` actually get recreated each second?
+
+`nowFlow` is part of `liveSnapshot`, which is part of `uiState` combine. `buildUiState` is called every 1s with a new `now`. Inside, `mapThreats = mutableListOf<Threat>()` — yes, fresh list every call. So `uiState` is a new instance every second with a new `mapThreats` list. Compose recomposes NeptunMapView, rebuilding `overlayKey` string. Since the string includes threat keys (positions etc.), it changes when positions change, but for static threats the string is stable across seconds. But `lastOverlayKey` is a `remember`ed `mutableStateOf` — it only triggers the `if (overlayKey == lastOverlayKey.value)` block when the *value* differs. Since the string is identical for non-moving threats, no rebuild. Good — the key optimization works because it compares string equality, not identity. 
+
+So adding staleness to the key: when a threat transitions live→stale, the key string changes → rebuild → alpha updates. 
+
+Now, for `appendThreatKey` to include staleness, it needs current time. I'll pass `now` in, or compute stale inside using current time. Since `overlayKey` is built in the composable, I can use `System.currentTimeMillis()` (available; the file already uses it at lines 410, 419). I'll change `appendThreatKey(t: Threat)` → `appendThreatKey(t: Threat, now: Long)` and call with a captured `now`, appending `@stale` when `isExpired(t, now) || t.status == "stale"`.
+
+Good. Now write the plan.
+
+Let me verify ThreatPopupCard's `formatElapsedMss` usage for the stale indicator: task wants "Last seen <m:ss> ago" / «Востаннє <m:ss> тому». The elapsed `formatElapsedMss` already gives `m:ss`. So add a string with a `%1$s` format placeholder like `"Last seen %1\$s ago"` and `"Востаннє %1\$s тому"`. Add `lastSeenAgoFormat` to StringSet.
+
+Now I'll present the plan.I now have a complete understanding of the codebase. Here's my plan.
+
+## Plan: Keep stale/expired threats visible (dimmed) instead of hidden
+
+### 1. Prediction.kt — add shared staleness/ghost helpers
+Add a hard-cap constant and reusable predicates next to `isExpired` (single source of truth, mirrors `staleAfterMs`/`isExpired`):
+- `const val STALE_GHOST_CAP_MS = 30 * 60 * 1000L` — ~30 min backstop past the staleness window.
+- `fun Threat.isStale(now: Long): Boolean = status == "stale" || isExpired(this, now)` — the live/stale definition used everywhere (map, popup, VM).
+- `fun Threat.isGhost(now: Long): Boolean` — truly-hide predicate: `now - (updatedAtMillis ?: confirmedAtMillis ?: now) > staleAfterMs(type) + STALE_GHOST_CAP_MS`.
+
+`Threat` needs no new field — staleness is derived from `updatedAtMillis` + `now` (both already available everywhere). No `ARCHITECTURE.md` invariant change (alert logic untouched, so no AlertService mirror edit needed).
+
+### 2. MainViewModel.kt `buildUiState` (loop, lines 311–335)
+Replace the `continue` guard so stale threats survive into `mapThreats` while staying out of the live aggregates:
+- **Truly hide** (skip entirely): `t.status == "resolved"` OR `t.isGhost(now)` (resolved is also dropped by NeptunClient's upsert handler already).
+- **Keep in `mapThreats`** (subject to existing `neptun.oblastAlerts.isNotEmpty()` gating), but **exclude stale** from `threatsInner`/`threatsOuter`/`threatScores`/`cityCounts`. Restructure: add to `mapThreats` first, then only do the distance/tier/count work when `!t.isStale(now)`.
+
+Note: `hasActiveAlert()` (line 483) keys off `mapThreats` — with stale threats now included, the update dialog could stay suppressed longer. This is acceptable (an alert is arguably still "active" with stale ghosts on screen) and I'll flag it; no change unless you want stale excluded there too.
+
+### 3. MapView.kt — dimmed, tappable stale markers
+- `appendThreatKey` (87–91): add `now` param and append a stale marker (e.g. `@stale`) when `t.isStale(now)`, so the overlay rebuild key (221–230) changes on live→stale transitions and alpha updates.
+- Marker creation (422–436): set `alpha = if (t.isStale(now)) 0.25f else 1.0f`. Keep the tap listener (already present, unchanged).
+
+### 4. ThreatPopupCard.kt — stale indicator
+- Hoist the live `now` timer to the top of the composable (it currently lives inside MEDIUM/LARGE branches at 258–264 / 419–425), compute `val stale = threat.isStale(now)` once.
+- When `stale`: dim the card (e.g. `color = Color(0xFF1A1A1A)` / reduce border alpha) and show a clear indicator in the footer near the existing elapsed text: `"Last seen <m:ss> ago"` / `«Востаннє <m:ss> тому»` using the new format string + `formatElapsedMss(threat.updatedAtMillis, now)`.
+
+### 5. Strings.kt — add EN + UA strings
+Add `lastSeenAgoFormat: String` to `StringSet` (line 9), and set values:
+- EN (in `EN` block ~403–598): `lastSeenAgoFormat = "Last seen %1\$s ago"`
+- UA (in `UA` block ~206–401): `lastSeenAgoFormat = "Востаннє %1\$s тому"`
+
+### 6. Verification
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (staleness helpers in Prediction.kt — add/keep tests in `PredictionTest.kt` for `isStale`/`isGhost`).
+
+### Open question
+Do you want stale ghosts to also keep suppressing the update dialog via `hasActiveAlert()` (my default: yes, leave as-is), or should `hasActiveAlert()` ignore stale entries so update prompts still show?
+## 15/08/2026, 16:54:45
+
+Let me read the full ZonePrefs header, and the ThreatType enum to understand icons. Let me also read the SettingsScreen imports and card section fully.
+
+
+## 15/08/2026, 16:54:45
+
+All three helpers are identical. Now I have full understanding. Let me think about the plan, and also address the second part of the user's request about explaining an advanced feature toggle scenario.
+
+Let me re-read the final user message carefully. The user pasted a big task spec for a 3-step full-screen wizard, then added: "we need a clear way of explaining this scenario to users -- when they toggle either of those in Settings it should popup msg to explain and give a visual example and irl scenario of how to use this advanced feature."
+
+"either of those" — ambiguous. It refers to an "advanced feature" toggled in Settings. Given the context of this wizard (threat types, alerts), and the settings toggles that are "advanced" — the most likely candidates are the **alert toggles** (red/yellow zone alerts) or the **"Fast objects alert sooner"** toggle, or **threat toggles**. Given the wizard STEP 2 is threat types, "either of those" most likely refers to **the threat-type toggles** OR the **alert-zone toggles**. But the wizard's REPLAY + STEP 2 is about threat types.
+
+Actually, "when they toggle either of those in Settings" — this is a follow-on requirement that needs clarification. Let me ask the user what specifically "either of those" refers to.
+
+Let me present the plan and ask clarifying questions about the ambiguous parts.
+
+Let me formulate the plan now.
+
+Key design decisions to clarify:
+1. **"Either of those"** in the final sentence — which two toggles? (threat type toggles vs alert-zone toggles vs fast-objects/siren). This materially changes scope.
+2. **Full-screen wizard mechanism** — the task says "BottomSheet/scaffold, not a plain dialog". Options: (a) a new `Screen.WIZARD` state in MainScreen (like MAP/SETTINGS/GUIDE), or (b) an overlay `ModalBottomSheet`. Given "full-screen wizard" and 3 steps, a dedicated full-screen scaffold screen (option a) fits best and matches existing pattern (SETTINGS/GUIDE). But the task says "BottomSheet/scaffold" — so a scaffold-style full screen. I'll go with a full-screen composable shown as an overlay/Screen.
+3. **Icon placeholder** — reuse existing `ic_threat_*` res names; the shared helper already points to them. Centralize the three duplicated helpers into one (e.g. `Threat.kt` or a small `ThreatIcons.kt`). Actually the task says "single shared iconResFor helper". I'll centralize into one file — probably `Threat.kt` or new. Given ARCHITECTURE conventions, I'll put it in `Threat.kt` near catalog, or a top-level function. Let me put it as a top-level fun in `Threat.kt`.
+
+Let me ask the clarifying question about "either of those" and the wizard mechanism preference.
+
+
+## 15/08/2026, 16:54:51
+
+Let me read the full threat card section in SettingsScreen (lines 256-375) and the imports needed for icons. Let me look at what map icon is available. Let me check the ThreatType enum and available icons.
+
+
+## 15/08/2026, 16:55:13
+
+Let me read the full buildUiState and UiState in MainViewModel (lines 23-60, 259-390).
+
+
+## 15/08/2026, 16:55:27
+
+Now I have the full picture for MainViewModel. Let me start implementing.
+
+## 1. ZonePrefs.kt
+
+Replace `threatEnabled`/`setThreatEnabled` and `threatEnabledFlow` with two accessors and two flows.
+
+
+## 15/08/2026, 16:55:38
+
+Now update the callers. Let me check all usages of `threatEnabledFlow`.
+
+
+## 15/08/2026, 16:55:43
+
+## 2. MainViewModel.kt
+
+Let me update the UiState, PrefsSnapshot, buildUiState, prefsSnapshot, and setters.
+
+First, UiState - replace `disabledTypes` with `hiddenTypes` and `silencedTypes`:
+
+
+## 15/08/2026, 16:55:49
+
+Now the PrefsSnapshot (line 110) and prefsSnapshot combine. Let me read lines 105-130 and 159-190.
+
+
+## 15/08/2026, 16:55:59
+
+## Plan: Keep stale/expired threats visible (dimmed) instead of hidden
+
+**1. Prediction.kt — shared staleness helpers**
+- `STALE_GHOST_CAP_MS = 30 * 60 * 1000L` (hard cap backstop).
+- `fun Threat.isStale(now): status == "stale" || isExpired(now)` — the live/stale definition used by VM, map, popup.
+- `fun Threat.isGhost(now)` — truly-hide predicate: `now - updated > staleAfterMs + STALE_GHOST_CAP_MS`.
+- No new `Threat` field (derived from `updatedAtMillis`+`now`). No AlertService mirror change (alert logic untouched — stale must still be excluded from alerts, as it already is at AlertService.kt:226).
+
+**2. MainViewModel.kt buildUiState (loop 311–335)**
+- Truly skip: `resolved` OR `isGhost(now)` (resolved also dropped by NeptunClient upsert, line 243).
+- Keep stale/expired in `mapThreats` (existing oblast-alert gating intact), but exclude them from `threatsInner`/`threatsOuter`/`threatScores`/`cityCounts` — do the distance/tier/count work only when `!isStale(now)`.
+
+**3. MapView.kt — dimmed, tappable markers**
+- `appendThreatKey` (87–91): add `now` param + append stale marker so the rebuild key (221–230) changes on live→stale transition.
+- Marker (422–436): `alpha = if (isStale) 0.25f else 1.0f`; tap listener kept.
+
+**4. ThreatPopupCard.kt — stale indicator**
+- Hoist the live `now` timer to the top (currently in MEDIUM/LARGE at 258–264/419–425); compute `stale` once.
+- When stale: dim the card and show `"Last seen <m:ss> ago"` / `«Востаннє <m:ss> тому»` in the footer near the existing elapsed text (using `formatElapsedMss`).
+
+**5. Strings.kt — add `lastSeenAgoFormat`**
+- EN: `"Last seen %1\$s ago"`; UA: `"Востаннє %1\$s тому"`.
+
+**6. Verify**
+- `.\gradlew.bat :app:assembleDebug` and `:app:testDebugUnitTest` (add `isStale`/`isGhost` tests in PredictionTest.kt).
+
+**Open question:** `hasActiveAlert()` (MainViewModel.kt:483) keys off `mapThreats` — with stale ghosts now included, the update dialog stays suppressed longer. Leave as-is, or ignore stale there so update prompts still show?
+## 15/08/2026, 16:56:01
+
+Now I'll update PrefsSnapshot to carry both sets. The first sub-combine currently yields a Triple(enabled, lang, disclaimer). I need to add the alert flow. Let me restructure:
+
+
+## 15/08/2026, 16:56:52
+
+I need to define a `Quad` data class, or use a nested structure. Let me check if there's already a Quad, and update the destructuring. Actually simpler: use a data class or just reference `a.map`, `a.alert`. But the combine lambda currently uses `a.first`, `a.second`, `a.third`. Let me define a small private data class.
+
+Let me look for existing Quad definition.
+
+
+## 15/08/2026, 16:57:28
+
+I'll define a private `PrefsThreats` data class. Let me update the combine to use it and update the final PrefsSnapshot construction.
+
+
+## 15/08/2026, 16:57:43
+
+Now add the `ThreatPrefs` data class near PrefsSnapshot (line ~109). Let me add it right before PrefsSnapshot:
+
+
+## 15/08/2026, 16:57:59
+
+Now update the uiState combine that calls buildUiState (line ~230) and the buildUiState signature/body. Let me read lines 230-250 again and update.
+
+The uiState combine currently passes `enabledTypes = prefs.enabled`. Now I need to pass both. Let me update buildUiState signature to take `mapEnabled` and `alertEnabled`, and the call site.
+
+
+## 15/08/2026, 16:58:05
+
+I have all the details I need. Here's the final consolidated plan.
+
+## Plan: Offline Notification & Status
+
+### 1. `NeptunClient.kt` — offline state + retry
+- **`NeptunState`** (line 26): add `val offlineSince: Long? = null`.
+- **Derived** `offlineElapsedSec: Long?` (null when connected) computed from `offlineSince`.
+- **Detection**: `onOpen` (line 175) → set `offlineSince = null`; `onClosed` (line 188) and `onFailure` (line 195) → `offlineSince = System.currentTimeMillis()`.
+- **New `retryNow()`**: cancel pending `reconnectJob`, close stale socket, call `connect()` immediately (guarded by `connectInFlight`; no-op if `manuallyStopped`).
+
+### 2. `Strings.kt` — new fields on `StringSet` (both `UA` + `EN`)
+- `offlineStatusTitle`, `offlineBodyFormat` ("Offline for %1$s — backup systems active but less reliable. Tap to retry." / «Офлайн %1$s — резервні системи працюють, але менш надійні. Натисни, щоб повторити.»), `offlineOfficialSirensLine` ("Rely on official sirens." / «Покладайся на офіційні сирени.»), `offlineRetryAction` ("Retry" / «Повторити»), `offlineDurMinFormat` ("%1$d m" / «%1$d хв»), `offlineChannelName`/`offlineChannelDesc`, `offlineUiFormat` ("Offline for %1$s" / «Офлайн %1$s»).
+
+### 3. `AlertService.kt` — notifications
+- **New channel** `CHANNEL_OFFLINE` (IMPORTANCE_HIGH, vibrate, silent — no siren), added to `createChannels()` + `keep` set.
+- **Constants**: `CHANNEL_OFFLINE`, `NOTIF_OFFLINE = 4`, `ACTION_RETRY`, `OFFLINE_GRACE_MS = 30_000L`.
+- **`MonitorEvent.State`**: add `connected: Boolean` and `offlineElapsedSec: Long?` (wired through `startMonitoring`).
+- **One-shot on drop**: on `connected true→false`, launch `offlineAlertJob` — post immediately if `focusOblastAlertActive` is true (at drop or if it becomes active during the 30s window), else `delay(30s)` then post; cancel if reconnected within 30s. Uses `CHANNEL_OFFLINE`, `setAutoCancel(true)`, app content intent, Retry action, body + official-sirens line.
+- **Ongoing monitor**: in `notifyMonitor(...)`, when `offlineElapsedSec != null` switch to offline title/body (`offlineElapsedSec/60` minutes) and add the Retry action; the 60s `nowFlow` tick refreshes the minute count.
+- **Retry PendingIntent** → service `ACTION_RETRY`; in `onStartCommand`, handle it by `NeptunClient.retryNow()` (keeping monitoring alive).
+
+### 4. `MainViewModel.kt` + `MainScreen.kt` — UI
+- **`UiState`** (line 23): add `val offlineElapsedSec: Long? = null`.
+- **`buildUiState`** (line 373): set `offlineElapsedSec = neptun.offlineElapsedSec`; recomputed each 1s `nowFlow` tick so it stays live.
+- **`ConnectionStatus`** (MainScreen.kt:808): accept `offlineElapsedSec`; show `String.format(s.offlineUiFormat, minutes)` when offline (keep green/red dot). Pass it from the header call (line 371).
+
+### 5. `CHANGELOG.md` — append under `## [Unreleased]`.
+
+### 6. `ARCHITECTURE.md` — update module-map lines for `NeptunClient.kt`, `AlertService.kt`, `MainViewModel.kt`.
+
+### Verification
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+No mirror-rule invariants (`effectiveZone`/`FAST_THREAT_TYPES`/`focusAttribution`/`RadialZones`/`staleAfterMs`/`predictPosition`) are touched; `offlineElapsedSec` is computed once in `NeptunState` and both consumers read it.
+
+---
+
+The plan is ready. I'm in plan mode (read-only), so I haven't made any edits. Let me know when you'd like me to start implementing, or if you want any adjustments.
+## 15/08/2026, 16:58:08
+
+Now update buildUiState signature (line ~263) to add `alertedTypes` and rename `enabledTypes`→`mapEnabledTypes` for clarity. Let me update:
+
+
+## 15/08/2026, 16:58:13
+
+Now update the map filter (line 313) and the UiState construction (line 381). The map filter uses `enabledTypes`:
+
+
+## 15/08/2026, 16:58:31
+
+Now update the setters (line ~447). Replace `setThreatEnabled` with two methods:
+
+
+## 15/08/2026, 16:58:38
+
+## 3. AlertService.kt
+
+Update line 158 to use `threatAlertFlow`:
+
+
+## 15/08/2026, 16:58:45
+
+## 4. MainScreen.kt
+
+Update line 113 (pass sets), line 127-128 (callbacks), line 467 (strip). Let me read the relevant region.
+
+
+## 15/08/2026, 16:59:13
+
+Now the footer strip (line 463-468). The rule: hide cell if either map OR alerts off. Currently it only renders when `count > 0`. I need to add the condition that the type is both map-visible and alert-enabled. Let me update:
+
+
+## 15/08/2026, 16:59:21
+
+## 5. SettingsScreen.kt
+
+This is the biggest change. I need to:
+1. Update signature: replace `disabledTypes` + `onThreatToggle` with `hiddenTypes`, `silencedTypes`, `onThreatMapToggle`, `onThreatAlertToggle`.
+2. Replace the whole-card toggle with two bordered icon-cards.
+
+Let me update the signature first.
+
+
+## 15/08/2026, 16:59:31
+
+Now I need to check if `onThreatToggle` is referenced elsewhere in SettingsScreen. Let me grep.
+
+
+## 15/08/2026, 16:59:37
+
+Now I'll rewrite the threat card section. Currently lines 264-280 (header row) with the whole-card clickable. I need to:
+- Remove `val enabled = type !in disabledTypes` (or repurpose).
+- Remove the `.clickable { onThreatToggle(...) }` from the header row.
+- Add two bordered icon-card toggles in the card body.
+
+Let me read the current card structure fully from 258 to 312 to design the edit.
+
+
+## 15/08/2026, 17:00:13
+
+Now let me design the new threat card. I'll:
+- Keep the outer Card but remove the border logic based on `enabled` (or keep it neutral - no border since individual toggles indicate state).
+- The header row: keep the icon, label, description, expand button. Remove the `.clickable { onThreatToggle }`.
+- Add a Row of two bordered icon-cards for "Show on map" and "Alerts" toggles in the body (before/after the expandable details).
+
+I need to decide where the toggles go. Best placed right under the header row, visible always (not only when expanded). Let me place them in the main Column between the header row and the `AnimatedVisibility`.
+
+Let me define the toggle icon-card composable. I'll add a private composable helper. Let me first determine icons. For "map": use a map + pin icon. Material has `Icons.Filled.Place` (pin) and `Icons.Filled.Map`. For alerts: `Icons.Filled.Notifications` (already imported).
+
+Let me check what's available. `Icons.Filled.Map` and `Icons.Filled.Place` exist in material-icons-core. Let me verify the imports needed. The file imports `androidx.compose.material.icons.filled.LocationOn`, `Notifications`. I'll use `Place` and `Notifications`. Actually the user wants a better map icon — map + gps pin. `Icons.Filled.Map` is a good map icon. Let me use `Icons.Filled.Map` for the map toggle and `Icons.Filled.Notifications` for alerts.
+
+Let me verify `Map` and `Place` are available by checking the material icons library.
+
+
+## 15/08/2026, 17:00:33
+
+The app uses `material-icons-core`. `Icons.Filled.Map` and `Icons.Filled.Place` are both in core. Let me verify by checking which icons the codebase already uses to be safe, and confirm `Map` availability.
+
+Let me check the existing usage of material icons across the codebase.
+
+
+## 15/08/2026, 17:00:47
+
+`Icons.Filled.Map` and `Icons.Filled.Place` are in material-icons-core (both are core icons). Let me add the imports for `Map` and `Place`. I'll use `Place` (gps pin) as the map control icon combined with the intent, or use `Map`. The user explicitly said "use a better map icon (map + gps pin)". I'll use `Icons.Filled.Map` for the map toggle and `Icons.Filled.Notifications` for alerts.
+
+Now let me implement the card redesign. First update the imports:
+
+
+## 15/08/2026, 17:00:52
+
+The user's answer reframes the "either of those" requirement significantly. They're asking about a **slow discovery / progressive education** approach for advanced features — not just a one-off popup. Let me incorporate this into the plan and ask a follow-up about the discovery mechanism to nail down scope before finalizing.
+
+Let me think about what "advanced features" exist in Settings to be taught:
+- Alert toggles (red/yellow zone)
+- Fast objects alert sooner
+- Siren always sound
+- Official alerts
+- Threat-type toggles
+- Threat card size
+- Follow me / pin city
+
+The user wants a "slow discovery process over days" to teach advanced features without overwhelming. This is a design decision worth clarifying with concrete options.
+
+Let me ask one focused question about the discovery mechanism, then present the full plan.
+
+
+## 15/08/2026, 17:01:05
+
+Now rewrite the threat card header + add the toggle row. Let me replace lines 266-310 region. First, remove the `enabled` var and the outer Card border. Let me replace the block from `val enabled = type !in disabledTypes` through the header row end.
+
+Let me look at exact lines 266-310 again (already have them). I'll replace:
+
+```
+                val enabled = type !in disabledTypes
+                val typicalSpeed = typicalSpeedKmh(type)?.roundToInt()
+                val expanded = expandedType == type
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    border = if (enabled) {
+                        androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                    } else null
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onThreatToggle(type, !enabled) }
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                .alpha(if (enabled) 1f else 0.45f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+```
+
+with a version that has no `enabled`/border and no clickable on the row. Then add a toggle row after the header Row closes.
+
+Let me make the edit:
+
+
+## 15/08/2026, 17:01:12
+
+Now I need to add the toggle row. It should go after the header Row closes (which is at the `IconButton` for expand, closing around line 311). Let me read lines 296-320 to find the exact insertion point.
+
+
+
+
+## 15/08/2026, 17:01:21
+
+Line 316 references `enabled` which no longer exists. I'll fix that and insert the toggle row between line 309 (end of header Row) and line 310 (AnimatedVisibility).
+
+First, insert the toggle row after the header Row's closing `}` (line 309). Then fix line 316's `.alpha(if (enabled) ...)`.
+
+Let me insert the toggle row. I'll create a private composable `ThreatToggleCard` and use it here. Insert after line 309:
+
+
+## 15/08/2026, 17:01:30
+
+Now fix the `.alpha(if (enabled)...)` reference at what was line 316. Since the map toggle already dims via the icon-card, and the details block shouldn't dim based on map visibility anymore, I'll just remove the alpha modifier there. Actually, keeping it dimmed when the type is fully hidden might still be reasonable, but the toggle cards already convey state. Let me remove the alpha line to keep it clean.
+
+
+## 15/08/2026, 17:01:41
+
+Now I need to add the `ThreatToggleCard` composable. Let me add it near the `ThreatStatusCell` or after SettingsScreen function. Let me find a good place — near the end of the file, or right after the SettingsScreen composable. Let me check the file structure and find `SectionHeader` definition to place the helper near similar helpers.
+
+Let me grep for private composable helpers in SettingsScreen.
+
+
+## 15/08/2026, 17:01:46
+
+There's a `SectionHeader` and `AlertToggleRow` helper in SettingsScreen. Let me find `SectionHeader` definition to see how it's structured, and place my `ThreatToggleCard` nearby. Let me read around line 574-620.
+
+
+
+
+## 15/08/2026, 17:01:47
+
+Both design decisions confirmed. The plan is complete and ready for implementation.
+
+## Summary
+
+I've researched `AlertService.kt`, `Strings.kt`, `ThreatLevel.kt`, `Cities.kt`, and `Threat.kt` and have a concrete plan:
+
+1. **Reason builder** — new helper in `AlertService.kt` that selects the highest-scoring ACTIVE, non-advisory, non-areaOnly threat in the focus oblast (prefix + `Cities.cityOblast` matching), ordered by `ThreatLevelModel.scoreOf`. Reason text = `translateCourseAssessment(explanationShort)` else `"<label> in <locality>"`, with a localized fallback template `"Threats reported in <region>"` / `«Загрози в <регіон>»`. Stores reason + threat id.
+
+2. **WAIT-FOR-REASON** — on official rising edge post immediately (region-only body if no reason yet); while active, re-post the **same** `NOTIF_ALERT` silently as reasons become available, guarded by `currentReason` comparison so no siren replay.
+
+3. **ALL-CLEAR CLEANUP** — on official falling edge, if no zone alert active, `cancelAlert()` immediately (skip 60s grace) then `postAllClear`; if a zone alert is still active, leave the notification up but still post the chime.
+
+4. **Strings** — add `reasonNoThreatFormat` to `StringSet` + both `UA`/`EN` tables.
+
+5. Update `ARCHITECTURE.md`, then build + test (`assembleDebug`, `testDebugUnitTest`).
+
+Both clarifying questions were answered per the recommended options. Ready to implement when you switch out of plan mode.
+## 15/08/2026, 17:02:01
+
+I'll add the `ThreatToggleCard` composable right after `AlertToggleRow` (before line 621). It's a bordered card with a medium-sized icon, toggling on/off with the border style (2dp primary border when on, dimmed/no border when off). The `forcedOff` param dims it and disables clicks (used when map is off — alerts card forced off).
+
+Let me add it:
+
+
+## 15/08/2026, 17:02:11
+
+Wait, there's an issue with the alpha logic. When `on=true` and `forcedOff=false`, alpha should be 1 (full). When off (either `!on` or forced), alpha should be dimmed. Let me simplify: dim when `!enabled`. Actually let me reconsider — the alpha expression `if (enabled || forcedOff && !on) 0.55f else 1f` is convoluted. Let me just dim when not enabled:
+
+`alpha(if (enabled) 1f else 0.55f)`
+
+But when map is OFF, both cards should look dimmed. The alerts card forced-off: `enabled = on && !forcedOff` = `false`, so alpha 0.55 — good. Let me simplify.
+
+
+## 15/08/2026, 17:02:20
+
+Now I need to add the strings `threatMapLabel` and `threatAlertLabel` to the StringSet and both blocks. Let me look at the StringSet data class declaration to add the fields.
+
+Let me find the StringSet declaration and the relevant line for threatsLabel.
+
+
+## 15/08/2026, 17:02:56
+
+Now update the UA block values. Line 240 `threatsLabel`, and add the two new strings after it. Let me update the UA threatsLabel and add the two new strings.
+
+
+
+
+## 15/08/2026, 17:03:22
+
+Now update the `guideTogglesSummary`/`guideTogglesD1` to describe the new two-control model and coupling rule. Let me update UA (lines ~393-396) and EN (lines ~590-593).
+
+UA guideToggles:
+- `guideTogglesSummary = "Кожен із 8 типів загроз можна показати чи вимкнути."`
+- `guideTogglesD1 = "Натисни картку в Налаштуваннях → Загрози, щоб увімкнути чи вимкнути тип."`
+- `guideTogglesD2 = "Вимкнений тип у смузі загроз показується сірим."`
+
+Let me update these.
+
+
+## 15/08/2026, 17:04:04
+
+Now let me verify there are no remaining references to old names. Let me grep for `disabledTypes`, `threatEnabledFlow`, `onThreatToggle`, `threatEnabled(`, `setThreatEnabled`, `enabledTypes` across the codebase.
+
+
+## 15/08/2026, 17:04:23
+
+Line 243 in MainViewModel uses `enabledTypes` as the named parameter of `buildUiState`, but I renamed the buildUiState parameter to `mapEnabledTypes`. Let me check line 243 and the buildUiState signature.
+
+The call site at line 243 uses `enabledTypes = prefs.mapEnabled`, but the signature parameter is now `mapEnabledTypes`. I need to update the call site.
+
+
+## 15/08/2026, 17:04:25
+
+The user wants both: on-toggle explainers now, plus a "Help/Tips" section later that lists all the explainers and can restart the first-launch tour. 
+
+I now have enough to finalize the plan. Let me structure it clearly.
+
+Let me define which toggles are "advanced" and get the visual/IRL scenario content. The plan will centralize explainer content per advanced feature, wire on-toggle dialogs, and add a Help section that reuses the same content + restart-tour entry.
+
+Here's the full plan:
+
+---
+
+## Plan: 3-step First-Launch Wizard + Progressive Advanced-Feature Education
+
+### 1. Centralize the icon helper (prep for AI icons)
+Three identical helpers exist: `SettingsScreen.iconResFor` (879), `ThreatPopupCard.iconResFor` (585), `MainScreen.threatIconRes` (929). 
+- Add a single top-level `fun threatIconRes(type: ThreatType): Int` in `Threat.kt` (near `ThreatTypeCatalog`), returning the current placeholder drawables (`ic_threat_*`, `shahed`).
+- Delete the three private duplicates; update all call sites (`SettingsScreen.kt:283,356,357`, `ThreatPopupCard.kt:146,180,281`, `MainScreen.kt:905`).
+- When AI vector drawables arrive, only this one helper changes; grid, Settings, popup, and map all pick them up.
+
+### 2. New full-screen 3-step wizard (MainScreen Screen state machine)
+- Add `WIZARD` to the `Screen` enum in `MainScreen.kt`.
+- Replace the current `LanguageChooseDialog` (first-run `!uiState.languageChosen`) with a new full-screen composable `FirstLaunchWizard(s, lang, disabledTypes, callbacks)` rendered as a scaffold screen (covers map, like SETTINGS/GUIDE).
+- **STEP 1 — Language**: reuse the existing two-flag picker (extract `LanguageFlag` usage, already `internal` in SettingsScreen) with live-switch behavior (calls `setLanguage`, keeps screen open).
+- **STEP 2 — "What do you care about" / «Що для вас важливе»**: a clean `LazyVerticalGrid` (2 columns) of threat types; each cell = `threatIconRes(type)` + short label (`ThreatTypeCatalog.INFO.labelUa/En`) in a tappable card; tap toggles enable/disable; enabled state from `disabledTypes` (mirrors `MainScreen`'s `type !in disabledTypes`); each toggle calls `setThreatEnabled`. "Continue" button advances. Defaults all ON (matches `threatEnabled` default true).
+- **STEP 3 — Feature preview + Start**: compressed preview cards reusing `guideFeatures(s)` copy (alerts/zones/language/guide) — small icon + title + summary rows (simpler than the expandable `FeatureCard`). Single primary "Start" `Button` (CTA) that calls `setLanguageChosen(true)` and returns to MAP. Minimal/no secondary buttons.
+- Navigation: Back/`BackHandler` steps back through the wizard (step 3→2→1), step 1 back exits tour (calls `skipLanguageChoose`). `languageChosen` gate stays at `MainScreen.kt:184`.
+
+### 3. REPLAY entry in Settings
+- At `SettingsScreen.kt` near the guide button (`~459-466`), add a second `OutlinedButton` "Replay first launch" / «Повторити початкове налаштування» that calls a new `onReplayTour()` callback.
+- `MainScreen` wires it: `viewModel.clearLanguageChosen()` (new — `prefs.setLanguageChosen(false)`) then sets `screen = Screen.MAP` so the wizard gate re-triggers. (Language stays as-is; wizard reopens live.)
+
+### 4. Strings (Strings.kt)
+Add to `StringSet` + UA (~206–401) + EN (~403–598):
+- Wizard step titles/subtitles: language, threats ("What do you care about" / «Що для вас важливе»), preview, start button, continue button, skip-tour label.
+- Threat-grid label reuse comes from `ThreatTypeCatalog` (no new per-type strings).
+- REPLAY button text (UA + EN).
+- Advanced-feature explainer strings (title/body/visual/IRL-scenario per advanced toggle).
+
+### 5. Progressive education — on-toggle explainer + Help section
+**Scope decision**: build on-toggle explainers now; scaffold the Help/Tips section so it can be completed later.
+
+- **Centralized explainer content**: new `FeatureExplainer` model (id, title, summary, visual-desc, irl-scenario) in a new `FeatureExplainer.kt`, covering the "advanced" toggles: threat-type toggles, red/yellow zone alerts, fast-objects-sooner, siren-always, official alerts, follow-me/pin, card size. Each holds a **visual example** (icon/diagram ref) + a **real-life scenario** (concrete "if X, do Y").
+- **On-toggle dialog (just-in-time)**: in `SettingsScreen`, wrap advanced toggles so that flipping one to its "advanced/on" state shows a one-time explainer `AlertDialog` (persisted per-feature via a new `ZonePrefs` flag `explainerSeen(id)`). Content = title + visual example + IRL scenario + "Got it". Teach at the moment of first touch, once per feature.
+- **Help/Tips section (this change adds the seed; full polish later)**: a new `Screen.HELP` + composable listing all explainers (reusing the same `FeatureExplainer` content) with a "Restart first-launch tour" button wired to the same REPLAY path. Wire a Settings entry (near the replay/guide buttons). *(Flag: user said this section is "also adding" — I'll include it in this change as the shared-content hub, since both rely on the same explainer model.)*
+
+### 6. Build/verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (no domain-logic changes expected, but run per AGENTS.md).
+- Append `CHANGELOG.md` [Unreleased] entries.
+- Update `ARCHITECTURE.md` module map (new `FeatureExplainer.kt`, new Help screen, wizard) + note the centralized icon helper.
+
+---
+
+Open questions before I implement:
+1. **Icon placeholders**: keep `ic_threat_*`/`shahed` names (current) — the AI vector drawables will replace them later. Confirm.
+2. **Help section**: build it fully now, or just the shared explainer model + a minimal listing screen now and full polish later? (I lean: build the shared model + on-toggle dialogs now, and a simple Help screen reusing it — the user explicitly wants the Help section.)
+
+Let me present this plan.
+
+
+## 15/08/2026, 17:04:43
+
+Now let me verify the SettingsScreen card compiles logically — check that `Arrangement` is imported (via `layout.*` wildcard — yes). And `TextAlign` is imported (line 46). And `BorderStroke` (line 5). `Icons.Filled.Map` and `Icons.Filled.Notifications` — Notifications already imported. Let me double check `Map` and `Place` icon availability in material-icons-core.
+
+Let me verify by checking the material-icons-core jar for the Map icon class.
+
+
+## 15/08/2026, 17:04:57
+
+`Place` exists but **`Map` does not** exist in material-icons-core (the default extended set is not included). Only core icons are available. `Map` is in the extended icons artifact, not core. So I cannot use `Icons.Filled.Map`.
+
+I need a different map-ish icon that's in core. Let me check what map-related icons exist in core: `Place` (gps pin) is available. Let me check for others like `MyLocation`, `Navigation`, `LocationOn`.
+
+`LocationOn` is already imported and used. The user wants a "better map icon (map + gps pin)". Since `Map` isn't available, I'll use `Icons.Filled.Place` (the gps pin) for the map toggle — it's a pin, clearly map-related, and it's in core. Let me update the icon to `Place` and add the import.
+
+Let me verify `Place` and check `MyLocation`/`Navigation` availability.
+
+
+## 15/08/2026, 17:05:01
+
+Understood. Settings note in the Settings screen only, keep the threat card clean (no pinned-city header in the card). The "to <city>" context can live in a contentDescription on the distance pill only (not visible text).
+
+Let me present the final plan.
+
+## Plan: Replace summary with a neutral pill trio
+
+### 1. `Strings.kt` — new StringSet fields + values
+Add fields to the `StringSet` data class (near line 100, after `etaLabel`):
+- `etaMinutesUnit` (e.g. UA `"хв"`, EN `"min"`)
+- `etaHoursUnit` (UA `"год"`, EN `"h"`)
+- `approxNote` (UA `"Усі числа в застосунку приблизні"`, EN `"All numbers in the app are approximate"`)
+- `pillDistanceCd` (contentDescription for the distance pill, carries the pinned-city context; UA/EN versions) — e.g. UA `"Відстань до %1$s: %2$d км"`, EN `"Distance to %1$s: %2$d km"`.
+
+Add UA values (~line 297 area) and EN values (~line 493 area). Named-arg constructor → safe to add anywhere.
+
+### 2. `ThreatPopupCard.kt` — pill trio
+- **Replace** the `summary` `buildAnnotatedString` (lines 114-127) and the `distLabel` logic (64-69). Keep `distLabel`/`pinnedCity` only for the distance pill's `contentDescription`.
+- **Localize `formatEtaMinutes`** (543-546): take `s: Strings.StringSet` param and use `etaMinutesUnit`/`etaHoursUnit` instead of hardcoded `m`/`h`. Output `"10 хв"`, `"1 год 5 хв"` (UA) / `"10 min"`, `"1 h 5 min"` (EN).
+- **Add a neutral pill composable** (e.g. `MetricPill`): muted/near-`onSurfaceVariant` background (e.g. `Color(0xFF2A2A2A)` bg + `Color(0xFFB0B0B0)` text), number in `FontWeight.Bold`/larger emphasis, unit smaller. Plain, low-color — **not** the colored `SpeedPill`/reliability style.
+- **Build the trio** as a `FlowRow` (wrap-friendly) of three pills, number as hero:
+  - Distance: `"3" + " км"` (UA) / `"3" + " km"` (EN); the pill's `contentDescription` = pinned-city text when `pinnedCity != null`, else plain.
+  - ETA: `formatEtaMinutes(...)` output rendered with number emphasized.
+  - Speed: `proximity.speedKmh.roundToInt()` + `s.speedUnit`, using the same neutral pill style.
+  - When GPS off (`distUser == null`), fall back to the muted `gpsOffLabel` text (no trio).
+- **Wire the trio into all three sizes**, replacing the current `summary` Text usage:
+  - SMALL (160-164): the trio replaces the single `summary` Text (keep the weight(1f) column).
+  - MEDIUM (221-236): trio replaces the `summary` Text; **drop** the separate `SpeedPill` (speed is now a pill in the trio) — remove lines 228-235 speed branch.
+  - LARGE (316-332): same — trio replaces `summary`, drop separate `SpeedPill`.
+- **Remove** the now-unused `SpeedPill` composable (528-539) and the `distColor`/`distUser`-color logic used only by the old summary (keep `distUser`/`band` for the border color).
+
+### 3. `SettingsScreen.kt` — Settings note
+- Add the `approxNote` line in the **card-size card** (lines 228-255), rendered as a muted `bodySmall` row similar to the `cardSkullNote` block (237-252), e.g. an info icon + `s.approxNote` in `onSurfaceVariant`. This satisfies "Settings screen only."
+
+### 4. `CHANGELOG.md`
+- Append the change under `## [Unreleased]` per AGENTS.md.
+
+### 5. Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (domain logic untouched, but run per conventions).
+
+Note on mirror rule: this is UI-only (`ThreatPopupCard`, `Strings`, `SettingsScreen`); no change to `effectiveZone`/`predictPosition` etc., so **no `AlertService` mirror** needed.
+
+Ready to implement on your "go".
+## 15/08/2026, 17:05:10
+
+Here's the plan:
+
+## 3-Step First-Launch Wizard + Progressive Advanced-Feature Education
+
+### 1. Centralize the icon helper (single source for the new AI icons)
+Three identical private helpers exist today — `SettingsScreen.iconResFor` (879), `ThreatPopupCard.iconResFor` (585), `MainScreen.threatIconRes` (929).
+- Add one top-level `fun threatIconRes(type: ThreatType): Int` in `Threat.kt`, returning the current placeholder drawables (`ic_threat_*`, `shahed`).
+- Delete the 3 duplicates; rewire call sites (SettingsScreen 283/356/357, ThreatPopupCard 146/180/281, MainScreen 905). When AI vector drawables arrive, only this one helper changes → grid, Settings, popup and map all update.
+
+### 2. New full-screen 3-step wizard (`MainScreen.kt`)
+- Add `WIZARD` to the `Screen` enum (like MAP/SETTINGS/GUIDE); replace the current `LanguageChooseDialog` gate at `MainScreen.kt:184` with a full-screen `FirstLaunchWizard` scaffold that covers the map.
+- **Step 1 — Language**: reuse the existing two-flag picker (`LanguageFlag` is already `internal`), live-switch via `setLanguage`.
+- **Step 2 — "What do you care about" / «Що для вас важливе»**: a clean `LazyVerticalGrid` (2 cols) of threat-type cards — `threatIconRes` + short label (`ThreatTypeCatalog.INFO.labelUa/En`), tap toggles via `setThreatEnabled`, state from `disabledTypes`, defaults ON. A "Continue" button.
+- **Step 3 — Feature preview + Start**: compressed preview rows reusing `guideFeatures(s)` copy (alerts/zones/language/guide), single primary **Start** button → `setLanguageChosen(true)` → back to MAP.
+- BackHandler walks steps back (3→2→1); step 1 back exits via `skipLanguageChoose`.
+
+### 3. REPLAY in Settings
+- Add "Replay first launch" / «Повторити початкове налаштування» near the guide button (`SettingsScreen.kt:459-466`), wired through a new `onReplayTour()` → `MainViewModel.clearLanguageChosen()` (`prefs.setLanguageChosen(false)`) → return to MAP so the wizard re-gates.
+
+### 4. Progressive education (both approaches you chose)
+- **On-toggle explainers (now)**: new `FeatureExplainer` model (title, visual example, real-life scenario) in `FeatureExplainer.kt` covering the advanced toggles (threat-type toggles, red/yellow zones, fast-objects-sooner, siren-always, official alerts, follow-me/pin, card size). In `SettingsScreen`, flipping an advanced toggle to its "on" state shows a one-time explainer `AlertDialog` (visual + IRL scenario + "Got it"), persisted per-feature via new `ZonePrefs.explainerSeen(id)` flags.
+- **Help/Tips section (seeded now)**: new `Screen.HELP` + composable listing all explainers (reusing the same `FeatureExplainer` content) with a "Restart first-launch tour" button. Settings entry near guide/replay. Content hub is shared with the on-toggle dialogs.
+
+### 5. Strings — add EN + UA for all wizard/explainer/replay/help copy in `Strings.kt`.
+
+### 6. Docs + verify
+- Update `CHANGELOG.md` [Unreleased] and `ARCHITECTURE.md` module map (new `FeatureExplainer.kt`, Help screen, wizard, centralized icon helper).
+- `.\gradlew.bat :app:assembleDebug` and `:app:testDebugUnitTest`.
+
+Two things I want to confirm before implementing:
+
+1. **Icon placeholders**: keep the current `ic_threat_*` / `shahed` names as placeholders (AI vectors replace them later in the single helper). Good?
+2. **Help screen scope**: build it as a functional-but-simple screen now (shared explainer content + restart-tour), and we can polish its styling later — versus fully polished in this pass.
+
+Ready to implement on your go; want me to proceed with these assumptions, or adjust first?
+## 15/08/2026, 17:05:16
+
+Core icons available: `LocationOn` and `Place` are the map-related ones. `Map`, `MyLocation`, `Navigation` are **not** in core. So I'll use `Icons.Filled.Place` (the gps pin) for the "Map" toggle, and `Icons.Filled.Notifications` for "Alerts". These are the best available map/pin + alert icons in core.
+
+Let me update the icon in SettingsScreen from `Icons.Filled.Map` to `Icons.Filled.Place`, and remove the `Map` import (replace with `Place`).
+
+
+
+
+## 15/08/2026, 17:05:27
+
+Confirmed — fire anywhere, regardless of distance, when the toggle is on. My plan already reflects that. The plan is complete; let me know if you'd like any adjustments before I implement.
+
+Summary of what I'll do when you give the go-ahead:
+1. **AlertService.kt** — add `enabledTypes`/`now` to `MonitorEvent.State`, add `fastFiredIds` latch, and a fast-anywhere block in `handleState` (gated on `fastAlertsSooner`, type-enabled, non-advisory, active) that posts the INNER siren once per episode and coalesces via the shared `posted` flag.
+2. **ZonePrefs.kt** — update the comment on `fastAlertsSooner`.
+3. **Strings.kt** — relabel EN+UA title/desc to "alert immediately" / «сповіщати миттєво» and update the FeatureGuide D1 lines.
+4. Build + unit test, then a CHANGELOG entry.
+## 15/08/2026, 17:05:39
+
+Now let me check the FeatureGuide diagram for threat toggles — it may render a switch icon that should be updated to match the new bordered-card controls. But the task focuses on copy; the diagram is a visual guide. Let me check `drawThreatToggles` in FeatureDiagrams.kt to see if it needs updating.
+
+Actually, the plan said FeatureGuide auto-updates via Strings. The diagram (drawThreatToggles) renders switches. Since the UI changed from switches to bordered icon-cards, ideally the diagram should match, but the task emphasis is copy. Let me check the diagram quickly to decide.
+
+
+
+
+## 15/08/2026, 17:05:53
+
+The `drawThreatToggles` diagram draws 8 cards with dots/crosses — it already represents bordered cards with on/off, which matches the new bordered-card design reasonably well. It doesn't depict Material switches, so it's fine to leave as-is. The copy change is the main thing.
+
+Now let me add the CHANGELOG entry. Let me append under `## [Unreleased]` at the top (line 3).
+
+
+
+
+## 15/08/2026, 17:06:00
+
+The file may use different line endings. Let me insert after the `## [Unreleased]` header line (line 3) instead.
+
+
+## 15/08/2026, 17:06:10
+
+Now let me update the ARCHITECTURE.md if it documents the mirror rule for this behavior. The mirror rule: `MainViewModel` and `AlertService` reimplement zone/focus/alert logic. I changed the alert gating in both (MainViewModel via mapEnabledTypes for map, AlertService via threatAlertFlow for alerts). Let me check ARCHITECTURE.md for any documentation of the single-toggle behavior that needs updating.
+
+Let me search ARCHITECTURE.md for threat toggle mentions.
+
+
+
+
+## 15/08/2026, 17:06:22
+
+Line 53 of ARCHITECTURE.md mentions `threatEnabledFlow` which I renamed. Let me update that reference. Also line 63 mentions "per-type toggles". Let me update the ZonePrefs description to reflect the new flows.
+
+Let me read that line precisely.
+
+
+
+
+## 15/08/2026, 17:06:41
+
+Let me also check the "key invariants" section of ARCHITECTURE.md, since the mirror rule involves the threat-enable gate. Let me check lines 134-160.
+
+
+
+
+## 15/08/2026, 17:07:03
+
+The threat-enable gate isn't listed in the invariants (the mirror rule lists only zone/focus/prediction logic). The threat-type gating is a simple set filter that each side reads from prefs independently (`threatMapFlow` in MainViewModel for map, `threatAlertFlow` in AlertService for alerts). That's consistent — no extra invariant doc needed. I'll add a brief note to the first invariant about the map/alert gate to keep docs accurate, since the coupling rule is a new behavior.
+
+Actually, let me add a short invariant about the threat visibility/alert split so the coupling rule is documented.
+
+
+## 15/08/2026, 17:07:14
+
+Now let me run the tests. Let me first mark todos and run the build/test.
+
+
+## 15/08/2026, 17:07:36
+
+The user has a clear vision that differs from my proposed UI. They want:
+- A "go to shelter" icon visible when appropriate
+- Tapping it opens a **new screen** showing distance + ranking (list of nearest shelters with distances), NOT an on-map overlay
+- No need for map markers — instead an "open in maps" action to hand off coordinates to the user's full-featured map app
+
+Let me re-read their answer carefully:
+- "a 'go to shelter' icon that is visible when appropriate" — contextual visibility
+- "if the user taps it then a new screen pops up showing distance and ranking" — a screen/panel listing nearest shelters ranked by distance
+- "no need for a map" — no marker overlay on the map
+- "they can tap 'open in maps'" — hand off to external maps app (geo: intent / Google Maps intent)
+
+This is simpler than my original plan in one way (no map overlay) and adds a new screen. This is actually a cleaner, more targeted feature. Let me refine the plan around this.
+
+Key design questions this raises:
+1. "Visible when appropriate" — when? Probably when GPS/focus location is available and within/near Odesa, or during an active alert. Need to define.
+2. The list screen shows nearest shelters ranked by distance from the focus point.
+3. "Open in maps" uses a `geo:` URI intent.
+
+Let me refine the plan. I don't need more code reading — I have the architecture. Let me present the revised plan.
+
+Let me reconsider the data source though. The user's original plan said "Primary: Odesa city open-data portal shelter register (укриття)... export CSV/JSON/GeoJSON with lat/lon." I confirmed:
+- data.gov.ua hosts standardized per-municipality `shelters.csv` datasets (Resolution 835, CC-BY license)
+- Odesa city council is a mandated publisher
+- Odesa city geoportal ArcGIS exists
+
+For the hybrid delivery, we bundle + optionally refresh from our update server. During implementation, step (a) is to actually download and locate the Odesa dataset (either from data.gov.ua under the Odesa city council org, or from the Odesa geoportal ArcGIS).
+
+Now let me present the refined plan.
+
+
+## 15/08/2026, 17:07:47
+
+Build and tests pass. Let me mark the todo complete and do a final review of the key edits to ensure correctness.
+
+Let me verify the SettingsScreen card renders correctly by re-reading the modified threat-card region to confirm structure (the toggle row placement and closing braces).
+
+
+## 15/08/2026, 17:08:04
+
+The structure looks correct. The compile succeeded, confirming correctness.
+
+Let me verify one thing about the coupling display: when map is OFF, the alerts card shows `forcedOff = !onMap = true`, which makes it non-clickable and dimmed. When user turns map back ON, the alerts card becomes interactive again. And `onAlerts` may be false (since map-off forced alerts off), so after re-enabling map, the user must re-enable alerts separately. That's the expected behavior per the coupling rule.
+
+Let me also double check: in the footer strip, I set `enabled = true` always (since the cell is hidden when either is off, and shown only when both on). Let me verify the `ThreatStatusCell` `enabled` parameter — setting it to `true` means it's always fully visible when shown, which is correct since it's only shown when both map and alerts are on. Good.
+
+Now let me verify the MainViewModel setters once more and confirm the coupling in `setThreatMapVisible`. Already done.
+
+Everything compiles and tests pass. Let me mark the final todo complete.
+
+
+## 15/08/2026, 17:08:17
+
+Done. Tests pass (`BUILD SUCCESSFUL`, 54 tasks). Summary of the change:
+
+**Each threat type now has two independent controls** in Settings → Threats — "Map" (`Place` pin icon) and "Alerts" (`Notifications` icon) — rendered as bordered icon cards (2dp primary border when on, dimmed/no border when off), replacing the old single whole-card toggle.
+
+**Behavior:**
+- **Map OFF** → hides from the map **and** auto-silences alerts (coupling in `setThreatMapVisible`, MainViewModel.kt).
+- **Alerts OFF** → stays on the map, dimmed; no alerts fired.
+- **Footer threat strip** → hides a type's cell if **either** Map or Alerts is off (only shows when both on).
+
+**Files changed:**
+- `ZonePrefs.kt` — `threatMapVisible`/`threatAlertsEnabled` per-type prefs + `threatMapFlow`/`threatAlertFlow` (replaced `threatEnabledFlow`).
+- `MainViewModel.kt` — UiState now carries `hiddenTypes`/`silencedTypes`; map filter gates on map set; two setters with the coupling rule.
+- `AlertService.kt` — alert zone gate now uses `threatAlertFlow`.
+- `SettingsScreen.kt` — two bordered `ThreatToggleCard` controls per threat.
+- `MainScreen.kt` — passes both sets; strip hides when either off; rewired callbacks.
+- `Strings.kt` — new `threatMapLabel`/`threatAlertLabel` + explicit UA/EN copy for the header and feature guide.
+- `ARCHITECTURE.md` — updated module map + added a threat-gating invariant.
+- `CHANGELOG.md` — appended entry under `## [Unreleased]`.
+
+Note: no Material `Map` icon exists in the icons-core artifact, so I used `Place` (gps pin) — the clearest map-related core icon available.
+## 15/08/2026, 17:08:33
+
+# Plan — "Go to shelter" feature (Odesa)
+
+## Research findings
+
+**Data source confirmed.** Odesa city council is a **mandated publisher** of the national open-data dataset «Дані про розташування захисних споруд цивільного захисту» under Cabinet Resolution 835. The state portal **data.gov.ua** hosts this as a per-municipality `shelters.csv` (I verified the exact format for Odesa-oblast municipalities — Chornomorsk, Kryvyi Rih, Volochyska — same standardized schema, CC-BY license, free use with source attribution). Odesa city also runs its own **ArcGIS geoportal** (`service.ombk.omr.gov.ua/arcgis`) with GeoJSON-capable layers. The city has **~1189 registered protective structures** (2025 council decision), ~900+ «найпростіші укриття».
+
+The exact Odesa dataset resource URL is pinned down in step 1 during implementation (search data.gov.ua under the Odesa city council org, else the geoportal).
+
+**App fit.** The app is offline-first, zero-backend, bundles static data in `res/raw` already (audio), parses JSON with `org.json` (no new dependency), and the module map/strings/prefs/ViewModel all follow a clear pattern.
+
+## Refined design (per your vision)
+
+No map marker overlay. A contextual **"Go to shelter"** affordance that opens a **nearest-shelter list screen**, each row with distance + an **"Open in maps"** action handing off to the user's real map app via a `geo:` intent.
+
+### 1. Data & delivery (Hybrid: bundle + optional refresh)
+- **New file `Shelters.kt`** (domain): `Shelter` model (id, name, address, lat, lon, capacity, type/status), `ShelterIndex` with parse (org.json) + nearest-by-distance query + a Haversine `distanceMeters` reuse (Prediction already has `distanceMeters`).
+- **Bundle** a converted `res/raw/shelters.json` (normalized from the downloaded Odesa CSV/GeoJSON → our schema) so it works offline. Fallback only.
+- **Refresh** from our update server: reuse the existing `UpdateManager` server (`odesaplay.com.ua`) to fetch a `shelters.json` copy when available; cache to app-internal storage; the bundled copy is the offline fallback. Reuses the existing FTP/server infra (no new backend).
+
+### 2. Contextual affordance ("visible when appropriate")
+- The **"Go to shelter" icon** shows only when we have a usable focus location AND it's near Odesa (the dataset's coverage), and — to avoid noise — during an active alert OR when user has enabled it in Settings. Tap → opens the shelter list screen.
+- State added to `UiState`: `sheltersEnabled: Boolean`, `showShelterButton: Boolean`, plus the loaded `ShelterIndex` (or a prefs-driven flag). Add a `sheltersEnabled` pref to `ZonePrefs`.
+
+### 3. Shelter list screen
+- New **`ShelterScreen.kt`** (Compose): opens as a screen/panel. Ranks shelters by distance from the focus point (GPS, or pinned city), shows: name, address, distance (and walking-time estimate), capacity/status if present.
+- Each row has **"Open in maps"** → builds a `geo:lat,lon?q=...` intent (Google Maps / any handler), matching app's dark theme, UA/EN strings via `Strings`.
+- `MainScreen` gets a navigation state (like the existing `Screen.SETTINGS`/`Screen.GUIDE`) for `Screen.SHELTERS`.
+
+### 4. Strings & Settings
+- New UA/EN strings: shelter screen title, button label, "Open in maps", "No shelters found", ranking header, empty-state, etc. — added to `StringSet` (both `UA` and `EN` blocks).
+- Settings → Map gets the shelter toggle (matching existing toggle row pattern in `SettingsScreen`).
+
+### 5. Tests
+- `ShelterTest.kt`: JSON parsing, nearest-by-distance ranking, distance computation correctness.
+
+### 6. Changelog + ARCHITECTURE
+- Append user-visible entries under `## [Unreleased]` in `CHANGELOG.md`.
+- Update `ARCHITECTURE.md` module map (new `Shelters.kt`, `ShelterScreen.kt`) per the keep-docs-current rule.
+
+### 7. Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+## Open items to confirm
+- **"Visible when appropriate"** definition: my default is *show only during an active alert (or when enabled in Settings) and when the focus is within Odesa's coverage.* Confirm, or show it always when near Odesa?
+- **Walking-time estimate** (from distance at ~5 km/h) — nice-to-have; include or distance-only?
+- **Refresh cadence** for the optional `shelters.json` fetch (on app start, like the daily update check?).
+
+Want me to proceed with this plan (and these defaults), or adjust any of the open items first?
+## 15/08/2026, 17:10:39
+
+The user gave refined guidance:
+
+1. Skip banner for now.
+2. Format: use minutes, don't use many words. Show a yellow-zone icon/circle with "12min", a red-zone icon/circle with "6min", and the "to you" as the blue GPS dot. If red and yellow ETAs are within 10% of each other, just show "You" and "Yellow" (skip red, since red is already too late to care).
+
+So the display becomes a compact row of small icons/labels: [yellow circle icon] 12min · [red circle icon] 6min · [blue dot] 3min. With the dedup rule: if redEdge ≈ yellowEdge (within 10%), drop red and show only yellow + you.
+
+Let me incorporate this into the plan. Let me check how zone-circle visuals are drawn on the map so I can reuse an icon approach. Let me check what drawables exist for red/yellow circles and GPS dot.
+
+
+## 15/08/2026, 17:11:54
+
+I have enough to write a precise plan. For the zone circle icons in the popup row, I'll draw them with Compose `Canvas`/`Box` shapes (red circle, yellow circle, blue GPS dot) rather than new drawable assets — simplest and matches the "icon/circle" ask. Let me finalize the plan.
+
+Let me also confirm the distance/eta in the popup already uses `p.distToUserKm` and `etaToUserMin` from `ThreatProximity`. Yes.
+
+Now I'll present the plan.
+
+## Plan: Threat ETA to zone edges + to you
+
+### Goal
+Extend `ThreatProximity` to also carry the time-to-cross each zone boundary, and surface a compact row in the threat popup: a yellow circle + "12m", a red circle + "6m", and a blue GPS dot + "3m". If red and yellow edge ETAs are within 10% of each other, collapse to just "You" + "Yellow" (drop red — it's already too late to care). Banner countdown **skipped** per your choice.
+
+### 1. Prediction.kt — add a pure, testable helper
+Add a function that computes the distance from a threat's predicted position to a concentric circle boundary along its heading, then the ETA:
+
+```kotlin
+/** ETA (minutes) for a point moving at [speedMps] along [bearingDeg] to cross the circle
+ *  of radius [radiusM] centered at [center]. Null when already inside or moving away. */
+fun etaToCircleEdgeMinutes(
+    from: LatLng, center: LatLng, radiusM: Double,
+    bearingDeg: Double, speedMps: Double
+): Double?
+```
+
+Geometry: vector `v = from − center` (threat → center is negative), unit direction `u` from bearing. Distance to the circle along the ray solves `|v − d·u|² = R²` → `d = (v·u) + sqrt((v·u)² − (D²−R²))`. Take the positive root (near-boundary entry) when `D > R` and heading inward (`v·u < 0`); else `null`. Return `d / speedMps / 60.0`. Put in `Prediction.kt` (next to `distanceMeters`) so it's unit-testable without Android.
+
+### 2. MainViewModel.kt — extend `ThreatProximity`
+Add two nullable fields (MainViewModel.kt:59-67):
+```kotlin
+val etaToRedEdgeMin: Double?,    // time to cross the red circle boundary
+val etaToYellowEdgeMin: Double?  // time to cross the yellow boundary
+```
+In the proximity block (MainViewModel.kt:346-371), after computing `predicted` and `speed`, compute both via the helper using `focusLocation` as center, `redKm*1000` / `yellowKm*1000`, and the threat's `bearingDeg`. Null when the threat is already inside that circle or heading away, or when speed/GPS unavailable.
+
+### 3. ThreatPopupCard.kt — the compact edge-ETA row
+In the MEDIUM and LARGE cards (the sizes that show distance/ETA), render a small row next to the summary with three small glyphs + minutes:
+- **Yellow circle** (amber) + `formatEtaMinutes(etaToYellowEdgeMin)`
+- **Red circle** + `formatEtaMinutes(etaToRedEdgeMin)`
+- **Blue GPS dot** + `formatEtaMinutes(etaToUserMin)`
+
+Dedup rule: when both edge ETAs are present and `|red − yellow| / max(red, yellow, small) ≤ 0.10`, show only **You** + **Yellow** (drop red). Omit a glyph when its ETA is null. Draw the glyphs as small Compose `Box`/`Canvas` circles (amber `0xFFF9A825`, red `AlertRed`, blue GPS `Color(0xFF4FC3F7)`) — no new drawable assets. Reuse the existing `formatEtaMinutes` (MainViewModel.kt already floors to minutes; matches your "minutes only, not precise" call).
+
+### 4. Strings.kt
+No new user-facing words needed (the row is icon + number + `m`, and existing `formatEtaMinutes` produces `12m`). No `StringSet` additions. (If you'd rather add a separator, that's optional — but your guidance says don't use words.)
+
+### 5. Tests — PredictionTest.kt
+Add unit tests for `etaToCircleEdgeMinutes`:
+- direct inbound approach: distance to edge ≈ `(D − R)/speed`
+- threat already inside circle → null
+- threat heading away → null
+- perpendicular/off-center crossing still yields the correct boundary distance
+
+### 6. Verification
+- `.\gradlew.bat :app:testDebugUnitTest` (new PredictionTest + existing)
+- `.\gradlew.bat :app:assembleDebug`
+
+### Note on mirror rule
+This is **UI-only** logic (`ThreatProximity` lives in `MainViewModel`); it does **not** touch `predictPosition`, `effectiveZone`, `FAST_THREAT_TYPES`, or any listed invariant, so **no `AlertService` mirror** is required.
+
+### Note on CHANGELOG
+Per AGENTS.md, I'll append a user-visible line under `## [Unreleased]` during implementation.
+
+Want me to proceed with this plan?
+## 15/08/2026, 17:12:33
+
+The user chose alerts.com.ua. Let me finalize the plan. Let me quickly confirm how the backup should decide "NEPTUN is down/quiet" and how the connection pill displays source, plus check the `MainViewModel` `focusOblastAlertActive` path so I can plan the merge. I already have enough of those. Let me check the `UiState`/`MainViewModel` oblast alert section and the `ConnectionStatus` pill to plan the source display.
+
+
+## 15/08/2026, 17:12:44
+
+I'll implement the plan. Let me create a todo list and start.
+
+
+## 15/08/2026, 17:13:00
+
+Let me start with NeptunClient.kt. I'll add `offlineSince` to the state, the derived value, set it at the detection points, and add `retryNow()`.
+
+
+## 15/08/2026, 17:13:09
+
+Now set `offlineSince` at the detection points and add `retryNow()`:
+
+
+## 15/08/2026, 17:13:37
+
+Now add `retryNow()`. Let me add it after `onForeground()`:
+
+
+## 15/08/2026, 17:13:47
+
+Now Strings.kt. Add the new fields to `StringSet` and both UA and EN instances. Let me add the fields after `notifStatusPinned`:
+
+
+## 15/08/2026, 17:14:04
+
+Now add the UA values after `notifStatusPinned = "Зони закріплені за містом",`:
+
+
+## 15/08/2026, 17:14:18
+
+Now the EN values after `notifStatusPinned = "Zones are pinned to a city",`:
+
+
+## 15/08/2026, 17:15:02
+
+I have everything needed. The `focusOblastAlertActive` and `activeRegionTokens`/`redCities` all derive from `neptun.oblastAlerts` in both `MainViewModel` and `AlertService`. The cleanest approach: keep the `oblastAlerts` field as the **merged union** of NEPTUN + backup sources, so both consumers automatically inherit the backup without touching the mirror logic.
+
+I now have a complete picture. Let me write up the final plan.
+
+---
+
+# Plan: Independent backup source for oblast alerts (alerts.com.ua)
+
+## Source decision
+**alerts.com.ua** (`https://alerts.com.ua/api/states`) — keyless/public, no token/proxy, no request form, no rate-limit ban risk. Returns 25 entries (24 oblasts + Kyiv city) with `name` (Ukrainian, e.g. `"Одеська область"`), `name_en`, `alert: bool`, `changed` timestamp. Field format is **directly compatible** with the existing `OblastAlert.inOblast(token)` stem matching (`"Харківська область"` vs token `"Харківськ"`).
+
+(alerts.in.ua was dropped: its terms forbid hardcoding the token in a client app and require a proxy server for public services.)
+
+## Design principle — keep it invisible to the mirror rule
+Both `MainViewModel` and `AlertService` derive `focusOblastAlertActive`, `activeRegionTokens`, and `redCities` solely from `NeptunState.oblastAlerts`. So the backup source should **merge into `NeptunState.oblastAlerts`** rather than adding a parallel field — both consumers inherit the backup automatically with **zero changes to the mirrored zone/focus logic**. This is the key simplification.
+
+## Changes
+
+### 1. New file: `AlertsUaClient.kt`
+`object AlertsUaClient` — mirror `NeptunClient`'s style (OkHttp already a dependency, `Dispatchers.IO`, `StateFlow`).
+
+- `private const val URL = "https://alerts.com.ua/api/states"`
+- Own `CoroutineScope(SupervisorJob() + Dispatchers.IO)` + `MutableStateFlow<List<OblastAlert>>` (and an `active`/`lastError` flag).
+- `start()` launches a polling loop: `delay(20_000)` → GET → parse `states[]` where `alert == true` → map each to `OblastAlert(key=id, name=name, oblast=name, since=changed)`. Swallow parse/IO errors and keep last-good state (so a transient failure doesn't clear the backup view).
+- `stop()` cancels scope.
+- `refreshNow()` for an immediate pull on foreground.
+
+### 2. Merge into `NeptunState` (`NeptunClient.kt`)
+- `start()`/`stop()` in `NeptunClient` also start/stop `AlertsUaClient`.
+- Add a `NeptunState.backupAlerts: List<OblastAlert>` (or better: keep a union).
+- **Union semantics**: `oblastAlerts` becomes the merged, deduplicated set of NEPTUN alerts **plus** backup alerts. Implementation: in `NeptunClient`, combine `_state.value.oblastAlerts` (from WS frames) with `AlertsUaClient.state` via a small `mergeAlerts(neptun, backup)` helper that dedupes by `key`/`oblast`. 
+- **Fallback framing**: when NEPTUN is healthy (WS pushing frames), NEPTUN is the source; the backup fills gaps. To "fall back when NEPTUN is down/quiet", gate the backup contribution on `NeptunState.connected` + freshness — i.e. only union the backup when NEPTUN is disconnected or its alert list is stale/empty. I'll model this with a simple rule: **backup alerts are merged in only when NEPTUN is not connected, OR NEPTUN reported zero oblast alerts in the last N seconds.** This gives an honest "independent, less-reliable backup" story without double-alerting when NEPTUN is fine.
+- On `onForeground()` also call `AlertsUaClient.refreshNow()`.
+
+### 3. Source tag in notifications + banner (`AlertService.kt`, `MainViewModel.kt`, `Strings.kt`, `MainScreen.kt`)
+- Track *which source* produced the active focus alert. Add a `source: AlertSource` (NEPTUN / BACKUP / BOTH) to the alert state.
+- Append a small source tag to the official-alert notification body (e.g. EN `"· via NEPTUN"` / `"· via backup source"`; UA `"· через NEPTUN"` / `"· через резервне джерело"`) in `postAlert`/`postAllClear` via new `Strings` entries.
+- Optionally show the source on the connection pill / banner. **Minimal scope**: add the tag to the official alert notification body only, plus a subtle label on the red alert banner in `MainScreen`.
+
+### 4. Strings (`Strings.kt`)
+Add UA+EN entries: `alertSourceNeptun`, `alertSourceBackup` (and, if we surface it in the pill, `backupActive`). Follow the existing `StringSet` pattern.
+
+### 5. Tests (`app/src/test/java/ua/ukrainedrones/`)
+- `AlertsUaTest.kt`: parse the `alerts.com.ua/api/states` JSON shape → `OblastAlert`; verify `alert=false` entries are dropped; verify merge/dedupe helper.
+- Extend `ThreatTest` if the `OblastAlert` constructor stays unchanged (it does).
+
+### 6. Docs
+- Update `ARCHITECTURE.md` module map (add `AlertsUaClient.kt` under Data ingress; note the backup-merge into `oblastAlerts`), data-flow diagram, and a new key invariant note (backup only fills when NEPTUN is down/stale; both consumers read the union).
+- Append a `CHANGELOG.md` `[Unreleased]` entry.
+
+## Mirror-rule impact
+None to the zone/focus/prediction logic — the backup only feeds `oblastAlerts`, so `MainViewModel` and `AlertService` both see it without duplicating any logic. The **source tag** is new UI text, not mirrored logic.
+
+## Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (new + existing)
+
+## Open questions before implementation
+1. **Poll cadence**: 20s mirrors NEPTUN's keep-alive REST cadence, but alerts.com.ua doesn't state a rate limit. 20s is reasonable and within their `/api/states` usage. OK?
+2. **Fallback threshold**: I'll treat NEPTUN as "down/stale" when disconnected OR zero oblast alerts for >60s. Good default?
+3. **Scope of source tag**: notification body only (recommended) vs. also the on-map banner + connection pill. Which do you want?
+
+Want me to proceed with this (defaulting to the recommended choices for the open questions), or adjust the fallback/source-tag scope first?
+## 15/08/2026, 17:15:06
+
+Now AlertService.kt. First, add constants and ACTION_RETRY. Let me update the companion object:
+
+
+## 15/08/2026, 17:15:30
+
+Now update `onStartCommand` to handle ACTION_RETRY:
+
+
+## 15/08/2026, 17:15:46
+
+Now add the `connected` and `offlineElapsedSec` fields to `MonitorEvent.State` and wire them through `startMonitoring`:
+
+
+## 15/08/2026, 17:15:51
+
+I'll explore the codebase to understand how the map scale and settings are currently implemented.
+
+
+## 15/08/2026, 17:16:03
+
+Now wire them in `startMonitoring` (the `MonitorEvent.State(...)` constructor call):
+
+
+## 15/08/2026, 17:16:25
+
+Now I need to add:
+1. State fields for tracking the offline one-shot (offline alert job, was connected, offline notif posted).
+2. Logic in `handleState` for the one-shot alert and the ongoing monitor offline text.
+
+Let me add the state fields after `lastMonitorText`:
+
+
+## 15/08/2026, 17:16:32
+
+I need to understand the scale bar rendering and settings structure. Let me look at the key files.
+
+
+## 15/08/2026, 17:16:39
+
+Now let me look at the `ScaleIndicator` in MainScreen.kt and the MapView scale bar handling, plus how SettingsScreen is structured and how prefs flow into the UI.
+
+
+## 15/08/2026, 17:16:52
+
+Now I have the `ScaleIndicator`. Let me see the rest of it and understand the UiState + how prefs flow to MainScreen, plus the SettingsScreen structure.
+
+
+## 15/08/2026, 17:17:07
+
+Now let me update `handleState`. I'll add the offline monitoring at the start (before the existing notification logic), and modify the ongoing `notifyMonitor` call to use offline text. Let me look at the current `handleState` beginning:
+
+```kotlin
+    private fun handleState(state: MonitorEvent.State) {
+        val s = Strings.get(state.lang)
+
+        if (lastChannelLang != state.lang) {
+            updateMonitorChannel(s)
+            lastChannelLang = state.lang
+        }
+        notifyMonitor(
+            title = s.notifOngoingTitle,
+            text = if (state.focusPinned) s.notifStatusPinned else s.notifStatusZones
+        )
+```
+
+I'll insert the offline-handling before the `notifyMonitor` call and change the call to use offline text when disconnected. Let me edit:
+
+
+## 15/08/2026, 17:17:07
+
+Let me look at the MainViewModel UiState definition, the SettingsScreen structure around the toggle section (lines 390-420) and how SettingsScreen is called from MainScreen, plus the Strings entries for map-related settings.
+
+
+## 15/08/2026, 17:17:20
+
+Let me read the rest of the prefsSnapshot combine and buildUiState, and the SettingsScreen toggle section. Let me read MainViewModel lines 182-265.
+
+
+## 15/08/2026, 17:17:41
+
+I have a subtle issue with the offlineAlertJob coroutine: when `alertNow` is false, I delay 30s then post. But if an official alert fires during the grace, the outer `handleState` will hit the `else if (state.focusOblastAlertActive && !offlineNotifShown)` branch on the next tick, cancel the job, and post immediately. Good. But if `alertNow` is true at drop, the coroutine posts immediately (no delay) — that's fine.
+
+However, there's a concern: the coroutine posts after delay, but I should also guard against reconnect during the delay — which I do via `!NeptunClient.state.value.connected`. But the `offlineNotifShown` flag gets reset to false on reconnect, so if it reconnects and drops again, it will re-alert. Good.
+
+Also, the `offlineAlertJob?.cancel()` in the `connected` branch handles the reconnect-during-grace cancel. Good.
+
+Now I need to add the `postOfflineAlert` method and the Retry action in `monitorNotification`. Let me also add the Retry action to the monitor notification and create the `postOfflineAlert` method and a `retryIntent()` helper.
+
+Let me add the `postOfflineAlert` method and a `retryPendingIntent()`. Let me add after `postAlert`:
+
+
+## 15/08/2026, 17:18:01
+
+Now I need to understand the SettingsScreen function signature and how it's invoked from MainScreen, plus where the map section is in settings (if any). Let me look at the SettingsScreen top signature and the MainScreen settings call.
+
+
+## 15/08/2026, 17:18:27
+
+Now let me look at how SettingsScreen is invoked from MainScreen (the settings block), and how the settings callbacks are wired in MainActivity/MainScreen. Let me find the SettingsScreen call site.
+
+
+## 15/08/2026, 17:18:44
+
+I referenced `s.offlineBody` but I defined `offlineBodyFormat`. Let me reconsider. The task gives one content string: "Offline for 12m — backup systems active but less reliable. Tap to retry." That's the one-shot body. The ongoing monitor text is "Offline for Xm" / «Офлайн Xхв» — shorter.
+
+So for the one-shot, the full body needs the elapsed minutes. But at drop time elapsed is ~0. The task says the one-shot content is the full text with the minutes. But at the moment of the one-shot (30s after drop), the elapsed is ~0-1 min. Hmm. Actually the full body string "Offline for 12m — backup systems..." is meant as a template where minutes get filled. But a one-shot at 30s would say "Offline for 0m".
+
+Let me reconsider the design. The task's content section describes the ongoing/one-shot wording together. Let me make `offlineBodyFormat` take the minutes and use it for BOTH the one-shot and the ongoing monitor text. The one-shot at drop would show "Offline for 0m" which is a bit odd but acceptable — or I could just use the format with current minutes. Actually, let me reconsider: I have `offlineBodyFormat = "Offline for %1$s — backup systems active but less reliable. Tap to retry."` and `offlineDurMinFormat = "%1$d m"`.
+
+Let me use `offlineBodyFormat` (with formatted minutes) as the one-shot body, and for the ongoing monitor text use a shorter form. But I made the ongoing monitor use `offlineBodyFormat` too — that would duplicate "Tap to retry" in the ongoing status, which is fine actually since it's informative and the Retry action is there.
+
+Let me simplify: use `offlineBodyFormat` (minutes filled) for both one-shot and ongoing monitor body. Fix the `postOfflineAlert` to use `offlineBodyFormat` with minutes. Let me fix that reference.
+
+
+## 15/08/2026, 17:19:00
+
+Let me look at the SettingsScreen call site in MainScreen (lines 100-200) to understand the wiring, and the MapView signature to understand how it's built.
+
+
+## 15/08/2026, 17:19:07
+
+I now have enough to form the plan. Let me check how the settings callbacks are defined in the ViewModel (setters exist), and confirm the SettingsScreen main map section to decide where to place the toggle. Let me also check the `mapCenterLabel` section (line 209) in SettingsScreen to place the scale toggle there.
+
+Let me look at SettingsScreen lines 205-260 for the map section.
+
+
+## 15/08/2026, 17:19:09
+
+I now have a complete picture. Let me check the `AlertToggleRow` composable signature to know how to reuse it for the scale toggle.
+
+
+## 15/08/2026, 17:19:17
+
+I'll plan this out. Let me look at the opencode master skill configuration.
+
+
+## 15/08/2026, 17:19:18
+
+I now have a complete understanding. Let me also check the feature guide reference to the scale (line 568-572) and whether there's a settings section header I can reuse. Let me also check what icon is available for a "scale/ruler". Let me check the existing drawable resources.
+
+I have enough to construct the plan. Let me present it.
+
+The user wants two things:
+1. A new setting to toggle the map scale (bottom-left corner) on/off.
+2. Change the scale bar's label from a white background to a white thick font (less intrusive).
+
+Let me verify the guide text strings for scale and how the scale is described, and check the `Strings.kt` `guideConnD3` already mentions the scale bar. I have enough. Let me write the plan.
+
+## Plan
+
+### 1. New pref: `showMapScale`
+- **`ZonePrefs.kt`**: add a `showMapScaleKey = booleanPreferencesKey("show_map_scale")`, a `showMapScale(): Flow<Boolean>` (default `true`), and `setShowMapScale(Boolean)`.
+- **`MainViewModel.kt`**:
+  - Add `showMapScale: Boolean = true` to `UiState`.
+  - Add `showMapScale` to `PrefsSnapshot` data class and its combine — I'll fold it into the existing `AlertConfig` combine (currently 6 booleans) → make it 7, or add it to the second combine. Simplest: add to the `AlertConfig` combine group (rename semantics but keep class) — actually cleaner to add it to the `ThreatPrefs`-adjacent group. I'll add it to the second `combine` (the one with `followMe`), making `AlertConfig` include it.
+  - Map it into `UiState` via `.copy(showMapScale = ...)`.
+- **`MainScreen.kt`**: gate the `ScaleIndicator` composable with `if (uiState.showMapScale)` (wrap it in a conditional).
+
+### 2. Settings toggle
+- **`SettingsScreen.kt`**: add a `showMapScale: Boolean` param + `onShowMapScaleChange: (Boolean) -> Unit` callback. Place a new `AlertToggleRow` in the "Map centre" section (the map-related card at line 210) — a `ScaleIndicator`-style row "Show scale" with a ruler icon. Actually the map centre card holds follow-me + pin. I'll add a new row in that card after the pin row, or better a separate small card under the "Map centre" header. I'll add it as a row within the existing map card (divider + AlertToggleRow).
+- **`MainScreen.kt`** call site (line 111): pass `showMapScale = uiState.showMapScale` and `onShowMapScaleChange = { viewModel.setShowMapScale(it) }`.
+- **`MainViewModel.kt`**: add `setShowMapScale` setter (wraps `prefs.setShowMapScale`).
+
+### 3. White thick font instead of white background
+- **`MainScreen.kt`** `ScaleIndicator`: change the label `Text` — remove the `.background(Color.White.copy(alpha=0.85f), RoundedCornerShape(3.dp))` and instead use a thick white font. Approach: draw white text with a dark outline (stroke) for contrast over map tiles. Options:
+  - Use `drawStyle = Stroke(...)` on a `TextStyle` (text outline) — Compose `TextStyle(drawStyle = Stroke(width = ...))` draws only the outline (hollow), so layer: first a solid dark-ish thick outline text underneath, then white text on top. Actually simplest robust approach: render the label twice — a white solid text on top of a black thick-outline text (offset slightly), like a halo. 
+  - Concretely: set label `color = Color.White`, `fontWeight = Bold`, and add a `shadow` via `TextStyle(shadow = Shadow(...))` for a subtle halo, plus keep a thin outline. The user said "white thick font" — so make the label white and bold. To stay readable over the map without a background, add a drop shadow / stroke halo.
+
+I'll implement: label text in white, bold, with a `Shadow` (halo) to keep contrast, and remove the white background chip. Keep the alternating bar as-is (or could make it thicker white — user said "font", referring to the label text). I'll keep the bar but the main change is the label.
+
+Actually, re-reading: "also white thick font instead of a white background is less intrusive" — this refers specifically to the label. So: remove the white background pill, render the label in white bold font with a subtle dark shadow for readability.
+
+### 4. Strings
+- **`Strings.kt`**: add UA+EN strings: `showMapScaleTitle` ("Показати масштаб" / "Show scale") and `showMapScaleDesc` ("Масштаб у лівому нижньому куті карти" / "Scale bar in the map's bottom-left corner").
+
+### 5. CHANGELOG
+- Append an `## [Unreleased]` entry for both changes.
+
+### 6. Build verify
+- `.\gradlew.bat :app:assembleDebug` after implementation.
+
+Note: this is a UI-only setting (no mirror in `AlertService`), so no invariant mirroring needed.
+
+Let me ask one clarifying question about where to place the toggle, and about the exact desired visual of the white font (halo vs pure outline).
+
+
+## 15/08/2026, 17:19:19
+
+Let me check the skill format by looking at an existing skill.
+
+
+## 15/08/2026, 17:19:23
+
+I now understand the skill format. Here's my plan:
+
+## Plan: Add a "git push" summarizer skill
+
+**Goal:** When the user says "git push", reply with only the 3 git commands, with a one-sentence summary generated from the session's changes. No tool calls, no execution.
+
+**File to create:** `C:\Users\Bodi\.config\opencode\skills\git-push\SKILL.md`
+
+**Skill frontmatter:**
+```yaml
+---
+name: git-push
+description: Use when the user says "git push" or asks for a quick commit/push summary.
+---
+```
+
+**Skill body** (the instructions the model follows):
+- Trigger: user says "git push".
+- Do NOT run any tools (no git, no reading files — it's a waste of tokens).
+- Summarize the session's changes into a single short sentence (~≤12 words), low fidelity is fine.
+- Reply with **only** this, verbatim format:
+  ```
+  git add .
+  git commit -m "[summary]"
+  git push
+  ```
+- No commentary before/after.
+
+**Registration:** Skills in `.config/opencode/skills/<name>/SKILL.md` are auto-discovered by opencode (no manual registry needed — verified by the existing two skills). No edits to `opencode.json` required.
+
+**Verification:** Restart opencode session so the skill loads; test by saying "git push".
+
+A couple of questions before I finalize:
+
+1. The skill will only fire if you say the exact phrase **"git push"**. Do you also want it to match variants like "push it", "commit and push", or a `git push <branch>`-style request? (Skills trigger on the description match, so exact phrasing matters.)
+
+2. Confirm the reply should include **all three lines** every time (add, commit, push) — not just commit+push if the branch is already tracked. I'll include all three per your example.
+## 15/08/2026, 17:19:23
+
+Now I need to add the Retry action to the ongoing monitor notification and add the `retryPendingIntent()` helper. Let me update `monitorNotification` to take a `retryAction` flag (add the action when offline), and add the `retryPendingIntent` helper.
+
+Let me look at the current `monitorNotification` and `notifyMonitor`:
+
+```kotlin
+    private fun monitorNotification(title: String, text: String) =
+        NotificationCompat.Builder(this, CHANNEL_MONITOR)
+            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setContentIntent(openAppIntent())
+            .build()
+
+    private fun notifyMonitor(title: String, text: String) {
+        if (title == lastMonitorTitle && text == lastMonitorText) return
+        lastMonitorTitle = title
+        lastMonitorText = text
+        safeNotify(NOTIF_MONITOR, monitorNotification(title, text))
+    }
+```
+
+I'll add a `showRetry: Boolean` parameter to `monitorNotification`, and pass `offline != null` from `handleState`. Let me update:
+
+
+## 15/08/2026, 17:19:40
+
+I need to add the `lastMonitorRetry` state field and update the call to `notifyMonitor` in `handleState`. Also there's a call to `monitorNotification` in `startForegroundCompat`. Let me add the state field first:
+
+
+## 15/08/2026, 17:20:03
+
+Now update the `notifyMonitor` call in `handleState` to pass the retry flag, and update `startForegroundCompat`:
+
+
+## 15/08/2026, 17:20:28
+
+Now update `startForegroundCompat` which calls `monitorNotification(title, text)`:
+
+
+## 15/08/2026, 17:21:28
+
+Now add the `retryPendingIntent()` helper. Let me add it near `openAppIntent()`:
+
+
+## 15/08/2026, 17:21:29
+
+Understood — exact phrase "git push", reply with just the commit (2 lines).
+
+
+## 15/08/2026, 17:21:44
+
+Done. Created `C:\Users\Bodi\.config\opencode\skills\git-push\SKILL.md`. Skills are auto-discovered — no registry edit needed.
+
+Restart the opencode session, then say **"git push"** to test. You'll get just:
+
+```
+git add .
+git commit -m "[summary]"
+```
+## 15/08/2026, 17:21:56
+
+Now add the `CHANNEL_OFFLINE` channel in `createChannels()` and add it to the `keep` set. Let me look at the current channel creation and the `keep` set:
+
+
+## 15/08/2026, 17:22:25
+
+Now there's one thing to double check: in `handleState`, the offline one-shot logic uses `state.connected` for the "drop" transition, but the `offlineAlertJob` coroutine references `state.lang` which is captured. That's fine. However, I want to reconsider the coroutine logic — when `alertNow` is true at drop, the coroutine runs `delay`? No — I wrote `if (!alertNow) { delay(...) }` then post. When `alertNow` is true, it skips the delay and posts immediately. Good.
+
+But there's a subtle bug: when the connection drops and `alertNow` is false, the job delays 30s and posts. During that 30s, if the connection reconnects, `handleState` runs with `connected=true`, cancels the job and resets `offlineNotifShown=false`. Good. If an official alert fires during grace, the `else if` branch cancels the job and posts immediately. Good.
+
+However, there's an issue: the coroutine references `offlineNotifShown` and `NeptunClient.state.value.connected` at post-time, but `offlineNotifShown` is read from the service field — these are on `Dispatchers.IO` scope, single-threaded enough for this use. Fine for our purposes.
+
+Now, one concern: the `else if (state.focusOblastAlertActive && !offlineNotifShown)` branch only fires on ticks when already offline (not the drop tick). But if `wasConnected` is true on the drop tick AND `focusOblastAlertActive` is true, the first `else if (wasConnected)` branch handles it (alertNow=true → immediate). So the second branch is only for official-alert-during-grace. Good.
+
+Now MainViewModel + MainScreen. Let me update MainViewModel UiState and buildUiState.
+
+
+## 15/08/2026, 17:22:48
+
+Now update MainScreen. The `ConnectionStatus` composable and its call site. Let me update the signature and display:
+
+
+## 15/08/2026, 17:24:10
+
+The dialog title inside `ConnectionStatus` still uses `if (connected) s.connOnline else s.connOffline` at line ~848 which is fine (dialog keeps simple Online/Offline). 
+
+Now let me verify the build compiles. Let me update todos and run assembleDebug.
+
+
+## 15/08/2026, 17:24:26
+
+Let me add the CHANGELOG entry:
+
+
+## 15/08/2026, 17:24:35
+
+Let me check the exact current content at the top of CHANGELOG:
+
+
+## 15/08/2026, 17:24:55
+
+The CHANGELOG has been updated since my earlier read. Let me add the entry at the top of the Unreleased section:
+
+
+## 15/08/2026, 17:25:14
+
+Now update ARCHITECTURE.md module map lines. Let me update the NeptunClient, AlertService, and MainViewModel lines:
+
+
+## 15/08/2026, 17:25:47
+
+Now let me build. Let me run assembleDebug.
+
+
+## 15/08/2026, 17:26:18
+
+My insertion of new fields into `StringSet` data class at lines 330/537 broke positional argument alignment. Since `StringSet` is a data class with positional constructor args, I inserted 8 new fields in the middle (after `notifStatusPinned`), which shifted all subsequent UA/EN positional values. I must insert the new values in the same position in both UA and EN instances — which I did — but wait, the error is at Strings.kt:330 which is in the UA block. Let me check: the data class field insertion was after `notifStatusPinned`. The UA value insertion was also after `notifStatusPinned`. So positions should align.
+
+Wait, let me re-read. The error says line 330 `Unresolved reference: s`. Let me look at what's around line 330 in Strings.kt now. The UA block is around 206-410. The inserted UA values were added after `notifStatusPinned`. Let me check the ordering — did I insert the UA values in the exact same relative position as the EN ones? Let me check both spots.
+
+Actually wait — the issue is that I added the fields to `StringSet` after `notifStatusPinned`, and added UA values after `notifStatusPinned` in UA, and EN values after `notifStatusPinned` in EN. That should keep positional alignment. But the error suggests misalignment. Let me look at the actual lines 330-336.
+
+
+## 15/08/2026, 17:26:35
+
+I see the problem. The `%1$s` in lines 330, 336 etc. — Kotlin string literals interpret `$s` as a template. The existing code uses `%1\$s` (escaped). My new strings `"Офлайн %1$s — ..."` have unescaped `$s` and `$d`. I need to escape them as `%1\$s` and `%1\$d`.
+
+Let me fix all the new UA and EN strings to escape the `$`. UA lines 330, 333, 336; EN lines. Let me fix:
+
+
+## 15/08/2026, 17:26:49
+
+Now rebuild:
+
+
+## 15/08/2026, 17:27:14
+
+Build succeeds. Now let me run the unit tests (no domain-logic changes but AGENTS.md says to verify).
+
+
+
+
+## 15/08/2026, 17:27:24
+
+Both build and tests pass. Let me update the todos and do a final review of the AlertService handleState logic to make sure the offline one-shot behaves correctly.
+
+Let me re-read the handleState offline block to verify correctness:
+
+
+## 15/08/2026, 17:27:57
+
+The logic looks correct. One consideration: when `alertNow` is true at drop, the coroutine launches with no delay and immediately posts — that's the "immediately if official alert active at drop" case. When an official alert fires during the grace, the `else if` branch (fires on subsequent ticks) cancels the delayed job and posts immediately. 
+
+There's a small edge: `postOfflineAlert(state.lang)` captures `state.lang` from the closure — the coroutine is launched in `scope` (IO), and `state.lang` is a val captured from the lambda parameter, so it's safe.
+
+One more consideration: the `monitorNotification`'s Retry action uses `Strings.get(AppLanguage.EN).offlineRetryAction` — this hardcodes EN for the action label. Since `notifyMonitor` has access to the language via the title/text, but the label is language-specific. Let me make it use the current state language. The `notifyMonitor` is called with the correct offline text in the current language, but the action label is a separate string. Let me pass the language-aware retry label.
+
+Actually, `notifyMonitor` is a plain method without language context. The action label should follow the user's language. Let me pass the retry label string into `monitorNotification`. Let me refactor to pass the retry action label.
+
+Let me look at how notifyMonitor is called and update it to accept a `retryLabel`:
+
+
+## 15/08/2026, 17:28:06
+
+Now update the field type and the two call sites. First the field:
+
+
+## 15/08/2026, 17:28:11
+
+Now the `startForegroundCompat` call (uses `showRetry = false` — change to `null`):
+
+
+
+
+## 15/08/2026, 17:28:17
+
+Now the `handleState` call site uses `showRetry = offline != null`. Change to `retryLabel = if (offline != null) s.offlineRetryAction else null`:
+
+
+## 15/08/2026, 17:28:25
+
+Let me update it properly:
+
+
+## 15/08/2026, 17:28:34
+
+Now rebuild to confirm everything still compiles:
+
+
+## 15/08/2026, 17:28:46
+
+Build succeeds. Let me update the todos to complete.
+
+
+## 15/08/2026, 17:28:46
+
+The user wants:
+1. White bold text, no halo (pure white bold font for the scale label).
+2. A new collapsible "Additional settings" section in Settings, and they mention moving a few existing settings into it (with more coming).
+
+Let me look at how sections/headers work in SettingsScreen and what existing collapsible patterns exist (the disclaimer card uses collapse). Let me examine the SectionHeader and the overall SettingsScreen structure to decide what "a few" settings to move. Let me read more of SettingsScreen to understand the full layout and find good candidates.
+
+
+## 15/08/2026, 17:28:52
+
+Let me look at the `SectionHeader` composable and the rest of the settings sections to identify which settings to move into "Additional settings". Let me read the remaining sections after the alerts section (around lines 460-575 and beyond) to see battery/updates/etc.
+
+
+
+
+## 15/08/2026, 17:28:59
+
+Done. Offline notification feature implemented, builds green, unit tests pass.
+
+**Summary of changes:**
+
+- **NeptunClient.kt** — `NeptunState` gains `offlineSince: Long?` + derived `offlineElapsedSec`; set on `onClosed`/`onFailure`, cleared on `onOpen`; new `retryNow()` forces an immediate reconnect.
+- **Strings.kt** — added 8 offline strings to `StringSet` (UA + EN): status title, body ("Offline for Xm — backup systems active but less reliable. Tap to retry." / UA equivalent), official-sirens line, retry action, minute format, channel name/desc, UI pill format.
+- **AlertService.kt** — new silent `CHANNEL_OFFLINE` (IMPORTANCE_HIGH, vibrate, no siren); one-shot offline alert on drop (immediate if an official alert is active at drop or fires during the 30s grace, else after 30s; cancelled on reconnect); ongoing monitor switches to offline wording with a Retry action; `ACTION_RETRY` handled in `onStartCommand` → `NeptunClient.retryNow()`.
+- **MainViewModel.kt / MainScreen.kt** — `UiState.offlineElapsedSec` surfaced; the header connection pill shows "Offline for Xm" / «Офлайн Xхв» while disconnected.
+- **CHANGELOG.md / ARCHITECTURE.md** updated.
+
+Note: one design detail — the offline monitor body uses the full "backup systems… tap to retry" text (with the Retry action also present). If you'd prefer a shorter "Offline for Xm" body for the ongoing status and reserve the full sentence for the one-shot, let me know and I'll split the strings.
+## 15/08/2026, 17:29:02
+
+Let me look at the SectionHeader composable definition and check where the settings sections are in full order. Let me grep for SectionHeader definition.
+
+
+## 15/08/2026, 17:29:48
+
+I now have a full understanding. Let me also check the existing feature guide strings to update them if needed, and check `Strings.kt` structure for adding the "Additional settings" title. I have enough. Let me form the final plan.
+
+I have all the pieces. Let me now decide which settings to move into "Additional settings". The user said "im sure there are a few we can move in there already, but more coming." Since they're not certain, I should propose a reasonable set and let them confirm. The obvious "secondary/advanced" settings currently top-level: 
+- Siren override (in Alerts) 
+- Battery exemption 
+- The new scale toggle
+
+But rather than over-move and disrupt the existing clean sections, I should ask the user which existing ones to move. However, they said "im sure there are a few we can move in there already" — they want me to decide. Let me propose moving the battery exemption and siren override, plus the new scale toggle, into "Additional settings". 
+
+Actually, let me present the plan and ask which settings to relocate, since that's a design decision with tradeoffs. Let me give a concrete proposal.
+
+Let me finalize the plan.
+
+## Final Plan
+
+### Feature 1: Scale label — white bold font (no background)
+File: `MainScreen.kt` `ScaleIndicator` (lines ~600-612)
+- Remove the `.background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(3.dp))` from the label `Text`.
+- Set the label `Text` style to `color = Color.White`, `fontWeight = FontWeight.Bold`.
+- Keep the alternating bar as-is.
+
+### Feature 2: New "Additional settings" collapsible section + "Show scale" toggle
+This is the larger piece. New collapsible section in `SettingsScreen`, holding the new scale toggle plus a few existing secondary settings (with more coming).
+
+Files:
+1. **`ZonePrefs.kt`** — add `showMapScaleKey`, `showMapScale(): Flow<Boolean>` (default `true`), `setShowMapScale(Boolean)`.
+2. **`MainViewModel.kt`**:
+   - `UiState`: add `showMapScale: Boolean = true`.
+   - `PrefsSnapshot`: add `showMapScale`; wire into combine (add to the second `combine` → extend `AlertConfig` to 7 booleans or add a separate combine; simplest is extending the existing `combine` that already carries `followMe`/`sirenOverride` and threading through `AlertConfig`).
+   - Map into `.copy(showMapScale = prefs.showMapScale)`.
+   - Add `setShowMapScale(Boolean)` public setter.
+3. **`MainScreen.kt`**:
+   - Gate `ScaleIndicator` with `if (uiState.showMapScale)`.
+   - Pass `showMapScale` + `onShowMapScaleChange` into `SettingsScreen`.
+4. **`SettingsScreen.kt`**:
+   - Add params `showMapScale: Boolean`, `onShowMapScaleChange: (Boolean) -> Unit`.
+   - Add a new collapsible "Additional settings" section (`SectionHeader` + a card with a header row that toggles expansion via `AnimatedVisibility`). Inside: the "Show scale" `AlertToggleRow` + selected existing settings moved in.
+5. **`Strings.kt`**: add `showMapScaleTitle`/`showMapScaleDesc`, `additionalSettingsTitle` (+ any descriptions for moved settings) in UA + EN.
+6. **`CHANGELOG.md`**: append `## [Unreleased]` entries.
+7. **`ARCHITECTURE.md`**: no new source files, but `SettingsScreen`/`ZonePrefs` responsibilities could note the new pref (minor; optional).
+
+Build verify: `.\gradlew.bat :app:assembleDebug`.
+
+Now let me ask which existing settings to move into "Additional settings".
+
+
+## 15/08/2026, 17:30:34
+
+The user wants to move only the Battery exemption into the new "Additional settings" collapsible section, plus the new Show-scale toggle.
+
+Now I have a complete, well-formed plan. Let me present it.
+
+## Plan
+
+### Feature 1 — Scale label: white bold font, no background
+**`MainScreen.kt`** — `ScaleIndicator` (~lines 602-612):
+- Remove the label's `.background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(3.dp))` and its `.padding(4.dp, 1.dp)`.
+- Set the label `Text` style to `color = Color.White`, `fontWeight = FontWeight.Bold`.
+- Keep the alternating black/white bar underneath unchanged.
+
+### Feature 2 — New collapsible "Additional settings" section + "Show scale" toggle
+**`ZonePrefs.kt`**:
+- Add `showMapScaleKey = booleanPreferencesKey("show_map_scale")`, `showMapScale(): Flow<Boolean>` (default `true`), `setShowMapScale(Boolean)`.
+
+**`MainViewModel.kt`**:
+- `UiState`: add `showMapScale: Boolean = true`.
+- `PrefsSnapshot`: add `showMapScale`; extend the second `combine` (which currently feeds `AlertConfig` with `redArmed`/`yellowArmed`/`fastAlertsSooner`/`officialAlertsEnabled`/`sirenOverride`/`followMe`) to 7 booleans → thread into `PrefsSnapshot` and into `.copy(showMapScale = ...)`.
+- Add `setShowMapScale(Boolean)` public setter calling `prefs.setShowMapScale`.
+
+**`MainScreen.kt`**:
+- Gate `ScaleIndicator` with `if (uiState.showMapScale)` (lines 401-407).
+- Pass `showMapScale = uiState.showMapScale` and `onShowMapScaleChange = { viewModel.setShowMapScale(it) }` into `SettingsScreen` (line 111 block).
+
+**`SettingsScreen.kt`**:
+- Add params `showMapScale: Boolean` and `onShowMapScaleChange: (Boolean) -> Unit`.
+- Add a new collapsible section placed at the end (after the battery block / before the guide button, or near the bottom): a `SectionHeader(s.additionalSettingsTitle)` + a `Card` whose header row is clickable to toggle an `AnimatedVisibility` body (mirroring the disclaimer collapse pattern). Body contains:
+  - `AlertToggleRow` "Show scale" (`showMapScale` / `onShowMapScaleChange`) — with a ruler icon.
+  - The **Battery exemption** card moved here from its current position (lines ~433-478).
+- Track expansion with a `remember { mutableStateOf(false) }` (default collapsed).
+
+**`Strings.kt`**:
+- UA + EN: `additionalSettingsTitle` ("Додаткові налаштування" / "Additional settings"), `showMapScaleTitle` ("Показати масштаб" / "Show scale"), `showMapScaleDesc` ("Масштабна шкала в нижньому лівому куті карти" / "Scale bar in the map's bottom-left corner").
+
+**`CHANGELOG.md`**: append two `## [Unreleased]` entries (scale toggle + white-font scale label).
+
+**`ARCHITECTURE.md`**: minor — note the new pref in `ZonePrefs` responsibility line (keep docs current).
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+
+No `AlertService` mirroring needed (UI-only setting).
+
+This is my plan. Ready to implement on your go.
+## 15/08/2026, 17:31:44
+
+The user said "git push". There's a skill for this. Let me load it.
+
+
+## 15/08/2026, 17:31:53
+
+```
+git add .
+git commit -m "Add offline notification with 30s grace, retry action, and UI status"
+```

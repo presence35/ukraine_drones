@@ -22,6 +22,7 @@ import org.osmdroid.util.GeoPoint
 
 data class UiState(
     val connected: Boolean = false,
+    val offlineElapsedSec: Long? = null,          // seconds since the stream dropped, null while connected
     val threatsInner: List<Threat> = emptyList(), // within the red zone radius
     val threatsOuter: List<Threat> = emptyList(), // in the yellow ring, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
@@ -33,7 +34,8 @@ data class UiState(
     val fastAlertsSooner: Boolean = true,
     val officialAlertsEnabled: Boolean = true,
     val sirenOverride: Boolean = false,
-    val disabledTypes: Set<ThreatType> = emptySet(),
+    val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
+    val silencedTypes: Set<ThreatType> = emptySet(),    // alerts off (still on the map, dimmed)
     val activeZone: ThreatZone? = null,           // most specific zone with a threat
     val focusOblastAlertActive: Boolean = false,  // official alert on the focus point's oblast
     val focusBannerCity: String = "",             // localized city name for the alert banner
@@ -106,8 +108,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Everything read from prefs whenever any of them changes. */
+    private data class ThreatPrefs(
+        val map: Set<ThreatType>,
+        val alert: Set<ThreatType>,
+        val lang: AppLanguage,
+        val disclaimer: Boolean
+    )
+
     private data class PrefsSnapshot(
-        val enabled: Set<ThreatType>,
+        val mapEnabled: Set<ThreatType>,
+        val alertEnabled: Set<ThreatType>,
         val language: AppLanguage,
         val disclaimerCollapsed: Boolean,
         val redArmed: Boolean,
@@ -158,10 +168,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefsSnapshot = combine(
         combine(
-            threatEnabledFlow(prefs),
+            threatMapFlow(prefs),
+            threatAlertFlow(prefs),
             prefs.language(),
             prefs.disclaimerCollapsed()
-        ) { enabled, lang, disclaimer -> Triple(enabled, lang, disclaimer) },
+        ) { map, alert, lang, disclaimer ->
+            ThreatPrefs(map, alert, lang, disclaimer)
+        },
         combine(
             prefs.redZoneArmed(),
             prefs.yellowZoneArmed(),
@@ -179,9 +192,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ) { pinned, chosen, card -> Triple(pinned, chosen, card) }
     ) { a, b, c ->
         PrefsSnapshot(
-            enabled = a.first,
-            language = a.second,
-            disclaimerCollapsed = a.third,
+            mapEnabled = a.map,
+            alertEnabled = a.alert,
+            language = a.lang,
+            disclaimerCollapsed = a.disclaimer,
             redArmed = b.redArmed,
             yellowArmed = b.yellowArmed,
             fastAlertsSooner = b.fastAlertsSooner,
@@ -227,7 +241,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             neptun = live.neptun,
             redKm = live.redKm,
             yellowKm = live.yellowKm,
-            enabledTypes = prefs.enabled,
+            mapEnabledTypes = prefs.mapEnabled,
+            alertedTypes = prefs.alertEnabled,
             language = prefs.language,
             userLocation = live.userLocation,
             followMe = prefs.followMe,
@@ -260,7 +275,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         neptun: NeptunState,
         redKm: Int,
         yellowKm: Int,
-        enabledTypes: Set<ThreatType>,
+        mapEnabledTypes: Set<ThreatType>,
+        alertedTypes: Set<ThreatType>,
         language: AppLanguage,
         userLocation: LatLng?,
         followMe: Boolean,
@@ -310,7 +326,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         for (t in neptun.threats.values) {
             if (t.status == "resolved" || t.status == "stale" || isExpired(t, now)) continue
-            if (t.type !in enabledTypes) continue
+            if (t.type !in mapEnabledTypes) continue
             t.locality?.takeIf { it in Cities.cityOblast }?.let {
                 cityCounts[it] = (cityCounts[it] ?: 0) + 1
             }
@@ -372,13 +388,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         return UiState(
             connected = neptun.connected,
+            offlineElapsedSec = neptun.offlineElapsedSec,
             threatsInner = inInner,
             threatsOuter = inOuter,
             mapThreats = mapThreats,
             userLocation = userLocation,
             redZoneKm = redKm,
             yellowZoneKm = yellowKm,
-            disabledTypes = ThreatType.values().toSet() - enabledTypes,
+            hiddenTypes = ThreatType.values().toSet() - mapEnabledTypes,
+            silencedTypes = ThreatType.values().toSet() - alertedTypes,
             activeZone = activeZone,
             focusOblastAlertActive = focusOblastAlertActive,
             focusBannerCity = focusBannerCity,
@@ -444,8 +462,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setThreatEnabled(type: ThreatType, enabled: Boolean) {
-        viewModelScope.launch { prefs.setThreatEnabled(type, enabled) }
+    fun setThreatMapVisible(type: ThreatType, visible: Boolean) {
+        viewModelScope.launch {
+            prefs.setThreatMapVisible(type, visible)
+            if (!visible) prefs.setThreatAlertsEnabled(type, false)
+        }
+    }
+
+    fun setThreatAlertsEnabled(type: ThreatType, enabled: Boolean) {
+        viewModelScope.launch { prefs.setThreatAlertsEnabled(type, enabled) }
     }
 
     fun setDisclaimerCollapsed(collapsed: Boolean) {

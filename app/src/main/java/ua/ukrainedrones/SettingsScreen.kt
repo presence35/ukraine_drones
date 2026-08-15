@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -60,7 +61,8 @@ private val UkraineBlue = Color(0xFF005BBB)
 @Composable
 fun SettingsScreen(
     lang: AppLanguage,
-    disabledTypes: Set<ThreatType>,
+    hiddenTypes: Set<ThreatType>,
+    silencedTypes: Set<ThreatType>,
     fastAlertsSooner: Boolean,
     officialAlertsEnabled: Boolean,
     sirenOverride: Boolean,
@@ -74,7 +76,8 @@ fun SettingsScreen(
     latestVersion: String?,
     onBack: () -> Unit,
     onLanguageChange: (AppLanguage) -> Unit,
-    onThreatToggle: (ThreatType, Boolean) -> Unit,
+    onThreatMapToggle: (ThreatType, Boolean) -> Unit,
+    onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
     onFastAlertsSoonerChange: (Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
@@ -261,22 +264,18 @@ fun SettingsScreen(
                 val description = if (lang == AppLanguage.UA) info.descriptionUa else info.descriptionEn
                 val details = if (lang == AppLanguage.UA) info.detailsUa else info.detailsEn
                 val joke = if (lang == AppLanguage.UA) info.jokeUa else info.jokeEn
-                val enabled = type !in disabledTypes
+                val onMap = type !in hiddenTypes
+                val onAlerts = type !in silencedTypes
                 val typicalSpeed = typicalSpeedKmh(type)?.roundToInt()
                 val expanded = expandedType == type
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    border = if (enabled) {
-                        androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                    } else null
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Column {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onThreatToggle(type, !enabled) }
-                                .padding(horizontal = 14.dp, vertical = 12.dp)
-                                .alpha(if (enabled) 1f else 0.45f),
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -308,13 +307,35 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            ThreatToggleCard(
+                                icon = Icons.Filled.Place,
+                                label = s.threatMapLabel,
+                                on = onMap,
+                                forcedOff = !onMap,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onThreatMapToggle(type, !onMap) }
+                            )
+                            ThreatToggleCard(
+                                icon = Icons.Filled.Notifications,
+                                label = s.threatAlertLabel,
+                                on = onAlerts,
+                                forcedOff = !onMap,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onThreatAlertToggle(type, !onAlerts) }
+                            )
+                        }
                         AnimatedVisibility(visible = expanded) {
                             val context = LocalContext.current
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(start = 14.dp, end = 14.dp, bottom = 16.dp)
-                                    .alpha(if (enabled) 1f else 0.45f)
                             ) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 Spacer(Modifier.height(12.dp))
@@ -594,6 +615,49 @@ private fun AlertToggleRow(
         }
         Spacer(Modifier.width(8.dp))
         Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
+private fun ThreatToggleCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    on: Boolean,
+    forcedOff: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val enabled = on && !forcedOff
+    Card(
+        modifier = modifier
+            .clickable(enabled = !forcedOff) { onClick() }
+            .alpha(if (enabled) 1f else 0.55f),
+        border = if (enabled) {
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        } else null
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (enabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp)
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
