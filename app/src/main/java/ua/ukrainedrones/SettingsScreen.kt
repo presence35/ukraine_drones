@@ -78,6 +78,8 @@ fun SettingsScreen(
     onLanguageChange: (AppLanguage) -> Unit,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
     onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
+    onThreatMapToggleAll: (Boolean) -> Unit,
+    onThreatAlertToggleAll: (Boolean) -> Unit,
     onFastAlertsSoonerChange: (Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
@@ -253,11 +255,54 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            s.approxNote,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
 
             item { SectionHeader(s.threatsLabel, rememberVectorPainter(Icons.Default.Warning)) }
+            item {
+                val allMapOn = hiddenTypes.isEmpty()
+                val allAlertsOn = silencedTypes.isEmpty()
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Text(
+                            s.allThreatsLabel,
+                            modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            ThreatToggleCard(
+                                icon = Icons.Filled.Place,
+                                label = s.allMapLabel,
+                                on = allMapOn,
+                                forcedOff = false,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onThreatMapToggleAll(!allMapOn) }
+                            )
+                            ThreatToggleCard(
+                                icon = Icons.Filled.Notifications,
+                                label = s.allAlertLabel,
+                                on = allAlertsOn,
+                                forcedOff = !allMapOn,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onThreatAlertToggleAll(!allAlertsOn) }
+                            )
+                        }
+                    }
+                }
+            }
             items(ThreatType.values().toList()) { type ->
                 val info = ThreatTypeCatalog.INFO.getValue(type)
                 val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
@@ -285,7 +330,11 @@ fun SettingsScreen(
                                 modifier = Modifier.size(36.dp)
                             )
                             Spacer(Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { expandedType = if (expanded) null else type }
+                            ) {
                                 Text(label, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(2.dp))
                                 Text(
@@ -317,7 +366,7 @@ fun SettingsScreen(
                                 icon = Icons.Filled.Place,
                                 label = s.threatMapLabel,
                                 on = onMap,
-                                forcedOff = !onMap,
+                                forcedOff = false,
                                 modifier = Modifier.weight(1f),
                                 onClick = { onThreatMapToggle(type, !onMap) }
                             )

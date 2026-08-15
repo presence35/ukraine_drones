@@ -14022,3 +14022,23 @@ In Settings, the new map/alerts toggles for each threat can't be turned back on.
 add an "All [map] [alerts]" section at the top of the Threats section to toggle everything.  rephrase the "turning off..." helper text, it was better before; i think it's clear what each toggle would do.
 
 also, now that the alerts are the toggle, not the card itself, the exapnd caret can respond to the full text as well.
+## 15/08/2026, 18:19:35
+
+https://dimap.live/
+
+can we use this?
+## 15/08/2026, 18:24:54
+
+but if their data is independt from neptun, it's a good backup.  maybe it's better data? 
+## 15/08/2026, 18:25:29
+
+go
+## 15/08/2026, 18:28:22
+
+what's their docs url, i'llr ead myself
+## 15/08/2026, 18:28:40
+
+go
+## 15/08/2026, 18:35:22
+
+"all types" is not distinct enough.  and in gneearl the toggle buttons are too big, now the page scrosllf for hours.  prob better to put them stacked, on the right side of each threat.  then the top "all types" will be more distinct.  also, organize them into threat levels, high,med,low, or fast,slow? suggestions?

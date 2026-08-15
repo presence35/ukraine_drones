@@ -18,6 +18,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -61,12 +63,6 @@ fun ThreatPopupCard(
     interactive: Boolean = true
 ) {
     val s = Strings.get(lang)
-    val distLabel = pinnedCity?.let {
-        String.format(
-            s.distanceToCityFormat,
-            if (lang == AppLanguage.UA) it.nameUa else it.nameEn
-        )
-    } ?: s.distanceLabel
     val typeInfo = ThreatTypeCatalog.INFO.getValue(threat.type)
     val typeLabel = if (lang == AppLanguage.UA) typeInfo.labelUa else typeInfo.labelEn
 
@@ -105,27 +101,6 @@ fun ThreatPopupCard(
         null -> Color(0xFF9E9E9E)
     }
 
-    val distColor = when {
-        distUser == null -> Color(0xFF9E9E9E)
-        distUser < 5.0 -> DistUserRed
-        distUser < 15.0 -> DistUserAmber
-        else -> DistUserGreen
-    }
-    val summary = buildAnnotatedString {
-        if (distUser != null) {
-            withStyle(SpanStyle(color = distColor, fontWeight = FontWeight.SemiBold)) {
-                append("$distLabel: ${formatKm(distUser)} ${s.kmUnit}")
-            }
-            proximity.etaToUserMin?.let { eta ->
-                append(" · ${s.etaLabel} ${formatEtaMinutes(eta)}")
-            }
-        } else {
-            withStyle(SpanStyle(color = Color(0xFF9E9E9E))) {
-                append(s.gpsOffLabel)
-            }
-        }
-    }
-
     Surface(
         modifier = modifier
             .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
@@ -157,10 +132,11 @@ fun ThreatPopupCard(
                             color = Color.White
                         )
                         Spacer(Modifier.height(2.dp))
-                        Text(
-                            summary,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = distColor
+                        SummaryPills(
+                            proximity = proximity,
+                            pinnedCity = pinnedCity,
+                            s = s,
+                            lang = lang
                         )
                     }
                     Spacer(Modifier.width(10.dp))
@@ -218,22 +194,12 @@ fun ThreatPopupCard(
                     }
 
                     Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            summary,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFB0B0B0),
-                            modifier = Modifier.weight(1f)
-                        )
-                        proximity?.speedKmh?.let { speed ->
-                            Spacer(Modifier.width(8.dp))
-                            SpeedPill(
-                                speedKmh = speed,
-                                recorded = proximity.speedSource == SpeedSource.RECORDED,
-                                s = s
-                            )
-                        }
-                    }
+                    SummaryPills(
+                        proximity = proximity,
+                        pinnedCity = pinnedCity,
+                        s = s,
+                        lang = lang
+                    )
 
                     Spacer(Modifier.height(10.dp))
                     HorizontalDivider(color = Color(0xFF3A3A3A))
@@ -312,24 +278,14 @@ fun ThreatPopupCard(
                             }
                         }
 
-                        // Always-visible summary: distance to the user + ETA + the speed pill.
+                        // Always-visible trio: distance + ETA + speed pills.
                         Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                summary,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFB0B0B0),
-                                modifier = Modifier.weight(1f)
-                            )
-                            proximity?.speedKmh?.let { speed ->
-                                Spacer(Modifier.width(8.dp))
-                                SpeedPill(
-                                    speedKmh = speed,
-                                    recorded = proximity.speedSource == SpeedSource.RECORDED,
-                                    s = s
-                                )
-                            }
-                        }
+                        SummaryPills(
+                            proximity = proximity,
+                            pinnedCity = pinnedCity,
+                            s = s,
+                            lang = lang
+                        )
                         Spacer(Modifier.height(4.dp))
 
                         Spacer(Modifier.height(10.dp))
@@ -524,26 +480,85 @@ private fun ThreatLevelGauge(level: Double) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SpeedPill(speedKmh: Double, recorded: Boolean, s: Strings.StringSet) {
-    val accent = if (recorded) DistUserGreen else DistUserAmber
-    Surface(shape = RoundedCornerShape(50), color = accent.copy(alpha = 0.18f)) {
+private fun SummaryPills(
+    proximity: ThreatProximity?,
+    pinnedCity: City?,
+    s: Strings.StringSet,
+    lang: AppLanguage
+) {
+    val distUser = proximity?.distToUserKm
+    if (distUser == null) {
         Text(
-            "${speedKmh.roundToInt()} ${s.speedUnit}",
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-            color = accent,
-            fontWeight = FontWeight.Medium,
-            style = MaterialTheme.typography.labelMedium
+            s.gpsOffLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF9E9E9E)
         )
+        return
+    }
+    val cityName = pinnedCity?.let { if (lang == AppLanguage.UA) it.nameUa else it.nameEn }
+    val distCd = if (cityName != null) {
+        String.format(s.pillDistanceCd, cityName, formatKm(distUser))
+    } else null
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        MetricPill(
+            number = formatKm(distUser),
+            unit = s.kmUnit,
+            contentDescription = distCd
+        )
+        proximity.etaToUserMin?.let { eta ->
+            MetricPill(
+                number = formatEtaMinutes(eta),
+                unit = s.etaUnit
+            )
+        }
+        proximity.speedKmh?.let { speed ->
+            MetricPill(
+                number = speed.roundToInt().toString(),
+                unit = s.speedUnit
+            )
+        }
+    }
+}
+
+/** Neutral, low-color pill where the number is the hero and the unit stays muted. */
+@Composable
+private fun MetricPill(number: String, unit: String, contentDescription: String? = null) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(0xFF2A2A2A)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                number,
+                color = Color(0xFFCFCFCF),
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.semantics {
+                    if (contentDescription != null) this.contentDescription = contentDescription
+                }
+            )
+            Spacer(Modifier.width(2.dp))
+            Text(
+                unit,
+                color = Color(0xFF9E9E9E),
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
     }
 }
 
 private fun formatKm(km: Double): String = km.roundToInt().toString()
 
-private fun formatEtaMinutes(min: Double): String {
-    val m = min.roundToInt().coerceAtLeast(1)
-    return if (m < 60) "${m}m" else "${m / 60}h ${m % 60}m"
-}
+private fun formatEtaMinutes(min: Double): String =
+    min.roundToInt().coerceAtLeast(1).toString()
 
 /** Maps uncertainty km to a 1–5 quality rating (more bars = tighter fix). */
 private fun uncertaintyBars(km: Double): Int {

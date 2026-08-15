@@ -30326,3 +30326,682 @@ Verified: `:app:assembleDebug` and `:app:testDebugUnitTest` both green.
 
 I'll research the codebase to understand the current Settings UI and the map/alerts toggle implementation before forming a plan.
 
+
+## 15/08/2026, 18:17:47
+
+I need to look at the SettingsScreen and related files. Let me examine the relevant code.
+
+
+## 15/08/2026, 18:18:03
+
+Now I understand the issue. Looking at `ThreatToggleCard`:
+
+```kotlin
+val enabled = on && !forcedOff
+Card(
+    modifier = modifier
+        .clickable(enabled = !forcedOff) { onClick() }
+```
+
+The click handler is `enabled = !forcedOff`, meaning the card is only clickable when `!forcedOff`. And `forcedOff = !onMap`. So when a type is hidden from map (`onMap == false`, `forcedOff == true`), the card becomes unclickable — so you can't toggle the map back on. This is the bug: the map toggle can't be turned back on once turned off.
+
+Also, the alert toggle has `forcedOff = !onMap`, meaning when map is off, alerts are forced off AND unclickable. So turning map off disables both toggles and you can't turn anything back on.
+
+Now let me look at the other files: `Strings.kt` (for helper text), `ZonePrefs.kt`, and `MainViewModel.kt` for the toggle handlers. Let me also check how hiddenTypes/silencedTypes and the toggle callbacks work.
+
+Let me look at the relevant strings and the MainViewModel wiring.
+
+
+## 15/08/2026, 18:18:13
+
+Let me look at the key parts: `Strings.kt` around the threatsLabel, `ZonePrefs.kt` around setThreatMapVisible/setThreatAlertsEnabled and the flows, and `MainViewModel.kt` around the toggle handlers.
+
+
+## 15/08/2026, 18:18:31
+
+Now I understand the coupling. When you turn map off (`setThreatMapVisible(type, false)`), it also sets alerts off. And in the UI, `ThreatToggleCard` gets `forcedOff = !onMap`, which makes it unclickable — so you can't turn the map back on. That's the bug: **once map is off, the card is disabled (`clickable(enabled = false)`), so you can't toggle it back on.**
+
+Let me look at the Strings.kt for the relevant labels and the threatsLabel helper text (EN and UA), plus the guideToggles text. Let me read the relevant section of Strings.kt.
+
+
+## 15/08/2026, 18:18:41
+
+Now let me look at the Strings.kt definition to understand the fields, and also the git log/CHANGELOG to understand what "the helper text was better before" means. Let me check the git history for the threatsLabel change.
+
+
+## 15/08/2026, 18:18:46
+
+Let me find the prior version of `threatsLabel` to understand what "the helper text was better before" means. Let me check the git history of Strings.kt.
+
+
+## 15/08/2026, 18:19:20
+
+The prior version was "Threats — tap to toggle" (UA: "Загрози — натисни, щоб увімкнути"). The user says the helper text was better before and it's clear what each toggle does. So they want it rephrased to be more like the old one — the current verbose one ("turning off hides them from the map and silences their alerts") is too long/redundant now that there are separate toggles.
+
+Now I have enough understanding. Let me look at the `ThreatToggleCard` more carefully to design the fix for the "can't turn back on" bug, and understand the `forcedOff` coupling.
+
+The bug: When `onMap == false`, `forcedOff = true`, and the card's `clickable(enabled = !forcedOff)` disables it entirely. So the map toggle can't be clicked back on. Also `setThreatMapVisible(type, false)` sets alerts off too.
+
+The user wants:
+1. Fix map toggle so it can be turned back on.
+2. Add an "All [map] [alerts]" section at top of Threats section to toggle everything.
+3. Rephrase helper text back to simpler ("it's clear what each toggle does").
+4. Make the expand caret respond to the full text as well (clicking label/text expands).
+
+Let me look at how the AlertService consumes threatAlertFlow and how the strip uses these, plus check the `setThreatMapVisible` coupling. Also need to understand the "All" toggle semantics — when "All map" is off, presumably all types hidden; when on, all shown.
+
+Let me check the CHANGELOG for context and also how hiddenTypes/silencedTypes are used elsewhere (footer strip) to design the All toggle. Let me check the guideToggles text too since that describes the coupling.
+
+Let me look at MainScreen footer strip usage around 465.
+
+
+## 15/08/2026, 18:19:37
+
+I now have a full understanding. Let me check how the SettingsScreen callers wire the toggle callbacks in MainScreen and whether there are any tests for this logic. I also want to check whether there's a "All" toggle pattern anywhere. Let me also verify the Strings.kt structure to know where to add new strings for the "All" section.
+
+Let me look at the Strings.kt UA/EN sections to know where to add the "All map / All alerts" strings, and the guideToggles text.
+
+
+## 15/08/2026, 18:19:52
+
+I found that DIMAP.LIVE is a real-time air raid / drone / missile tracking map for Ukraine, and it mentions a **WebSocket API** for developers.
+
+Key detail from the page: *"Надаємо доступ до WebSocket API для розробників. Для отримання ключів доступу зв'яжіться з підтримкою."* (We provide WebSocket API access for developers. Contact support to get access keys.)
+
+Before I plan anything, let me understand your project. Let me look at the current architecture.
+
+
+## 15/08/2026, 18:20:04
+
+I now have all the context I need to form a plan. Let me confirm the `ThreatToggleCard` behavior once more and the exact fix needed.
+
+**The bug**: In `ThreatToggleCard` (SettingsScreen.kt:622-662):
+```kotlin
+val enabled = on && !forcedOff
+Card(
+    modifier = modifier
+        .clickable(enabled = !forcedOff) { onClick() }
+```
+When `onMap == false`, `forcedOff = true`, so the card's click is disabled (`clickable(enabled = false)`). The map toggle can never be clicked back on. And since `setThreatMapVisible(false)` also sets alerts off, both are stuck off.
+
+The fix: make the map card always clickable (so it can be turned back on), and only apply the "forcedOff" dimming to the **alerts** card (since alerts are coupled to map visibility). The alert card should be clickable too, so it can be re-enabled.
+
+Now let me finalize the plan.
+
+Let me double check the `ThreatToggleCard` semantics to design properly. `on` is the current state, `forcedOff` is `!onMap`. For the map card: `on = onMap, forcedOff = false` (map card is never forced off). For the alerts card: `on = onAlerts, forcedOff = !onMap` (alerts forced off when map off).
+
+Currently both cards pass `forcedOff = !onMap`. That's the core issue. Map card should pass `forcedOff = false`.
+
+Now for the "All [map] [alerts]" section — need a new section at the top of Threats. It needs two toggle cards "All Map" and "All Alerts" plus new strings. And the semantics: All Map on → show all types; off → hide all. All Alerts on → all alert; off → none alert.
+
+I need to think about how to implement All toggles. Since hiddenTypes/silencedTypes are sets in prefs with per-type keys, an "All" toggle would need to set all types at once. I'll add `onThreatMapToggleAll` / `onThreatAlertToggleAll` callbacks that the ViewModel implements by setting all types.
+
+Now the third request: "now that the alerts are the toggle, not the card itself, the expand caret can respond to the full text as well." Currently only the `IconButton` caret expands. They want clicking the label/text row (the type name + description) to also toggle expansion. So add `.clickable` to the text column that sets `expandedType`.
+
+Let me write the plan. I'll also note the strings to change:
+- `threatsLabel` rephrase to simpler, like old: "Threats — tap to toggle" (UA: "Загрози — натисни, щоб увімкнути"). Actually the old was "tap to toggle". Since now there are explicit Map/Alerts toggles, rephrase to something short. The user said "rephrase the 'turning off...' helper text, it was better before; i think it's clear what each toggle would do." So revert to something like "Threats — tap to toggle" or similar. I'll propose reverting to the prior simpler phrasing.
+- New strings for "All map" / "All alerts".
+
+Let me present the plan.
+
+
+## 15/08/2026, 18:20:20
+
+I understand the project now. Your app currently ingests threat data from NEPTUN (WebSocket + REST) with an oblast-alert backup from alerts.com.ua. DIMAP.LIVE is an alternative/companion data source — a real-time map of air threats (UAVs, missiles, aviation) for Ukraine.
+
+Let me answer your question directly.
+
+## Can we use it? — Yes, but with a caveat
+
+DIMAP.LIVE explicitly provides a **WebSocket API for developers** (their "About" section): *"Надаємо доступ до WebSocket API для розробників. Для отримання ключів доступу зв'яжіться з підтримкою"* — access keys must be requested by contacting their support. So it's usable, but **not keyless** — you'd need to obtain API credentials, and it's a separate agreement (their access may be restricted/rate-limited; note their page even showed "Доступ обмежено" / access-restricted messaging at times).
+
+Key facts:
+- **Data model**: threats (БПЛА/UAV, ракети/missiles, авіація/aviation), launches, air-raid alerts per oblast, course/speed/altitude, aerodromes/launchers. Overlaps heavily with what you already get from NEPTUN.
+- **Access**: WebSocket API requires contacting support for keys — not a self-serve keyless feed like NEPTUN/alerts.com.ua.
+
+## What could it add to your app?
+
+Your app currently only gets *oblast-level* alerts (alerts.com.ua backup) and NEPTUN threats. DIMAP offers:
+1. **Aviation / aerodrome + launch-site tracking** — NEPTUN's coverage is mostly UAVs/missiles; DIMAP emphasizes aircraft and launch points too.
+2. **A second independent threat source** — redundancy, and cross-validation of accuracy (a goal your app already embraces with the NEPTUN/alerts backup pattern).
+
+## Tradeoffs / concerns
+- **Licensing & keys**: must contact their support; terms/availability unknown; risk of access revocation.
+- **Effort**: new client class mirroring `NeptunClient` (WS + reconnection + parsing), plus mirror-rule updates in `MainViewModel` + `AlertService`. Non-trivial.
+- **Redundancy value**: if NEPTUN is already reliable for your use case, DIMAP may be marginal.
+
+Before I write a plan, a few questions:
+
+
+## 15/08/2026, 18:25:05
+
+You're right — and this is a genuinely good idea. Let me verify how the existing backup pattern works so I can assess whether DIMAP fits the same mold, and check the independent-source question.
+
+Let me look at how `AlertsUaClient` and the backup merge work, since that's the established pattern.
+
+
+## 15/08/2026, 18:25:38
+
+Let me start implementing. First, the todo list and reading the exact Strings.kt regions I need to edit.
+
+
+## 15/08/2026, 18:25:45
+
+Let me read the exact lines around the data class fields I need to edit, and the UA/EN value locations.
+
+
+## 15/08/2026, 18:25:50
+
+Now let me make the edits. First, add the fields to the data class after `etaLabel` (line 109).
+
+
+## 15/08/2026, 18:25:53
+
+Now find and update the UA values for `etaLabel`/`gpsOffLabel`. Let me read that region.
+
+
+## 15/08/2026, 18:26:06
+
+The line numbers shifted. Let me grep for the UA etaLabel line now.
+
+
+## 15/08/2026, 18:26:18
+
+Strings.kt done. Now the popup. Let me rework `ThreatPopupCard.kt`. First, replace the `distLabel`/`summary` logic (lines 64-69 and 114-127).
+
+
+## 15/08/2026, 18:26:22
+
+I have everything I need. Here's my plan.
+
+## Plan: Fix Settings threat toggles
+
+### 1. Fix "map toggle can't be turned back on" bug
+**Root cause** — `SettingsScreen.kt:622-662` `ThreatToggleCard`:
+```kotlin
+val enabled = on && !forcedOff
+.clickable(enabled = !forcedOff) { onClick() }
+```
+Both cards pass `forcedOff = !onMap` (lines 320 & 328). When map is off, `forcedOff=true` → the map card's `clickable(enabled=false)` disables it entirely, so it can never be clicked back on. And `MainViewModel.setThreatMapVisible(false)` also silences alerts, so both get stuck off.
+
+**Fix** in the two `ThreatToggleCard` call sites (SettingsScreen.kt:316-331):
+- **Map card**: pass `forcedOff = false` (always clickable).
+- **Alerts card**: keep `forcedOff = !onMap` (still dimmed/disabled while the type is hidden from the map — consistent with the existing coupling). It stays clickable whenever map is on, so alerts can be re-enabled.
+
+`ThreatToggleCard` logic itself stays the same (dimming via `alpha`, border highlight).
+
+### 2. Add "All [map] [alerts]" section at top of Threats
+In `SettingsScreen.kt` right after the `SectionHeader(s.threatsLabel)` item (line 260), add an item with a Card containing two `ThreatToggleCard`s ("All Map" / "All Alerts") side-by-side, plus a small title/label. Wire two new callbacks:
+- `onThreatMapToggleAll(Boolean)` / `onThreatAlertToggleAll(Boolean)`
+- New ViewModel methods `setAllThreatMapVisible(Boolean)` / `setAllThreatAlertsEnabled(Boolean)` that loop over all `ThreatType` values calling `prefs.setThreatMapVisible` / `setThreatAlertsEnabled`. (Mirror the existing per-type methods in MainViewModel.kt:475-484.)
+- New `ZonePrefs` helpers not needed — reuse existing per-type setters.
+- The "All" cards' `on` state = "all types currently on" (e.g. `hiddenTypes.isEmpty()` for map; `silencedTypes.isEmpty()` for alerts).
+
+### 3. Rephrase helper text
+Revert `threatsLabel` in `Strings.kt` (lines 259 & 475):
+- EN: `"Threats — tap to toggle"` (restore prior line)
+- UA: `"Загрози — натисни, щоб увімкнути"`
+
+### 4. Expand caret responds to full text
+In `SettingsScreen.kt` the type row (lines 288-296), wrap the text `Column` (label + description) with `.clickable { expandedType = if (expanded) null else type }` so tapping the name/description toggles expansion too — matching the existing caret `IconButton` behavior (line 299).
+
+### 5. New strings (Strings.kt)
+Add to both UA + EN `StringSet`s:
+- `allMapLabel` / `allAlertLabel` ("All Map" / "All Alerts"; UA: "Уся мапа" / "Усі сповіщення")
+- Possibly a short `allThreatsLabel` header/title like "All" / "Усі"
+
+### 6. CHANGELOG + ARCHITECTURE
+- Append a `## [Unreleased]` entry describing the fix (Settings: per-threat Map toggle can now be turned back on; added "All Map/Alerts" master toggles; caret/tap-to-expand; reverted helper text).
+- ARCHITECTURE.md: no new source files (all changes in existing `SettingsScreen.kt`/`MainViewModel.kt`/`Strings.kt`), and no mirrored invariant is touched — so no doc update needed beyond what's already accurate.
+
+### 7. Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (domain logic untouched, but confirm green)
+
+**Note on the "All" toggle semantics:** because map-off still forces alerts-off, toggling "All Map" off will also silence all alerts (mirrors per-type behavior). I'll keep that consistent unless you want "All Map"/"All Alerts" fully independent.
+
+Want me to proceed with this?
+## 15/08/2026, 18:26:22
+
+Now I have a clear picture. Let me answer your question about **independence** and **data quality**.
+
+## Is DIMAP independent from NEPTUN? — Unknown, need to check
+
+This is the critical question. Your `AlertsUaClient` backup works precisely because **alerts.com.ua is a genuinely independent source** — that's what makes it a real backup.
+
+DIMAP.LIVE says *"Всі дані збираються з відкритих джерел (OSINT)"* (all data collected from open sources). Both NEPTUN and DIMAP likely aggregate from **the same underlying OSINT pools** (e.g., military Telegram channels, radar trackers). If they both source from the same open feeds, DIMAP is **NOT truly independent** — it would fail on an NEPTUN outage for the same reason NEPTUN failed, because the shared source went dark.
+
+I can't confirm their data provenance without deeper research. This is a real risk to the backup idea.
+
+## Is it "better data"? — Maybe, for some types
+
+Based on the site, DIMAP has strengths NEPTUN may not:
+- **Aviation / aerodromes / launch-sites** — explicit focus, likely richer than NEPTUN's
+- **Launch events** (пуски)
+- Real-time course/altitude per target
+
+But "better" is unverifiable without access. And the access model is the real blocker:
+
+## The hard blocker: access
+
+- NEPTUN and alerts.com.ua: **keyless, public** → trivially integrated.
+- DIMAP: **WebSocket API requires contacting support for keys** → not self-serve, terms uncertain, could be revoked, likely rate-limited/paid.
+
+So even if the data were better, it's not a drop-in like the current backups — you'd depend on a discretionary access grant from DIMAP's operator, who may not even want a third-party app (their own app competes).
+
+## My assessment
+
+| Criterion | NEPTUN (current) | alerts.com.ua (backup) | DIMAP (proposed) |
+|---|---|---|---|
+| Keyless/self-serve | ✅ | ✅ | ❌ (support-gated keys) |
+| Independent source | — | ✅ (genuinely) | ⚠️ Unknown (likely OSINT-shared) |
+| Real backup value | — | ✅ | ⚠️ Depends on independence |
+| Covers new data (aviation/launch) | partial | ❌ | ✅ |
+
+**Recommendation:** DIMAP is a reasonable **add-on layer for data NEPTUN lacks** (aviation/launchers), and its value as a *backup* depends entirely on confirming source independence. But two things must be resolved before any build:
+
+1. **Do you have (or can you get) DIMAP API keys?** — without this, nothing is possible.
+2. **Is DIMAP's data actually independent of NEPTUN?** — check their OSINT sources; if they share the same upstream, it's a redundant backup, not a resilient one.
+
+Given the access gating, I'd scope this as a **research + feasibility task first**: get keys, inspect the WS schema, and confirm data provenance — before touching the codebase. The code architecture (mirror rule, backup merge) already supports adding a second threat stream cleanly, so the *code* work is modest; the *risk* is all in access and independence.
+
+Want me to research DIMAP's API docs / data provenance further, or is getting the access keys the next step on your side?
+## 15/08/2026, 18:26:23
+
+Now replace the `distColor`/`summary` block. Let me re-read the current region (shifted by -5 lines from original).
+
+
+## 15/08/2026, 18:26:33
+
+Now I need to define a composable for the pill trio and wire it into the three sizes. Let me read the current SMALL/MEDIUM/LARGE summary render sites.
+
+
+
+
+## 15/08/2026, 18:26:38
+
+Let me read the SMALL summary render site (before line 138) and the MEDIUM/LARGE sites fully.
+
+
+## 15/08/2026, 18:26:46
+
+Now let me handle the SMALL site. Replace the summary Text (132-137) with the pill trio.
+
+
+## 15/08/2026, 18:26:51
+
+Now the MEDIUM site (194-209):
+
+
+## 15/08/2026, 18:26:55
+
+Now the LARGE site. Let me read it (shifted).
+
+
+
+
+## 15/08/2026, 18:27:07
+
+Now replace the `SpeedPill` composable with `SummaryPills` + `MetricPill`, and update `formatEtaMinutes` to minutes-only with `s` param. Let me read the current SpeedPill/formatEtaMinutes region.
+
+
+
+
+## 15/08/2026, 18:27:16
+
+Now I'll replace the `SpeedPill` composable (481-493) and `formatEtaMinutes` (497-500) with the new pill system. Let me replace the SpeedPill block first.
+
+
+## 15/08/2026, 18:27:21
+
+I used `Modifier.semantics` — I need to import it. Also `FlowRow` and `ExperimentalLayoutApi` are already used (the `@OptIn(ExperimentalLayoutApi::class)` is on `ThreatPopupCard`). But `SummaryPills`/`MetricPill` are separate composables — `FlowRow` is used inside `SummaryPills`, so I need `@OptIn(ExperimentalLayoutApi::class)` on `SummaryPills` too, or it may not compile since it's a separate function.
+
+Let me check imports and add the semantics import.
+
+
+## 15/08/2026, 18:27:25
+
+Now add `@OptIn(ExperimentalLayoutApi::class)` to `SummaryPills` since it uses `FlowRow`. Also I need to check whether `FlowRow` import exists. Let me check the layout imports.
+
+
+## 15/08/2026, 18:27:29
+
+`import androidx.compose.foundation.layout.*` covers FlowRow, and `ExperimentalLayoutApi` is imported via `androidx.compose.foundation.*`? No — it comes from `androidx.compose.foundation.layout.ExperimentalLayoutApi`. Let me check how it's referenced in this file. The `@OptIn(ExperimentalLayoutApi::class)` on `ThreatPopupCard` works because the import is likely from the `*` layout import. But `SummaryPills` is a separate composable needing its own `@OptIn`.
+
+Let me add `@OptIn(ExperimentalLayoutApi::class)` to `SummaryPills`. Let me view its current form.
+
+
+## 15/08/2026, 18:27:44
+
+Now check whether `ExperimentalLayoutApi` is importable from the `layout.*` wildcard. It is (in `androidx.compose.foundation.layout` package). Good.
+
+Now `DistUserRed`/`DistUserAmber`/`DistUserGreen` are still used by `levelColor` (DistUserRed/Amber/Green used in `levelColor`) — let me verify they're all still referenced so there are no unused-import/unused-var warnings (those are fine, not errors). DistUserRed/Amber/Green are used in `levelColor`. Good.
+
+Now the SettingsScreen note. Let me update the todo and add the approxNote row to the card-size card.
+
+
+## 15/08/2026, 18:27:49
+
+Let me check the SettingsScreen imports for icons and the exact card-skull-note block to mimic. Let me view the imports and the block again (lines 237-253).
+
+
+## 15/08/2026, 18:28:07
+
+Now add the approxNote row below the `cardSkullNote` block (lines 237-252). I'll insert a Spacer + a row with an info icon. Let me use an existing icon. `Icons.Default.Warning` is imported. For an "info/approximate" note, `Icons.Default.Info` — but not imported. I'll reuse a text-only muted row to keep it simple, or use Warning. Actually a simple Text row is cleanest. Let me add it after the skull note block.
+
+
+## 15/08/2026, 18:28:17
+
+Now the CHANGELOG. Let me read it.
+
+
+## 15/08/2026, 18:28:23
+
+I'll append an entry under `[Unreleased]`. Let me add it at the top of the list (after line 3 heading, before line 5's first item) — actually the convention here has blank-line-separated groups. I'll add it right after the heading block. Let me insert before line 5.
+
+
+## 15/08/2026, 18:28:28
+
+Now let me update ARCHITECTURE.md since the popup changed — the module map line for ThreatPopupCard mentions "speed, distance/ETA". Let me update it to reflect the pill trio.
+
+
+## 15/08/2026, 18:28:31
+
+I couldn't find a public docs URL on the site — they gate API access behind contacting support ("Для отримання ключів доступу зв'яжіться з підтримкою"). Let me search for any published docs.
+
+
+## 15/08/2026, 18:28:31
+
+Now let me build. First update todos, then run assembleDebug.
+
+
+## 15/08/2026, 18:28:42
+
+No public docs URL exists. All search results are unrelated (Gemini API, crypto exchanges, etc.). DIMAP's API documentation is **not published publicly** — it's gated behind their support contact.
+
+**There is no docs URL to read.** The only API information on dimap.live is a single line in the "About" section:
+
+> "Надаємо доступ до WebSocket API для розробників. Для отримання ключів доступу зв'яжіться з підтримкою."
+> (We provide WebSocket API access for developers. Contact support to get access keys.)
+
+The support contact points on the site are:
+- **Telegram**: https://t.me/di_ukraine (their channel/support)
+- **X/Twitter**: https://x.com/di_ukraine
+
+So to get the docs/schema, you'd need to message them via one of those channels and request API access. The docs (endpoint URL, message format, auth) are only shared after you obtain keys.
+
+That's the answer — there's nothing to read yourself until you get access from their team.
+## 15/08/2026, 18:28:46
+
+The `%1$s`/`%2$d` in my new strings got mangled — the `$` was interpreted by something. Looking at the error: `pillDistanceCd = "Відстань до %1$s: %2$d км"` — the `$` followed by `s`/`d` became an unresolved Kotlin reference. The problem: in Kotlin string literals, `%1$s` is fine normally, but I need to check how other format strings are escaped. Existing ones use `%1\$s` (escaped `$`). My edit used unescaped `$s`. Let me fix both UA and EN `pillDistanceCd` to escape the `$`.
+
+
+## 15/08/2026, 18:28:50
+
+Let me start with the Strings.kt additions. First let me add the new fields to the `StringSet` interface and both UA+EN implementations.
+
+
+## 15/08/2026, 18:29:03
+
+Now the SettingsScreen.kt changes. First, add the new callback params to the function signature:
+
+
+## 15/08/2026, 18:29:17
+
+There are existing StringSet fields `allThreatsLabel`, `allMapLabel`, `allAlertLabel` (lines 669 area) that I missed when reading the data class (it's 651 lines in the original but the read earlier only showed through line 204... wait, the data class ended at 204). Let me check — these fields exist beyond where I saw. The data class declaration extends past line 204. My read only went to 204. Let me look at the actual StringSet data class fields.
+
+Wait — the error is at line 669, which is where the UA or EN StringSet is. It says "No value passed for parameter 'allThreatsLabel'". This means the data class HAS these fields but neither UA nor EN provided values. That's odd — unless these were added in a separate session and the file has them. Wait, my grep earlier for these... Let me check the current Strings.kt data class and see what fields exist that lack values.
+
+Actually the issue: the data class has fields `allThreatsLabel`, `allMapLabel`, `allAlertLabel` but the UA/EN values I haven't seen. Let me look at the file around those. Let me grep.
+
+
+## 15/08/2026, 18:29:19
+
+Now add the "All" section at the top of the Threats section (after the section header item) and fix the per-type toggle call sites + caret expansion. Let me update the section header item block:
+
+
+## 15/08/2026, 18:29:26
+
+Now fix the per-type toggle call sites and the caret expansion. Let me update the text Column to be clickable and the two toggle cards' `forcedOff`:
+
+
+## 15/08/2026, 18:29:32
+
+These fields exist in both UA (268-270) and EN (490-492). So why "No value passed for parameter 'allThreatsLabel'" at line 669? That's confusing. Wait — the error is at line 669:9. Line 669 might be a *third* StringSet construction, or the error points at the EN block. But values exist.
+
+Wait — maybe the error means the data class now has MORE fields than the UA/EN provide. Did my earlier reads show the full data class? No — the data class could have fields after `guideUpdateD3` that I didn't see (my read stopped at 204 which was `guideUpdateD3`). Actually line 204 was `guideUpdateD3: String` and 205 `)`. So the class ends at 205.
+
+Hmm, but the error at 669 says no value passed for allThreatsLabel. Line 669 is past the EN block (598). Let me look at line 660-680.
+
+Wait, maybe the original file already had a compile error unrelated to my changes? No — the previous grep showed the UA/EN blocks have these. Let me actually look at what's at line 669 and around the EN block end.
+
+Actually, wait. My earlier grep of `distanceLabel` etc. returned line numbers in a file that was 651 lines (original). Now the file is 711+ lines after my additions. Line 669 now. Let me read around 660-680.
+
+Actually, the real issue might be that the UA/EN StringSet values I see at 268/490 are inside a DIFFERENT StringSet (maybe there are multiple). Or — more likely — the data class has these fields but the actual UA/EN blocks at 268/490 might not be within the same `StringSet(...)` constructor that line 669 is.
+
+Let me just read lines 660-690 to see what's there.
+
+
+## 15/08/2026, 18:29:36
+
+Now the ViewModel methods. Let me add `setAllThreatMapVisible` and `setAllThreatAlertsEnabled` in MainViewModel.kt after `setThreatAlertsEnabled`:
+
+
+## 15/08/2026, 18:29:41
+
+Now wire it in MainScreen.kt at the SettingsScreen call site (lines 127-128):
+
+
+## 15/08/2026, 18:29:45
+
+Now update CHANGELOG.md. Let me read the top of the file (already saw it) and add an entry.
+
+
+## 15/08/2026, 18:29:54
+
+Now let me build and test. Let me mark todos and run.
+
+
+## 15/08/2026, 18:30:03
+
+The EN block ends at 673. But the compiler error says line 669:9 "No value passed for parameter 'allThreatsLabel'". Wait, the EN block DOES have `allThreatsLabel` at line 490 per grep. So why no value passed?
+
+Hold on — line numbers in the error are from the ORIGINAL file pre-edit, but no. Actually the error "No value passed for parameter" points to line 669 in the current file. But 669 is `guideUpdateSummary = ...`. That's weird.
+
+Wait, maybe the problem is that I added fields `etaUnit`, `approxNote`, `pillDistanceCd` to the data class, and the UA and EN blocks DO have them now (I added). But the error is about `allThreatsLabel` — a pre-existing field. 
+
+Let me reconsider. The compiler is complaining that at the `StringSet(...)` construction, no value was passed for `allThreatsLabel`. This means the UA and EN `StringSet(...)` blocks don't include `allThreatsLabel`. But grep showed `allThreatsLabel = "Усі типи"` at 268 and `"All types"` at 490.
+
+Unless... those lines 268-270 and 490-492 are in a DIFFERENT file or a different StringSet construction. Wait, the grep earlier was on Strings.kt only. So they're in this file.
+
+Hmm, let me reconsider — maybe the UA/EN `StringSet(...)` blocks got corrupted by my edit? No, I only added lines near etaLabel.
+
+Actually wait — the error could be a red herring about line numbers. Let me re-read: "Strings.kt:669:9 No value passed for parameter 'allThreatsLabel'". Perhaps the real StringSet constructor being flagged is a THIRD one. But there are only UA and EN.
+
+Let me look more carefully. Maybe the grep results 268-270/490-492 are NOT inside `private val UA = StringSet(...)` — maybe they're standalone or in a comment. Let me read around 260-275.
+
+Actually — I bet the issue: my edit accidentally inserted the new fields in a way that the UA/EN blocks now have a mismatch. But no, the error is about allThreatsLabel which is at the TOP of the field list (line 47).
+
+Wait, actually — could it be that the file was ALREADY in a broken intermediate state, or that there are actually more StringSet fields than values? Let me check: does the data class have fields that UA/EN are missing? The compiler says allThreatsLabel/allMapLabel/allAlertLabel are missing at 669. But grep shows they're present at 268/490. Contradiction.
+
+Unless the grep line 268/490 are in the UA/EN but I need to verify they're not nested inside something. Let me just read 260-272 and 485-495.
+
+Actually, wait. Let me reconsider the whole thing. The error line 669:9 — in Kotlin, when a named-arg constructor call is missing a parameter, the error is reported at the constructor invocation location. The EN `StringSet(` call — where does it start? Line 490 has `allThreatsLabel = "All types"` which is INSIDE the EN block. So EN block starts before 490. 
+
+Hmm, this is very strange. Let me look at whether maybe there are TWO EN-like blocks, or the `private val EN = StringSet(` and there's a duplicate. Let me just read the region around 480-500.
+
+Actually — simpler theory: The compiler error is reported against the OLD compiled stubs / the error location 669 might just be where the EN constructor closes. But the actual missing values... 
+
+Wait, I should reconsider: did the ORIGINAL file (before my edits) have `allThreatsLabel` etc.? The CHANGELOG mentions "each threat type has two separate controls Map and Alerts". These `allThreatsLabel`/`allMapLabel`/`allAlertLabel` are new-ish fields. They're in the data class AND in UA/EN per grep. 
+
+So the build error "No value passed" is genuinely confusing. Let me re-read my edit to UA. My UA edit replaced:
+```
+        etaLabel = "Час підльоту",
+        gpsOffLabel = "GPS вимкнено — зональні дані недоступні",
+```
+That's fine.
+
+Hmm wait — maybe the issue is that I need to look at whether there are duplicate `etaLabel = ` blocks or whether my edits created a structural problem. Let me actually verify by reading the UA block fully around 320-330 and EN 540-550 to confirm my inserts look right, AND check the allThreats block.
+
+Let me read around the UA allThreats (268) and the EN allThreats (490) and also the region I edited.
+
+Actually, let me step back. The grep says allThreatsLabel = "Усі типи" at line 268 and allThreatsLabel = "All types" at 490. But maybe those aren't being seen because... the compiler reports missing at line 669 (EN constructor). 
+
+OH. I think I understand now. The data class field order matters for named args? No, named args don't need order. 
+
+Let me actually check: maybe there are DUPLICATE data class StringSet definitions and my grep matched only in one. No.
+
+Let me just re-read the relevant regions to diagnose. Let me read 262-272 and 486-494.
+
+Actually — I bet the real issue: when I added 4 lines to the data class (etaUnit, approxNote, pillDistanceCd after etaLabel), and added values to UA and EN, everything is consistent. The compiler error about allThreatsLabel must be a CASCADE from something else. 
+
+Let me reconsider: The line 669 error in the current file is `guideUpdateSummary`. The compiler says "No value passed for parameter 'allThreatsLabel'" AT 669:9. Column 9 is the indentation. This is the EN `StringSet(...)` block's closing — no.
+
+I'm overthinking. Let me just re-read the file around the EN allThreats and the UA allThreats to confirm they're actually in the StringSet constructors and well-formed. Let me also check if maybe the `EN = StringSet(` line and UA block got messed up.
+
+Let me read both regions.The error is puzzling since those fields exist in both blocks. Let me inspect the UA and EN blocks around the allThreats fields and my edits.
+
+
+## 15/08/2026, 18:30:12
+
+Both UA and EN have the fields. So why the "No value passed" error at line 669? This is very strange. The fields exist at 268-270 and 490-492.
+
+Wait — the error was `Strings.kt:669:9 No value passed for parameter 'allThreatsLabel'`. Line 669 in the CURRENT file is `guideUpdateSummary`. But maybe the compiler reported stale line numbers, OR — critical insight — maybe there's ANOTHER `StringSet` constructor somewhere, OR the data class has these fields declared but the UA/EN blocks that the compiler sees are different.
+
+Actually — I bet the real problem: **the data class has these three fields, but did they exist in the data class before my edit, or did I need to check?** My grep showed `val allThreatsLabel` at data class line 47, so they exist. And UA/EN provide them.
+
+Hmm, unless the file I edited isn't the one being compiled, or there's a git state issue. Wait — let me reconsider. The error is only about these 3 fields, not about my new fields (etaUnit, approxNote, pillDistanceCd). That means my new fields ARE being satisfied (UA/EN provide them) but allThreatsLabel/allMapLabel/allAlertLabel are NOT.
+
+But grep clearly shows them present. Unless... there are DUPLICATE data class declarations and the UA/EN StringSet I'm looking at isn't the one whose data class got the new fields.
+
+Wait — could it be that these fields were added to the data class but the UA/EN values were provided by a SEPARATE merge that's now inconsistent? No.
+
+Let me reconsider the line number 669. Actually maybe the compiler error line 669 corresponds to a `StringSet` that I'm not seeing. Let me search for all `StringSet(` instantiations.
+
+
+
+
+## 15/08/2026, 18:30:23
+
+Build successful. Now run unit tests:
+
+
+## 15/08/2026, 18:30:31
+
+All green.
+
+
+## 15/08/2026, 18:30:33
+
+Only UA (231) and EN (453). Both contain allThreatsLabel. So the error "No value passed for parameter 'allThreatsLabel'" at 669 makes no sense...
+
+Unless the compiler is operating on a STALE compiled view. Wait — the first build failed with the `%1$s` unresolved reference error. I fixed that. Now the second build says the "No value passed" error. This is a NEW error that appeared.
+
+Oh! I think I understand now. The `%1$s` error in the first build was at `Strings.kt:330:42` and `:549:42` — those are the UA `pillDistanceCd` (330) and EN `pillDistanceCd` (549). After I fixed the escaping, those resolved. Now the new error is about allThreatsLabel.
+
+Wait, but allThreatsLabel exists. Let me reconsider — is it possible that the data class declaration does NOT have `allThreatsLabel`, but grep matched... no, grep matched `val allThreatsLabel: String` at line 47.
+
+Let me look really carefully. Maybe the issue is that the compile is failing at a DIFFERENT place and the "No value passed" is about the StringSet construction being incomplete because the block ends early due to a syntax issue. If there's a syntax error causing the EN `StringSet(` to not include all fields...
+
+Actually, let me reconsider the error location 669. In the current file, line 669 is `guideUpdateSummary`. But wait — the compiler processes and reports. The message "No value passed for parameter 'allThreatsLabel'" reported at the constructor call — but which constructor call is at 669? None; 669 is inside the EN block.
+
+Hmm, actually the Kotlin compiler reports missing-argument errors at the argument list, pointing to a location. When a named-arg call is missing required args, it reports at the call site (the `StringSet(` line), not 669.
+
+Let me reconsider: maybe the line numbers in the error are from a STALE/cached build. Gradle said "33 actionable tasks: 2 executed" — compileDebugKotlin FAILED but it might have used incremental compilation with stale info.
+
+Actually, let me just check: does the current file actually compile logically? Both UA and EN have all fields. Let me verify there isn't a THIRD required field I'm missing. Let me count the data class fields and check both blocks have all.
+
+Actually — the simplest explanation: The `guideTogglesSummary` line 664 says "Each of the 8 threat types has separate Map and Alerts controls." and there's `threatMapLabel`, `threatAlertLabel`, `allThreatsLabel`, `allMapLabel`, `allAlertLabel`. These are fields. Both blocks have them.
+
+Let me look very carefully at whether maybe there's a syntax problem I introduced that makes the parser think the UA/EN block ended early. Let me re-read my UA insert region and EN insert region carefully.
+
+Actually, let me just re-run the build — maybe it was a stale incremental artifact. But first, let me verify the file is syntactically consistent by checking that the data class has exactly the fields and both blocks provide them. Let me look at the data class fields list completely to ensure I didn't create an issue, and check line 47-49 context.
+
+Actually, wait. I just realized — maybe the file has these fields but there's a git conflict or the file was modified between my reads. Let me just look at the actual current state around line 45-50 of the data class and re-run.
+
+Let me re-run the build to see if the error persists (could be stale incremental state). Actually, better: let me do a clean check by reading the data class field count vs block. Let me just re-run the compile — the error might be transient/stale.
+
+Let me reconsider though — the very FIRST build error was `%1$s` unresolved at line 330 and 549. Those are my `pillDistanceCd` lines. After fixing, the SECOND build gives allThreatsLabel error. This strongly suggests the file genuinely has an issue where the EN/UA `StringSet(` doesn't include all fields. But grep shows they do...
+
+Unless the data class itself is fine but I'm miscounting. Let me just carefully verify by reading the data class to confirm allThreatsLabel is a field, and check git diff to see exactly what changed. Let me run git diff on Strings.kt.
+
+Actually, simplest: let me check git status/diff to see the real state.Let me check the git diff to understand the exact state of Strings.kt.
+
+
+## 15/08/2026, 18:30:36
+
+Done. Build and tests pass.
+
+**Changes:**
+- **Fixed map toggle stuck off** — `SettingsScreen.kt`: the Map card now passes `forcedOff = false` so it's always clickable and can be turned back on (the Alerts card stays dimmed/disabled only while its type is hidden from the map).
+- **Added "All types" master row** at the top of the Threats section with "All map" / "All alerts" toggles, wired through new `onThreatMapToggleAll`/`onThreatAlertToggleAll` callbacks → `MainViewModel.setAllThreatMapVisible`/`setAllThreatAlertsEnabled` (`MainViewModel.kt:486`).
+- **Rephrased helper text** back to "Threats — tap to toggle" / "Загрози — натисни, щоб увімкнути" (`Strings.kt:261,477`).
+- **Caret responds to full text** — tapping a threat's name/description now expands it, matching the caret.
+- **CHANGELOG** updated under `[Unreleased]`.
+
+Semantics: turning a type (or "All map") off still silences its alerts, consistent with the existing coupling.
+## 15/08/2026, 18:31:03
+
+Interesting! The git diff reveals something important: the diff includes changes to `threatsLabel`, `threatMapLabel`, `threatAlertLabel`, and additions of `allThreatsLabel`/`allMapLabel`/`allAlertLabel` — but **these are NOT my changes**. My changes were only `etaUnit`, `approxNote`, `pillDistanceCd`. 
+
+The git diff shows the working tree has OTHER uncommitted changes (from previous sessions) — the `allThreatsLabel` etc. and `threatsLabel` changes, `MainScreen.kt`, `MainViewModel.kt`, `SettingsScreen.kt` changes. These are pre-existing uncommitted work in the repo that I should NOT touch.
+
+Wait, but the diff shows these all as part of the working tree diff vs HEAD. So the repo had prior uncommitted changes including adding `allThreatsLabel` etc. to the data class AND to UA/EN blocks. So those fields ARE consistently defined in the working tree.
+
+But the build error says "No value passed for parameter 'allThreatsLabel'" at line 669. Given the diff shows both data class and blocks are consistent... this is genuinely odd.
+
+Hold on — the diff for UA shows `threatsLabel` was CHANGED to "Загрози — натисни, щоб увімкнути" and `allThreatsLabel` ADDED. This is all in the working tree already. And it compiled before (presumably). 
+
+Wait — actually, this might mean the previous session left the file in a state where the DATA CLASS has these fields but maybe the working tree wasn't compiling before either. But the task said the codebase builds.
+
+Let me reconsider the actual error. The error is `Strings.kt:669:9 No value passed for parameter 'allThreatsLabel'`. Let me check: is line 669 inside a StringSet constructor? In the current file line 669 is `guideUpdateSummary` (EN block). But the compiler points there as the location for a missing-argument error on a constructor call. 
+
+Actually, I wonder if the issue is that the EN `StringSet(` block is MISSING `allThreatsLabel` due to the previous session's changes being incomplete. But git diff shows the working tree HAS `allThreatsLabel = "All types"` at line 490.
+
+Wait, let me re-read: the git diff `@@ -472,9 +484,12 @@` adds `allThreatsLabel = "All types"` etc. So in the working tree, the EN block HAS these. 
+
+So why the error? Unless the error is from a STALE incremental compilation. The first build failed during compileDebugKotlin. Gradle may cache the failed module's compilation state. Let me just clean and rebuild, or re-run to see if it's consistent.
+
+Actually, wait — could the issue be that there are TWO StringSet data-class-like definitions, or that my edit to the data class introduced a DUPLICATE field causing a mismatch? No.
+
+Let me look at this from a different angle. The error mentions only `allThreatsLabel`, `allMapLabel`, `allAlertLabel` — exactly the three fields that the previous session ADDED. And it's at line 669. What if the previous session added these fields to the data class and to UA/EN, BUT the previous session's changes to SettingsScreen.kt (53 lines) reference these and the working tree was mid-refactor?
+
+Actually, the most likely explanation: **the working tree does NOT compile even before my changes** — the previous session left it broken, OR these `allThreatsLabel` fields were added but there's an inconsistency.
+
+Let me verify by checking: does the data class have these 3 fields, and do BOTH UA and EN have them? Git diff confirms yes for all three places. 
+
+Hmm, wait. Let me re-read the diff more carefully. The diff shows:
+1. Data class: added `allThreatsLabel`, `allMapLabel`, `allAlertLabel` (line 44-49 area)
+2. UA block: added the three values
+3. EN block: added the three values
+
+All three consistent. So the file SHOULD compile. Unless the build error is stale.
+
+Let me just re-run the build cleanly. Maybe incremental compilation had a stale artifact from the first failed build. Let me run `:app:compileDebugKotlin` again (it's deterministic).
+
+Actually, wait — I should reconsider. The first build (before my fix) gave TWO sets of errors: the `%1$s` errors (mine) AND it stopped. It said "33 actionable tasks: 2 executed" and compileDebugKotlin FAILED. The `%1$s` errors were at 330/549. The SECOND build gave the allThreatsLabel error at 669.
+
+But grep clearly shows allThreatsLabel present in both blocks. This is bizarre. Let me look at line 669 in the ACTUAL current file once more — I read it and it's `guideUpdateSummary`. 
+
+OH WAIT. I think I finally get it. The Kotlin compiler reports the missing-named-argument error at the location of the LAST argument or somewhere, and the line numbers in the error message might correspond to a DIFFERENT compilation unit / the error is a red herring about WHERE. The real problem could be that these three fields exist in the data class but one of the blocks is MISSING them due to a different root cause.
+
+Let me just count: let me verify the data class has exactly the fields and both blocks provide them by doing a precise check. Actually, let me just re-run the build after a clean of the affected classes. Let me run with `--rerun-tasks` or just clean compile.
+
+Actually the cleanest: let me re-read whether the error is reproducible, and if the previous session left the repo in a non-compiling state. Let me stash-check: does HEAD compile? The fields were added in the working tree (uncommitted), so HEAD is fine.
+
+Let me just run the build again to see if it's a consistent error, and if so, investigate line 669 precisely.
+
+Actually — I just realized something crucial. Let me re-examine: maybe the EN block in the CURRENT file does NOT actually contain allThreatsLabel at 490 because that's from a stale grep. No, I READ lines 485-498 directly and saw allThreatsLabel at 490.
+
+Let me look at this completely differently. Let me count total StringSet fields vs what's provided. Actually, let me just try a clean rebuild to rule out stale state.The git diff reveals pre-existing uncommitted changes (from a previous session) that added `allThreatsLabel`/`allMapLabel`/`allAlertLabel` and modified `threatsLabel` etc. These aren't mine. But the build error about those fields is odd since they exist in both blocks. Let me rule out stale incremental state with a clean compile.
+
+
+## 15/08/2026, 18:35:46
+
+Let me look at the current state of the code to understand the layout and the threat catalog to suggest groupings.
+
+
+## 15/08/2026, 18:35:53
+
+Let me look at the ThreatTypeCatalog INFO and the ThreatType enum more closely, plus the ThreatLevel type groupings to inform the grouping suggestion.
+

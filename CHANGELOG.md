@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Settings → Threats: fixed the per-threat "Map" toggle being stuck off once turned off — it can now be switched back on (turning off a type still silences its alerts, and "Alerts" re-enables with it). Added an "All types" master row at the top with "All map" / "All alerts" toggles to switch every type at once.
+- Settings → Threats: tapping a threat's name/description now expands the card, not just the caret. The section helper text is back to the short "Threats — tap to toggle".
+
+- Threat popup: the wordy "Distance / ETA" line and coloured speed pill are replaced with a neutral trio of pills where the number is the hero — «3 км» · «10 хв» · «180 км/год» (EN: `3 km` · `10 min` · `180 km/h`). ETA is shown in minutes only. Pills are muted, wrap-friendly and work in small/medium/large. Settings → threat card size now notes that all numbers in the app are approximate.
 - Zones: red zone radius now adjustable up to 20 km (default 10 km) and yellow zone up to 50 km (default 21 km), for wider-area monitoring.
 - Alerts: oblast alerts now have a real backup system. When the main NEPTUN feed is down or silent for over a minute, the app falls back to an independent official source (alerts.com.ua, the same state data other air-raid aggregators use) so air-raid notifications keep working. When an alert comes from the backup it's tagged in the notification body.
 - Status: the connection pill turns amber and reads "backup" when on the backup source. Tapping it opens a "System status" popup that shows NEPTUN and the backup (alerts.com.ua) each with their own Online/Offline-with-timer indicator, notes that the backup is oblast-level only (no live map positions), and highlights which source is currently in effect.

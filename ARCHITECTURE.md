@@ -63,7 +63,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits. |
 | `SettingsScreen.kt` | Language, map centre (pin city / follow me), per-type toggles + reference photos, threat card size, zone radii, alert toggles, updates, battery exemption, feature guide. |
 | `ZonesSheet.kt` | "Edit zones" bottom sheet with live red/yellow radius sliders. |
-| `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, speed, distance/ETA, precision, reliability, wave size, time since seen. |
+| `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability, wave size, time since seen. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
 | `FeatureDiagrams.kt` | Diagram drawables used by the feature guide. |
 

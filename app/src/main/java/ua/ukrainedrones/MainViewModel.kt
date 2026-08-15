@@ -483,6 +483,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setThreatAlertsEnabled(type, enabled) }
     }
 
+    fun setAllThreatMapVisible(visible: Boolean) {
+        viewModelScope.launch {
+            ThreatType.values().forEach {
+                prefs.setThreatMapVisible(it, visible)
+                if (!visible) prefs.setThreatAlertsEnabled(it, false)
+            }
+        }
+    }
+
+    fun setAllThreatAlertsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            ThreatType.values().forEach { prefs.setThreatAlertsEnabled(it, enabled) }
+        }
+    }
+
     fun setDisclaimerCollapsed(collapsed: Boolean) {
         viewModelScope.launch { prefs.setDisclaimerCollapsed(collapsed) }
     }
