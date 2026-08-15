@@ -30,11 +30,19 @@ data class NeptunState(
     val connected: Boolean = false,
     val lastError: String? = null,
     val offlineSince: Long? = null,
-    val lastAlertAt: Long = 0L
+    val lastAlertAt: Long = 0L,
+    val backupUp: Boolean = false,      // backup source has polled successfully recently
+    val backupLastOkAt: Long = 0L,      // epoch millis of the backup's last successful poll
+    val backupError: String? = null
 ) {
     /** Seconds since the stream dropped, or null while connected. */
     val offlineElapsedSec: Long?
         get() = if (connected) null else offlineSince?.let { (System.currentTimeMillis() - it) / 1000 }
+
+    /** Seconds since the backup last polled successfully, or null while it's healthy. */
+    val backupOfflineElapsedSec: Long?
+        get() = if (backupUp) null else backupLastOkAt.takeIf { it > 0 }
+            ?.let { (System.currentTimeMillis() - it) / 1000 }
 
     /**
      * The backup (alerts.com.ua) contributes only when NEPTUN is down (disconnected) or its
@@ -65,6 +73,9 @@ object NeptunClient {
 
     /** How long NEPTUN's own alert feed may stay quiet before the backup source steps in. */
     const val BACKUP_FALLBACK_MS = 60_000L
+
+    /** How long the backup source may go without a successful poll before it counts as down. */
+    const val BACKUP_HEALTHY_MS = 90_000L
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // keep socket open indefinitely
@@ -111,7 +122,14 @@ object NeptunClient {
     private fun startBackupCollector() {
         scope.launch {
             AlertsUaClient.state.collect { backup ->
-                _state.value = _state.value.copy(backupAlerts = backup.alerts)
+                val up = backup.active && backup.lastOkAt > 0 &&
+                    System.currentTimeMillis() - backup.lastOkAt < BACKUP_HEALTHY_MS
+                _state.value = _state.value.copy(
+                    backupAlerts = backup.alerts,
+                    backupUp = up,
+                    backupLastOkAt = backup.lastOkAt,
+                    backupError = backup.lastError
+                )
             }
         }
     }

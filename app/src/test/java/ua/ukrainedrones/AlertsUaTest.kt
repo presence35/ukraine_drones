@@ -85,4 +85,23 @@ class AlertsUaTest {
         assertEquals(AlertSource.NEPTUN, st.alertSourceFor("Одеськ"))
         assertNull(st.alertSourceFor("Харківськ"))
     }
+
+    @Test
+    fun `backup offline elapsed is null while healthy`() {
+        val st = NeptunState(backupUp = true, backupLastOkAt = System.currentTimeMillis())
+        assertNull(st.backupOfflineElapsedSec)
+    }
+
+    @Test
+    fun `backup offline elapsed counts seconds when down`() {
+        val st = NeptunState(backupUp = false, backupLastOkAt = System.currentTimeMillis() - 65_000)
+        val sec = st.backupOfflineElapsedSec
+        assertTrue(sec != null && sec >= 60)
+    }
+
+    @Test
+    fun `backup offline elapsed null before first success`() {
+        val st = NeptunState(backupUp = false, backupLastOkAt = 0L)
+        assertNull(st.backupOfflineElapsedSec)
+    }
 }

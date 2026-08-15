@@ -38,20 +38,20 @@ class ZonePrefs(private val context: Context) {
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
 
-    /** Red (inner) zone radius in km — slider range 1–5, default max (5). */
+    /** Red (inner) zone radius in km — slider range 1–20, default 10. */
     fun redZoneKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[redZoneKmKey] ?: 5 }
+        context.dataStore.data.map { prefs -> prefs[redZoneKmKey] ?: 10 }
 
     suspend fun setRedZoneKm(km: Int) {
-        context.dataStore.edit { it[redZoneKmKey] = km.coerceIn(1, 5) }
+        context.dataStore.edit { it[redZoneKmKey] = km.coerceIn(1, 20) }
     }
 
-    /** Yellow (outer) zone radius in km — slider range 6–20, default max (20). */
+    /** Yellow (outer) zone radius in km — slider range 21–50, default min (21). */
     fun yellowZoneKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[yellowZoneKmKey] ?: 20 }
+        context.dataStore.data.map { prefs -> prefs[yellowZoneKmKey] ?: 21 }
 
     suspend fun setYellowZoneKm(km: Int) {
-        context.dataStore.edit { it[yellowZoneKmKey] = km.coerceIn(6, 20) }
+        context.dataStore.edit { it[yellowZoneKmKey] = km.coerceIn(21, 50) }
     }
 
     /** Whether the red zone can fire urgent siren alerts. */

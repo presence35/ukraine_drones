@@ -13984,3 +13984,41 @@ im saying a pencil is a bad icon, im saying "edit" is a bad word.  options?
 ## 15/08/2026, 17:49:16
 
 we might add more settings in the quick panel.  I like the gear idea.
+## 15/08/2026, 17:54:35
+
+opening settings hard crashes.
+## 15/08/2026, 17:56:12
+
+put a TEMP toggle in Settings that allows me to test the Neptun system offline.
+## 15/08/2026, 18:02:05
+
+ensure the gear icon slightly smaller than the 2 zone icons.
+## 15/08/2026, 18:04:30
+
+the "online" popup screen was shwoing online, but the header pill showed "online - backup".  That's unintuitive.  If on backup systesms it should be more clear.  it should be a yellow icon and say "backup", and the popup should have clearer descriptions if so.
+
+
+
+## 15/08/2026, 18:07:23
+
+red default 10km
+yellow 21km
+## 15/08/2026, 18:10:16
+
+"online" "offline" w timers, but onlin in the popup, for both primary and backup.
+explain the backup system doesn't have real time map capabilites.  
+## 15/08/2026, 18:11:39
+
+go
+## 15/08/2026, 18:16:55
+
+In Settings, the new map/alerts toggles for each threat can't be turned back on.  i can toggle alerts, but not map.
+
+add an "All [map] [alerts]" section at the top of the Threats section to toggle everything.  rephrase the "turning off..." helper text, it was better before; i think it's clear what each toggle would do.
+## 15/08/2026, 18:17:34
+
+In Settings, the new map/alerts toggles for each threat can't be turned back on.  i can toggle alerts, but not map.
+
+add an "All [map] [alerts]" section at the top of the Threats section to toggle everything.  rephrase the "turning off..." helper text, it was better before; i think it's clear what each toggle would do.
+
+also, now that the alerts are the toggle, not the card itself, the exapnd caret can respond to the full text as well.

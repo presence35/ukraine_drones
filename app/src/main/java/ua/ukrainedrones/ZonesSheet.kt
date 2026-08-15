@@ -43,7 +43,7 @@ fun ZonesEditContent(
         Spacer(Modifier.height(6.dp))
         ZoneRow(
             valueKm = redKm,
-            range = 1f..5f,
+            range = 1f..20f,
             steps = 0,
             accent = RedZoneColor,
             armed = redArmed,
@@ -56,7 +56,7 @@ fun ZonesEditContent(
         Spacer(Modifier.height(8.dp))
         ZoneRow(
             valueKm = yellowKm,
-            range = 6f..20f,
+            range = 21f..50f,
             steps = 0,
             accent = YellowZoneColor,
             armed = yellowArmed,

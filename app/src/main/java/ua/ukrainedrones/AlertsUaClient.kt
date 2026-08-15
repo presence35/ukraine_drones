@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 data class AlertsUaState(
     val alerts: List<OblastAlert> = emptyList(),
     val active: Boolean = false,   // has the backup returned data at least once
+    val lastOkAt: Long = 0L,       // epoch millis of the last successful poll
     val lastError: String? = null
 )
 
@@ -102,7 +103,12 @@ object AlertsUaClient {
                         val parsed = parseStates(body)
                         // Keep last-good on transient failures; only replace on a valid payload.
                         if (parsed != null) {
-                            _state.value = AlertsUaState(alerts = parsed, active = true, lastError = null)
+                            _state.value = AlertsUaState(
+                                alerts = parsed,
+                                active = true,
+                                lastOkAt = System.currentTimeMillis(),
+                                lastError = null
+                            )
                         }
                     } catch (_: Exception) {
                         // Malformed payload — keep current state.

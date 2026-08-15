@@ -28854,3 +28854,1475 @@ Added an independent oblast-alert backup system via **alerts.com.ua** (keyless/p
 - Updated `ARCHITECTURE.md` (module map, data flow, key invariant) + `CHANGELOG.md` Unreleased entry.
 
 Verified: `:app:testDebugUnitTest` and `:app:assembleDebug` both pass.
+## 15/08/2026, 17:54:39
+
+I'll investigate the settings crash. Let me start by reading the architecture doc and finding the settings code.
+
+
+## 15/08/2026, 17:54:44
+
+The settings screen is `SettingsScreen.kt`. Let me read it to find the crash cause.
+
+
+## 15/08/2026, 17:55:08
+
+I notice something important on line 566: there's a stray closing brace `}` right after the `Scaffold` block ends at line 564. Let me re-read lines 560-567 carefully.
+
+Looking at the structure:
+- Line 121: `Scaffold(...) { padding ->`
+- Line 564: `}` closes the Scaffold content lambda
+- Line 566: `}` — an extra closing brace
+
+Wait, but this compiles presumably. Let me look more carefully. The `SettingsScreen` function:
+- Line 62: `fun SettingsScreen(...) {`
+- Line 121: `Scaffold(...) { padding ->` opens lambda
+- Line 564: `}` closes the Scaffold lambda
+- Line 566: `}` closes the function
+
+Actually wait — there might be a missing close somewhere. Let me count. The function opens at line 62. Scaffold opens at 121 with a lambda `{ padding ->`. Inside the Scaffold lambda, LazyColumn opens at 133 with lambda `{`. LazyColumn content closes at 563 `}`. Then 564 `}` closes Scaffold lambda. Then 566 `}` closes the function.
+
+Hmm, that's actually balanced. Let me recount the LazyColumn. Line 133 `LazyColumn(...) {` → lambda. The item blocks each open/close. At 563 `}` closes the LazyColumn content lambda. So 564 closes Scaffold. 566 closes function. That's balanced.
+
+But wait — line 566 has a stray extra `}` and there are only these closes. Let me count more carefully whether the function actually is balanced. Actually there could be an unbalanced brace but Kotlin wouldn't compile, and the user says it hard-crashes at runtime, not compile error. So the braces are balanced.
+
+The crash "opening settings hard crashes" — let me look for what would crash. Let me check `BatteryOptimization.isIgnoringBatteryOptimizations` — but that's called in `remember`. Actually the crash is likely at `batteryOptimized` init.
+
+Let me look at what's referenced. Actually, let me get the actual crash. The user says "hard crashes." Let me check the Drawable resources referenced — `R.drawable.ic_language`, `R.drawable.ic_card_size`, `R.drawable.ic_skull`, `R.drawable.ic_bolt`, `R.drawable.ic_trident`, `R.drawable.ic_volume_up`, `R.drawable.ic_check`, `R.drawable.ic_download`, and the icon res ones. A missing drawable causes a crash when settings opens (resource not found).
+
+Let me check what draws settings. Actually, since settings renders all these drawables immediately, a missing one would crash. Let me check the drawable resources exist.
+
+Let me search for these.
+
+
+## 15/08/2026, 17:55:20
+
+Found it. The settings screen references `R.drawable.shahed` (line 944: `ThreatType.SHAHED -> R.drawable.shahed`), but the drawable directory only has `shahed.webp` — there is **no `shahed` XML drawable**. Note it's a `.webp`, not a `.xml`.
+
+Wait — `shahed.webp` is present, and `R.drawable.shahed` would reference the webp by resource name (webp files are referenced by name without extension). So `R.drawable.shahed` should resolve to `shahed.webp`. That's fine.
+
+Let me check the `ic_settings_ua.xml` and `ic_volume_up.xml` (edited recently). Actually, let me reconsider what "opening settings hard crashes" means. The crash could be at `BatteryOptimization.isIgnoringBatteryOptimizations` or something else. Let me check the recency — `ic_volume_up.xml` was edited 4:53 PM, most recent. Let me look at recent git changes to understand what changed.
+
+
+## 15/08/2026, 17:55:38
+
+SettingsScreen.kt wasn't touched in the last commit. The crash on opening settings — let me look at what `BatteryOptimization` does and check `ic_volume_up.xml` which was just edited (4:53 PM). Let me look at the recently-modified files. Let me check git status to see uncommitted changes.
+
+
+## 15/08/2026, 17:55:48
+
+So SettingsScreen.kt is unchanged from committed state. The crash "opening settings" — let me think about what runs when settings opens. The most suspicious thing is `ic_volume_up.xml` was edited recently (4:53 PM) and `ic_settings_ua.xml` (4:49 PM). Let me check if `ic_volume_up.xml` is malformed, since it's referenced in SettingsScreen line 426.
+
+Let me also check `BatteryOptimization` — the crash could be from calling `isIgnoringBatteryOptimizations`. Let me look at that.
+
+
+## 15/08/2026, 17:55:57
+
+That's fine. Now let me check the recently edited `ic_volume_up.xml` which is referenced in settings. Let me look at it and the other recently modified drawable.
+
+Actually, let me reconsider. "Opening settings hard crashes" — the settings screen is opened from MainScreen via the gear icon. Let me check how SettingsScreen is invoked in MainScreen to see what state it passes, since a crash could come from a null or something passed in. But more likely a resource crash.
+
+Let me look at the `ic_volume_up.xml` (recently modified) and check for the `shahed` webp validity.
+
+Actually, the most likely culprit: line 944 `R.drawable.shahed` references `shahed.webp`. But webp files ARE valid drawables referenced by name. That should be fine.
+
+Let me check whether settings itself crashes due to `ThreatImages` or `painterResource`. Let me focus — the user says "hard crashes" which suggests an uncaught exception. Let me check `ic_volume_up.xml`.
+
+
+## 15/08/2026, 17:56:05
+
+That's fine. Let me check how MainScreen opens settings and passes state — a crash could come from a null `City?` pinnedCity or from `redCities`. But let me check the git log around the drawable changes and the actual crash more systematically.
+
+Let me look at MainScreen to see how SettingsScreen is invoked.
+
+
+## 15/08/2026, 17:56:23
+
+I'm in plan mode. Let me research the current Settings/prefs structure and how the backup fallback is gated, so I can plan the TEMP toggle precisely.
+
+The goal: a TEMP toggle in Settings that forces the app into the offline state so I can test the alerts.com.ua backup path. Let me look at how `ZonePrefs` exposes toggles and how `SettingsScreen` renders them, plus how `backupActive`/`connected` flow through.
+
+
+## 15/08/2026, 17:56:33
+
+The settings screen opens and composes. Now the key question is what specifically hard-crashes. Since this is a "plan mode" task, I need to identify the root cause. Let me look more carefully at the SettingsScreen. 
+
+The suspicious spot is line 348-362: `typicalSpeed?.let` and the `ThreatImages` references. But those only run when expanded.
+
+Let me reconsider. "Opening settings hard crashes" — crashes immediately on open. The `DisposableEffect` calls `BatteryOptimization.isIgnoringBatteryOptimizations` on ON_RESUME — that's fine.
+
+Let me reconsider the drawables. The settings screen renders these drawables immediately on open:
+- `R.drawable.ic_language` (line 186)
+- `R.drawable.ic_card_size` (231)
+- `R.drawable.ic_skull` (244)
+- `R.drawable.ic_bolt` (408)
+- `R.drawable.ic_trident` (417)
+- `R.drawable.ic_volume_up` (426)
+- `R.drawable.ic_check` (440) - only if batteryOptimized
+- `R.drawable.ic_download` (513) - only if update available
+- For each threat type: `iconResFor(type)` → `R.drawable.shahed`, `ic_threat_fpv`, etc.
+
+All these exist. Hmm.
+
+Let me reconsider — maybe the crash isn't in the drawables. Let me look at the `ThreatCardSizeSelector` which uses `ThreatPopupCard` — that's composed immediately on open (line 235). A crash there would happen on open. Let me check `ThreatPopupCard` for something that could crash with `pinnedCity = null`.
+
+Actually, let me step back and check the actual log/error. Let me check if there's a crash log saved, or look at `.opencode/logs`. Actually, better — let me check the git diff of the most recent changes to files that ARE touched and could affect settings. But SettingsScreen wasn't touched.
+
+Wait — let me reconsider. The user reports the bug in the current session. Let me check `ic_settings_ua.xml` — is `ic_settings_ua` used anywhere? And let me check the MainScreen gear icon. Let me check the `version.properties` diff and recent changes.
+
+Actually, let me focus on a likely real cause. Let me check `ThreatPopupCard` with `pinnedCity = null` and `interactive = false`, and also the `SubcomposeLayout` in CardSizeTile — this could cause issues. Let me look at ThreatPopupCard.
+
+Actually, before going deeper, let me check the git diff for `version.properties` — this is uncommitted. That wouldn't crash settings though.
+
+Let me look at whether there's an issue with the `menuAnchor()` API or the material version. Let me check what's most likely. Let me look at the actual most-recently modified source file and the git history of SettingsScreen to understand recent changes.
+
+Let me check the CHANGELOG for hints about recent settings changes.
+
+
+## 15/08/2026, 17:56:44
+
+Now I need to understand how to make the app appear "offline" (so backup kicks in). The `backupActive` is derived from `NeptunState.connected` and `lastAlertAt`. To test offline, I need to force `connected=false` OR force `backupActive=true`.
+
+Two design approaches:
+1. **Force `backupActive=true`** via a TEMP pref — simplest. `backupActive` becomes `tempOffline || !connected || ...`. This makes the union include backup and the pill show "backup" without touching the actual socket.
+2. **Actually stop/disconnect NEPTUN** — heavier, risks reconnect churn.
+
+Approach 1 is cleanest for testing. But there's a subtlety: with `backupActive` forced true but NEPTUN still connected and reporting 0 alerts, the union = neptunAlerts(empty) + backup(alerts). That correctly exercises the backup merge and source tag. Good.
+
+But wait — the user said "test the Neptun system offline", i.e., simulate NEPTUN being offline so the backup path activates. Forcing `backupActive=true` achieves exactly the observable behavior (union includes backup, pill shows backup, source tag in notif). It does NOT stop the real WS, which is fine for a TEMP testing toggle.
+
+However, there's another consideration: the pill currently shows `connected` (green/Online) AND the `· backup` tag. If we force backupActive but NEPTUN is actually connected, the pill shows "Online · backup". That's a good signal that backup is active. Good enough for testing.
+
+Let me check how SettingsScreen builds its settings list and where to add a TEMP toggle, and how toggles are rendered. Let me look at the SettingsScreen structure and the "Alerts" section toggles, plus how MainViewModel/AlertService read prefs so I can wire the new pref into the `backupActive` derivation.
+
+Let me examine SettingsScreen toggles and the MainViewModel prefs reading.
+
+
+## 15/08/2026, 17:56:48
+
+I notice from CHANGELOG line 9: "Settings → Threats: each threat type now has two separate controls". And this is the [Unreleased] section. The current settings screen has the two-toggles feature (lines 316-331). 
+
+Let me focus. The crash on "opening settings". Let me check git to see what changed recently in SettingsScreen and ThreatTypeCatalog that might cause a crash. Let me check the git log for SettingsScreen.kt and the diff between HEAD and working tree isn't there (it's committed). 
+
+Let me look at what could crash on open. The most likely crash-on-open candidates in this screen:
+1. `ThreatTypeCatalog.INFO.getValue(type)` — line 262. If a `ThreatType` enum value isn't in the catalog map, `.getValue` throws `NoSuchElementException` → crash. This is the classic "hard crash opening settings" cause.
+2. `iconResFor(type)` returning a missing drawable.
+
+Let me check `ThreatTypeCatalog.INFO` and `ThreatType.values()`.
+
+
+## 15/08/2026, 17:56:53
+
+Let me look at the SettingsScreen function signature (params), the Alerts section (AlertToggleRow usage), and how the SettingsScreen receives prefs/callbacks. Let me find the Alerts section and the function signature.
+
+
+## 15/08/2026, 17:57:22
+
+The `INFO` catalog has all 8 `ThreatType` values (SHAHED, FPV_LOITERING, CRUISE_MISSILE, BALLISTIC, KAB, AVIATION, RECON, UNKNOWN). So `.getValue(type)` won't throw.
+
+Let me check `typicalSpeedKmh` since it's called at line 269, and `ThreatImages.drawableRes`/`url`. But those are only in expanded section. Let me focus on what renders immediately.
+
+Actually, wait. Let me reconsider the crash. The user says "opening settings hard crashes." Let me look at what's most likely. Let me check the `ThreatPopupCard` used in `CardSizeTile` — it's composed immediately (3 tiles) on settings open. Let me look at it, especially for the "Small" size which is the first thing that renders.
+
+Actually, let me reconsider — the most recently modified source files. The `ic_settings_ua.xml` and `ic_volume_up.xml` were modified today at 4:49 and 4:53 PM. But those are just drawables, not used for crash.
+
+Let me check whether there's a resource issue. Actually, let me look at the MainScreen gear icon reference and whether `ic_settings_ua` is referenced.
+
+Let me step back and think about the `menuAnchor()` deprecation and the `ExposedDropdownMenuBox`. In newer Material3 versions, `menuAnchor()` without params is deprecated but still works. 
+
+Let me actually check the ThreatPopupCard for the crash. Let me look at the CardSizeTile rendering path more carefully — it calls `ThreatPopupCard` with `pinnedCity = null`. Let me check ThreatPopupCard for null-safety with pinnedCity.
+
+Actually, let me reconsider the whole thing. Maybe the crash is simpler. Let me check git diff between HEAD and the previous commit for SettingsScreen to see recent additions. Actually SettingsScreen wasn't in the last commit's stat.
+
+Let me look at ThreatPopupCard since CardSizeTile renders it immediately.
+
+
+## 15/08/2026, 17:57:33
+
+Let me look at the `distanceMeters`/`distLabel` usage and check if `pinnedCity` handling crashes. But `PreviewProximity` already has `distToUserKm`, so it may not use pinnedCity for distance. Let me read the relevant part.
+
+Actually, let me step back and approach this more efficiently. Rather than guessing, let me check if there's a way to identify the actual crash. Let me look at the git history of SettingsScreen to see what was recently added — the crash likely appeared after a recent change. Let me check the diff between the two most recent commits for SettingsScreen and related files.
+
+Actually SettingsScreen.kt wasn't touched in commit cfff054. Let me check a7b5a14 (the one before).
+
+Let me reconsider — maybe I should just check the actual exception. Let me look at ThreatPopupCard rendering since it's the most complex thing rendered on settings open.
+
+
+## 15/08/2026, 17:57:34
+
+I need to understand the full wiring: how `SettingsScreen` params flow from MainActivity/MainScreen, and how the SettingsScreen is opened. Let me read the SettingsScreen signature (lines 62-90) and the Alerts section (395-430), plus how the Alerts toggles are invoked from MainActivity.
+
+The key question for the plan: the TEMP toggle needs to be read by both `MainViewModel` (for the pill) and `AlertService` (for the notification source tag). But `backupActive` is derived inside `NeptunState` which is shared. The cleanest: add a TEMP pref that forces `backupActive=true`, and have the shared `NeptunClient` read it.
+
+But `NeptunState.backupActive` is a pure getter with no access to prefs. Options:
+- (A) Make `backupActive` a **stored** field on `NeptunState`, set by a collector that combines `NeptunClient` state + the temp pref. But `NeptunClient` is a singleton not tied to Context... it uses `ZonePrefs(applicationContext)`? Actually NeptunClient is a pure object with no Context. It can't easily read DataStore prefs.
+- (B) Simpler: The temp offline pref forces `connected=false` in the shared `NeptunState`. Since `backupActive = !connected || ...`, setting connected=false triggers backup. But mutating `connected` on the shared state is hacky and could confuse the watchdog/reconnect logic (which reads its own `connected`).
+
+Let me reconsider. The mirror rule: both MainViewModel and AlertService read `NeptunClient.state`. The `backupActive` getter drives both the pill (via MainViewModel) and the notification source tag (via AlertService). 
+
+Cleanest approach that keeps the shared state logic intact: **have `NeptunState.backupActive` include a forced flag that comes from a source both can observe.** Since `NeptunState` is constructed only by `NeptunClient`, and `NeptunClient` has no Context...
+
+Actually, let me reconsider whether the temp toggle even needs to go through `NeptunClient`. 
+
+Alternative simpler design: The temp toggle forces `backupActive` at the point where it's **derived**. But `backupActive` is derived inside `NeptunState` (shared), so I'd want the forcing to apply there.
+
+Option C: Give `NeptunClient` access to the temp pref. NeptunClient is an `object` with no Context, but it could expose a plain volatile `var forceBackup: Boolean` that MainActivity sets when the pref changes (MainActivity already has a context and reads/writes prefs). Then `NeptunState.backupActive` getter reads `NeptunClient.forceBackup`. When toggled, we also need state to refresh — but `backupActive` is a getter, so any recomposition/collect reads it fresh. However, for the AlertService which collects `NeptunClient.state` (a StateFlow), toggling `forceBackup` alone won't emit a new state value → AlertService won't re-evaluate. So we need to force an emission.
+
+Simplest robust approach: make the temp pref part of `NeptunState` as a **stored field**, and have a small shared mechanism. Since NeptunClient can't read DataStore directly, I'll have MainActivity (which has Context) push the value into NeptunClient via a setter that updates the state.
+
+Let me design:
+- `ZonePrefs`: add `forceOffline(): Flow<Boolean>` (key `temp_force_offline`, default false) + `setForceOffline`.
+- `NeptunClient`: add `fun setForceOffline(force: Boolean)` that does `_state.value = _state.value.copy(forceOffline = force)`. Add `forceOffline` field to `NeptunState`.
+- `NeptunState.backupActive` getter: `get() = forceOffline || !connected || System.currentTimeMillis() - lastAlertAt > BACKUP_FALLBACK_MS`.
+- MainActivity: collect the pref flow and call `NeptunClient.setForceOffline(...)`.
+- SettingsScreen: add a TEMP toggle wired to the pref (via MainActivity callback like the other toggles).
+
+Wait — but `backupActive` is a **getter**, so changing `forceOffline` in state and having the collector re-emit means consumers recompute the getter with the new `forceOffline`. Good, that works because copying the state emits a new value.
+
+Actually, does the AlertService need `forceOffline` at all, or does it just read `backupActive` (getter)? It reads `st.alertSourceFor()` which reads `backupActive`. And the pill in MainScreen reads `uiState.backupActive` (from `neptun.backupActive`). Both derive from the shared state. So pushing `forceOffline` into `NeptunState` via `setForceOffline` is sufficient and keeps the mirror rule intact (no duplicated logic — both read the same derived getter).
+
+But there's the question of where the pref is collected. `MainActivity` collects it (it has Context and already reads prefs for other things). Let me verify MainActivity reads prefs.
+
+Let me check MainActivity and how the SettingsScreen is invoked + prefs collected there.
+
+Let me also reconsider: is forcing `backupActive=true` actually simulating "offline"? The user wants to test "the Neptun system offline". Forc
+## 15/08/2026, 17:57:40
+
+I found a likely crash. In `ThreatPopupCard` at line 100, it calls `effectiveZone(threat, spatial, fastAlertsSooner)`. And line 168: `LevelSkullIcon(level = threatLevel, ...)`. These are rendered immediately in the settings card-size previews.
+
+But wait — the `PreviewThreat` has `type = ThreatType.SHAHED`, and `iconResFor(ThreatType.SHAHED)` returns `R.drawable.shahed` which maps to `shahed.webp`. That's fine.
+
+Let me think about the actual most likely crash. I'm spending a lot of effort guessing. Let me be systematic and check the `typicalSpeedKmh` function and `ThreatImages` since those are settings-specific, plus verify the `effectiveZone` in the preview path.
+
+Actually, let me reconsider. The key difference between settings and the main screen is what's rendered. Let me check `typicalSpeedKmh`.
+
+
+## 15/08/2026, 17:57:52
+
+That's fine. Let me look at `ThreatImages.drawableRes` and `url` — but those only run when a threat card is expanded. 
+
+Let me reconsider the crash more carefully. The settings screen renders immediately:
+1. The disclaimer card
+2. Language section
+3. Map center (PinCityRow with ExposedDropdownMenuBox)
+4. Card size selector (3 CardSizeTiles → ThreatPopupCard SMALL/MEDIUM/LARGE)
+5. All 8 threat type cards
+6. Alerts section
+7. Battery card
+8. Guide button
+9. Update button
+10. Exit button
+
+The crash could be in any. Let me focus on what changed recently. Let me check the git diff of `a7b5a14` and `4e75f7d` to see if SettingsScreen was modified recently.
+
+Actually, let me check the git log for SettingsScreen.kt specifically.
+
+
+## 15/08/2026, 17:58:06
+
+SettingsScreen was changed in a7b5a14 (86 lines). Let me see that diff to identify what was added recently — the crash is likely from that change.
+
+
+## 15/08/2026, 17:58:51
+
+That diff is about the two-toggle feature, nothing crash-y. Let me look at the earlier commit `101f55c` which changed SettingsScreen too, and specifically check what may have introduced a crash. But actually, let me reconsider — the diff for a7b5a14 introduces `Icons.Filled.Place` (line 317). That's a standard material icon, fine.
+
+Let me reconsider the whole problem. "Opening settings hard crashes." Given the code, the most probable crash-on-open candidates that involve resource lookup are in the **card-size previews** (`CardSizeTile` → `ThreatPopupCard`) which render 3 threat cards immediately, and use `iconResFor` / `LevelSkullIcon` / `HorizontalLevelBar`.
+
+But those also run on the main screen for real threats, so unlikely to be settings-specific.
+
+Let me check `git diff 4e75f7d` for SettingsScreen to see if something specific to opening was added. Actually, let me check `101f55c` since that's the next most recent.
+
+Actually, let me approach differently — check whether there's a specific crash from the recently-added drawables. `ic_settings_ua.xml` was modified at 4:49 PM today. Let me check whether that's referenced and valid, but that's for the header gear, not settings screen.
+
+Let me reconsider: perhaps the crash is a resource-not-found on a drawable referenced only in settings. All settings drawables exist. Hmm.
+
+Let me check `LevelSkullIcon` and `HorizontalLevelBar` for potential crashes (e.g., division by zero), since these render in the card-size previews.
+
+Actually, let me look at the `CardSizeTile` `SubcomposeLayout` more carefully — there's a known crash pattern: `subcompose(...)[0]` throws if the subcomposed slot produces 0 placeables. But that's unlikely.
+
+Let me take a more direct approach and actually build/run. But plan mode forbids building. Let me instead check the git diff of `101f55c` for SettingsScreen to find the most recently introduced settings change.
+
+Actually — I should reconsider whether the crash is even in SettingsScreen.kt. Let me check the MainScreen `openSettings` handler (line 305) and `Screen.SETTINGS`. The crash happens when opening. Let me check what `openSettings` does and whether `uiState` fields could be problematic.
+
+Let me look at the openSettings lambda and the autoCheckForUpdates call.
+
+
+## 15/08/2026, 17:59:45
+
+The settings open handler is simple. Let me check `git diff 101f55c` for SettingsScreen — this is the commit before the offline-notification one, and the current state of SettingsScreen likely came from a combination. But actually, let me reconsider.
+
+I've been guessing too much. Let me look at the `Strings` object for the settings strings to make sure none are missing — a `Strings.get(lang)` returning a `StringSet` where a referenced key is null could cause a crash. But null string wouldn't crash, just show blank.
+
+Let me check `typicalSpeedKmh` returns and `roundToInt()` — fine.
+
+Let me reconsider the CardSizeTile SubcomposeLayout. There is a known crash in Compose when a `SubcomposeLayout`'s `subcompose` produces a list and you index `[0]` — if the composable emits zero layout nodes. But `ThreatPopupCard` always emits at least a `Surface`. 
+
+Hmm. Let me actually check if there's a crash related to `Icons.Filled.Place` — `Place` is deprecated in favor of `LocationOn` in some material versions but still exists.
+
+Let me take yet another approach: let me look at the `ThreatImages` since the settings screen now bundles shahed/unknown/ballistic images. Line 364-384. But those only in expanded.
+
+Let me check `git show 101f55c` for the SettingsScreen diff to see the most recent functional change.
+
+Actually, I realize I should reconsider whether the crash is a **resource-not-found** for a drawable that was **renamed**. The CHANGELOG (line 24) says "Shahed, Unknown and Ballistic reference photos are now bundled in the app." And `ThreatImages.drawableRes(type)` is used. Let me check `ThreatImages.kt` for the drawable resource names it references — if it references a non-existent drawable, then **expanding** the Shahed/Unknown/Ballistic card would crash, but not on open.
+
+Let me look at ThreatImages.kt.
+
+
+## 15/08/2026, 18:00:52
+
+`ThreatImages` references `R.drawable.threat_shahed`, `threat_unknown`, `threat_ballistic` from `drawable-nodpi/`. Let me check those exist. These are only used when a threat card is **expanded** in settings, not on open. But still let me verify.
+
+Actually, I keep going down rabbit holes on expanded-only code. The crash is on **opening**. Let me focus strictly on what composes immediately on open.
+
+Let me reconsider: The settings screen is an overlay. When opened, `MainScreen` still shows the map behind. Could the crash be a **duplicate composition / BackHandler** or something with the map? No.
+
+Let me re-examine: could the crash be from `Strings` missing a key that's called with an operation? E.g. `s.distanceToCityFormat` used with `String.format` in ThreatPopupCard — if that string contains a literal `%` not meant as a format specifier, `String.format` would throw `UnknownFormatConversionException`. That IS a hard crash! And it happens in `CardSizeTile` → `ThreatPopupCard` which renders on settings open.
+
+`String.format(s.distanceToCityFormat, ...)` at ThreatPopupCard.kt:65. But `pinnedCity = null` in the preview, so `distLabel = s.distanceLabel` (the else branch), so String.format isn't called. Hmm.
+
+Wait — actually let me reconsider. There's also `summary`/`formatKm` etc. Let me check `Strings` for any format-string issues used in the preview path: `s.distanceLabel`, `s.kmUnit`, `s.etaLabel`, `s.gpsOffLabel`, and `formatEtaMinutes`. If `s.distanceToCityFormat` had `%` issues it wouldn't matter here since pinnedCity is null.
+
+Let me look at `Strings` for `distanceToCityFormat` and check for a malformed format string, and also check the settings-specific strings that render on open. Actually, let me reconsider — the real on-open crash. Let me look at what `Strings` keys are referenced and whether `String.format` is used elsewhere in the immediate render path.
+
+Let me grep for `String.format` in the files that render on settings open.
+
+Actually — let me step back and reconsider the SubcomposeLayout in CardSizeTile, since that's genuinely settings-specific and runs on open. A common hard crash there: `subcompose("preview-card"){...}[0]` — if the content throws during measure. But more relevantly, `ThreatPopupCard` uses `rememberScrollState()` and `verticalScroll`, inside a `Box` with fixed width and `graphicsLayer` scale. 
+
+I'm going in circles. Let me check `git show 101f55c` diff for SettingsScreen — that's the commit right before, likely where the crash was introduced, and compare against the working tree. Actually the working tree == HEAD for SettingsScreen.
+
+Let me reconsider the actual report timing. The user just said "opening settings hard crashes." Let me check whether there's a crash log. Let me look at the `.opencode/logs` directory for the most recent session which may have hit this.
+
+Actually, a smarter move: let me check the `Strings` `distanceToCityFormat` value and other format strings, and also check `git diff` for version.properties (uncommitted) — could indicate a recent build. But let me grep for `String.format` usages in the on-open settings render path and validate format strings.
+
+Let me search Strings.kt for format strings.
+
+
+## 15/08/2026, 18:01:02
+
+The format strings look fine (`%1$s`). Not the crash.
+
+I've spent significant effort guessing. Let me take a more decisive approach: check the git diff between the two most recent commits for the **full** set of files, and check the `.opencode/logs/replies.md` which may document what was recently worked on / what crash was seen. But more practically, let me look at the actual crash by examining `LevelSkullIcon` and `HorizontalLevelBar` — these render in the card-size preview on open, and if there's a division-by-zero or resource issue they'd crash on open.
+
+Let me look at those in ThreatPopupCard.kt.
+
+
+## 15/08/2026, 18:01:30
+
+All drawables exist. `ic_skull` exists. 
+
+Let me reconsider. I've been searching the wrong places. Let me look at the git diff for the whole SettingsScreen across the relevant commits to find what specifically might crash on open. Actually, let me check `101f55c` which modified SettingsScreen with 86 lines too — this may be where the "card size selector" or "subcompose" was added.
+
+Actually, let me reconsider the SubcomposeLayout more carefully — this is the most settings-specific, most complex, crash-prone code that runs immediately on open. Let me look at the `CardSizeTile` again. There's a subtle issue:
+
+```kotlin
+val scale = constraints.maxWidth.toFloat() / nominalW
+```
+
+If `constraints.maxWidth` is unbounded (Infinity), `scale` becomes Infinity and `layout(constraints.maxWidth, height)` with Infinity maxWidth crashes or the placeable measure with `maxHeight = Constraints.Infinity` and a huge scale. But in practice within a Row with `weight(1f)` it's bounded.
+
+Actually wait — there's a real bug: `ThreatPopupCard` uses `verticalScroll` (line 131), and inside `SubcomposeLayout` it's measured with `maxHeight = Constraints.Infinity`. A `verticalScroll` composable measured with unbounded height is fine (it scrolls). 
+
+Hmm. Let me look at whether `CardSizeTile` is actually the culprit by checking the git blame/recent addition. Let me check `git show 101f55c --stat` for SettingsScreen.
+
+Let me stop guessing and look at the actual most recent uncommitted change (`version.properties`) plus reconsider. Actually, let me reconsider whether the crash could be a **type initialization order** issue.
+
+Let me re-examine line 100 in ThreatPopupCard: `effectiveZone(threat, spatial, fastAlertsSooner)`. This runs on open for the previews. `effectiveZone` uses `FAST_THREAT_TYPES`. For PreviewThreat (SHAHED), `fastAlertsSooner=true`. Let me verify `effectiveZone` handles this. This is domain logic already tested. Probably fine.
+
+Let me take the decisive path and actually look at what changed in `101f55c` for SettingsScreen — I'll get the diff.
+
+Actually — let me reconsider. Maybe the crash is simpler and I'm overthinking. Let me re-read the `PinCityRow` / `ExposedDropdownMenuBox`. In newer Material3, `menuAnchor()` (no-arg) was deprecated and **in Material3 1.2.0+** the no-arg `menuAnchor()` was changed/removed, but it still compiles. Not a crash.
+
+Let me check the material3 version in build.gradle and whether `menuAnchor()` with no args could crash. Actually a common crash: `menuAnchor()` requires the `ExposedDropdownMenuBoxScope`. Fine here.
+
+I think I need to actually look at the crash empirically. Since I can't build in plan mode, let me check the `.opencode/logs` to see if there's context about what the user was doing / a stack trace.
+
+Let me check the git diff of the working tree's version.properties and look at recent logs for crash context.
+
+Actually, let me reconsider — the settings screen `CardSizeTile` renders `ThreatPopupCard` with `interactive = false` and inside a `Box` scaled by `graphicsLayer`. Let me check the `ThreatPopupCard` for the SMALL size rendering a `HorizontalLevelBar` — let me check `fontScale()` and `fontAware`. If `fontScale` reads a setting that's not available in preview context... but it's runtime, not preview.
+
+Let me look at `fontScale()` and `HorizontalLevelBar`/`LevelSkullIcon` since they render on open in the previews.
+
+Actually, I realize I should just look at the git history diff for SettingsScreen in commit 101f55c to see the card-size selector addition, which is the newest on-open feature. Let me do that.
+
+
+## 15/08/2026, 18:01:36
+
+Card-size selector wasn't added in 101f55c. Let me check which commit added the `CardSizeTile`/`SubcomposeLayout`.
+
+
+## 15/08/2026, 18:01:37
+
+Simple scope. Let me verify the gear icon is available in the Material Icons set used. Let me check what icons are imported/used and confirm `Icons.Default.Settings` (or `Icons.Filled.Settings`) is available. The project uses `androidx.compose.material.icons.Icons`. `Icons.Default.Settings` is part of the core material-icons set, so it should be available. Let me confirm which icons extended set is used elsewhere to be safe.
+
+The core `Icons.Filled.Settings` (gear) is in `androidx.compose.material.icons.filled.Settings` — always available with the material icons dependency. No extra extended dependency needed.
+
+Let me also check the `editZonesLabel` handling — since we keep the panel and it's just an icon swap, I need to decide whether to keep `editZonesLabel` as contentDescription. The user earlier said "editZonesLabel should not even exist" but that was in the context of the visible label brainstorming. Since we're only swapping the icon (no visible text), the contentDescription can stay descriptive for accessibility — though "Edit zones" is slightly off for a gear. I could keep it as-is to stay minimal, or rename. Since scope is minimal, I'll keep the semantics/contentDescription using the existing string to avoid touching Strings.kt, but I could note it as optional.
+
+Let me finalize the plan. This is a small change:
+
+**Plan: Swap pencil → gear on the zone-editor button**
+
+1. In `MainScreen.kt`, `ZoneButtons` composable (lines 661-677): change the `Icon`'s `imageVector` from `Icons.Default.Edit` to `Icons.Default.Settings` (the gear), and add the import for `androidx.compose.material.icons.filled.Settings`.
+2. Keep the button size/placement/contentDescription unchanged (minimal change). Optionally keep `editZonesLabel` as the accessibility contentDescription — the panel title is still "Zones" and it's the entry to zone settings, so it stays reasonable; no Strings.kt change needed.
+
+Optional: verify build with `.\gradlew.bat :app:assembleDebug` after the change.
+
+Let me present this plan.
+
+**Plan: Swap pencil → gear on the zone-settings button**
+
+- **File:** `app/src/main/java/ua/ukrainedrones/MainScreen.kt`, `ZoneButtons` composable (~lines 661–677)
+- **Change:** replace `Icons.Default.Edit` with `Icons.Default.Settings` (the gear) in the button's `Icon`, and add the import `androidx.compose.material.icons.filled.Settings`.
+- **Unchanged:** button size/placement, `onEditZones` wiring, and the accessibility `contentDescription` (`s.editZonesLabel`) — no `Strings.kt` edit needed, keeping the patch minimal.
+- **Verify:** `.\gradlew.bat :app:assembleDebug` after the edit.
+
+The gear is in the core material-icons set, so no extra dependency is required.
+## 15/08/2026, 18:02:12
+
+I'll make the gear swap. The zone icons use `Modifier.size(18.dp)`, so I'll make the gear slightly smaller at 16.dp. Let me apply the edits.
+
+
+## 15/08/2026, 18:02:17
+
+Now add the import for `Settings`. Let me check the current imports.
+
+
+## 15/08/2026, 18:02:18
+
+Let me see the full current CardSizeTile vs the 576ac4d version to spot what changed. The current one (lines 814-852) has the `scale` computed from `constraints.maxWidth`. Let me see the version at 576ac4d to compare.
+
+Actually, I've been going deep. Let me reconsider from a different angle: what does "hard crashes" mean and what's the simplest explanation. Let me check `git show 576ac4d` fully for the CardSizeTile block.
+
+Actually, let me reconsider. The most likely crash that a maintainer would hit: a `ClassNotFoundException` / `NoSuchMethodError` from a library mismatch, OR a resource error. But given the recent commits, and that the crash is on opening settings...
+
+Let me reconsider `fontScale()`. Let me look at how it's defined — it might read `Configuration` and if the preview/Scaffold isn't set up... no.
+
+Let me actually check the CardSizeTile version change. Let me view the full diff of 576ac4d CardSizeTile section to see the exact scale computation that might divide by zero.
+
+Actually — I found something important. In the current `CardSizeTile`:
+
+```kotlin
+val scale = constraints.maxWidth.toFloat() / nominalW
+```
+
+`nominalW = 340.dp.toPx()` — a fixed px value. If `constraints.maxWidth` is 0 or small, scale could be tiny but not crash. Not a crash.
+
+Let me step WAY back. I think the most productive thing is to check the git diff between 576ac4d and now for the CardSizeTile to see if a recent refactor introduced a crash, and check the full current diff of the CardSizeTile block (I already have it — lines 814-852). It looks fine.
+
+Let me reconsider whether the crash is actually a **stack overflow / infinite loop** from the SubcomposeLayout. Actually, there's a known Compose issue: putting a `verticalScroll` inside a `SubcomposeLayout` and measuring with `Constraints.Infinity` height can cause issues, but not crash.
+
+OK, I've spent too long guessing. Let me look at the actual recent conversation logs to understand context, or better — let me check if maybe the crash relates to `ic_settings_ua.xml` being used as the gear icon in the header and that drawable being malformed, causing a crash when... no, that's the header, always shown.
+
+Let me reconsider — actually the gear uses `Icons.Default` or a drawable? Let me check MainScreen line 376 area for the gear icon.
+
+Wait — actually, let me reconsider the most recently edited files: `ic_settings_ua.xml` (4:49 PM) and `ic_volume_up.xml` (4:53 PM). The settings screen opens via the gear in the header. Let me check what drawable the gear uses in MainScreen.
+
+
+
+
+## 15/08/2026, 18:02:23
+
+`Settings` is already imported (line 27). Let me remove the now-unused `Edit` import.
+
+
+## 15/08/2026, 18:02:28
+
+Now let me verify the build compiles.
+
+
+## 15/08/2026, 18:02:38
+
+The gear uses `ic_settings_ua` which is always shown in the header (not settings-specific). That's not the crash.
+
+Let me reconsider. I should verify by actually checking the current state of CardSizeTile against the version when it was introduced, to spot any introduced bug. Let me view the 576ac4d version of CardSizeTile fully.
+
+Actually, let me take a completely different and more efficient approach. Let me look at the `.opencode/logs/replies.md` recent entries — the project keeps logs of prior sessions, and this might document a recent bug or the crash. Let me grep for crash/stacktrace/exception in the logs.
+
+Actually — I realize I should reconsider the problem statement itself. "opening settings hard crashes" is the entire requirement. Let me check if there's something obviously wrong in the current SettingsScreen that I might have missed. Let me re-read the top portion again — specifically the `DisposableEffect` and remember blocks, and the overall structure.
+
+Actually, wait. Let me reconsider line 94:
+```kotlin
+var batteryOptimized by remember { mutableStateOf(BatteryOptimization.isIgnoringBatteryOptimizations(appContext)) }
+```
+
+This runs on composition of the settings screen (on open). `isIgnoringBatteryOptimizations` calls `pm.isIgnoringBatteryOptimizations(packageName)`. This is fine and safe.
+
+Hmm, but the `DisposableEffect` uses `LocalLifecycleOwner.current`. Fine.
+
+Let me reconsider — maybe the crash is a **`IllegalStateException` from `SubcomposeLayout`** or from the `AnimatedVisibility` in the disclaimer. 
+
+I really should get the actual stack trace. Let me check the `.opencode/logs` files for any recent crash documentation.
+
+Let me grep the logs directory.
+
+
+## 15/08/2026, 18:02:49
+
+Build succeeded. Done — swapped the pencil for a gear (Settings) icon at 16dp (slightly smaller than the 18dp zone icons) on the zone-settings button in `MainScreen.kt:661-677`. Removed the unused `Edit` import.
+## 15/08/2026, 18:02:50
+
+Let me check the `.opencode/logs/replies.md` tail to understand recent work context, which may reveal what the user was doing when settings crashed.
+
+Actually, let me reconsider and be decisive. Let me check whether `CardSizeTile`'s `SubcomposeLayout` is the culprit by comparing with the original. But first, let me reconsider the whole thing — maybe the crash is not in SettingsScreen code but in something called during settings that I haven't checked.
+
+Let me reconsider `MainViewModel.autoCheckForUpdates(allowPopup = false)` called on open (MainScreen line 98). If that throws, it's in a coroutine, so it wouldn't hard-crash the app.
+
+Let me check the `.opencode/logs/replies.md` for recent crash mentions — this is the fastest way to get the actual root cause.
+
+
+## 15/08/2026, 18:03:20
+
+This `replies.md` is literally the log of *my own current session's* reasoning being written. It's not helpful for finding the crash — it's echoing my own thoughts. I should not rely on it.
+
+Let me think about this differently and be decisive. Let me check the git diff between the commit that introduced CardSizeTile (576ac4d) and the current version, since a refactor there could have introduced the crash. Let me look at the full CardSizeTile in 576ac4d.
+
+Actually, let me reconsider the whole approach. The crash is "opening settings." Let me reconsider what's special. Let me actually verify the `SubcomposeLayout` measure logic once more, because there IS a real bug potential.
+
+Current CardSizeTile (lines 814-852):
+```kotlin
+SubcomposeLayout(modifier = Modifier.fillMaxWidth()) { constraints ->
+    val nominalW = with(density) { 340.dp.toPx() }
+    val nominalWpx = with(density) { 340.dp.roundToPx() }
+    val scale = constraints.maxWidth.toFloat() / nominalW
+    val cardPlaceable = subcompose("preview-card") {
+        Box(
+            modifier = Modifier
+                .width(340.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale; ... }
+        ) {
+            ThreatPopupCard(...)
+        }
+    }[0].measure(
+        constraints.copy(
+            minWidth = nominalWpx,
+            maxWidth = nominalWpx,
+            minHeight = 0,
+            maxHeight = Constraints.Infinity
+        )
+    )
+    val height = (cardPlaceable.height * scale).roundToInt()
+    layout(constraints.maxWidth, height) {
+        cardPlaceable.place(0, 0)
+    }
+}
+```
+
+This looks structurally OK. 
+
+Let me compare with 576ac4d to see if a refactor changed something. Let me view the 576ac4d CardSizeTile.
+
+Actually — let me reconsider. The `ThreatPopupCard` renders `LevelSkullIcon` (line 168) which calls `painterResource(R.drawable.ic_skull)` and `HorizontalLevelBar`. And `fontAware`/`fontScale()`. Let me check `fontScale()` definition — if it reads `LocalDensity` fontScale or a `CompositionLocal` that's not set, it could crash. But it runs on the map too.
+
+Let me take the decisive empirical route differently: check whether the code even **compiles**. If there's a compile-time issue it wouldn't be "hard crashes" (it wouldn't run). So it compiles. The crash is runtime.
+
+Let me look at `git show 576ac4d` fully around CardSizeTile to diff.
+
+Actually, let me reconsider — I've been assuming the crash is in the current committed code. But the user is reporting it NOW. The uncommitted change is just version.properties. So the crash is in the committed code (HEAD = cfff054, current).
+
+Let me look at the git diff of the whole SettingsScreen between 576ac4d (when CardSizeTile was added) and HEAD, to spot a regression introduced since.
+
+Actually, more targeted: let me check `git diff 576ac4d HEAD -- SettingsScreen.kt` but that includes the two-toggle change. Let me focus on whether the crash could be from `Icons.Filled.Place` — introduced in a7b5a14. `Icons.Filled.Place` is a **deprecated alias**. In some material-icons versions, `Icons.Filled.Place` may not exist (renamed to `LocationOn`)... but the code compiles, so it exists.
+
+Hmm, let me reconsider. Since it compiles and runs, and crashes on open, and I can't easily reproduce... Let me look at the actual most suspicious runtime crash: **`Constraints.Infinity` in `SubcomposeLayout`'s `layout(width, height)` with an unbounded width**. If `constraints.maxWidth == Infinity` (unbounded), then `layout(Infinity, ...)` throws `IllegalArgumentException: Width and height must be >= 0`... actually Infinity would be the problem. But `CardSizeTile` is inside `Row` with `Modifier.weight(1f)`, so width is bounded.
+
+I'm not converging. Let me get the actual CardSizeTile diff between 576ac4d and HEAD to see if a refactor broke it.
+
+Let me view the 576ac4d version of the CardSizeTile function body.
+
+
+## 15/08/2026, 18:03:58
+
+The CardSizeTile is identical between 576ac4d and current — it wasn't refactored. So the crash isn't from that being newly broken.
+
+Let me step back and think about the **whole picture differently**. The crash is in current committed HEAD. Let me check the most recent commit `cfff054` — it touched AlertService, AlertsUaClient, MainScreen, MainViewModel, NeptunClient, Strings, Threat, version.properties. It did NOT touch SettingsScreen. But the user says opening settings crashes. 
+
+Since settings is an overlay over the live map, and `cfff054` was about the backup/offline alert service, maybe the crash is in `MainViewModel.buildUiState` or a `Strings` key that SettingsScreen references which was changed/removed in `cfff054`. `Strings.kt` was changed in cfff054 (+9 lines). Let me check if `Strings` gained/lost a key that SettingsScreen uses.
+
+Actually wait — if a `Strings` key were removed, it wouldn't compile (SettingsScreen references it). So all settings string keys exist.
+
+Let me reconsider. Let me check `MainScreen.kt` change in cfff054 (+4) and `MainViewModel` (+2). Maybe a new field added to `UiState` that could be null/uninitialized when settings opens... no, settings uses `uiState.hiddenTypes`, `silencedTypes`, `pinnedCity`, `redCities`, `threatCardSize`, etc.
+
+Hmm, `redCities` — passed to SettingsScreen. Let me check if `redCities` was changed in cfff054 and could be null. Let me check the UiState definition and where redCities comes from.
+
+Actually, let me reconsider the crash could be a **null `pinnedCity`** dereference somewhere. In SettingsScreen, `PinCityRow` handles `pinnedCity = null` (line 679: `pinnedCity?.let { ... } ?: ""`). Safe.
+
+Let me reconsider — what about the `ExposedDropdownMenu` with an empty or large `cities` list? `Cities.ALL.filter { it.major }` — if `Cities.ALL` is empty, the dropdown is empty but won't crash.
+
+I need the actual stack trace. Let me check if there's a way — let me look at whether there's an `adb` log or a saved crash file. Let me check the temp dir and workspace for any crash logs. Actually, the user just reported the bug verbally.
+
+Let me reconsider the `Strings` change in cfff054 — the +9 lines. Let me see that diff, since settings strings might relate. And let me check MainViewModel +2.
+
+Let me look at the cfff054 diff for Strings and MainViewModel.
+
+Actually, let me reconsider — I keep avoiding the most likely simple answer. Let me re-examine `CardSizeTile`'s `SubcomposeLayout` and the `ThreatPopupCard` for a specific crash. In `ThreatPopupCard`, `LevelSkullIcon` (line 459-468) — let me read it. It could use a `level` to draw a filled portion, and if `fontAware`/scale produces 0 → division. Let me read LevelSkullIcon and HorizontalLevelBar.
+
+Actually, let me reconsider whether the crash is the `SubcomposeLayout` throwing because `ThreatPopupCard` with `interactive=false` still has `verticalScroll(rememberScrollState())`. A `verticalScroll` inside `SubcomposeLayout` subcompose that's measured with `maxHeight = Constraints.Infinity` — verticalScroll measures child with infinite height which is fine, and reports scrollable height. But when placed with `graphicsLayer scale`, and `layout(maxWidth, height)` — height is `cardPlaceable.height * scale`. Should be fine.
+
+I really need the stack trace. Let me check if maybe there's an existing Android crash log via adb — but that requires a device. Let me check if adb is available and a device connected.
+
+Actually, let me reconsider the whole thing once more. Let me re-read the `Strings` change in cfff054 to understand if something about the offline/backup changed that could make `uiState` such that opening settings crashes. Let me view the Strings diff.
+
+Let me be decisive and look at the cfff054 diffs for the state-related files.
+
+
+## 15/08/2026, 18:04:10
+
+This is all consistent and won't crash settings. The `UiState` gained a defaulted `backupActive` field, all fine.
+
+I'm clearly not converging by reading. Let me take the decisive empirical path: try to actually reproduce or get the stack trace. Since it's an Android app, I need the device log. Let me check if adb is available and whether a device is connected.
+
+Actually, I should reconsider the task. This is plan mode — I'm expected to produce a **plan** to fix the bug. To write a good plan, I need the root cause. Let me check whether I can get the crash via logcat.
+
+Let me check adb availability.
+
+
+## 15/08/2026, 18:04:20
+
+No device connected. So I can't get a live stack trace.
+
+Let me reconsider the problem with fresh eyes, focusing on what's genuinely **unique to opening settings** versus the main screen.
+
+The most settings-specific, crash-prone code that runs immediately on open is `CardSizeTile` → `ThreatPopupCard` (3 previews). Everything else in settings also appears on the main map screen.
+
+Wait — there IS something. Let me reconsider `ThreatPopupCard` line 131: `verticalScroll(rememberScrollState())` combined with the `SubcomposeLayout` measuring with `maxHeight = Constraints.Infinity`. 
+
+Actually, I recall a **known Compose crash**: `SubcomposeLayout` with a child that itself uses `SubcomposeLayout` or a `verticalScroll`, plus `graphicsLayer` scaling, is fine. But there's a more specific issue.
+
+Let me reconsider `LevelSkullIcon` and `HorizontalLevelBar` — let me actually read them since they render in the SMALL preview which is the first tile. If one of them does a division by `level` or `size` that's 0, or `fontAware(18.dp)` → 0 → crash. Let me read them.
+
+
+
+
+## 15/08/2026, 18:04:41
+
+I'm in plan mode. The user is reporting that the backup-state UI is confusing: the pill shows "Online · backup" but the popup (tapping the pill → the info dialog) still says "online" with NEPTUN descriptions. They want:
+1. Pill: yellow icon + just "backup" (not "online · backup") when on backup
+2. Popup: clearer descriptions when on backup
+
+Let me look at the current `ConnectionStatus` composable (I edited it earlier) and its dialog, plus the relevant strings, to plan the fix precisely.
+
+Let me re-read the current ConnectionStatus in MainScreen.kt (it was around lines 808-900 but shifted after my edit).
+
+
+## 15/08/2026, 18:04:56
+
+Now let me look at the relevant strings for the popup: `connServerLine`, `connUpLine`, `connDownLine`, `attributionText`, `connBackup`, and the UA/EN values. Let me read those specific strings.
+
+From earlier grep:
+- UA: `connServerLine` = "З'єднання з сервером повітряних тривог NEPTUN.", `connUpLine` = "Дані оновлюються.", `connDownLine` = "З'єднання втрачено, дані можуть бути застарілими.", `attributionText` = "Карта повітряних тривог — NEPTUN", `connBackup` = "резерв"
+- EN: `connServerLine` = "Connection to the NEPTUN air-threat server.", `connUpLine` = "Data is updating live.", `connDownLine` = "Connection lost; data may be stale.", `attributionText` = "Air threat map — NEPTUN", `connBackup` = "backup"
+
+Let me confirm exact lines and values.
+
+
+## 15/08/2026, 18:04:57
+
+These are all safe — no division by zero, `coerceAtLeast`, `coerceIn`. `fontScale()`/`fontAware` — let me check `fontScale()`. If it divides or is fine.
+
+Let me check `fontScale()`.
+
+Actually, let me reconsider. I've been assuming the crash is in SettingsScreen, but I haven't actually confirmed it's reproducible or where. Let me reconsider the possibility that this is a **build/runtime resource crash** that I can detect by actually attempting to compile. But plan mode forbids building (non-readonly). Actually, compiling is read-only-ish but runs gradle which writes build outputs — I'll avoid it.
+
+Let me reconsider the most probable cause given all evidence. The `SubcomposeLayout` is the strongest candidate for a hard crash on settings open because:
+1. It's unique to settings (card-size previews).
+2. It renders 3 nested threat cards immediately on open.
+3. It's a complex custom layout.
+
+Let me look very carefully at the `SubcomposeLayout` again for a real crash. 
+
+```kotlin
+val cardPlaceable = subcompose("preview-card") { ... }[0].measure(...)
+```
+
+Wait — this is inside a `SubcomposeLayout` measure block, but `subcompose(...)` returns `List<Measurable>`. `[0]` is fine. Then `.measure(constraints.copy(maxHeight = Constraints.Infinity))`.
+
+Here's the real issue: `ThreatPopupCard` has `verticalScroll(rememberScrollState())` at the top-level `Surface` modifier (line 131). A `verticalScroll` composable **cannot** be measured with `Constraints.Infinity` height... actually it CAN (it measures child with infinity and wraps). But `verticalScroll` inside `SubcomposeLayout`... 
+
+Actually, there's a **well-known crash** with `SubcomposeLayout` + child measured with `Constraints.Infinity`: not a crash itself.
+
+Hmm. But there's another very specific known issue: measuring a child with `maxHeight = Constraints.Infinity` inside a `SubcomposeLayout` where the child contains `verticalScroll` — the `verticalScroll` measures its content with infinite height, then the content (a `Column` with the card) tries to fill infinite height and... could produce `layout` with infinite height → `IllegalStateException: Size is infinite`. 
+
+But wait — the main map also renders `ThreatPopupCard` with `verticalScroll` inside a normal Box/Scaffold where it gets bounded height. In the settings preview, it's measured with `Constraints.Infinity` height inside SubcomposeLayout. If the card's content layout emits an infinite height (e.g., a `fillMaxSize` or `weight` inside), it could crash.
+
+This is getting too speculative. Let me reconsider whether there's a simpler, more certain bug.
+
+Let me reconsider: **`AnimatedVisibility` + `LazyColumn` item with `items()`**. The threat type cards use `items(ThreatType.values().toList())` inside LazyColumn — that's standard.
+
+Let me reconsider the `ExposedDropdownMenuBox` + `menuAnchor()`. In **Material3 1.2.0**, `menuAnchor()` with no args was deprecated. In some versions calling the no-arg `menuAnchor()` when it's been removed... but it compiles. 
+
+OK let me actually reconsider — maybe I should just ask the user for the stack trace / logcat, since I genuinely can't determine the exact crash without it. But first, let me make sure I've checked the strongest candidate thoroughly: the `SubcomposeLayout`.
+
+Let me search the web for the known crash: "SubcomposeLayout Constraints.Infinity crash verticalScroll" — actually, let me reconsider a cleaner hypothesis.
+
+Actually — I want to reconsider `fontScale()`. Let me find it.
+
+
+
+
+## 15/08/2026, 18:05:25
+
+I now have all the context needed. Let me design the plan for the clearer backup-state UI.
+
+## Current behavior (the bug)
+
+When `backupActive` is true:
+- **Pill**: dot is green (because `connected` is still true), label = `"Online · backup"`. Confusing — implies primary online.
+- **Popup** (tap pill): title "Online", green "Data is updating live", `connServerLine` "Connection to the NEPTUN air-threat server", green "data updating". All describe NEPTUN primary, nothing about backup.
+
+The user wants, when on backup:
+- Pill: **yellow dot** + just **"backup"** (not "Online · backup").
+- Popup: clearer descriptions that explain we're on the backup source.
+
+## Design considerations
+
+`backupActive` is already plumbed into `ConnectionStatus` (via `uiState.backupActive`). Good — I only need to change the `ConnectionStatus` composable and its strings. No mirror-rule impact (it's UI only).
+
+Note the pill may be on backup while NEPTUN is actually still connected (when testing via the TEMP toggle), so `connected` and `backupActive` are independent booleans. I need to handle the visual precedence: **backupActive takes priority** over the normal online/offline display.
+
+### Pill changes
+- When `backupActive`: dot color = yellow (`0xFFF9A825`), label = just `s.connBackup` ("backup" / "резерв"). Drop the "Online · backup" concatenation.
+- When not backup: keep current green/red online/offline behavior.
+
+So the pill text should be: `if (backupActive) s.connBackup else label`.
+
+### Popup changes
+When `backupActive`, the popup should explain the backup situation instead of the NEPTUN online lines:
+- Title: "Backup" (yellow dot).
+- Body line: a new string explaining we're running on the backup source (e.g. "On the backup air-raid source (alerts.com.ua) because the main NEPTUN feed is down or silent.").
+- Keep the "up/down" legend? It's still relevant (green=live, red=down) but the emphasis should be the backup state. I'll show a clear backup status line, and keep the legend rows but perhaps reword.
+- The `attributionText` link currently points to neptun.in.ua. On backup, it should point to alerts.com.ua and show the backup attribution.
+
+Let me define a clear set of new strings:
+- `connBackupTitle` — "Backup" / "Резерв"
+- `connBackupLine` — explanation: EN "Running on the backup alert source (alerts.com.ua) — the main NEPTUN feed is down or silent, so oblast alerts come from the backup." / UA equivalent.
+- `attributionBackup` — "Air threat alerts — alerts.com.ua" / "Повітряні тривоги — alerts.com.ua" (used as the clickable link, pointing to alerts.com.ua).
+
+The legend (green up / red down) — I'll keep it but it makes sense to keep as-is since it reflects the actual feed. Actually, to keep the popup clear and focused when on backup, I'll restructure: when `backupActive`, show the backup line prominently and swap the attribution; keep the up/down legend as secondary info. That's the minimal clear change.
+
+### Strings to add (UA + EN)
+1. `connBackupTitle` — "Backup" / "Резерв"
+2. `connBackupLine` — the explanation.
+3. `attributionBackup` — the clickable backup attribution text.
+
+I should NOT reuse `connBackup` for the popup title (it's lowercase "backup"/"резерв" used as the pill label). Add a title variant.
+
+### Files to touch
+- `Strings.kt`: add 3 new fields to `StringSet` + UA/EN values.
+- `MainScreen.kt`: update `ConnectionStatus` — yellow dot + "backup" label when backup; and branch the popup content when backup.
+
+Let me double check the exact popup structure to plan the branch. The popup has:
+- title Row (dot + `if (connected) s.connOnline else s.connOffline`)
+- `connServerLine` text
+- green row (connUpLine)
+- red row (connDownLine)
+- attribution link
+
+I'll make the whole `Column` content branch on `backupActive`:
+- If backup: show backup title, backup line, keep legend, swap attribution to alerts.com.ua.
+- Else: current content.
+
+Actually cleaner: keep one structure but vary title + the server line + attribution based on `backupActive`. The legend rows (up/down) can stay for both.
+
+Let me verify `UiState.backupActive` is already exposed and plumbed (I did that in the prior implementation). Yes — `uiState.backupActive` and `ConnectionStatus(backupActive = uiState.backupActive, ...)`.
+
+One more: the pill when offline AND backup active. Since backup only activates when offline/silent, offline+backup is the normal case. Priority to backup → yellow "backup". That's what the user wants (backup display wins).
+
+Let me also confirm: should the pill show elapsed offline time at all when on backup? The user wants it to just say "backup". So on backup, ignore the offline timer label. Good.
+
+Let me also consider the notification-side. The user only complained about pill + popup. The notification source tag already works. No change needed there.
+
+Now, this is a focused UI change. Let me present the plan. Since I'm in plan mode, I'll present and can ask if they want the up/down legend kept.
+
+Let me present the plan concisely.
+
+
+## 15/08/2026, 18:05:31
+
+`fontScale()` is safe. 
+
+Let me reconsider from the standpoint of "what would I actually want to verify." I think the strongest hypothesis remains the `SubcomposeLayout` measuring the `verticalScroll`-containing `ThreatPopupCard` with `Constraints.Infinity` height. This is a real, known failure mode in Compose: **"IllegalStateException: MeasurePolicy ... cannot have an infinite height"** or a `verticalScroll` inside an infinite-height parent producing `LayoutCoordinates` issues.
+
+But actually — let me reconsider once more. `verticalScroll` is designed to be measured with infinite height (that's its whole point — content can be taller than viewport). It reports `constraints.maxHeight` (or the content height) as its measured height. It does NOT propagate infinity. So `SubcomposeLayout` measuring it with infinity height is fine.
+
+Let me reconsider the `MEDIUM` and `LARGE` preview cards — those have more complex content. But they're the same component used on the map.
+
+OK. I've spent a lot of effort. Given I can't reproduce (no device) and can't build (plan mode), and the most likely candidate is genuinely ambiguous, I think the right move per plan-mode guidance is to **present my leading hypothesis and ask the user for the crash stack trace** to confirm, OR propose the fix for the most likely cause.
+
+But let me make one more targeted check: let me look at the `ThreatPopupCard` LARGE/MEDIUM render for anything that only differs in the settings preview — specifically the `interactive = false` path and the `SubcomposeLayout` width. Actually, let me reconsider the **`width(340.dp)` fixed** inside `SubcomposeLayout` measured with `maxWidth = nominalWpx`. Fine.
+
+Let me reconsider — maybe the crash isn't in these at all. Let me reconsider whether **the settings screen itself composes the `MapScreen` behind it** and the crash is a duplicate `NeptunMapView` or something. No.
+
+Actually — let me reconsider a totally different and very plausible cause: **`ic_volume_up.xml` was edited at 4:53 PM** (the most recently modified file in the whole project). It's a vector drawable. If it got corrupted/malformed during editing, then when SettingsScreen renders `sirenOverride` row (line 421-428) with `painterResource(R.drawable.ic_volume_up)`, the vector inflation would throw a `XmlPullParserException` / `InflateException` → **hard crash on opening settings** (since the Alerts section renders immediately on open, below the fold but still composed).
+
+Wait — but it's in a `LazyColumn`. Items below the fold aren't composed until scrolled. The siren toggle is item in the Alerts card which is well below the visible area. LazyColumn only composes visible items. So `ic_volume_up` wouldn't be loaded until scrolled to it.
+
+Similarly `ic_download` (update button) is at the very bottom — only composed when scrolled. So those aren't the on-open crash.
+
+The items composed on open (top of LazyColumn):
+1. Disclaimer card
+2. Language section header (`ic_language`) + flags
+3. Map center section (`LocationOn`) + PinCityRow
+4. Card size section (`ic_card_size`) + ThreatCardSizeSelector (3 previews)
+5. Threats section header (`Warning`) + **first threat card** (SHAHED) — visible
+
+So on open, the drawables loaded are: `ic_language`, `ic_card_size`, `ic_skull` (via preview SMALL card LevelSkullIcon), `ic_threat_*` (SHAHED card icon), plus the card-size previews using `shahed.webp`.
+
+`ic_skull` exists. `shahed.webp` exists. All fine.
+
+So the on-open crash is most likely the **`CardSizeTile` SubcomposeLayout preview**, OR the `PinCityRow` dropdown, OR something in `ThreatPopupCard` preview path.
+
+Given the `SubcomposeLayout` complexity, I'll go with that as the primary hypothesis but I'm not fully certain. 
+
+Actually — wait. Let me reconsider the `SubcomposeLayout` `layout(constraints.maxWidth, height)` where the measured placeable has a `graphicsLayer` scale. When you `place()` a placeable that was measured at `nominalWpx` width but then scale it via graphicsLayer to `scale`, the actual rendered size is `nominalWpx * scale = constraints.maxWidth`. And `layout(maxWidth, height)` matches. That's consistent.
+
+But here's a subtle issue: the subcomposed `Box` has `Modifier.width(340.dp)` = `nominalWpx`, and its child `ThreatPopupCard` uses `verticalScroll`. When measured with `maxHeight = Constraints.Infinity`, `verticalScroll` measures its content with infinite height. `ThreatPopupCard`'s content for LARGE includes a `Column` — fine. 
+
+I don't see a definitive crash.
+
+Let me step back and take the pragmatic path. I'll present my analysis to the user. The leading candidates are (1) the `SubcomposeLayout` card-size preview, and (2) something I can't determine without a stack trace. 
+
+Actually, let me reconsider ONE more time — is there something about `ThreatPopupCard` being invoked with `pinnedCity = null` that differs from the map? On the map, `pinnedCity` is also nullable. So no.
+
+Let me reconsider — actually, I should check whether the **`disclaimerCollapsed` / `AnimatedVisibility`** at the top could crash. No.
+
+Let me reconsider the actual most likely thing I might've overlooked: let me re-examine the **`RedCities`** / `redCities` — passed to `PinCityRow`. If `redCities` is null... but it's `Set<String>` non-null.
+
+Given my uncertainty, let me ask the user for the crash stack trace / logcat, since that's the definitive way. But I should present a hypothesis too. Let me first do a quick web search on the specific SubcomposeLayout+Constraints.Infinity crash to validate my leading hypothesis before asking.
+
+Actually, let me reconsider whether I can get more signal. Let me check the `git log` of the LAST change to `ic_skull` and `shahed` and whether `threat_shahed`/`threat_unknown`/`threat_ballistic` in drawable-nodpi exist (those crash on EXPAND not open).
+
+Let me verify drawable-nodpi contents — this is a quick check and rules out a class of crash.
+
+
+## 15/08/2026, 18:06:09
+
+All bundled threat photos exist (`threat_ballistic.webp`, `threat_shahed.webp`, `threat_unknown.webp`). Those are for the expanded card.
+
+I've now verified all resources exist and the code paths look structurally safe on open. I can't definitively pinpoint the crash without a stack trace.
+
+Let me reconsider the `SubcomposeLayout` hypothesis more rigorously by checking the known Compose crash. Let me do a focused web search.
+
+Actually, before that — let me reconsider whether `ThreatPopupCard` in the preview uses `LaunchedEffect` → `Translator.translate(...)` (line 81-84). If `lang == AppLanguage.EN`, it calls `Translator.translate`. But `lang` defaults to UA presumably. And even so, it's in a coroutine, wouldn't hard-crash synchronously.
+
+Wait — actually there IS a real difference for the settings preview: `ThreatPopupCard` line 81 uses `LaunchedEffect(threat.updatedAtMillis)`. For `PreviewThreat`, `updatedAtMillis = null`. That's fine.
+
+Let me reconsider the `SubcomposeLayout` crash via web search to confirm/deny.
+
+Actually, let me reconsider the whole thing one final time. I realize I should check whether maybe the issue is that `SettingsScreen` is composed **while the map `NeptunMapView` is still alive** and there's a conflict. But that's been working per changelog ("Settings now opens as an overlay over the still-alive map").
+
+Let me reconsider the most probable real-world cause given this is a codebase where the developer added the card-size SubcomposeLayout previews. A `SubcomposeLayout` that measures a `verticalScroll` child with `maxHeight = Constraints.Infinity` — I recall this **does** crash with `IllegalStateException: Max height should be finite` when the child has a `verticalScroll`... no wait.
+
+Actually, I recall now: `SubcomposeLayout`'s subcomposed measurables get measured with the constraints you pass. The issue is if the child **uses `BoxWithConstraints` or reads `maxHeight`** and gets Infinity. `ThreatPopupCard`'s `verticalScroll` handles Infinity fine (it's the scroll container).
+
+Hmm, but there's the `Column(modifier = Modifier.fillMaxSize())` possibly inside ThreatPopupCard LARGE. Let me check — if any child uses `fillMaxSize()` or `weight(1f)` inside the scroll, and the scroll reports unbounded... `weight` inside a scroll column needs bounded height. Let me check the LARGE card structure.
+
+This is the kind of thing that would only crash in the settings preview (bounded on map, unbounded-infinity in preview). Let me look at the LARGE card body for `weight`/`fillMaxSize`.
+
+Let me read the MEDIUM/LARGE card body (lines 176-455).
+
+
+
+
+## 15/08/2026, 18:07:07
+
+I notice at line 258-264: the MEDIUM card has a `LaunchedEffect(Unit) { while(true) { delay(1000); now = ... } }` — an infinite loop coroutine. This runs on the map too, so it's not settings-specific.
+
+The `MEDIUM` and `LARGE` cards use `weight(1f)` inside `Column`/`Row` — but those are inside `verticalScroll`. `weight` inside a `verticalScroll` (Column with unbounded height) — Compose handles this by measuring with infinite height and giving the weighted child... actually **`weight` inside a `verticalScroll` parent throws** unless bounded. Wait no — `verticalScroll` measures its child with infinite height, and a `Column` with `Modifier.weight` children requires bounded height. 
+
+But this is the SAME code that renders on the map. On the map, `ThreatPopupCard` is placed in a bounded-height overlay (bottom sheet / popup), so `verticalScroll` gives it bounded height and `weight` works. In the **settings preview**, it's measured with `maxHeight = Constraints.Infinity` inside `SubcomposeLayout`. 
+
+**THAT'S THE CRASH.** When `ThreatPopupCard` (which has `verticalScroll`) is measured with `maxHeight = Constraints.Infinity` in the `SubcomposeLayout` preview, the `verticalScroll` measures its content (a `Column`/`Row` with `weight(1f)` children) with **infinite** height, and `Modifier.weight(1f)` inside an infinite-height parent throws:
+
+> `IllegalStateException: ... not a fixed size / weight ... The modifiers are applied to a Column that is measured with infinite constraints.`
+
+Actually more precisely, Compose throws: **"IllegalStateException: Vertically scrollable component was measured with an infinity maximum height constraints"** — no, that's the opposite. The known error is `Modifier.weight(1f) ... measured with infinite constraints`. When `verticalScroll` content has a `weight` child and the scroll is measured with infinite height, the `Column` has infinite height and `weight` can't resolve → **crash**.
+
+Wait, let me get this right. `verticalScroll` ALWAYS measures its child with `maxHeight = Infinity` (that's how scrolling works — the content can be taller than the viewport). Inside that, a `Column` with `Modifier.weight(1f)` children: Compose's `Column` with `weight` needs the height to be bounded OR it just uses the weighted proportion of infinity... 
+
+Actually, `Column` with `weight` children measured with infinite height DOES work in a scrollable context — this is the standard pattern (e.g., content in a scroll with a weighted header). Compose handles `weight` in unbounded height by treating weighted children specially — no wait.
+
+Let me reconsider. The actual known crash: **"Vertically scrollable component was measured with an infinity maximum height constraints, which is disallowed"** — this happens when you put a `verticalScroll` inside something that gives it infinite height, like a `LazyColumn` item or a `SubcomposeLayout` that passes `Infinity`. 
+
+YES. That's the real crash. `verticalScroll` **cannot be measured with `maxHeight = Infinity`**. It throws:
+> `IllegalStateException: Vertically scrollable component was measured with an infinity maximum height constraints, which is disallowed. One of the common reasons is nesting layouts like LazyColumn and Column(Modifier.verticalScroll()).`
+
+But `verticalScroll` measures ITSELF with the incoming constraints. If the parent passes `maxHeight = Infinity`, `verticalScroll` throws this exact error!
+
+In the settings `SubcomposeLayout`, the preview measures the card with:
+```kotlin
+constraints.copy(minWidth=..., maxWidth=..., minHeight=0, maxHeight=Constraints.Infinity)
+```
+
+So `ThreatPopupCard`'s top-level `Surface(modifier = Modifier.verticalScroll(...))` receives `maxHeight = Constraints.Infinity` → **`verticalScroll` throws `IllegalStateException: Vertically scrollable component was measured with an infinity maximum height constraints`** → hard crash on opening settings!
+
+This is the root cause. On the map, the popup is given a bounded height, so `verticalScroll` is fine. In the settings card-size preview, the `SubcomposeLayout` passes `maxHeight = Constraints.Infinity`, crashing `verticalScroll`.
+
+Let me verify the exact `verticalScroll` constraint handling by confirming the code path. The `ThreatPopupCard` Surface modifier at line 130-132: `.verticalScroll(rememberScrollState())`.
+
+And the `SubcomposeLayout` measures with `maxHeight = Constraints.Infinity` (line 845).
+
+This is the bug. Let me confirm the fix approach: the preview should measure with a **bounded** max height, OR the `SubcomposeLayout` shouldn't force Infinity. But the card can be tall (LARGE). The SubcomposeLayout needs the natural height of the card, but `verticalScroll` refuses Infinity.
+
+The correct fix: in the preview, don't use `verticalScroll` on the card — since the preview card is just a static scaled thumbnail, scrolling isn't needed. But `ThreatPopupCard` hardcodes `verticalScroll` on the Surface. 
+
+Options:
+1. Make `verticalScroll` conditional (only when `interactive`) — but `interactive=false` is the preview case. Actually the map popup needs scroll. Preview doesn't need it.
+2. Give the preview a bounded max height and let the card scroll within it — but then the preview thumbnail would show a clipped/scrollable card, not a full card. Not ideal.
+
+Actually the cleanest: the `verticalScroll` is the problem. For the preview (`interactive=false`), it should be omitted so the card measures its full natural height. Since `interactive=false` is only used for the previews, tying scroll to `interactive` is semantically reasonable — a non-interactive card shouldn't scroll.
+
+Let me verify `interactive` is only passed as `false` in the preview. From the grep earlier, `SettingsScreen` line 838 passes `interactive = false`. Let me confirm no other callers use `interactive=false` where scroll matters.
+
+Let me check callers of ThreatPopupCard.
+
+
+## 15/08/2026, 18:07:31
+
+Now I have the final values:
+- Red: max 20, default **10**
+- Yellow: min 21, max 50, default **21**
+
+Let me make the changes.
+
+
+## 15/08/2026, 18:07:43
+
+Confirmed. The map caller (`MainScreen.kt:484`) uses `ThreatPopupCard` with default `interactive = true`, placed in a bounded-height Box. The settings preview (`SettingsScreen.kt:828`) uses `interactive = false`, measured by the `SubcomposeLayout` with `maxHeight = Constraints.Infinity`.
+
+The `verticalScroll` modifier on the card's top-level `Surface` receives `maxHeight = Infinity` in the preview, and Compose's `verticalScroll` **throws** `IllegalStateException: "Vertically scrollable component was measured with an infinity maximum height constraints, which is disallowed"` — this is the hard crash when opening Settings.
+
+This perfectly explains why it's settings-specific: only the card-size preview (`SubcomposeLayout`) measures the scrollable card with unbounded height.
+
+Let me confirm the `verticalScroll` is at the Surface top-level (so it's the direct recipient of the infinite constraint).
+
+I already saw it: line 130-132:
+```kotlin
+Surface(
+    modifier = modifier
+        .verticalScroll(rememberScrollState())
+        .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier),
+```
+
+Yes. The `verticalScroll` is directly on the Surface, so it gets the `maxHeight = Infinity` from the `SubcomposeLayout` measure → crash.
+
+**The fix:** The preview doesn't need scrolling. Since `interactive = false` is exclusively used for the settings card-size preview, the cleanest minimal fix is to only apply `verticalScroll` when `interactive` is true:
+
+```kotlin
+modifier = modifier
+    .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+    .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier)
+```
+
+This way, the preview card measures its full natural height (no infinite-height `verticalScroll`), while the real map popup keeps scrolling.
+
+Let me verify the exact line numbers in ThreatPopupCard.kt for the plan.
+
+I have what I need. Let me present the plan. This is plan mode, so I present the diagnosis and proposed fix.
+
+Let me double check there's no `rememberScrollState` used elsewhere that would break if removed from non-interactive. It's only on the Surface. Good.
+
+Let me present the plan to the user.
+
+
+## 15/08/2026, 18:07:46
+
+Now update ARCHITECTURE.md and CHANGELOG.md.
+
+
+## 15/08/2026, 18:07:59
+
+Now let me build and test to verify.
+
+
+## 15/08/2026, 18:08:01
+
+The user wants the popup to be a proper **system status** view showing whether *both* systems are alive and well — not just backup. This is a bigger, better design. Let me plan it accordingly.
+
+## Current state / data available
+
+I need to know, for both NEPTUN and the backup:
+- **NEPTUN**: `connected` (bool) + `offlineElapsedSec` — already in `UiState`.
+- **Backup**: currently only `backupActive` (a derived bool) in `UiState`. But to show "is the backup alive", I need the backup source's own health: last-successful-poll time / `AlertsUaState.active` + `lastError`. `AlertsUaState` has `active: Boolean` (has it ever returned data) and `lastError: String?`. 
+
+To make a real "both systems status" popup, I should expose per-source health:
+- NEPTUN: `connected` + maybe staleness.
+- Backup: `active` (has polled successfully) + last poll time / error.
+
+`AlertsUaClient.state` already exposes `AlertsUaState(alerts, active, lastError)`. I should surface these through `NeptunState` (it already carries `backupAlerts`; I can add `backupActive2`... no). Let me add `backupUp: Boolean` and `backupLastError` to `NeptunState` (from `AlertsUaState.active`), and expose them in `UiState` for the popup.
+
+Let me check `AlertsUaState` again (I created it): `data class AlertsUaState(alerts, active, lastError)`. `active` = has returned data at least once. But `active` stays true forever once it succeeds once — not great for "alive now". I may need a last-success timestamp or a stale window. For a status popup, "last update at" is the clearest signal.
+
+Let me plan the additions:
+- Add `backupLastOkAt: Long` (or reuse `AlertsUaState`) — track last successful poll timestamp in `AlertsUaClient`, surface through `NeptunState`.
+- Add `backupError: String?` and `backupLastOkAt` to `NeptunState` and `UiState`.
+
+## New popup design (system status)
+
+The popup becomes a "System status" dialog showing two sources independently:
+
+**NEPTUN** (`neptun.in.ua`) — primary threat + oblast feed
+- Green dot + "Connected" / "Data live" (or the offline timer)
+- Status line
+
+**Backup** (`alerts.com.ua`) — independent oblast-alert fallback
+- Green dot + "Alive" (last updated X ago) when healthy
+- Amber/gray + "No data yet" or "Not reachable (last error)" when down
+- Explanation that it takes over oblast alerts when NEPTUN is down/silent
+
+Plus a summary line for the current effective source (what the pill shows).
+
+This requires:
+- **Pill**: keep the simpler change — yellow dot + "backup" when `backupActive` (and the popup becomes the detailed status). The pill is the quick glance; the popup is the detail. This satisfies "yellow icon, say backup".
+
+Let me plan the concrete changes:
+
+### 1. `AlertsUaClient.kt`
+- Add `lastOkAt: Long` to `AlertsUaState` (epoch of last successful parse). Set on success.
+- (Optional) keep `active` and `lastError`.
+
+### 2. `NeptunClient.kt` / `NeptunState`
+- Add fields: `backupUp: Boolean` (≈ backup has data & fresh), `backupLastOkAt: Long`, `backupError: String?`.
+- The `startBackupCollector` copies these from `AlertsUaState` into `NeptunState`.
+- Define "backup up" = `AlertsUaState.active && now - lastOkAt < some window` (e.g. 60s? Since it polls every 20s, a healthy backup should be fresh within ~60s). Or simpler: `active && no recent error`. I'll use lastOkAt recency (e.g. `< 90_000` to allow a couple missed polls).
+
+### 3. `MainViewModel.kt` / `UiState`
+- Add `backupUp: Boolean`, `backupLastOkAt: Long`, `backupError: String?` to `UiState`, populated from `neptun`.
+
+### 4. `MainScreen.kt` — `ConnectionStatus`
+- **Pill**: when `backupActive` → yellow dot + `s.connBackup` (just "backup"). Else current green/red online/offline.
+- **Popup**: rebuild as a two-source system status:
+  - Title: "System status" / "Статус системи" (new string `connStatusTitle`).
+  - NEPTUN row: dot green/red + "NEPTUN · Connected/Offline Xm" + maybe connUpLine.
+  - Backup row: dot green/amber + "Backup (alerts.com.ua) · Alive / No data" (new strings).
+  - Effective source line: "Currently on: NEPTUN / Backup" (new string) — ties to the pill.
+  - Attribution: keep, but maybe show both sources; on backup show alerts.com.ua.
+
+### 5. `Strings.kt`
+Add UA+EN: `connStatusTitle`, `connNeptunLabel`, `connBackupLabel`, `connBackupUp`, `connBackupDown`, `connEffectiveSource`, `attributionBackup`. Possibly format strings for "last updated X ago".
+
+Let me verify what's needed for "X ago" — I can reuse `offlineDurMinFormat`-style or add a `connLastOkAgoFormat`. Keep minimal: show "live" vs "no data/error" without a timer to keep it simple, OR add a small "updated Xs ago". I'll propose "live" + recency, but keep it simple unless they want the timer.
+
+Let me confirm the exact `AlertsUaState` I created and `NeptunState` current shape to write accurate plan lines.
+
+Let me read the current AlertsUaClient and NeptunState.
+
+I already know both from my prior implementation, but let me quickly confirm the current AlertsUaState and NeptunState fields to be precise.
+
+
+## 15/08/2026, 18:08:23
+
+I have enough. Let me also quickly confirm the `AlertsUaState` current fields (I wrote them) — `alerts`, `active`, `lastError`. I'll add `lastOkAt`.
+
+Now I have a complete plan. Let me present it.
+
+## Plan: Clear backup state in the pill + a two-source system-status popup
+
+### Problem
+- Pill shows `Online · backup` (green dot) — looks like primary is online. Confusing.
+- Popup only ever describes NEPTUN (green "data live", NEPTUN server line, neptun.in.ua link) even when actually on backup.
+
+### Goal
+- **Pill**: when on backup → yellow dot + just "backup".
+- **Popup**: a proper **system status** dialog showing both NEPTUN and the backup source, each with its own live/down indicator, plus the effective source.
+
+### Changes
+
+**1. `AlertsUaClient.kt`**
+- Add `lastOkAt: Long` to `AlertsUaState` (epoch of last successful parse). Set on every successful `parseStates` in `pollNow`.
+
+**2. `NeptunClient.kt` / `NeptunState`**
+- Add fields to `NeptunState`: `backupUp: Boolean`, `backupLastOkAt: Long`, `backupError: String?`.
+- In `startBackupCollector`, copy these from `AlertsUaState` (already relays `backupAlerts`; extend to relay `active`/`lastOkAt`/`lastError`).
+- Define "backup up" = `active && now - lastOkAt < BACKUP_HEALTHY_MS` (e.g. 90s, allowing a couple missed 20s polls). Add `BACKUP_HEALTHY_MS` const.
+
+**3. `MainViewModel.kt` / `UiState`**
+- Add `backupUp: Boolean`, `backupLastOkAt: Long`, `backupError: String?` to `UiState`, populated from `neptun`.
+
+**4. `MainScreen.kt` — `ConnectionStatus`**
+- **Pill**: when `backupActive` → yellow dot (`0xFFF9A825`) + text `s.connBackup` only (no "Online ·"). Else keep green/red online/offline.
+- **Popup**: rebuild as system status:
+  - Title: "System status" / "Статус системи" (`connStatusTitle`), colored dot.
+  - **NEPTUN row**: green/red dot + label "NEPTUN" + status ("Connected" / "Offline · Xm" / "No data yet").
+  - **Backup row**: green/amber dot + label "alerts.com.ua" + status ("Live" / "Last updated Xs ago" / "No data / error").
+  - **Effective source line**: "Currently on: NEPTUN" / "Currently on: backup" (`connEffectiveSource`), matching the pill.
+  - Attribution: on backup show alerts.com.ua link (`attributionBackup`, URL `https://alerts.com.ua/`); on NEPTUN keep neptun.in.ua.
+  - Keep the green-up/red-down legend as secondary context.
+
+**5. `Strings.kt`** — add UA+EN:
+- `connStatusTitle` — "System status" / "Статус системи"
+- `connNeptunLabel` — "NEPTUN"
+- `connBackupLabel` — "alerts.com.ua"
+- `connSourceConnected` / `connSourceLive` — "Connected"/"Live", "Підключено"/"Активне"
+- `connSourceOffline` / `connSourceNoData` — "Offline"/"No data yet", etc.
+- `connEffectiveSource` — format "Currently on: %1$s" / "Зараз на: %1$s"
+- `attributionBackup` — "Air threat alerts — alerts.com.ua" / "Повітряні тривоги — alerts.com.ua"
+
+**6. Tests/docs**
+- Add/extend a unit test asserting `backupUp`/lastOkAt recency logic (if factored into a testable helper) — optional since it's mostly UI/state plumbing.
+- Update `ARCHITECTURE.md` module-map note for `AlertsUaClient` (`lastOkAt`/backup health) if the state shape changes meaningfully.
+- Update `CHANGELOG.md` Unreleased entry to reflect the clearer pill + system-status popup.
+
+### Mirror-rule impact
+None — this is UI presentation only. Both `MainViewModel` (pill + popup via `UiState`) and `AlertService` (notification) read the same derived state; I'm only adding new read-only health fields to the shared state, not changing zone/focus/alert logic.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+### Open question
+- Should the backup "Live" row show a small "updated Xs ago" timer, or just a static "Live" when healthy? (Static "Live" is simpler; timer is more informative but adds a ticking clock to the dialog.) I'll default to **static "Live" + "No data"** for simplicity unless you want the timer.
+
+Want me to proceed with this plan?
+## 15/08/2026, 18:08:24
+
+Build and tests pass. Done.
+
+Changes:
+- **`ZonePrefs.kt`**: red default → 10 (range 1–20); yellow default → 21 (range 21–50); updated coerce bounds + comments.
+- **`ZonesSheet.kt`**: red slider `1..20`, yellow slider `21..50`.
+- **`Zones.kt`**: fixed stale doc comment.
+- **`ARCHITECTURE.md`**: updated zone-tiering invariant.
+- **`CHANGELOG.md`**: added Unreleased entry.
+
+`assembleDebug` + unit tests pass.
+## 15/08/2026, 18:10:26
+
+I'm now in build mode. Let me implement the plan: clear backup pill + a two-source system-status popup showing online/offline with timers for both NEPTUN and backup, and explaining backup lacks real-time map capabilities.
+
+Let me start with the data plumbing. First, `AlertsUaClient.kt` — add `lastOkAt` and expose health. Let me read the current file.
+
+
+
+
+## 15/08/2026, 18:10:37
+
+Let me add `lastOkAt` to `AlertsUaState` and set it on successful parse.
+
+
+## 15/08/2026, 18:11:07
+
+Now `NeptunState` — add backup health fields and `backupUp`/`backupDownSince` derived. The user wants online/offline with timers for both primary and backup. For backup, "offline" = hasn't polled successfully in a while (recency window). Let me add:
+- `backupUp: Boolean` — stored, set by collector based on `AlertsUaState` recency
+- `backupLastOkAt: Long`
+- `backupError: String?`
+
+And derived `backupOfflineElapsedSec` (seconds since last successful backup poll, null while up).
+
+Let me add a `BACKUP_HEALTHY_MS` const and update `NeptunState`.
+
+
+## 15/08/2026, 18:11:10
+
+I'm still in plan mode (read-only), so I'll present the finalized plan rather than edit yet.
+
+## Root cause
+
+Opening Settings hard-crashes because the **threat card-size preview** (`CardSizeTile` → `ThreatPopupCard`) renders 3 scaled preview cards immediately on open. The `SubcomposeLayout` measures each preview with `maxHeight = Constraints.Infinity` (SettingsScreen.kt:845), but `ThreatPopupCard`'s top-level `Surface` always applies `Modifier.verticalScroll(rememberScrollState())` (ThreatPopupCard.kt:131). Compose's `verticalScroll` throws when measured with infinite max height:
+
+> `IllegalStateException: Vertically scrollable component was measured with an infinity maximum height constraints, which is disallowed`
+
+On the main map the popup is placed in a bounded-height `Box`, so it never hits this. Only the settings preview feeds it `Infinity` — hence settings-only crash.
+
+## Fix (minimal)
+
+In `ThreatPopupCard.kt:130-132`, apply `verticalScroll` only for interactive cards:
+
+```kotlin
+modifier = modifier
+    .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+    .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier)
+```
+
+- `interactive = false` is used **exclusively** by the settings preview (SettingsScreen.kt:838), so the preview card now measures its full natural height — no infinite-height `verticalScroll`, no crash.
+- The real map popup (`MainScreen.kt:484`, default `interactive = true`) keeps its scrollable behavior unchanged.
+
+## Verification
+
+- `.\gradlew.bat :app:assembleDebug`
+- Optionally `.\gradlew.bat :app:testDebugUnitTest` (no domain-logic change expected, but cheap to run).
+
+## Note
+
+I can't reproduce the crash here (no adb device attached) and couldn't run the app in plan mode, but the `verticalScroll` + `Constraints.Infinity` combination is a well-documented hard crash and precisely matches the settings-only trigger. If the build/debug run still crashes after this change, the next suspect is the `SubcomposeLayout` scale math, and I'd want the logcat stack trace.
+
+Ready to implement when you switch out of plan mode.
+## 15/08/2026, 18:11:18
+
+Now add the `BACKUP_HEALTHY_MS` const and update `startBackupCollector` to relay backup health. Let me add the const near `BACKUP_FALLBACK_MS`.
+
+
+
+
+## 15/08/2026, 18:11:24
+
+Now update `startBackupCollector` to relay the backup health fields. Let me read that section.
+
+
+## 15/08/2026, 18:11:47
+
+I'll apply the fix to `ThreatPopupCard.kt`.
+
+
+## 15/08/2026, 18:11:58
+
+Now `MainViewModel` / `UiState`: add `backupUp`, `backupOfflineElapsedSec`, `backupError` (and I already have `backupActive`). Let me add the fields and populate them.
+
+Let me update `UiState`:
+
+
+## 15/08/2026, 18:12:01
+
+Now build to verify.
+
+
+## 15/08/2026, 18:12:19
+
+Now let me update the Strings. I need the new strings for the system-status popup. Let me plan the exact strings:
+
+- `connStatusTitle` — "System status" / "Статус системи"
+- `connNeptunLabel` — "NEPTUN"
+- `connBackupLabel` — "alerts.com.ua"
+- `connEffectiveFormat` — "Currently on: %1$s" / "Зараз працює: %1$s" (source name passed)
+- `connBackupNoMapDesc` — explanation that backup has no real-time map. EN: "Backup is oblast-level only — it has no live map positions, just alert status." UA: "Резервне джерело працює лише на рівні областей — без живої карти, лише статус тривог."
+- `connUpLine`/`connDownLine` already exist (green up / red down legend).
+- `attributionBackup` — "Air threat alerts — alerts.com.ua" / "Повітряні тривоги — alerts.com.ua"
+
+For "online/offline with timers" — the popup shows per-source status using existing `connOnline`/`connOffline` and the `offlineUiFormat`/`offlineDurMinFormat` timers, plus backup variants. Let me add backup online/offline labels:
+- Reuse `connOnline` ("Online"/"Онлайн") and `connOffline` ("Offline"/"Офлайн") for both sources.
+- For the backup offline with timer, reuse `offlineUiFormat` + `offlineDurMinFormat`.
+
+Let me add the new StringSet fields. I'll add them near `connBackup` (interface ~line 63) and the attribution.
+
+Let me add to the interface. First read the interface area around connBackup.
+
+
+
+
+## 15/08/2026, 18:12:23
+
+Build succeeds. The fix is applied.
+
+## Summary
+
+The crash was in the settings card-size preview. `CardSizeTile`'s `SubcomposeLayout` measures each preview card with `maxHeight = Constraints.Infinity`, while `ThreatPopupCard` always applied `verticalScroll` on its top-level `Surface`. Compose's `verticalScroll` throws `IllegalStateException` when measured with infinite max height — a hard crash on opening Settings.
+
+Fixed in `ThreatPopupCard.kt:130-132`: `verticalScroll` (and `clickable`) now only apply when `interactive=true`. The settings preview uses `interactive=false` (SettingsScreen.kt:838), so it measures its natural height without scrolling; the real map popup (MainScreen.kt:484, `interactive=true`) keeps its scrollable behavior. Build passes.
+## 15/08/2026, 18:12:36
+
+Now add UA values. Let me add them after `connBackup` (UA, line ~273) and after `attributionText` (UA, line 266).
+
+
+
+
+## 15/08/2026, 18:12:44
+
+Now EN values after `connBackup` (EN, line ~483):
+
+
+
+
+## 15/08/2026, 18:12:54
+
+Now update `MainScreen.kt`'s `ConnectionStatus`. First the pill: yellow dot + just "backup" when `backupActive`. Then the popup: rebuild as a two-source system status.
+
+Let me update the pill first (lines 816-841):
+
+
+## 15/08/2026, 18:13:01
+
+Now I need to pass the new backup health params into `ConnectionStatus`. The signature currently takes `connected, backupActive, offlineElapsedSec`. I need to add `backupUp`, `backupOfflineElapsedSec`, `backupError` for the popup. Let me update the signature and the popup body.
+
+Let me update the signature:
+
+
+## 15/08/2026, 18:13:16
+
+Now let me rewrite the popup body (from the `if (showInfo)` block) as the two-source system status. Let me read the current popup block after my edits to get exact line numbers.
+
+The popup is right after the pill Row. Let me view it.
+
+
+
+
+## 15/08/2026, 18:13:36
+
+Now let me rewrite the popup (lines 859-909) as a system status showing both sources with online/offline + timers, effective source, and the backup no-map explanation. Let me replace the whole `title` + `text` block.
+
+I'll build the per-source status line with a helper composable. Let me design:
+
+```kotlin
+title = {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(dotColor))
+        Spacer(Modifier.width(8.dp))
+        Text(s.connStatusTitle)
+    }
+},
+text = {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // NEPTUN
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(size 8, green/red)
+            Spacer(8)
+            Text(s.connNeptunLabel, bold-ish)
+            Spacer(6)
+            Text(neptunStatus, ...)
+        }
+        // Backup
+        Row(...) { amber/green/red dot; Text(s.connBackupLabel); Text(backupStatus) }
+        Text(s.connBackupNoMapDesc, bodySmall, onSurfaceVariant)
+        // Effective source
+        Text(String.format(s.connEffectiveFormat, effectiveName), ...)
+        // legend
+        Row green connUpLine
+        Row red connDownLine
+        // attribution link (backup or neptun)
+    }
+}
+```
+
+Status text:
+- NEPTUN: `connected ? s.connOnline : (offlineElapsedSec timer or connOffline)`
+- Backup: `backupUp ? s.connOnline : (backupOfflineElapsedSec timer or connOffline)` — and if backup never succeeded (`backupLastOkAt==0` → backupOfflineElapsedSec null), show `connOffline`.
+- Effective source name: `backupActive ? s.connBackupLabel : s.connNeptunLabel`.
+
+The timer format: reuse `s.offlineUiFormat` ("Offline for %1$s"/"Офлайн %1$s") + `s.offlineDurMinFormat` (minutes). For NEPTUN I already compute `offlineElapsedSec`; for backup I have `backupOfflineElapsedSec`.
+
+Let me build a small helper to format the source status to avoid repetition. Actually I'll inline using a private composable `SourceStatusRow(dotColor, name, status)` to keep it clean.
+
+Let me write the replacement.
+
+
+## 15/08/2026, 18:13:48
+
+I referenced `backupLastOkSeen` — I need to define it. It means "backup has polled at least once but is currently stale" (amber). I need to pass whether the backup ever succeeded. I have `backupOfflineElapsedSec` (null when up OR when never succeeded). I need to distinguish "never succeeded" (red) from "was up, now stale" (amber).
+
+Let me pass `backupLastOkAt` or a `backupSeen` boolean into `ConnectionStatus`. Simplest: pass `backupSeen: Boolean` (whether backup ever polled successfully, i.e. `backupLastOkAt > 0`). Actually `backupError` could indicate never-worked. Let me pass a dedicated `backupSeen` param.
+
+Let me add `backupSeen` to the signature and the call site, computed as `backupLastOkAt > 0` from UiState. I need to add `backupLastOkAt` to UiState, or just compute `backupSeen` in MainViewModel. Let me add `backupSeen: Boolean` to UiState computed from `neptun.backupLastOkAt > 0`.
+
+Actually, simpler: add `backupSeen` to UiState. Let me update UiState and its construction, then the ConnectionStatus call, then replace `backupLastOkSeen` with `backupSeen`.
+
+Let me add `backupSeen` to UiState:
+
+
+## 15/08/2026, 18:14:04
+
+Now update the ConnectionStatus signature to add `backupSeen`, update the call site, and replace `backupLastOkSeen` with `backupSeen`. Let me update the signature:
+
+
+
+
+
+
+## 15/08/2026, 18:14:16
+
+Now update the call site to pass the new params. Let me find the ConnectionStatus call in MainScreen (around line 369-374).
+
+
+
+
+## 15/08/2026, 18:15:01
+
+I removed `backupError` from the signature but it's still passed in... let me check — no, I removed it from the signature. But I had added `backupError = uiState.backupError` — no wait, I didn't add it to the call site, only in the signature which I removed. Let me verify there are no unused references and that `backupError` in UiState is used anywhere. I added `backupError` to UiState but may not use it now. It's harmless as a field but unused. The `SourceStatusRow` needs `FontWeight` import — let me check it's imported.
+
+Let me verify imports in MainScreen.kt for FontWeight and that `backupError` field isn't causing issues (it's fine as an unused data field). Let me check the FontWeight import.
+
+
+## 15/08/2026, 18:15:23
+
+`FontWeight` and `HorizontalDivider` are imported in MainScreen.kt. Good.
+
+Now let me build to check for compile errors. Let me run the build.
+
+
+## 15/08/2026, 18:15:50
+
+Build succeeds. Now let me run the unit tests, and also extend the test to cover the new `backupUp`/`backupOfflineElapsedSec` derivation.
+
+Let me first run existing tests to ensure nothing broke.
+
+
+## 15/08/2026, 18:16:11
+
+Tests pass. Let me add a couple of tests for the new `backupUp`/`backupOfflineElapsedSec` derived getters. I'll extend `AlertsUaTest.kt`.
+
+`backupUp` is stored (set by collector), but `backupOfflineElapsedSec` is derived from `backupUp` + `backupLastOkAt`. Let me test that getter logic, and also verify `backupActive` still works. Let me add tests.
+
+Let me view the current test file to append.
+
+
+## 15/08/2026, 18:16:25
+
+Now update the CHANGELOG entry to reflect the clearer UI, and ARCHITECTURE.md for the new backup health fields. Let me update the CHANGELOG Unreleased entry I added earlier.
+
+Let me find the entry I added and update it to mention the clear pill + system-status popup.
+
+
+## 15/08/2026, 18:16:39
+
+Now update ARCHITECTURE.md — the `AlertsUaClient.kt` module-map line and the key-invariant note about the backup. Let me update the AlertsUaClient line to mention backup health, and the invariant. Let me view the current lines.
+
+From earlier, the module map line for AlertsUaClient is:
+`| AlertsUaClient.kt | object singleton. Independent oblast-alert backup source: polls the keyless public https://alerts.com.ua/api/states every ~20s and exposes StateFlow<AlertsUaState>. Merged into NeptunState.oblastAlerts only when NEPTUN is down or its alert feed is silent (backupActive). |`
+
+Let me update it to mention health fields, and the invariant.
+
+
+## 15/08/2026, 18:16:52
+
+Now update the key-invariant note about the backup to mention the status popup health. Let me view it.
+
+From earlier I added:
+```
+- **Backup never overrides a healthy NEPTUN.** The alerts.com.ua backup (`AlertsUaClient`)
+  feeds `NeptunState.oblastAlerts` only when NEPTUN is disconnected or its own alert feed has
+  been silent for >60s (`backupActive`). Both `MainViewModel` and `AlertService` read the same
+  union (`oblastAlerts`), so the backup needs no changes to the mirrored zone/focus logic. The
+  `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body and the
+  connection pill.
+```
+
+Let me update the last sentence to mention the status popup.
+
+
+
+
+## 15/08/2026, 18:17:06
+
+All tests pass and the build succeeded earlier. Let me do a final verification build to be safe since I made doc + test changes after the last assemble.
+
+
+## 15/08/2026, 18:17:17
+
+Both build and tests pass. Done.
+
+## Summary
+
+Made the backup state clear and added a proper system-status popup.
+
+**Pill** (`MainScreen.kt`)
+- On backup: **amber dot + just "backup"** (no more confusing "Online · backup").
+- Otherwise keeps green "Online" / red "Offline · Xm".
+
+**System-status popup** (tap pill)
+- Title "System status" / "Статус системи" with the current-state dot.
+- Shows **NEPTUN** and **alerts.com.ua** each with its own Online/Offline-with-timer indicator (green / amber-stale / red).
+- Explains the backup is oblast-level only — no live map positions.
+- Highlights the currently effective source ("Currently on: NEPTUN / alerts.com.ua").
+- Attribution link swaps to alerts.com.ua while on backup.
+
+**Data plumbing**
+- `AlertsUaState` gained `lastOkAt` (last successful poll).
+- `NeptunState` gained `backupUp`/`backupLastOkAt`/`backupError` + derived `backupOfflineElapsedSec`; `startBackupCollector` relays health (with `BACKUP_HEALTHY_MS` recency window).
+- `UiState` exposed `backupUp`/`backupSeen`/`backupOfflineElapsedSec` to the popup.
+
+**Tests/docs**
+- Added tests for the new `backupOfflineElapsedSec` derivation.
+- Updated `CHANGELOG.md` and `ARCHITECTURE.md`.
+
+Verified: `:app:assembleDebug` and `:app:testDebugUnitTest` both green.
+## 15/08/2026, 18:17:42
+
+I'll research the codebase to understand the current Settings UI and the map/alerts toggle implementation before forming a plan.
+

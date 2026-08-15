@@ -5,7 +5,7 @@ enum class ThreatZone { INNER, OUTER }
 
 /**
  * GPS-centered concentric alert radii in km: the red circle inside the yellow ring.
- * The user sets red 1–5 km and yellow 6–10 km; a threat inside the red circle is INNER,
+ * The user sets red 1–20 km and yellow 21–50 km; a threat inside the red circle is INNER,
  * between red and yellow is OUTER, beyond yellow is outside both.
  */
 data class RadialZones(val redKm: Int, val yellowKm: Int)

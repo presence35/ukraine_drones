@@ -128,7 +128,7 @@ fun ThreatPopupCard(
 
     Surface(
         modifier = modifier
-            .verticalScroll(rememberScrollState())
+            .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier),
         shape = RoundedCornerShape(16.dp),
         color = Color(0xFF1E1E1E),

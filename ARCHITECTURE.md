@@ -34,7 +34,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | File | Responsibility |
 | --- | --- |
 | `NeptunClient.kt` | `object` singleton. Owns the NEPTUN WebSocket (`wss://neptun.in.ua/api/v1/stream`) with backoff reconnect + keep-alive/watchdog tasks, plus REST merge (`/api/v1/threats`). Exposes `StateFlow<NeptunState>` (threats map, oblastAlerts, connected, `offlineSince`/`offlineElapsedSec`). Handles `snapshot`/`upsert`/`remove`/`alerts`/`heartbeat` frames. `retryNow()` forces an immediate reconnect (used by the offline-notification Retry action). |
-| `AlertsUaClient.kt` | `object` singleton. Independent oblast-alert backup source: polls the keyless public `https://alerts.com.ua/api/states` every ~20s and exposes `StateFlow<AlertsUaState>`. Merged into `NeptunState.oblastAlerts` only when NEPTUN is down or its alert feed is silent (`backupActive`). |
+| `AlertsUaClient.kt` | `object` singleton. Independent oblast-alert backup source: polls the keyless public `https://alerts.com.ua/api/states` every ~20s and exposes `StateFlow<AlertsUaState>` (alerts + `lastOkAt`/`lastError` health). Merged into `NeptunState.oblastAlerts` only when NEPTUN is down or its alert feed is silent (`backupActive`); its own health (`backupUp`/`backupOfflineElapsedSec`) feeds the system-status popup. |
 | `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, `AlertSource`, `mergeAlerts`, and `translateCourseAssessment` (best-effort EN translation of NEPTUN's Ukrainian course text). |
 
 ### State / orchestration
@@ -149,7 +149,7 @@ Treat these as a contract. If you change one, update **every** place that relies
   through `focusAttribution` → `Cities.cityOblast` stem match (e.g. `"Харківськ"` hits
   `"Харківська область"`).
 
-- **Zone tiering.** `RadialZones`: INNER = distance ≤ red (1–5 km), OUTER = ≤ yellow (6–20 km),
+- **Zone tiering.** `RadialZones`: INNER = distance ≤ red (1–20 km), OUTER = ≤ yellow (21–50 km),
   else outside both. With `fastAlertsSooner` on, fast types
   (`FAST_THREAT_TYPES`: ballistic, cruise, KAB, aviation) claim INNER at any zone entry.
 
@@ -164,8 +164,8 @@ Treat these as a contract. If you change one, update **every** place that relies
   feeds `NeptunState.oblastAlerts` only when NEPTUN is disconnected or its own alert feed has
   been silent for >60s (`backupActive`). Both `MainViewModel` and `AlertService` read the same
   union (`oblastAlerts`), so the backup needs no changes to the mirrored zone/focus logic. The
-  `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body and the
-  connection pill.
+  `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body. Backup health
+  (`backupUp`/`backupOfflineElapsedSec`) is surfaced read-only in the system-status popup.
 
 - **No cloud / no push.** Monitoring is a local foreground `dataSync` service. Alerts stop when
   it stops ("Stop Monitoring & Exit"). There is no intermediate server to buffer anything.

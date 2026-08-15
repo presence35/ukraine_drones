@@ -23,6 +23,10 @@ import org.osmdroid.util.GeoPoint
 data class UiState(
     val connected: Boolean = false,
     val backupActive: Boolean = false,           // oblast alerts fall back to the backup source
+    val backupUp: Boolean = false,               // backup source polled successfully recently
+    val backupSeen: Boolean = false,             // backup source has polled successfully at least once
+    val backupOfflineElapsedSec: Long? = null,   // seconds since backup last succeeded, null while up
+    val backupError: String? = null,             // last backup error message, if any
     val offlineElapsedSec: Long? = null,          // seconds since the stream dropped, null while connected
     val threatsInner: List<Threat> = emptyList(), // within the red zone radius
     val threatsOuter: List<Threat> = emptyList(), // in the yellow ring, beyond red
@@ -390,6 +394,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return UiState(
             connected = neptun.connected,
             backupActive = neptun.backupActive,
+            backupUp = neptun.backupUp,
+            backupSeen = neptun.backupLastOkAt > 0,
+            backupOfflineElapsedSec = neptun.backupOfflineElapsedSec,
+            backupError = neptun.backupError,
             offlineElapsedSec = neptun.offlineElapsedSec,
             threatsInner = inInner,
             threatsOuter = inOuter,

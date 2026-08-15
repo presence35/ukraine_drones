@@ -23,7 +23,6 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Notifications
@@ -369,6 +368,9 @@ private fun MapScreen(
                 ConnectionStatus(
                     connected = uiState.connected,
                     backupActive = uiState.backupActive,
+                    backupUp = uiState.backupUp,
+                    backupSeen = uiState.backupSeen,
+                    backupOfflineElapsedSec = uiState.backupOfflineElapsedSec,
                     offlineElapsedSec = uiState.offlineElapsedSec,
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
@@ -670,10 +672,10 @@ private fun ZoneButtons(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.Edit,
+                    imageVector = Icons.Default.Settings,
                     contentDescription = s.editZonesLabel,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -810,14 +812,24 @@ private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
 private fun ConnectionStatus(
     connected: Boolean,
     backupActive: Boolean,
+    backupUp: Boolean,
+    backupSeen: Boolean,
+    backupOfflineElapsedSec: Long?,
     offlineElapsedSec: Long?,
     s: Strings.StringSet,
     modifier: Modifier = Modifier
 ) {
-    val dotColor = if (connected) Color(0xFF4CAF50) else Color(0xFFE57373)
-    val label = if (connected) s.connOnline
-    else offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
-        ?: s.connOffline
+    val dotColor = when {
+        backupActive -> Color(0xFFF9A825) // amber — on the backup source
+        connected -> Color(0xFF4CAF50)
+        else -> Color(0xFFE57373)
+    }
+    val label = when {
+        backupActive -> s.connBackup
+        connected -> s.connOnline
+        else -> offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
+            ?: s.connOffline
+    }
     var showInfo by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
@@ -835,7 +847,7 @@ private fun ConnectionStatus(
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (backupActive) "$label · ${s.connBackup}" else label,
+            text = label,
             color = Color.White,
             style = MaterialTheme.typography.labelMedium
         )
@@ -856,12 +868,42 @@ private fun ConnectionStatus(
                             .background(dotColor)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(if (connected) s.connOnline else s.connOffline)
+                    Text(s.connStatusTitle)
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(s.connServerLine, style = MaterialTheme.typography.bodyMedium)
+                val neptunStatus = if (connected) s.connOnline
+                else offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
+                    ?: s.connOffline
+                val backupStatus = if (backupUp) s.connOnline
+                else backupOfflineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
+                    ?: s.connOffline
+                val effectiveName = if (backupActive) s.connBackupLabel else s.connNeptunLabel
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SourceStatusRow(
+                        color = if (connected) Color(0xFF4CAF50) else Color(0xFFE57373),
+                        name = s.connNeptunLabel,
+                        status = neptunStatus
+                    )
+                    SourceStatusRow(
+                        color = when {
+                            backupUp -> Color(0xFF4CAF50)
+                            backupSeen -> Color(0xFFF9A825)
+                            else -> Color(0xFFE57373)
+                        },
+                        name = s.connBackupLabel,
+                        status = backupStatus
+                    )
+                    Text(
+                        s.connBackupNoMapDesc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        String.format(s.connEffectiveFormat, effectiveName),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
@@ -882,7 +924,6 @@ private fun ConnectionStatus(
                         Spacer(Modifier.width(8.dp))
                         Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
-                    Spacer(Modifier.height(6.dp))
                     val annotated = buildAnnotatedString {
                         withStyle(
                             SpanStyle(
@@ -890,15 +931,36 @@ private fun ConnectionStatus(
                                 textDecoration = TextDecoration.Underline
                             )
                         ) {
-                            append(s.attributionText)
+                            append(if (backupActive) s.attributionBackup else s.attributionText)
                         }
                     }
                     ClickableText(text = annotated, onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://neptun.in.ua/")))
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(if (backupActive) "https://alerts.com.ua/" else "https://neptun.in.ua/")
+                            )
+                        )
                     })
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun SourceStatusRow(color: Color, name: String, status: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(6.dp))
+        Text(status, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
