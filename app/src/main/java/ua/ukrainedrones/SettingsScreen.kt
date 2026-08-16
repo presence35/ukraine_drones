@@ -71,9 +71,10 @@ fun SettingsScreen(
     disclaimerCollapsed: Boolean,
     followMe: Boolean,
     pinnedCity: City?,
-    redCities: Set<String>,
     threatCardSize: ThreatCardSize,
     showMapScale: Boolean,
+    fastGroupCollapsed: Boolean,
+    slowGroupCollapsed: Boolean,
     versionName: String,
     isChecking: Boolean,
     latestVersion: String?,
@@ -90,6 +91,8 @@ fun SettingsScreen(
     onDisclaimerCollapse: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
+    onFastGroupCollapse: (Boolean) -> Unit,
+    onSlowGroupCollapse: (Boolean) -> Unit,
     onExit: () -> Unit,
     onCheckUpdate: () -> Unit,
     onOpenGuide: () -> Unit
@@ -108,8 +111,7 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var expandedType by remember { mutableStateOf<ThreatType?>(null) }
-    // Fast/Slow groups start expanded; tapping a group header collapses its per-type cards.
-    var collapsedGroups by remember { mutableStateOf(setOf<String>()) }
+    // Fast/Slow groups' collapsed state is persisted (ZonePrefs), so it survives restarts.
     // The "Additional settings" section starts collapsed; only the battery/scale live in it so far.
     var additionalExpanded by remember { mutableStateOf(false) }
     // The "Official signals" card needs two collapse taps before it actually stays collapsed.
@@ -230,7 +232,6 @@ fun SettingsScreen(
                             lang = lang,
                             followMe = followMe,
                             pinnedCity = pinnedCity,
-                            redCities = redCities,
                             onChange = onPinnedCityChange
                         )
                     }
@@ -273,18 +274,18 @@ fun SettingsScreen(
             }
 
             item { SectionHeader(s.threatsLabel, rememberVectorPainter(Icons.Default.Warning)) }
-            fastAndSlowGroups(lang).forEach { (groupIcon, groupTitle, types) ->
+            fastAndSlowGroups(lang).forEachIndexed { index, (groupIcon, groupTitle, types) ->
                 val groupMapOn = types.none { it in hiddenTypes }
                 val groupAlertsOn = types.none { it in silencedTypes }
-                val groupCollapsed = collapsedGroups.contains(groupTitle)
+                val groupCollapsed = if (index == 0) fastGroupCollapsed else slowGroupCollapsed
                 item {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                collapsedGroups = if (groupCollapsed) collapsedGroups - groupTitle
-                                else collapsedGroups + groupTitle
+                                if (index == 0) onFastGroupCollapse(!fastGroupCollapsed)
+                                else onSlowGroupCollapse(!slowGroupCollapsed)
                             }
                             .padding(top = 4.dp, bottom = 4.dp)
                     ) {
@@ -314,7 +315,7 @@ fun SettingsScreen(
                             icon = Icons.Filled.Notifications,
                             contentDescription = s.threatAlertLabel,
                             on = groupAlertsOn,
-                            enabled = groupMapOn,
+                            enabled = true,
                             onClick = { onThreatAlertToggleAll(types, !groupAlertsOn) }
                         )
                         Spacer(Modifier.width(4.dp))
@@ -679,7 +680,7 @@ private fun ThreatSettingsCard(
                         icon = Icons.Filled.Notifications,
                         label = s.threatAlertLabel,
                         on = onAlerts,
-                        enabled = onMap,
+                        enabled = true,
                         onClick = { onThreatAlertToggle(type, !onAlerts) }
                     )
                 }
@@ -757,7 +758,6 @@ private fun PinCityRow(
     lang: AppLanguage,
     followMe: Boolean,
     pinnedCity: City?,
-    redCities: Set<String>,
     onChange: (City?) -> Unit
 ) {
     val s = Strings.get(lang)
@@ -792,20 +792,7 @@ private fun PinCityRow(
         ) {
             cities.forEach { city ->
                 DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (city.nameUa in redCities) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFFD32F2F))
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            }
-                            Text(label(city))
-                        }
-                    },
+                    text = { Text(label(city)) },
                     onClick = {
                         onChange(city)
                         expanded = false

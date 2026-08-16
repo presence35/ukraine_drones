@@ -39,6 +39,8 @@ class ZonePrefs(private val context: Context) {
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
     private val showMapScaleKey = booleanPreferencesKey("show_map_scale")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
+    private val fastGroupCollapsedKey = booleanPreferencesKey("fast_group_collapsed")
+    private val slowGroupCollapsedKey = booleanPreferencesKey("slow_group_collapsed")
 
     /** Red (inner) time-to-arrival threshold in minutes — slider range 5–20, default 20. */
     fun redZoneMin(): Flow<Int> =
@@ -214,6 +216,22 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setLegacyCacheCleaned(cleaned: Boolean) {
         context.dataStore.edit { it[legacyCacheCleanedKey] = cleaned }
+    }
+
+    /** Whether the Fast threat group in Settings is collapsed — default expanded. */
+    fun fastGroupCollapsed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[fastGroupCollapsedKey] ?: false }
+
+    suspend fun setFastGroupCollapsed(collapsed: Boolean) {
+        context.dataStore.edit { it[fastGroupCollapsedKey] = collapsed }
+    }
+
+    /** Whether the Slow threat group in Settings is collapsed — default expanded. */
+    fun slowGroupCollapsed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[slowGroupCollapsedKey] ?: false }
+
+    suspend fun setSlowGroupCollapsed(collapsed: Boolean) {
+        context.dataStore.edit { it[slowGroupCollapsedKey] = collapsed }
     }
 }
 

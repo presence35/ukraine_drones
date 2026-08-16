@@ -36622,3 +36622,254 @@ Summary of changes:
 - **Notifications**: `alertEpoch` counter; `buildAlertNotification` extracted; `postAlert` takes `lang`, posts raw then re-posts translated in background when EN.
 - **Wording**: "coarse"/"rough" → "approximate" in Strings + Threat.kt; zones-status strings reworded; `notifStatusPinned` formatted with the city at AlertService:313.
 - **Dead-reckoning**: `predictPosition` gates on `status == "active"` + `bearingDeg ?: heading`; new PredictionTest cases added.
+## 16/08/2026, 15:04:31
+
+Understood — the edit button and the openable panel stay; what changes is that the panel's contents (all 4 sliders + the group toggle row) are fully visible once open, no drag-to-reveal. That also keeps `fitZonesTick` and the sheet block. Here's the plan.
+
+## Plan: per-group zone tiering (slow=km, fast=min) + fully-visible zones panel
+
+### 1. `Zones.kt` — single source of tier math
+- Add `internal val FastThreatTypes = setOf(BALLISTIC, CRUISE_MISSILE, AVIATION, KAB)` (single source; `ThreatTogglePanel.kt:25` deletes its local copy).
+- Replace `TimeZones` with `data class ZoneParams(slowRedKm: Int, slowYellowKm: Int, fastRedMin: Int, fastYellowMin: Int)`.
+- Delete `timeZone`, `timeTier`, `ZONE_CIRCLE_REF_KMH`, `zoneCircleKm`. Keep `etaMinutes`, `reachKm`, `BALLISTIC_SPEED_KMH`.
+- New `fun zoneTier(t, distKm, speedKmh, params): ThreatZone?`: `if (distKm > reachKm(t.type)) null`; fast group → `speed = if (t.type == AVIATION) BALLISTIC_SPEED_KMH else speedKmh`, `eta = etaMinutes(distKm, speed)`, `eta != null && eta <= fastRedMin → INNER`, `<= fastYellowMin → OUTER`, else null; slow group → `distKm <= slowRedKm → INNER`, `<= slowYellowKm → OUTER`, else null.
+
+### 2. `ZonePrefs.kt`
+- Replace `redZoneMinKey`/`yellowZoneMinKey` + flows/setters (lines 26–27, 44–57) with four: `slowRedKm` (default 60, coerce 5–100), `slowYellowKm` (180, 20–300), `fastRedMin` (10, 2–20), `fastYellowMin` (30, 5–60). Keys `slow_red_km` etc. Old `red_zone_min`/`yellow_zone_min` keys stop being read (values simply ignored).
+- `redArmed`/`yellowArmed` unchanged.
+
+### 3. `MainViewModel.kt` (UI mirror)
+- `UiState` (40–43) → `slowRedKm=60, slowYellowKm=180, fastRedMin=10, fastYellowMin=30`.
+- `ThreatProximity` (73–81): `redMin`/`yellowMin` → `params: ZoneParams`.
+- `zonesFlow` (100–102) → `combine(4 prefs) { a,b,c,d -> ZoneParams(...) }`.
+- `LiveSnapshot` (147–154): the 2 radius ints → the 4 ints.
+- `buildUiState` (285–297): 4 int params; line 298 → `params = ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)`; tiering (363) → `zoneTier(t, distKm, speedKmh, params)`.
+- `scoreOf` (365–368): pass per-group `(t.type in FastThreatTypes)` → `fastRedMin to fastYellowMin` else `slowRedKm to slowYellowKm`.
+- Proximity build (401–409) → `params = zones`; return fields (427–430) → the 4 ints.
+- `seedFlow` (238–239) primes the 4 prefs; replace `setRedZoneMin`/`setYellowZoneMin` with `setSlowRedKm`/`setSlowYellowKm`/`setFastRedMin`/`setFastYellowMin`.
+
+### 4. `AlertService.kt` (notification mirror — must move in lockstep)
+- Radii combine (165) → 4 prefs → `ZoneParams`; add `params: ZoneParams` to `MonitorEvent.State`.
+- `buildReason` (195 call + 435 signature): replace `redKm/yellowKm` with `params`; `scoreOf` (459–461) picks per-threat group values.
+- `zoneThreats` (241–267): signature → `(st, params, focus, enabled, now)`; drop `TimeZones` at 250, use `zoneTier` at 263.
+
+### 5. `MapView.kt`
+- `redCircleKm` → `slowRedKm`, `yellowCircleKm` → `slowYellowKm` (overlayKey 223, fits 305/315, zoom 333–334, circles 388/397) with `.toDouble()` where a `Double` bbox is needed. Drop the reference-speed comment. `fitZonesTick` stays (panel still opens).
+
+### 6. `ThreatPopupCard.kt`
+- Band (119–121): `timeTier(threat, dist, speed, TimeZones(p.redMin, p.yellowMin))` → `zoneTier(threat, dist, speed, p.params)`.
+
+### 7. `MainScreen.kt`
+- Keep `showZonesSheet`/`openZonesPanel`/`fitZonesTick` and the `if (showZonesSheet)` sheet block; **delete** `zonesExpanded` and its drag-to-expand logic (handle simplified to tap/drag-close only); remove the `SlimThreatToggles` expansion block (622–636) — the group toggle row now lives inside `ZonesPanel`, always visible.
+- `ZoneButtons`: **keep** the edit-zones button and the `AllAlertsOffWarning` (still opens the panel).
+- `MapScreen`/outer `MainScreen` signatures: replace `onRedZoneChange`/`onYellowZoneChange` with the 4 setter callbacks; pass `hiddenTypes`/`silencedTypes` + group toggle handlers to `ZonesPanel`. Drop now-unused imports (pointerInput/detectVerticalDragGestures/mutableFloatStateOf).
+
+### 8. `ZonesSheet.kt`
+- Rewrite `ZonesEditContent` → `ZonesPanel`: Slow caption → red-km row (bells, unit `км`, range 5–100) + yellow-km row (20–300); Fast caption → red-min row (2–20) + yellow-min row (5–60, unit `хв`); group-only toggle row `⚡ [Map][Alerts] 🐢 [Map][Alerts]`. `ZoneRow` gains `unit: String` param.
+
+### 9. `ThreatTogglePanel.kt`
+- Delete local `FastThreatTypes` (uses Zones.kt's); add `GroupOnlyToggles` composable reusing the SlimThreatToggles group-row logic (emoji + title + Map/Alerts masters), no per-type rows. `SlimThreatToggles` stays for the first-run dialog only.
+
+### 10. `Strings.kt` (EN + UA)
+- Remove `zoneExplain`/`redZoneHint`/`yellowZoneHint`; add `slowSectionLabel` ("Slow — distance km" / «Повільні — відстань, км») and `fastSectionLabel` ("Fast — time to arrival" / «Швидкі — час до прильоту»).
+- Update `guideZones*`/`guideEditZones*` to the km/min + fully-visible-panel model; review `guideFollow*` (likely unchanged — zones still follow GPS).
+
+### 11. Tests — `ZonesTest.kt` rewrite
+- Slow km tiering (INNER/OUTER/null), fast min tiering (incl. boundary), reach caps, AVIATION override (incl. null reported speed → still tiers), null-speed fast → null, slow ignores speed. Drop `timeZone`/`zoneCircleKm` tests; keep `etaMinutes` + `reachKm`. `ThreatLevelTest.kt` compiles unchanged (`scoreOf` signature untouched).
+
+### 12. Docs
+- `CHANGELOG.md`: replace the now-stale line-5 [Unreleased] time-model bullet with the per-group model + panel change.
+- `ARCHITECTURE.md`: module map (Zones.kt, ZonePrefs.kt, ZonesSheet.kt, ThreatTogglePanel.kt, MainScreen.kt, MapView.kt; drop stale "zone radii" from SettingsScreen), data-flow "radii"→"zone params", and rewrite the **Zone tiering** invariant (per-group `zoneTier`, slow-distance circles only).
+
+### 13. Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest`
+
+Confirm this interpretation (panel still opens via the edit button, contents fully visible, no drag) and I'll implement.
+## 16/08/2026, 15:06:38
+
+
+
+
+## 16/08/2026, 15:06:42
+
+The user added 7 direction-facing PNGs for threat markers. Let me understand how the map currently renders markers
+## 16/08/2026, 15:06:48
+
+Let me look at the images to understand what they show.
+
+
+## 16/08/2026, 15:07:03
+
+I can't view image contents (this model doesn't support image input), but I can inspect the files' properties. Let me get dimensions/format info
+## 16/08/2026, 15:07:31
+
+Almost — a few quick checks before I final
+## 16/08/2026, 15:07:41
+
+I can't view the image contents (this model doesn't support image input), but I've confirmed the 7 PNGs in the repo root and their specs:
+
+| File | Size |
+|---|---|
+| ballistic_top.png | 56×208 |
+| cruise_top_right.png | 238×109 |
+| fpv_bottom_middle.png | 334×191 |
+| guided_bottom_left.png | 234×159 |
+| mig_left.png | 335×108 |
+| recon_bottom_left.png | 328×154 |
+| shahed_top_middle.png | 245×205 |
+
+The names map to threat types (ballistic, cruise, FPV, guided/KAB, MiG/aviation, recon, Shahed), and the direction suffix (top/left/bottom_middle…) suggests each shows which way the threat faces. Currently the map (`MapView.kt:431`) rotates the vector icon by `courseDeg`, and `ThreatImages.kt` bundles photos for the Settings reference card.
+
+Before I plan anything, I need to know what you intend to do with these.
+
+
+## 16/08/2026, 15:07:54
+
+Yes. Plan ready — here it is.
+
+## SESSION 2 — UI polish & toggle model
+
+**1. Trident on red header** (`MainScreen.kt`)
+- `UkraineEmblem` (644): add `contrast: Boolean = false`; when `contrast`, `colorFilter = ColorFilter.tint(Color.White)` (ignore `active`), else existing logic.
+- Call site (386–389): pass `contrast = activeZone != null`.
+
+**2. Neptun logo + URL** (`ConnectionStatus.kt` 164–177)
+- Replace the `Image` with a `Row(CenterVertically)` = `Image` (same painter, `height(40.dp)`) + `Spacer(6.dp)` + `Text("neptun.in.ua", bodySmall, Color.White)`, whole row `.clickable` → the existing `startActivity(ACTION_VIEW, "https://neptun.in.ua/")`.
+
+**3. Neutralized card + fade**
+- `Strings.kt`: add `neutralizedLabel` (UA "Нейтралізовано" / EN "Neutralized") to `StringSet` + both instances.
+- `MainViewModel.kt`: add `UiState.neutralizedThreat: Threat? = null`; in `buildUiState` after line 378: `neutralizedThreat = if (selected != null && refreshedSelected == null) selected else null`; include in returned `UiState`.
+- `ThreatPopupCard.kt`: add `neutralized: Boolean = false`; when true render only a compact `Surface` (Icon + typeLabel + `s.neutralizedLabel`), skip pills/skull/region/close, non-interactive (early branch, no `interactive` scroll/click).
+- `MainScreen.kt` popup block (525–558): when `selectedThreat == null && neutralizedThreat != null`, show `ThreatPopupCard(neutralized = true, interactive = false, onDismiss = onDismissPopup)` wrapped in `graphicsLayer { alpha = fade.value }` with `Animatable(1f)` → `animateTo(0f, tween(2000, easing = { t -> if (t < 0.8f) 1f else 1f - (t - 0.8f) / 0.2f }))` then `onDismissPopup()`. Add imports `androidx.compose.animation.core.Animatable` + `androidx.compose.ui.graphics.graphicsLayer`. `ThreatCardSizeControl` already hidden since it lives in the `selectedThreat` branch.
+
+**4. Pin-city dropdown → plain rows**
+- `SettingsScreen.kt` `PinCityRow`: delete the red-dot `Box` block (797–805); item = `Text(label(city))`.
+- Remove `redCities` from `PinCityRow` (760), `SettingsScreen` (74), pass-through (233), and `MainScreen.kt:120`. Keep `UiState.redCities` (still used by `hasActiveAlert`, 584).
+- Wording: `pinCityDesc` UA (369) → drop "Червоним позначені області з офіційною тривогою."; EN (602) → drop "Cities with an official oblast alert are marked red."; remove `guidePinD3` from `StringSet` (213) + UA (446) + EN (679) + `FeatureGuide.kt:51` (`listOf(s.guidePinD1, s.guidePinD2)`).
+
+**5. Persist fast/slow collapse**
+- `ZonePrefs.kt`: `fastGroupCollapsedKey`/`slowGroupCollapsedKey` booleans (default false) + `fastGroupCollapsed()`/`slowGroupCollapsed()` flows + setters.
+- `MainViewModel.kt`: add to `UiState` (defaults false), extend the `AlertConfig` combine (flags[6]/[7]) → `PrefsSnapshot`, set via `.copy(...)`; add `setFastGroupCollapsed`/`setSlowGroupCollapsed`.
+- `SettingsScreen.kt`: drop local `collapsedGroups` (112); add params `fastGroupCollapsed`/`slowGroupCollapsed` + `onFastGroupCollapse`/`onSlowGroupCollapse`; use `forEachIndexed` — `groupCollapsed` (279) reads the param, header click (285–288) calls the callback. `MainScreen.kt` passes state + callbacks.
+
+**6. Decouple Map/Alerts**
+- `MainViewModel.kt`: `setThreatMapVisible` — drop the `if (!visible) setThreatAlertsEnabled(false)`; `setGroupThreatMapVisible` — drop the force-disable loop; `setThreatAlertsEnabled` — when enabled also `setThreatMapVisible(type, true)`; `setGroupThreatAlertsEnabled` — when enabled set map visible for every type.
+- `ThreatTogglePanel.kt`: SlimTypeRow alerts `enabled = true` (229); SlimThreatToggles group alerts `enabled = true` (165).
+- `SettingsScreen.kt`: ThreatSettingsCard alerts `enabled = true` (682); group-header alerts `enabled = true` (317).
+- `ARCHITECTURE.md`: rewrite the "Threat type gating" invariant (map-off no longer silences alerts; alerts-on auto-enables map).
+
+**Docs & verify**: CHANGELOG `[Unreleased]` entry; `ARCHITECTURE.md` updates; `.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`.
+
+---
+
+One flag before I start: task 6 changes the coupling, but three user-visible strings still describe the old behavior and weren't mentioned in the scope: the toggle-hint toast (`mapToggleHintRest` UA 282 / EN 515, `alertToggleHintRest` 284/517) and the guide bullet `guideTogglesD1` (UA 464 / EN 697). Want me to update those too, or leave them as-is?
+## 16/08/2026, 15:08:32
+
+
+
+
+## 16/08/2026, 15:08:37
+
+Task 1 — tr
+## 16/08/2026, 15:08:48
+
+Task 2 — Neptun row
+## 16/08/2026, 15:08:53
+
+Task 3 — Strings, MainViewModel, ThreatPopupCard, MainScreen. Strings first
+## 16/08/2026, 15:08:59
+
+
+
+
+## 16/08/2026, 15:09:21
+
+Now MainViewModel.kt — neutralizedThreat in
+## 16/08/2026, 15:09:37
+
+Now ThreatPopupCard.kt — neutralized branch
+
+
+## 16/08/2026, 15:09:41
+
+Good. These replace the current icons everywhere except the Settings reference photos. Let me map out every place the
+## 16/08/2026, 15:10:14
+
+I can't view the images (this model doesn't support image input), but I can analyze pixel data to understand their layout. Let me check transparency/bounding boxes to see if they're icon-like or
+## 16/08/2026, 15:10:32
+
+These are full-bleed photos (opaque content across the whole frame), not transparent icons. Let me check the existing icons to compare style and understand rotation
+## 16/08/2026, 15:11:07
+
+Let me check whether these PNGs have transparent backgrounds (crucial for marker use) by sampling corners and alpha range
+## 16/08/2026, 15:13:21
+
+MainScreen.kt — neutralized popup + fade. Imports first
+## 16/08/2026, 15:13:48
+
+Task 4 — pin-city plain rows. SettingsScreen first
+
+
+## 16/08/2026, 15:14:07
+
+Now MainScreen.kt:120 — remove redCities pas
+
+
+## 16/08/2026, 15:14:12
+
+Now the wording drops — pinCityDesc + guidePinD3 in Strings and
+## 16/08/2026, 15:15:22
+
+Task 5 — persist collapse. ZonePrefs first
+
+
+## 16/08/2026, 15:15:35
+
+MainViewModel — thread collapse state
+## 16/08/2026, 15:16:03
+
+Now the setters, next to `setThreatCard
+## 16/08/2026, 15:16:07
+
+SettingsScreen — replace local collapse
+## 16/08/2026, 15:16:28
+
+Now MainScreen passes collapse state + call
+
+
+## 16/08/2026, 15:16:47
+
+Task 6 — decouple toggles. MainViewModel first
+## 16/08/2026, 15:17:02
+
+Now the UI enabled flags — ThreatTogglePanel.kt (2 spots) and SettingsScreen.
+## 16/08/2026, 15:17:36
+
+Docs — ARCHITECTURE invariant + CHANGELOG
+## 16/08/2026, 15:17:55
+
+Sanity check for dangling references, then build
+## 16/08/2026, 15:18:01
+
+Clean — the remaining `redCities` is the intentional UiState field. Building now
+## 16/08/2026, 15:18:16
+
+Missing defaults in the neutralized call — fixing
+## 16/08/2026, 15:18:45
+
+Build passes (pre-existing warnings only). Now unit tests
+
+
+## 16/08/2026, 15:18:59
+
+All 6 scope items done; `assembleDebug` and `testDebugUnitTest` both pass (only pre-existing warnings). One compile fix was needed: the neutralized `ThreatPopupCard` call must pass `proximity`/`pinnedCity`/`threatLevel` (they lack defaults).
+## 16/08/2026, 15:19:42
+
+Plan — on your go I'll run:
+
+```
+git add .
+git commit -m "UI polish & toggle model: neutralized card, decoupled Map/Alerts, persisted groups"
+git push
+```

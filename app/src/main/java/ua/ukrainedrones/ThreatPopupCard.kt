@@ -74,7 +74,8 @@ fun ThreatPopupCard(
     modifier: Modifier = Modifier,
     cardSize: ThreatCardSize = ThreatCardSize.LARGE,
     interactive: Boolean = true,
-    alertsOff: Boolean = false
+    alertsOff: Boolean = false,
+    neutralized: Boolean = false
 ) {
     val s = Strings.get(lang)
     val typeInfo = ThreatTypeCatalog.INFO.getValue(threat.type)
@@ -123,6 +124,44 @@ fun ThreatPopupCard(
         ThreatZone.INNER -> DistUserRed
         ThreatZone.OUTER -> DistUserAmber
         null -> Color(0xFF9E9E9E)
+    }
+
+    // Neutralized state: a compact, non-interactive card that just announces the resolved
+    // threat by its type — no pills, skull, region or close.
+    if (neutralized) {
+        Surface(
+            modifier = modifier,
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFF1E1E1E),
+            border = BorderStroke(2.dp, Color(0xFF3A3A3A)),
+            tonalElevation = 8.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = iconResFor(threat.type)),
+                    contentDescription = typeLabel,
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    typeLabel,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    s.neutralizedLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF9E9E9E)
+                )
+            }
+        }
+        return
     }
 
     Surface(

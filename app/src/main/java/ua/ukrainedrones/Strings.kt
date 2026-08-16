@@ -210,7 +210,6 @@ object Strings {
         val guidePinSummary: String,
         val guidePinD1: String,
         val guidePinD2: String,
-        val guidePinD3: String,
         val guideCardSizeTitle: String,
         val guideCardSizeSummary: String,
         val guideCardSizeD1: String,
@@ -236,7 +235,8 @@ object Strings {
         val guideUpdateD1: String,
         val guideUpdateD2: String,
         val guideUpdateD3: String,
-        val lastSeenAgoFormat: String
+        val lastSeenAgoFormat: String,
+        val neutralizedLabel: String
     )
 
     private val UA = StringSet(
@@ -366,7 +366,7 @@ object Strings {
         followMeTitle = "Слідувати за мною",
         followMeDesc = "Карта та зони слідують за твоїм GPS-положенням.",
         pinCityTitle = "Прикріпити до міста",
-        pinCityDesc = "Центр карти та зони закріплюються за вибраним містом. Червоним позначені області з офіційною тривогою.",
+        pinCityDesc = "Центр карти та зони закріплюються за вибраним містом.",
         mapPillPinned = "Прикріплено: %1\$s",
         alertBannerFormat = "%1\$s: тривога",
         alertSourceBackup = " · резервне джерело",
@@ -443,7 +443,6 @@ object Strings {
         guidePinSummary = "Закріпи мапу та зони за вибраним містом замість GPS.",
         guidePinD1 = "Зручно, коли стежиш за рідними в іншому місті.",
         guidePinD2 = "Відстань на картках міряється до цього міста, а не до тебе.",
-        guidePinD3 = "Міста з офіційною тривогою позначені червоним.",
         guideCardSizeTitle = "Розмір картки",
         guideCardSizeSummary = "Три розміри керують деталізацією картки загрози.",
         guideCardSizeD1 = "Мала — один рядок: череп, тип і час підльоту.",
@@ -470,6 +469,7 @@ object Strings {
         guideUpdateD2 = "Завантажуй і встановлюй просто з діалогу.",
         guideUpdateD3 = "Можна також натиснути «Перевірити оновлення» в Налаштуваннях.",
         lastSeenAgoFormat = "Востаннє %1\$s тому",
+        neutralizedLabel = "Нейтралізовано",
     )
 
     private val EN = StringSet(
@@ -599,7 +599,7 @@ object Strings {
         followMeTitle = "Follow me",
         followMeDesc = "The map and zones follow your GPS position.",
         pinCityTitle = "Pin to a city",
-        pinCityDesc = "The map centre and zones pin to the selected city. Cities with an official oblast alert are marked red.",
+        pinCityDesc = "The map centre and zones pin to the selected city.",
         mapPillPinned = "Pinned: %1\$s",
         alertBannerFormat = "%1\$s: alert",
         alertSourceBackup = " · backup source",
@@ -676,7 +676,6 @@ object Strings {
         guidePinSummary = "Fix the map and zones on a chosen city instead of your GPS.",
         guidePinD1 = "Useful when you're watching over family elsewhere.",
         guidePinD2 = "Distance on threat cards is measured to that city, not to you.",
-        guidePinD3 = "Cities with an official alert are marked red in the list.",
         guideCardSizeTitle = "Card sizes",
         guideCardSizeSummary = "Three sizes control how much each threat card shows.",
         guideCardSizeD1 = "Small — one line: skull, type and ETA.",
@@ -703,6 +702,7 @@ object Strings {
         guideUpdateD2 = "Download and install straight from the dialog.",
         guideUpdateD3 = "You can also tap Check for updates in Settings.",
         lastSeenAgoFormat = "Last seen %1\$s ago",
+        neutralizedLabel = "Neutralized",
     )
 }
 

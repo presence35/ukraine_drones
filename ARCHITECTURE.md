@@ -144,14 +144,15 @@ Treat these as a contract. If you change one, update **every** place that relies
   `Zones.kt` is the single source of truth for tier math — call `timeTier`, never inline it.
 
 - **Threat type gating.** `ZonePrefs.threatMapFlow` gates which types render on the map
-  (`MainViewModel`); `threatAlertFlow` gates which types fire alerts (`AlertService`). Turning a
-  type's map visibility off also turns its alerts off (coupling); turning alerts off keeps it on
-  the map but dimmed. A type hidden from the map is omitted from the footer threat strip. When a
-  type's alerts are off, its detail popup (`ThreatPopupCard`) shows a red crossed bell
-  next to the type name (presentational only — no effect on the mirrored zone/alert logic).
-  The same red crossed bell (`AlertsOffBell` in `ThreatPopupCard.kt`, drawable
-  `ic_notifications_off`) marks muted zone bells in `ZonesSheet` and floats above the
-  disarmed zone pill on the map (`MainScreen.ZoneButton`).
+  (`MainViewModel`); `threatAlertFlow` gates which types fire alerts (`AlertService`). The two
+  toggles are decoupled: turning a type's map visibility off no longer silences its alerts, and
+  turning a type's alerts on auto-enables its map visibility (an armed alert is never hidden).
+  Turning alerts off keeps the type on the map but dimmed. A type hidden from the map is
+  omitted from the footer threat strip. When a type's alerts are off, its detail popup
+  (`ThreatPopupCard`) shows a red crossed bell next to the type name (presentational only — no
+  effect on the mirrored zone/alert logic). The same red crossed bell (`AlertsOffBell` in
+  `ThreatPopupCard.kt`, drawable `ic_notifications_off`) marks muted zone bells in
+  `ZonesSheet` and floats above the disarmed zone pill on the map (`MainScreen.ZoneButton`).
 
 - **Focus point.** `followMe` → camera + zones + alerts centre on GPS; otherwise on the pinned
   city (`ZonePrefs.pinnedCity`). Pinning auto-disables follow-me. Oblast attribution goes

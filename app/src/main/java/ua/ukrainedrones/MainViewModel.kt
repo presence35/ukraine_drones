@@ -58,6 +58,7 @@ data class UiState(
     val redCities: Set<String> = emptySet(),      // nameUa of cities whose oblast has an official alert
     val selectedThreat: Threat? = null,
     val selectedThreatInfo: ThreatProximity? = null,
+    val neutralizedThreat: Threat? = null,   // selected threat just resolved — fades out
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
     val disclaimerCollapsed: Boolean = false,
     val update: UpdateState = UpdateState.Idle,
@@ -65,7 +66,9 @@ data class UiState(
     val latestVersion: String? = null,
     val languageChosen: Boolean = false,
     val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
-    val showMapScale: Boolean = true
+    val showMapScale: Boolean = true,
+    val fastGroupCollapsed: Boolean = false,
+    val slowGroupCollapsed: Boolean = false
 )
 
 /** Distance/ETA facts for the threat popup, computed from the predicted position. */
@@ -139,7 +142,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val pinnedCity: String?,
         val languageChosen: Boolean,
         val cardSize: ThreatCardSize,
-        val showMapScale: Boolean
+        val showMapScale: Boolean,
+        val fastGroupCollapsed: Boolean,
+        val slowGroupCollapsed: Boolean
     )
 
     /** Live inputs that change every frame/second: stream, GPS, selection, time. */
@@ -164,7 +169,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
-        val showMapScale: Boolean
+        val showMapScale: Boolean,
+        val fastGroupCollapsed: Boolean,
+        val slowGroupCollapsed: Boolean
     )
 
     private val liveSnapshot = combine(
@@ -192,9 +199,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.officialAlertsEnabled(),
             prefs.sirenOverride(),
             prefs.followMe(),
-            prefs.showMapScale()
+            prefs.showMapScale(),
+            prefs.fastGroupCollapsed(),
+            prefs.slowGroupCollapsed()
         ) { flags: Array<Boolean> ->
-            AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5])
+            AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6], flags[7])
         },
         combine(
             prefs.pinnedCity(),
@@ -215,7 +224,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             pinnedCity = c.first,
             languageChosen = c.second,
             cardSize = c.third,
-            showMapScale = b.showMapScale
+            showMapScale = b.showMapScale,
+            fastGroupCollapsed = b.fastGroupCollapsed,
+            slowGroupCollapsed = b.slowGroupCollapsed
         )
     }
 
@@ -273,7 +284,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             sirenOverride = prefs.sirenOverride,
             languageChosen = prefs.languageChosen,
             threatCardSize = prefs.cardSize,
-            showMapScale = prefs.showMapScale
+            showMapScale = prefs.showMapScale,
+            fastGroupCollapsed = prefs.fastGroupCollapsed,
+            slowGroupCollapsed = prefs.slowGroupCollapsed
         )
     }.stateIn(
         viewModelScope,
@@ -370,6 +383,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         // keep the selected threat pointer fresh (position/status may have updated)
         val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
+        // The selected threat just resolved/gone — show a brief neutralized card, then drop it.
+        val neutralizedThreat = if (selected != null && refreshedSelected == null) selected else null
 
         val activeZone = when {
             inInner.isNotEmpty() -> ThreatZone.INNER
@@ -435,6 +450,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             redCities = redCities,
             selectedThreat = refreshedSelected,
             selectedThreatInfo = proximity,
+            neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores)
         )
     }
@@ -495,7 +511,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setThreatMapVisible(type: ThreatType, visible: Boolean) {
         viewModelScope.launch {
             prefs.setThreatMapVisible(type, visible)
-            if (!visible) prefs.setThreatAlertsEnabled(type, false)
             maybeShowToggleHint(mapToast = true)
         }
     }
@@ -503,23 +518,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setThreatAlertsEnabled(type: ThreatType, enabled: Boolean) {
         viewModelScope.launch {
             prefs.setThreatAlertsEnabled(type, enabled)
+            if (enabled) prefs.setThreatMapVisible(type, true)
             maybeShowToggleHint(mapToast = false)
         }
     }
 
     fun setGroupThreatMapVisible(types: Set<ThreatType>, visible: Boolean) {
         viewModelScope.launch {
-            types.forEach {
-                prefs.setThreatMapVisible(it, visible)
-                if (!visible) prefs.setThreatAlertsEnabled(it, false)
-            }
+            types.forEach { prefs.setThreatMapVisible(it, visible) }
             maybeShowToggleHint(mapToast = true)
         }
     }
 
     fun setGroupThreatAlertsEnabled(types: Set<ThreatType>, enabled: Boolean) {
         viewModelScope.launch {
-            types.forEach { prefs.setThreatAlertsEnabled(it, enabled) }
+            types.forEach {
+                prefs.setThreatAlertsEnabled(it, enabled)
+                if (enabled) prefs.setThreatMapVisible(it, true)
+            }
             maybeShowToggleHint(mapToast = false)
         }
     }
@@ -543,6 +559,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setThreatCardSize(size: ThreatCardSize) {
         viewModelScope.launch { prefs.setThreatCardSize(size) }
+    }
+
+    fun setFastGroupCollapsed(collapsed: Boolean) {
+        viewModelScope.launch { prefs.setFastGroupCollapsed(collapsed) }
+    }
+
+    fun setSlowGroupCollapsed(collapsed: Boolean) {
+        viewModelScope.launch { prefs.setSlowGroupCollapsed(collapsed) }
     }
 
     fun setShowMapScale(show: Boolean) {

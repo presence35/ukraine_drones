@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -117,9 +119,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 disclaimerCollapsed = uiState.disclaimerCollapsed,
                 followMe = uiState.followMe,
                 pinnedCity = uiState.pinnedCity,
-                redCities = uiState.redCities,
                 threatCardSize = uiState.threatCardSize,
                 showMapScale = uiState.showMapScale,
+                fastGroupCollapsed = uiState.fastGroupCollapsed,
+                slowGroupCollapsed = uiState.slowGroupCollapsed,
                 versionName = BuildConfig.VERSION_NAME,
                 isChecking = uiState.update is UpdateState.Checking,
                 latestVersion = uiState.latestVersion,
@@ -136,6 +139,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
+                onFastGroupCollapse = { viewModel.setFastGroupCollapsed(it) },
+                onSlowGroupCollapse = { viewModel.setSlowGroupCollapsed(it) },
                 onExit = onExit,
                 onCheckUpdate = { viewModel.checkForUpdates() },
                 onOpenGuide = {
@@ -385,6 +390,7 @@ private fun MapScreen(
             ) {
                 UkraineEmblem(
                     active = uiState.focusOblastAlertActive,
+                    contrast = activeZone != null,
                     modifier = Modifier.padding(end = 4.dp)
                 )
                 Box(
@@ -557,6 +563,43 @@ private fun MapScreen(
                 }
             }
 
+            // Neutralized card: the selected threat just resolved — show its type briefly,
+            // hold, then fade out and clear the selection.
+            if (uiState.selectedThreat == null) {
+                uiState.neutralizedThreat?.let { threat ->
+                    val fade = remember { Animatable(1f) }
+                    LaunchedEffect(Unit) {
+                        fade.animateTo(
+                            0f,
+                            tween(
+                                2000,
+                                easing = { t -> if (t < 0.8f) 1f else 1f - (t - 0.8f) / 0.2f }
+                            )
+                        )
+                        onDismissPopup()
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                            .graphicsLayer { alpha = fade.value }
+                    ) {
+                        ThreatPopupCard(
+                            threat = threat,
+                            lang = uiState.language,
+                            proximity = null,
+                            pinnedCity = null,
+                            threatLevel = 0.0,
+                            cardSize = uiState.threatCardSize,
+                            interactive = false,
+                            neutralized = true,
+                            onDismiss = onDismissPopup,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
             // Alert-zone editor: a non-modal bottom panel over the live map so the
             // red/yellow circles update while you drag, and the map above stays pannable.
             if (showZonesSheet) {
@@ -642,7 +685,7 @@ private fun MapScreen(
 }
 
 @Composable
-private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier) {
+private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier, contrast: Boolean = false) {
     val red = AlertRed
     Box(modifier = modifier.size(32.dp), contentAlignment = Alignment.Center) {
         if (active) {
@@ -659,7 +702,8 @@ private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier) {
         Image(
             painter = painterResource(R.drawable.ic_trident),
             contentDescription = null,
-            colorFilter = if (active) ColorFilter.tint(red) else null,
+            colorFilter = if (contrast) ColorFilter.tint(Color.White)
+            else if (active) ColorFilter.tint(red) else null,
             modifier = Modifier.fillMaxSize()
         )
     }

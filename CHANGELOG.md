@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Settings → Threats: Map and Alerts toggles are now fully independent — turning Map off no longer silences a type's alerts, and turning Alerts on always re-enables the type on the map (an armed alert is never hidden). The per-threat and group Alerts chips are always pressable.
+- Settings → Threats: the Fast and Slow group collapsed state is now remembered across app restarts.
+- Settings → Map centre: the pin-to-city list is now plain city rows (the red official-alert dots are gone), and the section/guide text no longer mentions red-marked cities.
+- Threat popup: when a selected threat is resolved or disappears, a compact "Neutralized" card (type icon + name) briefly appears and fades out instead of the card vanishing instantly.
+- System status: the NEPTUN logo row now also shows the site URL (neptun.in.ua), and the whole row opens the site on tap.
+- Header: while the urgent (red) alert banner is up, the trident renders white instead of red-on-red so it stays visible.
+
 - Map: city labels no longer show "(N)" threat counts next to the name — just the city name, red while its oblast is on alert.
 - Notifications: official alert bodies are posted raw in Ukrainian and translated to English in the background (in-place, silent re-post).
 - Threat popup: the speed pill now shows only when the speed was actually measured (server/measured fixes), not the nominal typical speed.

@@ -162,7 +162,7 @@ fun SlimThreatToggles(
                     icon = Icons.Filled.Notifications,
                     contentDescription = s.threatAlertLabel,
                     on = groupAlertsOn,
-                    enabled = groupMapOn,
+                    enabled = true,
                     onClick = { onThreatAlertToggleAll(types, !groupAlertsOn) }
                 )
             }
@@ -226,7 +226,7 @@ private fun SlimTypeRow(
             icon = Icons.Filled.Notifications,
             contentDescription = s.threatAlertLabel,
             on = onAlerts,
-            enabled = onMap,
+            enabled = true,
             onClick = { onThreatAlertToggle(type, !onAlerts) }
         )
     }

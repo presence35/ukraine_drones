@@ -161,20 +161,29 @@ internal fun ConnectionStatus(
                         Spacer(Modifier.width(8.dp))
                         Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
-                    Image(
-                        painter = painterResource(R.drawable.neptun),
-                        contentDescription = s.attributionText,
-                        modifier = Modifier
-                            .height(40.dp)
-                            .clickable {
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://neptun.in.ua/")
-                                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://neptun.in.ua/")
                                 )
-                            }
-                    )
+                            )
+                        }
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.neptun),
+                            contentDescription = s.attributionText,
+                            modifier = Modifier.height(40.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "neptun.in.ua",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         )
