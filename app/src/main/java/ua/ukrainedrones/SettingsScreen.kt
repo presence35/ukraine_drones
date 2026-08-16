@@ -72,6 +72,7 @@ fun SettingsScreen(
     followMe: Boolean,
     pinnedCity: City?,
     threatCardSize: ThreatCardSize,
+    iconSet: ThreatIconSet,
     showMapScale: Boolean,
     fastGroupCollapsed: Boolean,
     slowGroupCollapsed: Boolean,
@@ -90,6 +91,7 @@ fun SettingsScreen(
     onPinnedCityChange: (City?) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
+    onIconSetChange: (ThreatIconSet) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
     onFastGroupCollapse: (Boolean) -> Unit,
     onSlowGroupCollapse: (Boolean) -> Unit,
@@ -333,6 +335,7 @@ fun SettingsScreen(
                         ThreatSettingsCard(
                             type = type,
                             lang = lang,
+                            iconSet = iconSet,
                             expanded = expandedType == type,
                             onExpandChange = { expandedType = if (expandedType == type) null else type },
                             hiddenTypes = hiddenTypes,
@@ -404,6 +407,27 @@ fun SettingsScreen(
                                     icon = painterResource(R.drawable.ic_settings_ua),
                                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                    Text(
+                                        s.iconSetTitle,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        s.iconSetDesc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    IconSetSelector(
+                                        lang = lang,
+                                        selected = iconSet,
+                                        onChange = onIconSetChange
+                                    )
+                                }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 if (batteryOptimized) {
                                     Row(
@@ -606,6 +630,7 @@ private fun AlertToggleRow(
 private fun ThreatSettingsCard(
     type: ThreatType,
     lang: AppLanguage,
+    iconSet: ThreatIconSet,
     expanded: Boolean,
     onExpandChange: () -> Unit,
     hiddenTypes: Set<ThreatType>,
@@ -631,11 +656,11 @@ private fun ThreatSettingsCard(
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = painterResource(id = iconResFor(type)),
-                    contentDescription = label,
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(36.dp)
+                ThreatIcon(
+                    type = type,
+                    set = iconSet,
+                    size = 36.dp,
+                    contentDescription = label
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(
@@ -729,8 +754,8 @@ private fun ThreatSettingsCard(
                         AsyncImage(
                             model = imageRequest(context, imgUrl),
                             contentDescription = label,
-                            placeholder = painterResource(id = iconResFor(type)),
-                            error = painterResource(id = iconResFor(type)),
+                            placeholder = painterResource(id = IconCatalog.res(type, iconSet)),
+                            error = painterResource(id = IconCatalog.res(type, iconSet)),
                             contentScale = ContentScale.FillWidth,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -929,6 +954,75 @@ private fun CardSizeTile(
     }
 }
 
+/** Icon-style picker (classic vector set vs photo set) with one example each. */
+@Composable
+private fun IconSetSelector(
+    lang: AppLanguage,
+    selected: ThreatIconSet,
+    onChange: (ThreatIconSet) -> Unit
+) {
+    val s = Strings.get(lang)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconSetTile(
+            set = ThreatIconSet.CLASSIC,
+            label = s.iconSetClassicLabel,
+            selected = selected == ThreatIconSet.CLASSIC,
+            onClick = { onChange(ThreatIconSet.CLASSIC) },
+            modifier = Modifier.weight(1f)
+        )
+        IconSetTile(
+            set = ThreatIconSet.PHOTO,
+            label = s.iconSetPhotoLabel,
+            selected = selected == ThreatIconSet.PHOTO,
+            onClick = { onChange(ThreatIconSet.PHOTO) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun IconSetTile(
+    set: ThreatIconSet,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        border = if (selected) {
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        } else null
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // One example per set: the Shahed icon (photo set letterboxed to the square slot).
+            ThreatIcon(
+                type = ThreatType.SHAHED,
+                set = set,
+                size = 40.dp,
+                contentDescription = label
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
 @Composable
 private fun SectionHeader(text: String, icon: Painter) {
     Row(
@@ -1013,15 +1107,4 @@ internal fun LanguageFlag(
             }
         }
     }
-}
-
-private fun iconResFor(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.shahed
-    ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
-    ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
-    ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
-    ThreatType.KAB -> R.drawable.ic_threat_kab
-    ThreatType.AVIATION -> R.drawable.ic_threat_aviation
-    ThreatType.RECON -> R.drawable.ic_threat_recon
-    ThreatType.UNKNOWN -> R.drawable.ic_threat_unknown
 }

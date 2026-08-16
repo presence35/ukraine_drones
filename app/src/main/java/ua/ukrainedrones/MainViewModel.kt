@@ -131,6 +131,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val disclaimer: Boolean
     )
 
+    private data class PrefsQuad(
+        val pinnedCity: String?,
+        val languageChosen: Boolean,
+        val cardSize: ThreatCardSize,
+        val iconSet: ThreatIconSet
+    )
+
     private data class PrefsSnapshot(
         val mapEnabled: Set<ThreatType>,
         val alertEnabled: Set<ThreatType>,
@@ -217,8 +224,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         combine(
             prefs.pinnedCity(),
             prefs.languageChosen(),
-            prefs.threatCardSize()
-        ) { pinned, chosen, card -> Triple(pinned, chosen, card) }
+            prefs.threatCardSize(),
+            prefs.threatIconSet()
+        ) { pinned, chosen, card, iconSet ->
+            PrefsQuad(pinned, chosen, card, iconSet)
+        }
     ) { a, b, c ->
         PrefsSnapshot(
             mapEnabled = a.map,
@@ -230,9 +240,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             officialAlertsEnabled = b.officialAlertsEnabled,
             sirenOverride = b.sirenOverride,
             followMe = b.followMe,
-            pinnedCity = c.first,
-            languageChosen = c.second,
-            cardSize = c.third,
+            pinnedCity = c.pinnedCity,
+            languageChosen = c.languageChosen,
+            cardSize = c.cardSize,
+            iconSet = c.iconSet,
             showMapScale = b.showMapScale,
             fastGroupCollapsed = b.fastGroupCollapsed,
             slowGroupCollapsed = b.slowGroupCollapsed
@@ -297,6 +308,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             sirenOverride = prefs.sirenOverride,
             languageChosen = prefs.languageChosen,
             threatCardSize = prefs.cardSize,
+            iconSet = prefs.iconSet,
             showMapScale = prefs.showMapScale,
             fastGroupCollapsed = prefs.fastGroupCollapsed,
             slowGroupCollapsed = prefs.slowGroupCollapsed
@@ -399,8 +411,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         // keep the selected threat pointer fresh (position/status may have updated)
         val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
-        // The selected threat just resolved/gone — show a brief neutralized card, then drop it.
-        val neutralizedThreat = if (selected != null && refreshedSelected == null) selected else null
+        // The selected threat is gone (removed by the server, marked resolved/area-only, or a
+        // ghost past the hard cap) — show a brief neutralized card, then drop the selection.
+        val selectedGone = selected != null && (refreshedSelected?.let { t ->
+            t.status == "resolved" || t.areaOnly || t.isGhost(now)
+        } ?: true)
+        val neutralizedThreat = if (selectedGone) selected else null
 
         val activeZone = when {
             inInner.isNotEmpty() -> ThreatZone.INNER
@@ -463,7 +479,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             pinnedCity = pinnedCity,
             focusLocation = focusLocation,
             redCities = redCities,
-            selectedThreat = refreshedSelected,
+            selectedThreat = if (selectedGone) null else refreshedSelected,
             selectedThreatInfo = proximity,
             neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores)
@@ -582,6 +598,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setThreatCardSize(size: ThreatCardSize) {
         viewModelScope.launch { prefs.setThreatCardSize(size) }
+    }
+
+    fun setThreatIconSet(set: ThreatIconSet) {
+        viewModelScope.launch { prefs.setThreatIconSet(set) }
     }
 
     fun setFastGroupCollapsed(collapsed: Boolean) {

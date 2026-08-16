@@ -67,6 +67,7 @@ private fun fontAware(dp: Dp): Dp = dp * fontScale()
 fun ThreatPopupCard(
     threat: Threat,
     lang: AppLanguage,
+    iconSet: ThreatIconSet = ThreatIconSet.CLASSIC,
     proximity: ThreatProximity?,
     pinnedCity: City?,
     threatLevel: Double,
@@ -136,26 +137,31 @@ fun ThreatPopupCard(
             border = BorderStroke(2.dp, Color(0xFF3A3A3A)),
             tonalElevation = 8.dp
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    painter = painterResource(id = iconResFor(threat.type)),
-                    contentDescription = typeLabel,
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ThreatIcon(
+                        type = threat.type,
+                        set = iconSet,
+                        size = 28.dp,
+                        contentDescription = typeLabel
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        typeLabel,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        s.neutralizedLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF9E9E9E)
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    typeLabel,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    s.neutralizedLabel,
+                    s.neutralizedNote,
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF9E9E9E)
                 )
@@ -180,11 +186,11 @@ fun ThreatPopupCard(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        painter = painterResource(id = iconResFor(threat.type)),
-                        contentDescription = typeLabel,
-                        tint = Color.Unspecified,
-                        modifier = Modifier.size(28.dp)
+                    ThreatIcon(
+                        type = threat.type,
+                        set = iconSet,
+                        size = 28.dp,
+                        contentDescription = typeLabel
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -222,11 +228,11 @@ fun ThreatPopupCard(
             ThreatCardSize.MEDIUM -> {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            painter = painterResource(id = iconResFor(threat.type)),
-                            contentDescription = typeLabel,
-                            tint = Color.Unspecified,
-                            modifier = Modifier.size(28.dp)
+                        ThreatIcon(
+                            type = threat.type,
+                            set = iconSet,
+                            size = 28.dp,
+                            contentDescription = typeLabel
                         )
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -296,11 +302,11 @@ fun ThreatPopupCard(
                     Column(modifier = Modifier.weight(1f)) {
                         // Header: icon, type + region/course, close.
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = painterResource(id = iconResFor(threat.type)),
-                                contentDescription = typeLabel,
-                                tint = Color.Unspecified,
-                                modifier = Modifier.size(32.dp)
+                            ThreatIcon(
+                                type = threat.type,
+                                set = iconSet,
+                                size = 32.dp,
+                                contentDescription = typeLabel
                             )
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -717,15 +723,4 @@ private fun ReliabilityBar(reliability: Reliability, s: Strings.StringSet) {
             if (i < 2) Spacer(Modifier.width(2.dp))
         }
     }
-}
-
-private fun iconResFor(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.shahed
-    ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
-    ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
-    ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
-    ThreatType.KAB -> R.drawable.ic_threat_kab
-    ThreatType.AVIATION -> R.drawable.ic_threat_aviation
-    ThreatType.RECON -> R.drawable.ic_threat_recon
-    ThreatType.UNKNOWN -> R.drawable.ic_threat_unknown
 }

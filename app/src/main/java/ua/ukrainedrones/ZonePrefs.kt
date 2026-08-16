@@ -35,6 +35,7 @@ class ZonePrefs(private val context: Context) {
     private val officialAlertsKey = booleanPreferencesKey("official_alerts_enabled")
     private val sirenOverrideKey = booleanPreferencesKey("siren_override")
     private val disclaimerCollapsedKey = booleanPreferencesKey("disclaimer_collapsed")
+    private val disclaimerReadCountKey = intPreferencesKey("disclaimer_read_count")
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
     private val followMeKey = booleanPreferencesKey("follow_me")
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
@@ -138,6 +139,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setDisclaimerCollapsed(collapsed: Boolean) {
         context.dataStore.edit { it[disclaimerCollapsedKey] = collapsed }
+    }
+
+    /** How many times the disclaimers card has been shown on Settings open (auto-expands until 3). */
+    fun disclaimerReadCount(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[disclaimerReadCountKey] ?: 0 }
+
+    suspend fun setDisclaimerReadCount(count: Int) {
+        context.dataStore.edit { it[disclaimerReadCountKey] = count }
     }
 
     /** Epoch millis of the last completed update check (auto or manual). */

@@ -107,6 +107,7 @@ internal fun IconToggle(
 @Composable
 fun SlimThreatToggles(
     lang: AppLanguage,
+    iconSet: ThreatIconSet,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
@@ -163,6 +164,7 @@ fun SlimThreatToggles(
                 SlimTypeRow(
                     type = type,
                     lang = lang,
+                    iconSet = iconSet,
                     hiddenTypes = hiddenTypes,
                     silencedTypes = silencedTypes,
                     onThreatMapToggle = onThreatMapToggle,
@@ -239,6 +241,7 @@ internal fun GroupOnlyToggles(
 private fun SlimTypeRow(
     type: ThreatType,
     lang: AppLanguage,
+    iconSet: ThreatIconSet,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
@@ -255,11 +258,11 @@ private fun SlimTypeRow(
             .padding(start = 26.dp, end = 4.dp, top = 1.dp, bottom = 1.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            painter = painterResource(id = iconResFor(type)),
-            contentDescription = label,
-            tint = Color.Unspecified,
-            modifier = Modifier.size(20.dp)
+        ThreatIcon(
+            type = type,
+            set = iconSet,
+            size = 20.dp,
+            contentDescription = label
         )
         Spacer(Modifier.width(8.dp))
         Text(
@@ -310,15 +313,4 @@ private fun SlimIconToggle(
             modifier = Modifier.size(16.dp)
         )
     }
-}
-
-private fun iconResFor(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.shahed
-    ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
-    ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
-    ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
-    ThreatType.KAB -> R.drawable.ic_threat_kab
-    ThreatType.AVIATION -> R.drawable.ic_threat_aviation
-    ThreatType.RECON -> R.drawable.ic_threat_recon
-    ThreatType.UNKNOWN -> R.drawable.ic_threat_unknown
 }

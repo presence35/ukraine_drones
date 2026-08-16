@@ -14814,3 +14814,37 @@ picker: ok
 ## 16/08/2026, 15:45:26
 
 Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 16/08/2026, 15:49:38
+
+there are too many bells in the zones panel now--confusing for user.  remove the toggles that are in settings. so the panel only has slow/fast slides and bells.  in the zone panel bottom put a small note clarifying how the and-gate works.
+
+yes, keep the and-gate.
+## 16/08/2026, 21:17:13
+
+the threat neutralized didn't work.  no fade or text.
+## 16/08/2026, 21:18:38
+
+a fun animation once a threat is neutralized or otherwise dead.  make it explode with a 3,2,1 countdown nearby (unobstruive, but clear).  the whole thing should take 5s.
+## 16/08/2026, 21:25:43
+
+connectionstatus popup.  there should be a small collpasable Log that says the last 10 statuses.  datetime, type,time inactive.  only record if something is off for more than a few seconds, to avoid random hiccups.  suggestions?
+
+also "online" in the mainscreen header, put a very small neptun.png in the pill.  online itself should be green, replace the dot w the png. 
+
+the "offline 0m" doesn't work at all. Remove it from the android notifaction and the header and kill that annoying code.  we just need to know it's offline. The new Log screen will give better clues for how long.  Suggestions for this new feature?
+
+the alertzones panel should get our ukraine gear in the top right, as another way to open Settings...scroll to Threats.
+## 16/08/2026, 21:29:13
+
+put a note that it's just a fun animation and means nothing other than that threat is no longer around for whatever reason. We need a list of disclaimers all in one place in Settings in its own collapseable section. Add things like numbers are approx, it's not 100% accurate app, blah blah.
+
+So when is a threat actually gone according to neptun vs us? 30min without anybody else seeing a threat seems like a long time, but ofc safery first.
+## 16/08/2026, 21:32:13
+
+i need a way to test the animation instead of staring at screen for 30m hoping something resolves.  long hold on a trheat, or what? temp code only
+## 16/08/2026, 21:37:25
+
+go
+## 16/08/2026, 21:40:11
+
+git push

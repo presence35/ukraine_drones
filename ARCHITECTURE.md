@@ -51,9 +51,10 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | `Zones.kt` | `ThreatZone` (INNER/OUTER), `ZoneParams` (slow km / fast min thresholds), `FastThreatTypes` (the single source for the fast group), `zoneTier(t, distKm, speedKmh, params)` — the single source of truth for zone tiering, plus `etaMinutes`, `reachKm` (per-type max cover) and `BALLISTIC_SPEED_KMH` (AVIATION override). |
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 threat gauge for the popup (severity × distance × reliability × sources × count × quality × staleness × ETA). |
 | `Cities.kt` | Curated city list + `CityLabelOverlay` (draws city names, red when oblast on alert, threat counts). `focusAttribution` maps the focus point (pinned city, else nearest city to GPS) to an oblast stem via `cityOblast`. |
-| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, and the DataStore-backed preference store (`zone_prefs`). All toggles/km+min zone thresholds/language/follow/pin/threat map-visibility + alert-enable + map-scale live here. Also `threatMapFlow` and `threatAlertFlow`. |
+| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, `ThreatIconSet`, and the DataStore-backed preference store (`zone_prefs`). All toggles/km+min zone thresholds/language/follow/pin/threat map-visibility + alert-enable + map-scale + icon-set live here. Also `threatMapFlow` and `threatAlertFlow`. |
 | `Strings.kt` | `Strings` → `StringSet` — the UA/EN string table (the app never relies on Android resource localization). |
 | `ThreatImages.kt` | Reference photos for the expanded threat card: bundled webp for some types, Wikimedia Commons hotlinks for the rest. |
+| `IconCatalog.kt` | Single source of truth for threat icon drawables: `classicRes` (vector set), `res(type, set)` (vector or photo set, photos live in `drawable-nodpi/threat_photo_*.png`), `photoBaseDeg` (each photo's baked-in facing angle), and the `ThreatIcon` composable that letterboxes photos in square slots. Replaces the old per-file `iconFor`/`iconResFor`/`threatIconRes` mappings. |
 
 ### UI (Compose)
 

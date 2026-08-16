@@ -39,7 +39,7 @@ object IconCatalog {
         ThreatIconSet.PHOTO -> photoRes(type) ?: classicRes(type)
     }
 
-    private fun photoRes(type: ThreatType): Int? = when (type) {
+    internal fun photoRes(type: ThreatType): Int? = when (type) {
         ThreatType.SHAHED -> R.drawable.threat_photo_shahed
         ThreatType.FPV_LOITERING -> R.drawable.threat_photo_fpv
         ThreatType.CRUISE_MISSILE -> R.drawable.threat_photo_cruise

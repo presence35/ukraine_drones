@@ -158,6 +158,10 @@ object Strings {
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
         val showMapScaleDesc: String,
+        val iconSetTitle: String,
+        val iconSetDesc: String,
+        val iconSetClassicLabel: String,
+        val iconSetPhotoLabel: String,
         val guideTitle: String,
         val guideSettingsButton: String,
         val guideCategoryMap: String,
@@ -235,7 +239,8 @@ object Strings {
         val guideUpdateD2: String,
         val guideUpdateD3: String,
         val lastSeenAgoFormat: String,
-        val neutralizedLabel: String
+        val neutralizedLabel: String,
+        val neutralizedNote: String
     )
 
     private val UA = StringSet(
@@ -280,8 +285,8 @@ object Strings {
         mapToggleHintRest = " вимкнена — ховає тип і замовчує його тривоги.",
         alertToggleHintPrefix = "Сповіщення",
         alertToggleHintRest = " вимкнені — лишають тип на мапі, лише затемненим.",
-        disclaimerTitle = "Офіційні сигнали головні",
-        disclaimerBody = "Завжди керуйся офіційними сигналами повітряної тривоги. Наш застосунок використовує дані, які противник не транслює точно, — координати та відстані не можуть бути точними, навіть коли позначені як підтверджені. Показник рівня загрози — приблизна оцінка, а не офіційний рейтинг. Все це лише орієнтир.",
+        disclaimerTitle = "Застереження",
+        disclaimerBody = "Завжди керуйся офіційними сигналами повітряної тривоги — цей застосунок не є офіційним джерелом тривог.\n• Координати, відстані, ETA та швидкість — приблизні: противник не транслює дані точно, навіть коли фіксація позначена як підтверджена.\n• Показник рівня загрози (0–10) — приблизна оцінка, а не офіційний рейтинг.\n• Тривоги залежать від приблизного місцезнаходження телефона — неправильна точка означає неправильну зону.\n• Застосунок не може гарантувати вашу безпеку. Все це лише орієнтир.",
         exitButton = "Зупинити моніторинг і вийти",
         redZoneAlert = "Червона зона: тривога",
         yellowZoneAlert = "Жовта зона: тривога",
@@ -390,6 +395,10 @@ object Strings {
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
         showMapScaleDesc = "Масштабна шкала в нижньому лівому куті карти.",
+        iconSetTitle = "Іконки загроз",
+        iconSetDesc = "Стиль позначок на карті та в списках.",
+        iconSetClassicLabel = "Класичні",
+        iconSetPhotoLabel = "Фото",
         guideTitle = "Путівник по функціях",
         guideSettingsButton = "Путівник по функціях",
         guideCategoryMap = "Карта",
@@ -468,6 +477,7 @@ object Strings {
         guideUpdateD3 = "Можна також натиснути «Перевірити оновлення» в Налаштуваннях.",
         lastSeenAgoFormat = "Востаннє %1\$s тому",
         neutralizedLabel = "Нейтралізовано",
+        neutralizedNote = "Просто анімація — цієї загрози більше немає, з якої б то не було причини.",
     )
 
     private val EN = StringSet(
@@ -512,8 +522,8 @@ object Strings {
         mapToggleHintRest = " off hides the type and silences its alerts.",
         alertToggleHintPrefix = "Alerts",
         alertToggleHintRest = " off keeps it on the map, just dimmed.",
-        disclaimerTitle = "Official signals come first",
-        disclaimerBody = "Always follow official air-raid signals. Our app uses data the enemy isn't broadcasting precisely — positions and distances can't be accurate, even when marked confirmed. The threat level is an approximate estimate, not an official rating. Treat everything as an approximate guide only.",
+        disclaimerTitle = "Disclaimers",
+        disclaimerBody = "Always follow official air-raid signals — this app is not an official alert source.\n• Positions, distances, ETA and speeds are approximate: the enemy isn't broadcasting precisely, even when a fix is marked confirmed.\n• The skull threat level (0–10) is a rough estimate, not an official rating.\n• Alerts depend on your phone's coarse location — a wrong fix means a wrong zone.\n• This app cannot guarantee your safety. Treat everything as an approximate guide.",
         exitButton = "Stop Monitoring & Exit",
         redZoneAlert = "Red zone: alert",
         yellowZoneAlert = "Yellow zone: alert",
@@ -622,6 +632,10 @@ object Strings {
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
         showMapScaleDesc = "Scale bar in the map's bottom-left corner.",
+        iconSetTitle = "Threat icons",
+        iconSetDesc = "Style of threat markers on the map and in lists.",
+        iconSetClassicLabel = "Classic",
+        iconSetPhotoLabel = "Photos",
         guideTitle = "Feature guide",
         guideSettingsButton = "Feature guide",
         guideCategoryMap = "Map",
@@ -700,6 +714,7 @@ object Strings {
         guideUpdateD3 = "You can also tap Check for updates in Settings.",
         lastSeenAgoFormat = "Last seen %1\$s ago",
         neutralizedLabel = "Neutralized",
+        neutralizedNote = "Just a visual flourish — that threat is no longer around, for whatever reason.",
     )
 }
 

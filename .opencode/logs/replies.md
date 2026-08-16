@@ -37221,3 +37221,575 @@ Now MainViewModel. Let me look at the PrefsSnapshot class and the setIconSet spo
 ## 16/08/2026, 15:46:42
 
 Now wire it all into the ViewModel. First UiState field, PrefsSnapshot, the combine, and the uiState combine
+## 16/08/2026, 15:46:58
+
+I referenced a `Quad` class that likely doesn't exist. Let me check and fix
+## 16/08/2026, 15:47:03
+
+`Triple` is built-in but `Quad` isn't. Let me add a small private data class
+
+
+## 16/08/2026, 15:47:21
+
+Now find where the uiState combine sets `threatCardSize` and add `iconSet`, plus the setter method
+## 16/08/2026, 15:47:29
+
+## Interaction answer first (your "wait")
+
+The slider bells and the per-threat toggles are **independent AND gates** — a notification only fires when *both* allow it:
+
+- **Per-type/group Alerts toggle** = pre-filter. `AlertService.zoneThreats` skips a type entirely if it's not alert-enabled (`AlertService.kt:259`).
+- **Slider bells (red/yellow)** = global per-*tier* gate applied last in `alertTier` (`AlertService.kt:325-329`): an INNER threat sirens only if red armed (else drops to yellow chime if yellow armed, else silent); an OUTER threat chimes only if yellow armed.
+- The **map is not gated by bells** — circles/markers always show the real zone via `zoneTier`; hiding a type from the map also silences it (`MainViewModel.kt:532-542`).
+
+So a threat must pass *type-alerts-ON* **and** *tier-bell-ON**. The group toggles you're moving into the sections just bulk-set the same per-type prefs.
+
+## Plan
+
+**1. Slow ranges → red 1–20 km, yellow 21–50 km**
+- `ZonePrefs.kt`: `slowRedKm` default 60→**10**, read clamps to 1..20, setter coerces 1..20; `slowYellowKm` default 180→**21**, read clamps to 21..50, setter coerces 21..50. (Read-clamping migrates existing stored 60/180 values so the Slider never receives an out-of-range value → no crash.)
+- `MainViewModel.kt`: UiState defaults 60/180→10/21; seedFlow primes 10/21.
+- `ZonesSheet.kt`: slow-red slider `5f..100f`→`1f..20f`; slow-yellow `20f..300f`→`21f..50f`.
+- `ZonesTest.kt` untouched — it builds its own `ZoneParams` (60/180) for tiering math, which is independent of ranges.
+- CHANGELOG [Unreleased] entry.
+
+**2. Map centers to yellow zone on panel open — already wired, verify only**
+`MainScreen.kt:344-349` (`openZonesPanel` → `fitZonesTick++`) + `MapView.kt:341-352` zoom to `slowYellowKm` bbox above the panel. Reads the value dynamically, so the new 21–50 range works automatically. No code change.
+
+**3. Panel layout — emoji in captions, group toggles into each section**
+- `ThreatTogglePanel.kt`: delete `GroupOnlyToggles`; change `SlimIconToggle` `private`→`internal`.
+- `ZonesSheet.kt`: replace `SectionCaption` with a per-section header row `emoji + caption + [Map][Alerts]`:
+  - 🐢 `slowSectionLabel` + slow-group toggles (slowTypes = all types − `FastThreatTypes`)
+  - ⚡ `fastSectionLabel` + fast-group toggles (`FastThreatTypes`)
+  - Same semantics as today: Alerts disabled while group map is off; groupOn = none in hidden/silenced.
+  - Remove the bottom GroupOnlyToggles block + its dividers.
+- `ZonesPanel` signature unchanged → `MainScreen.kt:649` call untouched.
+- ARCHITECTURE.md ZonesSheet/ThreatTogglePanel entries updated.
+
+**Verify:** `.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`.
+
+## One thing to confirm
+
+Defaults for slow: **10 km red / 21 km yellow** (matches the historical pre-rework defaults, and red always sits inside yellow). OK?
+
+And: do you want to **keep** the AND-gate interaction model as described, or change something about it (e.g. bells as a per-type override)?
+## 16/08/2026, 15:47:39
+
+ViewModel done. Now thread `iconSet` through the UI. Start with MainScreen — the MapScreen call, SettingsScreen call, ThreatStatusCell, ThreatPopupCard, SlimTh
+## 16/08/2026, 15:48:07
+
+Now MapScreen signature + NeptunMapView call + internal usages. Let me read the relevant sections
+
+
+## 16/08/2026, 15:48:30
+
+Now the second ThreatPopupCard call at line ~590 and the ThreatStatusCell composable + threatIconRes. Let me view
+
+
+## 16/08/2026, 21:07:35
+
+Not done — mid-implementation. Continuing with the remaining threading.
+## 16/08/2026, 21:07:56
+
+Now remove the unused `threatIconRes` in MainScreen
+## 16/08/2026, 21:08:14
+
+Now the SlimThreatToggles call sites. There's one in MainScreen (first-run dialog at ~282) and one inside MapScreen's zones sheet. Let me check both
+## 16/08/2026, 21:09:17
+
+Now the MapScreen zones-sheet SlimThreatToggles usage. Let me find it
+
+
+## 16/08/2026, 21:09:29
+
+Let me check the zones-sheet toggle usage in Map
+## 16/08/2026, 21:10:21
+
+The zones sheet uses `ZonesPanel` (group-only toggles, no per-type icons). Let me check it in Threat
+## 16/08/2026, 21:11:05
+
+Now remove the unused `iconResFor` from ThreatToggle
+## 16/08/2026, 21:11:24
+
+Now ThreatPopupCard — add `iconSet` param and replace the `iconResFor` usages
+## 16/08/2026, 21:11:40
+
+Now update ThreatPopupCard signature and all four icon usages. First
+## 16/08/2026, 21:12:26
+
+Now remove the unused `iconResFor` in ThreatPopupCard and
+## 16/08/2026, 21:12:43
+
+Now SettingsScreen. Add params, update usages, add the picker. First the signature and usages
+
+
+## 16/08/2026, 21:12:56
+
+Let me find where `ThreatSettingsCard` is called to pass
+## 16/08/2026, 21:13:15
+
+
+
+
+## 16/08/2026, 21:13:29
+
+Now let me make
+## 16/08/2026, 21:13:46
+
+Now update the ThreatSettingsCard call and definition, and the AsyncImage placeholder/error uses
+
+
+## 16/08/2026, 21:14:25
+
+Now the AsyncImage placeholder/error uses at ~732
+
+
+## 16/08/2026, 21:14:45
+
+Now remove the `iconResFor` function in
+## 16/08/2026, 21:15:04
+
+Now add the icon-set picker in the Additional settings section. Let me view the current section to place
+## 16/08/2026, 21:15:12
+
+I'll add the icon-set picker after the map-scale row. Let me build a small composable for it
+## 16/08/2026, 21:15:21
+
+Let me look at the `ThreatCardSizeSelector` to mirror the pick
+## 16/08/2026, 21:15:39
+
+Let me find the end of CardSizeTile to add the new composable after it
+## 16/08/2026, 21:15:50
+
+Now add the `IconSetSelector` composable after `CardSizeTile`
+## 16/08/2026, 21:16:01
+
+Add a header text for the picker section
+## 16/08/2026, 21:16:14
+
+Now MapView. Add `iconSet` param, generalize threatIcon for photos, and adjust rotation. Let me update
+
+
+## 16/08/2026, 21:16:24
+
+Now remove the old `iconFor` function and update the `NeptunMapView` signature
+
+
+## 16/08/2026, 21:16:47
+
+Now the NeptunMapView signature + marker creation
+## 16/08/2026, 21:17:22
+
+The `overlayKey` must include `iconSet` so toggling rebuilds markers
+
+
+## 16/08/2026, 21:17:25
+
+Let me look at the actual implementation.
+
+
+## 16/08/2026, 21:17:38
+
+
+
+
+## 16/08/2026, 21:18:13
+
+Now the Strings. Let me find where to add the icon-set
+## 16/08/2026, 21:18:46
+
+
+
+
+## 16/08/2026, 21:19:10
+
+Now verify no stale references remain, then build
+
+
+## 16/08/2026, 21:20:01
+
+Let me check the original feature request context and how the selected threat flows through.
+
+
+## 16/08/2026, 21:21:35
+
+I've explored the codebase. Before finalizing the plan, one scope question:
+
+
+## 16/08/2026, 21:21:40
+
+Found it. The neutralized card's trigger in `MainViewModel.kt:415` only fires when the threat is physically *removed* from `NeptunClient.threats` (`refreshedSelected == null`) — which happens only on a server `resolved`/`remove` frame.
+
+In practice NEPTUN doesn't remove dead threats server-side (`Prediction.kt:98` — "NEPTUN documents no server-side death timeout"). A selected threat that goes dark just becomes stale, then a ghost (`isGhost`), and **stays in `neptun.threats`** — it's only skipped in rendering (`MainViewModel.kt:378`). So `refreshedSelected` stays non-null forever, `neutralizedThreat` stays `null`, and the card block at `MainScreen.kt:577` never shows. That matches "no fade or text."
+
+## Plan
+
+**Fix `MainViewModel.kt` (~412–415, 478):** define "gone" the same way the render loop skips threats, and suppress the popup when the selected threat is gone:
+
+```kotlin
+val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
+val selectedGone = selected != null && (
+    refreshedSelected == null ||
+    refreshedSelected.status == "resolved" ||
+    refreshedSelected.areaOnly ||
+    refreshedSelected.isGhost(now)
+)
+val neutralizedThreat = if (selectedGone) selected else null
+// then: selectedThreat = if (selectedGone) null else refreshedSelected
+```
+
+`MainScreen.kt` needs no change — the gate `if (uiState.selectedThreat == null)` then shows the neutralized card. Stale-but-trackable threats (dimmed, "Last seen m:ss ago") stay non-neutralized, so live tracking isn't lost.
+
+**Docs:** note the "selected ghost/resolved → neutralized card" behavior in `ARCHITECTURE.md` (Expiry/ghosts invariant).
+
+**Verify:** `.\gradlew.bat :app:assembleDebug` (+ `testDebugUnitTest` for safety).
+
+One decision before I
+## 16/08/2026, 21:25:48
+
+
+
+
+## 16/08/2026, 21:25:52
+
+
+
+
+
+## 16/08/2026, 21:26:28
+
+Plan confirmed:
+
+## Fix the neutralized card
+
+**Root cause:** `MainViewModel.kt:415` only sets `neutralizedThreat` when the threat is removed from `NeptunClient.threats`. NEPTUN never removes dead threats server-side — they go stale → ghost and stay in the map (just skipped in rendering), so `neutralizedThreat` stays `null` and the card at `MainScreen.kt:577` never shows.
+
+**Edit `MainViewModel.kt` (412–415, 478):**
+- Replace `refreshedSelected == null` with a "gone" predicate matching the render-loop skip: `refreshedSelected == null || status == "resolved" || areaOnly || isGhost(now)`.
+- When gone → `neutralizedThreat = selected` and `selectedThreat = null` (so the normal popup is suppressed and the existing `MainScreen` gate shows the neutralized card + fade).
+- Stale-but-trackable threats stay non-neutralized.
+
+**Docs:** note the selected-threat-gone → neutralized behavior in `ARCHITECTURE.md` Expiry/ghosts invariant.
+
+**Verify:** `.\gradlew.bat :app:assembleDebug` (+ `:app:testDebugUnitTest`).
+
+No `MainScreen.kt` change needed. Ready to implement on your go.
+## 16/08/2026, 21:26:48
+
+
+
+
+## 16/08/2026, 21:28:39
+
+
+
+
+## 16/08/2026, 21:30:03
+
+`photoRes` is private but used in the composable. Make it internal
+
+
+## 16/08/2026, 21:30:38
+
+## Plan: countdown + explosion when a threat dies
+
+**Trigger (server-resolved only, skip hidden types)** — confirmed.
+
+### 1. `NeptunClient.kt` — removal event stream
+- Add `data class ThreatRemoved(id: String, lat: Double, lon: Double, type: ThreatType)`.
+- Add `MutableSharedFlow<ThreatRemoved>(extraBufferCapacity = 16)` exposed as `removedThreats: SharedFlow`.
+- Emit via `tryEmit` (handler runs on OkHttp thread, not suspend):
+  - in `upsert` when `t.status == "resolved"` (coords from the upserted threat),
+  - in `remove` (coords/type read from `_state.value.threats` before removing; skip if id unknown).
+- Snapshot diffs deliberately **not** used — avoids explosion bursts on reconnect.
+
+### 2. New `ThreatDeathAnimation.kt` — the 5s animation
+- `ThreatDeathFx(removed, mapViewRef, onDone)` — driven by one `Animatable` over 5000ms, phases:
+  - **0–0.5s** small ping ring at the spot
+  - **0.5–1.5s / 1.5–2.5s / 2.5–3.5s** digits **3 / 2 / 1** (bold, ~44sp white on a translucent dark pill, pop-in, held above the point)
+  - **3.5–5.0s** explosion: expanding radial-gradient burst (yellow→orange→transparent), shockwave ring, ~8 outward-flying particle dots, brief center flash — all fading out by 5.0s.
+- Position reprojected each frame with `mapView.projectToPixels` so it stays anchored through pan/zoom; no-op while the map view is absent.
+- No pointer/clickable modifiers — won't block map gestures (proven safe: existing pills/scale sit above the map already).
+- Keeps size ~72dp max — unobtrusive but visible.
+
+### 3. `MapView.kt` — wire up
+- Wrap the existing `AndroidView` in a `Box(fillMaxSize)`.
+- `LaunchedEffect(Unit)` collecting `NeptunClient.removedThreats` into a `mutableStateListOf`; skip when `removed.type in uiState.hiddenTypes`; cap concurrent animations (~6) to avoid clutter; remove on `onDone`.
+
+### 4. Docs / changelog
+- `ARCHITECTURE.md`: add `ThreatDeathAnimation.kt` to the module map + note the `removedThreats` event flow on the `NeptunClient` row.
+- `CHANGELOG.md`: append the user-visible change under `## [Unreleased]`.
+
+### 5. Verify
+- `.\gradlew.bat :app:assembleDebug`. No unit-test run needed (no change to zone/focus/alert domain math; NeptunClient change is UI-facing event emission only).
+
+No `Strings.kt` changes (digits are universal). No mirror-rule impact.
+
+Ready to implement on your go.
+## 16/08/2026, 21:31:14
+
+Here's my read of the codebase. Before I finalize the plan, a few design choices on the Log
+## 16/08/2026, 21:31:14
+
+Build succeeds. Now run the unit tests
+
+
+## 16/08/2026, 21:31:16
+
+Good context gathered. Here's the full plan (includes the pending neutralized-trigger fix):
+
+## 1. Fix the neutralized trigger (from previous plan)
+
+`MainViewModel.kt:412-415,478` — "gone" = removed from map **OR** `status=="resolved"` **OR** `areaOnly` **OR** `isGhost(now)`; when gone → `neutralizedThreat = selected`, `selectedThreat = null`. Stale (dimmed, "Last seen") stays trackable.
+
+## 2. "Fun animation" note on the neutralized card
+
+`ThreatPopupCard.kt:132-165` — wrap the compact Row in a Column and add a small `bodySmall` gray caption under it. `Strings.kt` + `StringSet`:
+- EN: "Just a visual flourish — that threat is no longer around, for whatever reason."
+- UA: «Просто анімація — цієї загрози більше немає, з якої б то не було причини.»
+
+## 3. Disclaimers section in Settings
+
+New collapsible section (mirrors the `additionalExpanded` local-state Card at `SettingsScreen.kt:375-400`), placed at the **bottom** of Settings. New `Strings.kt` keys (`disclaimersTitle`, `disclaimersBody` bullets). Proposed list:
+- Numbers (position, distance, ETA, speed) are approximate — the enemy isn't broadcasting precisely.
+- The 0–10 threat gauge is a rough estimate, not an official rating.
+- Not an official alert source — always follow official air-raid signals.
+- Alerts depend on your phone's coarse location (battery-first); a wrong fix = wrong zone.
+- The app can't guarantee safety.
+
+## 4. Docs
+
+`ARCHITECTURE.md`: selected-threat-gone → neutralized behavior; disclaimers section note.
+
+## Answer: NEPTUN vs us on "gone"
+
+- **Per NEPTUN:** a threat is gone the instant the stream sends `status:"resolved"` or a `remove` frame — we drop it from the map immediately (`NeptunClient.kt:367,370`).
+- **Per us (client-side aging):** NEPTUN documents *no* server death timeout, so if it never says "resolved", a threat that stops updating ages out on our side: after its per-type staleness window (90 s ballistic → 300 s UAV) it goes dim/stale (kept on map, excluded from alerts), then after the +30 min ghost cap it's no longer drawn or alerted (`Prediction.kt:102-114`). Worst case ~31–35 min after the last fix before we treat it as gone.
+
+So 30 min is a deliberate **safety backstop** — a drone that stopped emitting is still a live threat until proven otherwise; dropping it early risks removing a real incoming from your alerts. When NEPTUN explicitly resolves it, removal is instant (and that's what triggers the neutralized card). The cost is stale markers lingering longer than you'd like.
+
+Two layout questions before I write code
+## 16/08/2026, 21:31:34
+
+Build + tests pass. Now CHANGELOG and ARCHITECTURE updates
+
+
+## 16/08/2026, 21:31:55
+
+Now ARCHITECTURE.md — add IconCatalog.kt to the module map and update ZonePref
+## 16/08/2026, 21:32:50
+
+Let me review the full diff to confirm correctness
+## 16/08/2026, 21:33:05
+
+Let me verify the new PNG assets are in place and untracked, and check the git status for them
+## 16/08/2026, 21:33:26
+
+The files exist but git isn't showing them. Let me check the ignore config
+## 16/08/2026, 21:33:37
+
+Good call. Long-press is the right hook — and it's already wired as a no-op today (`MapView.kt:366` `longPressHelper` swallows long-presses). osmdroid markers have no native long-press, so the map-level long-press + nearest-marker hit-test gives you "long-hold on a threat" for free, plus long-hold on empty map to test anywhere.
+
+## Updated plan (adds temp test trigger)
+
+### 1. `NeptunClient.kt` — removal event stream
+- `data class ThreatRemoved(id, lat, lon, type)`.
+- `removedThreats: SharedFlow<ThreatRemoved>` (`MutableSharedFlow`, `tryEmit`).
+- Emit on `upsert` with `status=="resolved"` and on `remove` frames (read old coords from `_state.value.threats` first).
+- Add temp debug emitter: `fun debugEmitRemoved(id, lat, lon, type)` — tagged `// TEMP debug`, no-op-to-remove later.
+
+### 2. `MapView.kt` — temp long-press test trigger
+- In `longPressHelper(p)`: project `p` + every threat marker to pixels, pick the nearest within ~48dp:
+  - **Threat found** → `NeptunClient.debugEmitRemoved(<that threat>)` — animation plays over the live marker (marker stays put; pure temp, no real state touched).
+  - **Empty map** → `debugEmitRemoved("test-<n>", p.lat, p.lon, <a visible type>)` — fake explosion at the press point.
+- Return `true` (as today). Wrapped in `// TEMP` so it strips cleanly.
+
+### 3. New `ThreatDeathAnimation.kt` — the 5s animation
+- Single 5s `Animatable`; phases: 0–0.5s ping ring → 3 / 2 / 1 (bold ~44sp white digit on translucent dark pill, above the point, each 1s) → 3.5–5s explosion (radial gradient burst, shockwave ring, ~8 flying particles, center flash).
+- Per-frame `mapView.projectToPixels` anchoring (tracks pan/zoom); no pointer modifiers so map gestures pass through; ~72dp footprint.
+
+### 4. `MapView.kt` — wire-up
+- Wrap `AndroidView` in a `Box`; `LaunchedEffect` collects `removedThreats` into a list, skips `uiState.hiddenTypes`, caps at ~6 concurrent, removes on done.
+
+### 5. Docs
+- `ARCHITECTURE.md`: module-map entries for `ThreatDeathAnimation.kt` + NeptunClient event flow.
+- `CHANGELOG.md`: entry under `## [Unreleased]`.
+
+### 6. Verify
+- `.\gradlew.bat :app:assembleDebug`.
+
+This gives you instant, repeatable testing: long-hold any visible threat → watch the countdown+explosion; long-hold open water/empty map → fake one there.
+
+Ready to implement on your go.
+## 16/08/2026, 21:33:56
+
+The assets are tracked. Let me verify the root PNG deletion and check the diff looks
+## 16/08/2026, 21:34:22
+
+Let me check how SettingsScreen is shown (composition lifecycle) and the MainScreen
+## 16/08/2026, 21:34:22
+
+Assets were already tracked in `drawable-nodpi` (the copy overwrote committed versions), and the root PNGs were untracked — so git state is clean. Build + tests pass. Let me do a final review of the two trickiest edits
+
+
+## 16/08/2026, 21:34:35
+
+The Settings picker looks correct. Let me verify the MapView rotation logic and the threatIcon once more
+
+
+## 16/08/2026, 21:34:46
+
+Everything's clear now — `SettingsScreen` is only composed while open (`MainScreen.kt:112`), so a `LaunchedEffect` there fires once per open — ideal for the 3-read counter.
+
+## Final plan
+
+### 1. Neutralized trigger fix (`MainViewModel.kt:412-415,478`)
+"Gone" = `refreshedSelected == null || status=="resolved" || areaOnly || isGhost(now)` → `neutralizedThreat = selected`, `selectedThreat = null`. Stale threats stay trackable.
+
+### 2. "Fun animation" caption (`ThreatPopupCard.kt:132-165`, `Strings.kt`)
+Column-wrapped compact card + `bodySmall` gray caption:
+- EN: "Just a visual flourish — that threat is no longer around, for whatever reason."
+- UA: «Просто анімація — цієї загрози більше немає, з якої б то не було причини.»
+
+### 3. Top card becomes the Disclaimers section (3-read auto-expand)
+- **`ZonePrefs.kt`**: new `disclaimer_read_count` Int key (default 0) + `disclaimerReadCount()`/`setDisclaimerReadCount()`.
+- **`MainViewModel.kt`**: expose `disclaimerReadCount` in `UiState`/prefs snapshot; new `onDisclaimerShown()` → increments.
+- **`MainScreen.kt`**: pass both down.
+- **`SettingsScreen.kt:118-132,153-192`**: replace the two-tap `collapseAttempts` hack with:
+  - `expanded` starts `readCount < 3 ? true : !disclaimerCollapsed`.
+  - `LaunchedEffect(Unit) { if (readCount < 3) onDisclaimerShown() }` — counts each Settings open.
+  - Single tap toggles + persists (`onDisclaimerCollapse`).
+  - After 3 reads: no auto-expand, stays in the state the user left it.
+- **`Strings.kt`**: retitle to "Disclaimers" (UA «Застереження»); body becomes the bullet list — official signals first, then: numbers are approximate (enemy isn't broadcasting precisely), threat gauge is a rough estimate not a rating, alerts depend on coarse phone location, not a guarantee of safety.
+
+### 4. Docs
+`ARCHITECTURE.md`: selected-gone → neutralized behavior; 3-read disclaimer auto-expand note.
+
+### 5. Verify
+`.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`.
+
+One note: "read 3 times" = the card auto-expands on the first 3 Settings **opens** (a pragmatic proxy — we can't detect actual reading). Say "go" and I'll implement.
+## 16/08/2026, 21:34:47
+
+Let me check if `zoneColor` is still used anywhere (it may be dead
+## 16/08/2026, 21:34:59
+
+`zoneColor` appears to be dead code — but let me check if it was already dead before my change (to avoid removing something unrelated)
+
+
+## 16/08/2026, 21:35:56
+
+Those warnings existed before. Let me verify the final MainScreen/ThreatTogglePanel edits compile-check by reviewing the diff briefly
+## 16/08/2026, 21:36:07
+
+Let me fix the missing trailing newline in ThreatPopupCard.
+## 16/08/2026, 21:36:51
+
+Done. Build + tests pass.
+
+What was added:
+- **`IconCatalog.kt`** — single source of truth for threat icons: `classicRes`, `res(type, set)`, `photoBaseDeg` (baked facing angles from the filenames), and a `ThreatIcon` composable that letterboxes photos in square slots (no stretching).
+- **Settings → Additional** — "Threat icons" picker with one example per set (Classic vs Photos).
+- **`ZonePrefs`** — `ThreatIconSet` pref (default CLASSIC), wired through `UiState`.
+- Replaced the 5 duplicated icon mappings (`MapView`/`MainScreen`/`SettingsScreen`/`ThreatTogglePanel`/`ThreatPopupCard`).
+- **MapView** — photo markers scaled to ~32dp and rotated `courseDeg − baseFacing` so each subject points along its true course.
+- CHANGELOG + ARCHITECTURE updated; the 7 PNGs live in `drawable-nodpi/threat_photo_*.png`.
+
+Note: I can't verify the photos visually, so the base-facing angles are inferred from filenames (`top`=0°, `top_right`=45°, `bottom_middle`=180°, `bottom_left`=225°, `left`=270°). If any marker points the wrong way on the map, tell me which type and I'll flip its base in `IconCatalog.kt`.
+## 16/08/2026, 21:36:53
+
+
+
+
+## 16/08/2026, 21:37:51
+
+
+
+
+## 16/08/2026, 21:38:01
+
+All four are clear and the codebase is mapped. Here's the plan.
+
+---
+
+# Plan
+
+## 1. Connection-status Log (collapsible, last 10 statuses, 30s debounce, persisted)
+
+**New file `ConnectionLog.kt`** — `object ConnectionLog`
+- `enum ConnStatus { ONLINE, OFFLINE, BACKUP }`, `data class ConnLogEntry(atMillis, status, durationSec: Long?)` (duration `null` for ONLINE).
+- `StateFlow<List<ConnLogEntry>>` ring buffer capped at 10.
+- `attach(context)` — idempotent; restores persisted entries + any in-progress episode start from `ZonePrefs` (single DataStore read).
+- `observe(status, now)` — called every tick by NeptunClient; debounce threshold = **the shared 30s constant**:
+  - first call just seeds `lastStatus` (no episode);
+  - ONLINE → OFF/BACKUP: start `pending(since = now)`;
+  - OFF/BACKUP → ONLINE: only if `now - since ≥ 30s` append `(since, status, dur)` **and** `(now, ONLINE, null)`; shorter = hiccup, discarded;
+  - while off: emit the merged list = live `(pending.since, status, now-since)` row + completed entries, so the popup shows a live running duration (~5s cadence).
+- Persists serialized entries (`at|status|dur\n…`) + pending-since/status to `ZonePrefs` on each committed change, so outages survive app/service restarts.
+
+**`NeptunClient.kt`**
+- Hoist `OFFLINE_GRACE_MS = 30_000L` here as a public const (moved from AlertService) — the "same variable" both the log and the offline notification reuse.
+- New 5s watchdog coroutine in `startKeepAliveTasks()`: `status = OFFLINE if neptunDown else BACKUP if (now - lastFrameAt > BACKUP_FALLBACK_MS) else ONLINE` → `ConnectionLog.observe(...)`.
+
+**`ZonePrefs.kt`** — add `conn_log` (string), `conn_log_pending_since` (long), `conn_log_pending_status` (string) keys + getters/setters.
+
+**`ConnectionStatus.kt`** — inside the System-status dialog, add a collapsible section ("Log" header + chevron, `AnimatedVisibility`):
+- rows = live episode (if any) + last 10 entries; each row: `HH:mm:ss`, status label (reusing `connOnline/connOffline/connBackup`), and `durationText` for OFF/BACKUP via new `connLogDurFormat` (`"%1$dm %2$ds"` / `"%1$d хв %2$d с"`).
+- empty state → `connLogEmpty`.
+- Wire `ConnectionLog.attach` at top of `AlertService.onCreate` and `MainActivity.onCreate` (both run before `NeptunClient.start()`; the watchdog's first tick seeds, so no race).
+
+**`Strings.kt`** — add `connLogTitle`, `connLogEmpty`, `connLogDurFormat` (UA+EN).
+
+## 2. "Online" pill — neptun.png + green text
+
+**`ConnectionStatus.kt`** pill: online branch shows `Image(R.drawable.neptun, Modifier.size(10.dp), ContentScale.Fit)` instead of the green dot, and the "Online" label in green (`0xFF4CAF50`). Offline/backup keep dot + white text.
+
+## 3. Kill "offline 0m"
+
+- **Header**: label becomes plain `s.connOffline` (drop `offlineUiFormat` / `offlineDurMinFormat`).
+- **Notification**: `notifyMonitor` text and `postOfflineAlert` body use a reworded `offlineBodyFormat` with no duration arg; offline status title/Retry/grace stay.
+- **Remove**: `offlineElapsedSec` from `UiState` + `buildUiState` (MainViewModel.kt:458) + `ConnectionStatus` param + `MainScreen.kt:428` pass. `NeptunState.offlineElapsedSec` stays (AlertService offline detection + log rely on it).
+- **`Strings.kt`**: delete `offlineUiFormat`, `offlineDurMinFormat`; reword `offlineBodyFormat` (e.g. "Offline — backup systems active but less reliable. Tap to retry.").
+- **`AlertService.kt`**: use `NeptunClient.OFFLINE_GRACE_MS`, remove the private const and the two duration-format sites.
+
+## 4. ZonesSheet gear → Settings scroll to Threats
+
+- **`ZonesSheet.kt`**: `ZonesPanel` gains `onOpenThreatSettings`; header becomes `Row { Text(zonesLabel, weight(1f)); IconButton(ic_settings_ua, contentDescription = s.settingsButton) }`.
+- **`MainScreen.kt`**: `var scrollToThreatsTick`; `MapScreen` gains `onOpenThreatSettings` (closes sheet → `onOpenSettings` + tick++); passes it to `ZonesPanel`; passes `scrollToThreatsTick` to `SettingsScreen`.
+- **`SettingsScreen.kt`**: add `scrollToThreatsTick` param; `rememberLazyListState()` on the LazyColumn; `LaunchedEffect(scrollToThreatsTick) { listState.animateScrollToItem(7) }` (Threats header is item index 7).
+
+## Docs / housekeeping
+- **`ARCHITECTURE.md`**: add `ConnectionLog.kt` to the module map; update `ConnectionStatus.kt` / `AlertService.kt` rows.
+- **`CHANGELOG.md`**: append all four under `## [Unreleased]` (UA/EN).
+- **Verify**: `.\gradlew.bat :app:assembleDebug` (no domain-logic touched, so unit tests not required).
+
+---
+
+One open item: `neptun.png` is 310×330 (used at 40dp in the attribution) — at 10dp in the pill it stays crisp; no asset work needed.
+
+Ready to implement on your go.
+## 16/08/2026, 21:38:38
+
+
+
+
+## 16/08/2026, 21:38:51
+
+
+
+
+## 16/08/2026, 21:39:11
+
+Now the Strings edits — interface field, both `neutralizedNote` values, and the disclaimers title/
+## 16/08/2026, 21:39:33
+
+
+
+
+## 16/08/2026, 21:40:11
+
+Now ZonePrefs — add
+## 16/08/2026, 21:40:32
+
+git add .
+git commit -m "Add photo threat icon set with settings toggle"

@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Settings → Additional: a new "Threat icons" picker switches the whole app between the classic vector icons and the new photo set (each option shows one example). Photo markers on the map are rotated so each subject points along its true course; in small slots they keep their aspect ratio instead of stretching.
 - Settings → Threats: Map and Alerts toggles are now fully independent — turning Map off no longer silences a type's alerts, and turning Alerts on always re-enables the type on the map (an armed alert is never hidden). The per-threat and group Alerts chips are always pressable.
 - Settings → Threats: the Fast and Slow group collapsed state is now remembered across app restarts.
 - Settings → Map centre: the pin-to-city list is now plain city rows (the red official-alert dots are gone), and the section/guide text no longer mentions red-marked cities.

@@ -73,17 +73,6 @@ private fun zoneBoundingBox(center: IGeoPoint, radiusKm: Double): BoundingBox {
     )
 }
 
-private fun iconFor(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.shahed
-    ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
-    ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
-    ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
-    ThreatType.KAB -> R.drawable.ic_threat_kab
-    ThreatType.AVIATION -> R.drawable.ic_threat_aviation
-    ThreatType.RECON -> R.drawable.ic_threat_recon
-    ThreatType.UNKNOWN -> R.drawable.ic_threat_unknown
-}
-
 private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
     append(t.id).append('@').append(t.status).append('@')
     append(t.lat).append(',').append(t.lon).append('@')
@@ -91,14 +80,17 @@ private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
 }
 
 /**
- * osmdroid draws markers at the drawable's intrinsic size; the vector icons are used as-is,
- * but the shahed.webp photo is larger, so scale it down to a marker-sized bitmap.
+ * Marker drawable for a threat in the given icon set. The vector set is used at its intrinsic
+ * size; the shahed.webp photo and the whole photo set are larger, so they're scaled down to a
+ * marker-sized bitmap.
  */
-private fun threatIcon(context: Context, type: ThreatType): Drawable {
-    val res = context.resources
-    if (type != ThreatType.SHAHED) return ContextCompat.getDrawable(context, iconFor(type))!!
-    val src = ContextCompat.getDrawable(context, R.drawable.shahed)!!
-    val targetW = (32 * res.displayMetrics.density).toInt()
+private fun threatIcon(context: Context, type: ThreatType, iconSet: ThreatIconSet): Drawable {
+    val res = IconCatalog.res(type, iconSet)
+    if (iconSet == ThreatIconSet.CLASSIC && type != ThreatType.SHAHED) {
+        return ContextCompat.getDrawable(context, res)!!
+    }
+    val src = ContextCompat.getDrawable(context, res)!!
+    val targetW = (32 * context.resources.displayMetrics.density).toInt()
     val iw = src.intrinsicWidth.coerceAtLeast(1)
     val ih = src.intrinsicHeight.coerceAtLeast(1)
     val w = targetW
@@ -107,7 +99,7 @@ private fun threatIcon(context: Context, type: ThreatType): Drawable {
     val canvas = Canvas(bmp)
     src.setBounds(0, 0, w, h)
     src.draw(canvas)
-    return BitmapDrawable(res, bmp)
+    return BitmapDrawable(context.resources, bmp)
 }
 
 private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
@@ -202,6 +194,7 @@ private fun circlePoints(center: GeoPoint, radiusMeters: Double, segments: Int =
 fun NeptunMapView(
     uiState: UiState,
     lang: AppLanguage,
+    iconSet: ThreatIconSet = ThreatIconSet.CLASSIC,
     onScaleChange: (Double) -> Unit,
     onThreatTapped: (Threat) -> Unit,
     onMapTapped: () -> Unit,
@@ -220,6 +213,7 @@ fun NeptunMapView(
     // the map, which is what made the banner above it flicker.
     val overlayKey = buildString {
         append(lang).append('A').append(uiState.activeZone)
+        append('I').append(iconSet)
         append('R').append(uiState.slowRedKm).append('Y').append(uiState.slowYellowKm)
         append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
         append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
@@ -422,13 +416,19 @@ fun NeptunMapView(
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = threatIcon(context, t.type)
+                        icon = threatIcon(context, t.type, iconSet)
                         alpha = if (stale) 0.25f else 1.0f
                         title = typeLabel
                         snippet = regionLabel
                         // Rotate to show course, mirroring NEPTUN's predict().heading: velocity
                         // bearing while live, else reported heading, else their A(id) pseudo-course.
-                        rotation = if (t.areaOnly) 0f else t.courseDeg.toFloat()
+                        // The classic icons face up at 0°; the photo set has a baked-in facing
+                        // angle, so its rotation is the course minus that base (kept in 0..360).
+                        rotation = if (t.areaOnly) 0f else {
+                            val course = t.courseDeg.toFloat()
+                            val base = if (iconSet == ThreatIconSet.PHOTO) IconCatalog.photoBaseDeg(t.type) else 0f
+                            (course - base + 360f) % 360f
+                        }
                         setOnMarkerClickListener { _, _ ->
                             onThreatTapped(t)
                             true

@@ -122,6 +122,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 followMe = uiState.followMe,
                 pinnedCity = uiState.pinnedCity,
                 threatCardSize = uiState.threatCardSize,
+                iconSet = uiState.iconSet,
                 showMapScale = uiState.showMapScale,
                 fastGroupCollapsed = uiState.fastGroupCollapsed,
                 slowGroupCollapsed = uiState.slowGroupCollapsed,
@@ -140,6 +141,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
+                onIconSetChange = { viewModel.setThreatIconSet(it) },
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onFastGroupCollapse = { viewModel.setFastGroupCollapsed(it) },
                 onSlowGroupCollapse = { viewModel.setSlowGroupCollapsed(it) },
@@ -195,6 +197,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     if (!uiState.languageChosen) {
         LanguageChooseDialog(
             current = uiState.language,
+            iconSet = uiState.iconSet,
             hiddenTypes = uiState.hiddenTypes,
             silencedTypes = uiState.silencedTypes,
             onChoose = { viewModel.setLanguage(it) },
@@ -210,6 +213,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 @Composable
 private fun LanguageChooseDialog(
     current: AppLanguage,
+    iconSet: ThreatIconSet,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     onChoose: (AppLanguage) -> Unit,
@@ -281,6 +285,7 @@ private fun LanguageChooseDialog(
                 )
                 SlimThreatToggles(
                     lang = current,
+                    iconSet = iconSet,
                     hiddenTypes = hiddenTypes,
                     silencedTypes = silencedTypes,
                     onThreatMapToggle = onThreatMapToggle,
@@ -443,6 +448,7 @@ private fun MapScreen(
                     NeptunMapView(
                         uiState = uiState,
                         lang = uiState.language,
+                        iconSet = uiState.iconSet,
                         onScaleChange = { scaleMpp = it },
                         onThreatTapped = onThreatTapped,
                         onMapTapped = onMapTapped,
@@ -521,7 +527,8 @@ private fun MapScreen(
                                     ThreatStatusCell(
                                         type = type,
                                         count = count,
-                                        enabled = true
+                                        enabled = true,
+                                        iconSet = uiState.iconSet
                                     )
                                 }
                             }
@@ -541,6 +548,7 @@ private fun MapScreen(
                         ThreatPopupCard(
                             threat = threat,
                             lang = uiState.language,
+                            iconSet = uiState.iconSet,
                             proximity = uiState.selectedThreatInfo,
                             pinnedCity = if (uiState.followMe) null else uiState.pinnedCity,
                             threatLevel = uiState.threatLevel,
@@ -590,6 +598,7 @@ private fun MapScreen(
                         ThreatPopupCard(
                             threat = threat,
                             lang = uiState.language,
+                            iconSet = uiState.iconSet,
                             proximity = null,
                             pinnedCity = null,
                             threatLevel = 0.0,
@@ -919,7 +928,8 @@ private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
 private fun ThreatStatusCell(
     type: ThreatType,
     count: Int,
-    enabled: Boolean
+    enabled: Boolean,
+    iconSet: ThreatIconSet
 ) {
     val active = enabled && count > 0
     val lineAlpha by rememberInfiniteTransition(label = "threatLine").animateFloat(
@@ -929,11 +939,11 @@ private fun ThreatStatusCell(
         label = "lineAlpha"
     )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(
-            painter = painterResource(id = threatIconRes(type)),
-            contentDescription = null,
-            tint = if (enabled) Color.Unspecified else Color(0xFF9E9E9E),
-            modifier = Modifier.size(18.dp)
+        ThreatIcon(
+            type = type,
+            set = iconSet,
+            size = 18.dp,
+            tint = if (enabled) Color.Unspecified else Color(0xFF9E9E9E)
         )
         if (count > 0) {
             Spacer(Modifier.height(2.dp))
@@ -952,17 +962,6 @@ private fun ThreatStatusCell(
                 .alpha(if (active) lineAlpha else 0.4f)
         )
     }
-}
-
-private fun threatIconRes(type: ThreatType): Int = when (type) {
-    ThreatType.SHAHED -> R.drawable.shahed
-    ThreatType.FPV_LOITERING -> R.drawable.ic_threat_fpv
-    ThreatType.CRUISE_MISSILE -> R.drawable.ic_threat_cruise
-    ThreatType.BALLISTIC -> R.drawable.ic_threat_ballistic
-    ThreatType.KAB -> R.drawable.ic_threat_kab
-    ThreatType.AVIATION -> R.drawable.ic_threat_aviation
-    ThreatType.RECON -> R.drawable.ic_threat_recon
-    ThreatType.UNKNOWN -> R.drawable.ic_threat_unknown
 }
 
 /** Popup card-size stepper: SMALL → MEDIUM → LARGE → SMALL… */
