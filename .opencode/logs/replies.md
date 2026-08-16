@@ -37793,3 +37793,62 @@ Now ZonePrefs — add
 
 git add .
 git commit -m "Add photo threat icon set with settings toggle"
+## 16/08/2026, 21:40:50
+
+
+
+
+## 16/08/2026, 21:41:11
+
+
+
+
+## 16/08/2026, 21:41:40
+
+Now the UiState field, the `.copy` line, and the new function:
+
+
+## 16/08/2026, 21:42:36
+
+Now the SettingsScreen rework:
+
+
+## 16/08/2026, 21:42:48
+
+Now the SettingsScreen function signature — add the two
+## 16/08/2026, 21:43:10
+
+Now wire through
+## 16/08/2026, 21:43:39
+
+
+
+
+## 16/08/2026, 21:45:29
+
+Build passes (only pre-existing warnings). Running
+## 16/08/2026, 21:45:41
+
+All green. Updating CHANGELOG per workflow
+## 16/08/2026, 21:46:22
+
+Done. `assembleDebug` + `testDebugUnitTest` both pass.
+
+**What changed:**
+- **Neutralized fix** (`MainViewModel.kt:412-421,483`): "gone" now means removed by server, marked `resolved`/area-only, or past the 30-min ghost cap — so the card actually fires. Stale-but-trackable threats still keep the "Last seen" popup.
+- **Caption** (`ThreatPopupCard.kt`): the neutralized card now shows "Just a visual flourish — that threat is no longer around, for whatever reason." (+ UA) under the type.
+- **Disclaimers section** (`SettingsScreen.kt`, `Strings.kt`): the top card is now "Disclaimers" («Застереження») with the full bullet list — official signals first, numbers approximate, gauge not a rating, coarse location, no safety guarantee. It auto-expands on the first 3 Settings opens (`disclaimer_read_count` in `ZonePrefs`, `MainViewModel.onDisclaimerShown()`), then single-tap collapse persists and it stays as you left it. Two-tap collapse hack removed.
+- Docs (`ARCHITECTURE.md`, `CHANGELOG.md`) updated.
+
+On the "gone" question: NEPTUN removes a threat the moment it sends `resolved`/`remove`; otherwise it never deletes, so we age it out ourselves (per-type staleness → dimmed, then +30 min ghost cap). The 30 min is a deliberate safety backstop — dropping earlier risks missing a real drone that just went silent.
+## 16/08/2026, 21:47:53
+
+
+
+
+## 16/08/2026, 21:48:11
+
+```
+git add .
+git commit -m "Neutralized fade fix, disclaimers section, 3-read auto-expand"
+```

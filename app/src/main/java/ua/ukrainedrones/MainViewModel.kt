@@ -61,6 +61,7 @@ data class UiState(
     val neutralizedThreat: Threat? = null,   // selected threat just resolved — fades out
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
     val disclaimerCollapsed: Boolean = false,
+    val disclaimerReadCount: Int = 0,
     val update: UpdateState = UpdateState.Idle,
     val needsInstallPermission: Boolean = false,
     val latestVersion: String? = null,
@@ -128,7 +129,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val map: Set<ThreatType>,
         val alert: Set<ThreatType>,
         val lang: AppLanguage,
-        val disclaimer: Boolean
+        val disclaimer: Boolean,
+        val disclaimerReadCount: Int
     )
 
     private data class PrefsQuad(
@@ -143,6 +145,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val alertEnabled: Set<ThreatType>,
         val language: AppLanguage,
         val disclaimerCollapsed: Boolean,
+        val disclaimerReadCount: Int,
         val redArmed: Boolean,
         val yellowArmed: Boolean,
         val officialAlertsEnabled: Boolean,
@@ -205,9 +208,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             threatMapFlow(prefs),
             threatAlertFlow(prefs),
             prefs.language(),
-            prefs.disclaimerCollapsed()
-        ) { map, alert, lang, disclaimer ->
-            ThreatPrefs(map, alert, lang, disclaimer)
+            prefs.disclaimerCollapsed(),
+            prefs.disclaimerReadCount()
+        ) { map, alert, lang, disclaimer, readCount ->
+            ThreatPrefs(map, alert, lang, disclaimer, readCount)
         },
         combine(
             prefs.redZoneArmed(),
@@ -235,6 +239,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             alertEnabled = a.alert,
             language = a.lang,
             disclaimerCollapsed = a.disclaimer,
+            disclaimerReadCount = a.disclaimerReadCount,
             redArmed = b.redArmed,
             yellowArmed = b.yellowArmed,
             officialAlertsEnabled = b.officialAlertsEnabled,
@@ -302,6 +307,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             needsInstallPermission = updateUi.needsInstallPermission,
             latestVersion = updateUi.latestVersion,
             disclaimerCollapsed = prefs.disclaimerCollapsed,
+            disclaimerReadCount = prefs.disclaimerReadCount,
             redArmed = prefs.redArmed,
             yellowArmed = prefs.yellowArmed,
             officialAlertsEnabled = prefs.officialAlertsEnabled,
@@ -594,6 +600,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setDisclaimerCollapsed(collapsed: Boolean) {
         viewModelScope.launch { prefs.setDisclaimerCollapsed(collapsed) }
+    }
+
+    fun onDisclaimerShown() {
+        viewModelScope.launch {
+            prefs.disclaimerReadCount().first().let { count ->
+                if (count < 3) prefs.setDisclaimerReadCount(count + 1)
+            }
+        }
     }
 
     fun setThreatCardSize(size: ThreatCardSize) {

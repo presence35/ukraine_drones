@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Settings → top card: now the "Disclaimers" section with a full list of caveats (approximate numbers, unofficial rating, coarse location, no safety guarantee). It auto-expands on the first 3 Settings opens, then remembers the state you leave it in.
+- Threat popup: the "Neutralized" fade now also triggers when the selected threat goes stale past the ghost cap, and the card carries a caption that it's just a visual flourish — the threat is no longer around for whatever reason.
 - Settings → Additional: a new "Threat icons" picker switches the whole app between the classic vector icons and the new photo set (each option shows one example). Photo markers on the map are rotated so each subject points along its true course; in small slots they keep their aspect ratio instead of stretching.
 - Settings → Threats: Map and Alerts toggles are now fully independent — turning Map off no longer silences a type's alerts, and turning Alerts on always re-enables the type on the map (an armed alert is never hidden). The per-threat and group Alerts chips are always pressable.
 - Settings → Threats: the Fast and Slow group collapsed state is now remembered across app restarts.

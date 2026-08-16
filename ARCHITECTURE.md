@@ -63,7 +63,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | `MainScreen.kt` | Top-level Compose UI: header (trident glow, title — tap to fit the whole country, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet` (fully-visible zones panel), `UpdateDialog`, first-run `LanguageChooseDialog` (with slim threat toggles). |
 | `ConnectionStatus.kt` | Connection pill (red "offline" / amber "backup" / green "online") + the "System status" dialog: per-source dot rows (NEPTUN + backup alerts.com.ua), backup scope note, TEMP force-offline toggle, legend, attribution link. |
 | `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: slow-distance zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. |
-| `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, alert toggles, updates, battery exemption, feature guide. |
+| `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, alert toggles, updates, battery exemption, feature guide. The top "Disclaimers" card auto-expands on the first 3 Settings opens (`disclaimer_read_count`) then remembers the user's collapse state. |
 | `ZonesSheet.kt` | "Edit zones" bottom sheet over the live map: Slow (km) and Fast (min) red/yellow sliders with per-zone alert bells, section captions, and the Fast/Slow group Map/Alerts toggles — everything visible at once. |
 | `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / text pill in medium), wave size, time since seen. |
 | `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, `GroupOnlyToggles` (the compact group-master panel for the zones sheet), and `SlimThreatToggles` — the per-type compact panel reused by the first-run dialog. |
@@ -178,7 +178,12 @@ Treat these as a contract. If you change one, update **every** place that relies
   tappable; popup shows "Last seen m:ss ago" / «Востаннє m:ss тому») but are excluded from the
   threat strip, zone tiers, gauge and alerts in both `MainViewModel` and `AlertService`. A
   threat is removed entirely only when the server resolves it (or a `remove` frame arrives),
-  or once `isGhost` — the staleness window plus `STALE_GHOST_CAP_MS` (~30 min) — passes.
+  or once `isGhost` — the staleness window plus `STALE_GHOST_CAP_MS` (~30 min) — passes. When
+  the **selected** threat is gone this way (removed from the map, server-marked `resolved` /
+  area-only, or a ghost), `MainViewModel` sets `UiState.neutralizedThreat` and nulls
+  `selectedThreat`, so the UI swaps the popup for a compact "neutralized" card (icon + type +
+  a caption that it's just a visual flourish) and fades it out over 2s. Stale-but-trackable
+  threats never trigger it.
   Dead-reckoning applies to any active threat with a real heading (velocity `bearingDeg`,
   else top-level `heading`) and caps at a per-type horizon and max-ghost distance. The ViewModel
   refreshes every 1s via `nowFlow`; `AlertService` uses a 60s grace window before clearing.

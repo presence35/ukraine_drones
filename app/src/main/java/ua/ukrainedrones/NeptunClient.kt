@@ -7,8 +7,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.Call
@@ -80,6 +83,14 @@ data class NeptunState(
         }
     }
 }
+
+/** A threat just disappeared from the server feed (resolved or a remove frame) — drives the map death animation. */
+data class ThreatRemoved(
+    val id: String,
+    val lat: Double,
+    val lon: Double,
+    val type: ThreatType
+)
 
 object NeptunClient {
 

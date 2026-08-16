@@ -69,6 +69,7 @@ fun SettingsScreen(
     officialAlertsEnabled: Boolean,
     sirenOverride: Boolean,
     disclaimerCollapsed: Boolean,
+    disclaimerReadCount: Int,
     followMe: Boolean,
     pinnedCity: City?,
     threatCardSize: ThreatCardSize,
@@ -90,6 +91,7 @@ fun SettingsScreen(
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
+    onDisclaimerShown: () -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
@@ -116,19 +118,15 @@ fun SettingsScreen(
     // Fast/Slow groups' collapsed state is persisted (ZonePrefs), so it survives restarts.
     // The "Additional settings" section starts collapsed; only the battery/scale live in it so far.
     var additionalExpanded by remember { mutableStateOf(false) }
-    // The "Official signals" card needs two collapse taps before it actually stays collapsed.
-    var collapseAttempts by remember { mutableStateOf(0) }
+    // The disclaimers card auto-expands on the first 3 Settings opens, then just remembers
+    // the state the user leaves it in.
+    var disclaimerExpanded by remember { mutableStateOf(disclaimerReadCount < 3 || !disclaimerCollapsed) }
+    LaunchedEffect(Unit) {
+        if (disclaimerReadCount < 3) onDisclaimerShown()
+    }
     val onDisclaimerClick: () -> Unit = {
-        if (disclaimerCollapsed) {
-            collapseAttempts = 0
-            onDisclaimerCollapse(false)
-        } else {
-            collapseAttempts++
-            if (collapseAttempts >= 2) {
-                collapseAttempts = 0
-                onDisclaimerCollapse(true)
-            }
-        }
+        disclaimerExpanded = !disclaimerExpanded
+        onDisclaimerCollapse(!disclaimerExpanded)
     }
 
     Scaffold(
@@ -170,13 +168,13 @@ fun SettingsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Icon(
-                                imageVector = if (disclaimerCollapsed) Icons.Default.KeyboardArrowDown
-                                else Icons.Default.KeyboardArrowUp,
+                                imageVector = if (disclaimerExpanded) Icons.Default.KeyboardArrowUp
+                                else Icons.Default.KeyboardArrowDown,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        AnimatedVisibility(visible = !disclaimerCollapsed) {
+                        AnimatedVisibility(visible = disclaimerExpanded) {
                             Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 Spacer(Modifier.height(12.dp))
