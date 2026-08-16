@@ -15030,3 +15030,37 @@ what else?
 
 1 go
 and put "coming soon" in the bototm 2 cards where the icons would go.  no scroll ofc.
+## 16/08/2026, 23:49:14
+
+"R" needs to be tranlsated for ukraineind "д" i believe.  try to make the "R" bar and the "skull" bar the same size and algined.  maybe even enarlge the "R" and shirnk thte "skull" so they're closer sizes, skull should be inherently bigger tho i would assume.  also, tapping between small and large slightly moves the threat icon and title.  that shouldn't need to happen.
+## 16/08/2026, 23:49:37
+
+go
+## 16/08/2026, 23:50:57
+
+also add option to turn yellow alert on or off.  i would assume red should always be on?  no, that should need setting too, maybe there are times you really dont care and just wanna sleep.  i suppose you could phone off ,but sitll.
+## 16/08/2026, 23:53:31
+
+the sizes don't need to change for small/large, there's plenty of space, it was more about overhwemling w info.
+## 16/08/2026, 23:53:59
+
+the fake explsoin should trigger for the threatcard to self-desctruct too (we ahve that coded already i think)
+## 16/08/2026, 23:57:27
+
+ya.
+## 16/08/2026, 23:58:35
+
+"offline" should be red, like "online" is green. 
+make the neptun logo bigger.
+## 17/08/2026, 00:01:53
+
+"unresitrctied in background" in additional settings has no context when it's on. 
+## 17/08/2026, 00:03:28
+
+go
+## 17/08/2026, 00:07:37
+
+go
+## 17/08/2026, 00:08:03
+
+reuse

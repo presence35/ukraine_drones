@@ -167,12 +167,12 @@ fun ThreatPopupCard(
         tonalElevation = 8.dp
     ) {
         when (cardSize) {
-            // One glanceable line: threat icon + type + distance/ETA, with the "R"
-            // reliability bar stacked above the skull and its level bar on the right.
+            // One glanceable line: threat icon + type + distance/ETA, with the reliability
+            // bar stacked above the skull and its level bar on the right.
             ThreatCardSize.SMALL -> {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
                     ThreatIcon(
                         type = threat.type,
@@ -186,7 +186,7 @@ fun ThreatPopupCard(
                             Text(
                                 typeLabel,
                                 fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.titleSmall,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = Color.White
                             )
                             if (alertsOff) {
@@ -204,12 +204,12 @@ fun ThreatPopupCard(
                         )
                     }
                     Spacer(Modifier.width(10.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(horizontalAlignment = Alignment.Start) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "R",
+                                s.reliabilityShort,
                                 fontWeight = FontWeight.Medium,
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = Color(0xFF9E9E9E)
                             )
                             Spacer(Modifier.width(6.dp))
@@ -221,9 +221,9 @@ fun ThreatPopupCard(
                         }
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            LevelSkullIcon(level = threatLevel, size = fontAware(26.dp))
+                            LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
                             Spacer(Modifier.width(6.dp))
-                            HorizontalLevelBar(level = threatLevel, modifier = Modifier.width(fontAware(56.dp)))
+                            HorizontalLevelBar(level = threatLevel, modifier = Modifier.width(fontAware(50.dp)))
                         }
                     }
                 }
@@ -234,7 +234,7 @@ fun ThreatPopupCard(
                 Row(modifier = Modifier.padding(14.dp)) {
                     Column(modifier = Modifier.weight(1f)) {
                         // Header: icon, type + region/course, close.
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.Top) {
                             ThreatIcon(
                                 type = threat.type,
                                 set = iconSet,
@@ -641,7 +641,7 @@ private fun ReliabilityBar(
         Reliability.LOW -> ReliabilityRed
         Reliability.UNKNOWN -> Color(0xFF9E9E9E)
     }
-    val segmentWidth = if (compact) fontAware(14.dp) else fontAware(22.dp)
+    val segmentWidth = if (compact) fontAware(16.dp) else fontAware(22.dp)
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (!compact) {
             Text(s.reliabilityLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF9E9E9E))

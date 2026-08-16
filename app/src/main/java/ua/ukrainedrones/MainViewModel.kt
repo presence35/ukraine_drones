@@ -102,6 +102,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val updateManager = UpdateManager(app.applicationContext)
 
     private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
+    // TEMP: a threat id long-pressed on the map is treated as neutralized so the card
+    // self-destructs like a real resolution. Cleared on every selection change.
+    private val tempNeutralizedFlow = MutableStateFlow<String?>(null)
     private val revealFlow = MutableStateFlow<RevealRequest?>(null)
     private var revealTick = 0
     private val updateStateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -180,7 +183,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val userLocation: LatLng?,
         val selected: Threat?,
         val now: Long,
-        val reveal: RevealRequest?
+        val reveal: RevealRequest?,
+        val tempNeutralizedId: String?
     )
 
     private data class UpdateUi(
@@ -206,7 +210,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         LocationTracker.location,
         selectedThreatFlow,
         nowFlow,
-        revealFlow
+        revealFlow,
+        tempNeutralizedFlow
     ) { values: Array<Any?> ->
         val neptun = values[0] as NeptunState
         val radii = values[1] as ZoneParams
@@ -214,10 +219,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val selected = values[3] as Threat?
         val now = values[4] as Long
         val reveal = values[5] as RevealRequest?
+        val tempNeutralizedId = values[6] as String?
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, selected, now, reveal
+            location, selected, now, reveal, tempNeutralizedId
         )
     }
 
@@ -320,7 +326,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             },
             selected = live.selected,
             now = live.now,
-            reveal = live.reveal
+            reveal = live.reveal,
+            tempNeutralizedId = live.tempNeutralizedId
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
@@ -358,7 +365,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         pinnedCity: City?,
         selected: Threat?,
         now: Long,
-        reveal: RevealRequest?
+        reveal: RevealRequest?,
+        tempNeutralizedId: String?
     ): UiState {
         val params = ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
@@ -437,11 +445,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         // keep the selected threat pointer fresh (position/status may have updated)
         val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
-        // The selected threat is gone (removed by the server, marked resolved/area-only, or a
-        // ghost past the hard cap) — show a brief neutralized card, then drop the selection.
-        val selectedGone = selected != null && (refreshedSelected?.let { t ->
-            t.status == "resolved" || t.areaOnly || t.isGhost(now)
-        } ?: true)
+        // The selected threat is gone (removed by the server, marked resolved/area-only, a ghost
+        // past the hard cap, or TEMP long-pressed) — show a brief neutralized card, then drop
+        // the selection.
+        val selectedGone = selected != null && (
+            (refreshedSelected?.let { t ->
+                t.status == "resolved" || t.areaOnly || t.isGhost(now)
+            } ?: true) || selected.id == tempNeutralizedId
+            )
         val neutralizedThreat = if (selectedGone) selected else null
 
         val activeZone = when {
@@ -660,7 +671,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectThreat(threat: Threat?) {
+        tempNeutralizedFlow.value = null
         selectedThreatFlow.value = threat
+    }
+
+    /** TEMP: treat [id] as neutralized so its card self-destructs (map long-press test trigger). */
+    fun tempNeutralize(id: String) {
+        tempNeutralizedFlow.value = id
     }
 
     /**
@@ -671,6 +688,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun revealThreat(id: String?, lat: Double, lon: Double) {
         revealTick++
+        tempNeutralizedFlow.value = null
         if (id != null) {
             selectedThreatFlow.value = NeptunClient.state.value.threats[id]
         }

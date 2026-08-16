@@ -65,7 +65,6 @@ class AlertService : Service() {
     private var monitoringJob: Job? = null
 
     private var wasFocusAlertActive = false
-    private var currentReason: String? = null
     private var currentReasonThreatId: String? = null
     private var knownZones: Map<String, ThreatZone> = emptyMap()
     private var lastChannelLang: AppLanguage? = null
@@ -371,15 +370,15 @@ class AlertService : Service() {
                 state.sirenOverride,
                 revealThreat = state.officialReasonThreatId?.let { all[it] }
             )
-            currentReason = state.officialReason
             currentReasonThreatId = state.officialReasonThreatId
         } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
-            state.officialReason != currentReason
+            state.officialReasonThreatId != currentReasonThreatId
         ) {
             // Wait-for-reason: the official alert fired with only a region-level body; keep
             // updating the SAME NOTIF_ALERT silently as a specific threat reason arrives.
             // Mirrors the knownZones change-tracking above — a same-id re-post is guarded on
-            // an actual reason change so the siren isn't re-triggered — and never clobbers a
+            // the threat behind the reason (not its text, which NEPTUN refreshes as
+            // confirmations tick up) so the siren isn't re-triggered — and never clobbers a
             // ringing zone alert (alertable is non-empty then).
             postAlert(
                 null,
@@ -388,7 +387,6 @@ class AlertService : Service() {
                 state.sirenOverride,
                 revealThreat = state.officialReasonThreatId?.let { all[it] }
             )
-            currentReason = state.officialReason
             currentReasonThreatId = state.officialReasonThreatId
         }
         // All clear: the official alert that was ringing has just ended. The cheerful chime
@@ -401,7 +399,6 @@ class AlertService : Service() {
                 cancelAlert()
             }
             postAllClear(s, state.focusBannerCity)
-            currentReason = null
             currentReasonThreatId = null
         }
         wasFocusAlertActive = state.focusOblastAlertActive

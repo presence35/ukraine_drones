@@ -242,6 +242,7 @@ fun NeptunMapView(
     fitZonesTick: Int = 0,
     revealRequest: RevealRequest? = null,
     paused: Boolean = false,
+    onTempNeutralize: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -616,12 +617,19 @@ fun NeptunMapView(
                                 }
                             }
                             if (nearest != null) {
+                                // TEMP: if the pressed threat is the selected one, self-destruct
+                                // its card too (reuses the real neutralized-card flow).
+                                val pressedId = markerRefs.value.entries
+                                    .firstOrNull { it.value === nearest }?.key
                                 // Unhook the real marker so the normal pipeline stops drawing
                                 // it; the overlay now renders its icon through the countdown and
                                 // drops it when the explosion starts.
                                 mapView.overlays.remove(nearest)
                                 markerRefs.value.entries.removeAll { it.value === nearest }
                                 mapView.invalidate()
+                                if (pressedId != null && pressedId == uiState.selectedThreat?.id) {
+                                    onTempNeutralize(pressedId)
+                                }
                                 deathFx.spawn(
                                     nearest.position ?: GeoPoint(p.latitude, p.longitude),
                                     icon = nearest.icon,

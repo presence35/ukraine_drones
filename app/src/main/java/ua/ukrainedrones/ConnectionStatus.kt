@@ -87,12 +87,16 @@ internal fun ConnectionStatus(
             contentDescription = null,
             contentScale = ContentScale.Fit,
             colorFilter = if (backupActive && !online) ColorFilter.tint(Color(0xFFF9A825)) else null,
-            modifier = Modifier.size(width = 10.dp, height = 10.dp)
+            modifier = Modifier.size(width = 14.dp, height = 14.dp)
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = label,
-            color = if (online) Color(0xFF4CAF50) else Color.White,
+            color = when {
+                online -> Color(0xFF4CAF50)
+                neptunDown -> Color(0xFFE57373)
+                else -> Color.White
+            },
             style = MaterialTheme.typography.labelMedium
         )
     }

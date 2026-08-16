@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
@@ -434,19 +435,24 @@ fun SettingsScreen(
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 if (batteryOptimized) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_check),
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_check),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                s.batteryGranted,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        Spacer(Modifier.height(6.dp))
                                         Text(
-                                            s.batteryGranted,
+                                            s.batteryBody,
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -987,10 +993,12 @@ private fun IconSetSelector(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ComingSoonTile(
                 label = s.iconSetArmyLabel,
+                comingSoon = s.iconSetComingSoonLabel,
                 modifier = Modifier.weight(1f)
             )
             ComingSoonTile(
                 label = s.iconSetComicLabel,
+                comingSoon = s.iconSetComingSoonLabel,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -1052,9 +1060,7 @@ private fun IconSetTile(
                             .width(20.dp)
                             .background(
                                 Brush.horizontalGradient(
-                                    colors = listOf(cardBg, Color.Transparent),
-                                    startX = 0f,
-                                    endX = 20.dp.toPx()
+                                    colors = listOf(cardBg, Color.Transparent)
                                 )
                             )
                     )
@@ -1067,9 +1073,7 @@ private fun IconSetTile(
                             .width(20.dp)
                             .background(
                                 Brush.horizontalGradient(
-                                    colors = listOf(Color.Transparent, cardBg),
-                                    startX = 0f,
-                                    endX = 20.dp.toPx()
+                                    colors = listOf(Color.Transparent, cardBg)
                                 )
                             )
                     )
@@ -1088,7 +1092,7 @@ private fun IconSetTile(
 }
 
 @Composable
-private fun ComingSoonTile(label: String, modifier: Modifier = Modifier) {
+private fun ComingSoonTile(label: String, comingSoon: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.clip(RoundedCornerShape(14.dp)),
         shape = RoundedCornerShape(14.dp),
@@ -1100,8 +1104,20 @@ private fun ComingSoonTile(label: String, modifier: Modifier = Modifier) {
                 .padding(vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Empty slot sized like the real cards' icon row so the grid lines up.
-            Spacer(Modifier.height(38.dp))
+            // Slot sized like the real cards' icon row so the grid lines up, showing the
+            // "coming soon" hint in place of icons.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    comingSoon,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 label,

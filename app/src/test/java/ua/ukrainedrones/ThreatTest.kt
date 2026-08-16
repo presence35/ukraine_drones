@@ -83,6 +83,22 @@ class ThreatTest {
     }
 
     @Test
+    fun `fromJson strips trailing confirmation count from explanationShort`() {
+        val t = Threat.fromJson(
+            JSONObject("""{"id":"x","lat":46.0,"lon":30.0,"explanationShort":"Рій БпЛА барражує над морем. Підтверджень: 6"}""")
+        )
+        assertEquals("Рій БпЛА барражує над морем", t!!.explanationShort)
+    }
+
+    @Test
+    fun `fromJson strips a bare trailing count from explanationShort`() {
+        val t = Threat.fromJson(
+            JSONObject("""{"id":"x","lat":46.0,"lon":30.0,"explanationShort":"Рій БпЛА барражує над морем. : 6"}""")
+        )
+        assertEquals("Рій БпЛА барражує над морем", t!!.explanationShort)
+    }
+
+    @Test
     fun `fromJson keeps course text`() {
         val t = Threat.fromJson(
             JSONObject("""{"id":"x","lat":46.0,"lon":30.0,"explanationShort":"Група БпЛА курсом на Київ"}""")

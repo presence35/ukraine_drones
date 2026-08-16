@@ -39756,3 +39756,353 @@ If the focus isn't yet known (no GPS, not pinned), it centers on the threat alon
 
 Cards use the derived `surfaceContainer` tone. Now implement the fades and the "Coming soon" placeholder
 
+
+## 16/08/2026, 23:43:22
+
+Let me simplify the gradients (default span already covers the Box width, avoiding `toPx`
+## 16/08/2026, 23:44:02
+
+Need to add the `Brush` import to SettingsScreen
+
+
+## 16/08/2026, 23:44:12
+
+Now the "Coming soon" in the bottom cards where the icons would go. Let me view the current `
+## 16/08/2026, 23:44:43
+
+Now update the `ComingSoonTile` signature to take the coming-soon text, and the call sites
+
+
+## 16/08/2026, 23:44:59
+
+Understood — per-kind customization at night, minimal scope. Here's the final plan.
+
+## Night mode — Settings section (own section, between Threats and Alerts)
+
+**Config knobs (all in `ZonePrefs`, DataStore-backed):**
+- `nightEnabled: Boolean` — master toggle
+- `nightStartMin` / `nightEndMin: Int` — minute-of-day pickers (overnight-aware, e.g. 22:00→07:00)
+- `nightUseCustomZones: Boolean` — fall back to day zones when off
+- `nightSlowRedKm/nightSlowYellowKm/nightFastRedMin/nightFastYellowMin` + `nightRedArmed`/`nightYellowArmed` — custom zones (sliders + bells, same ranges as `Zones.kt`)
+- `nightZoneSirenOverride: Boolean` — zone sirens ring on the alarm stream at night (default **off** → follow phone)
+- `nightOfficialSirenOverride: Boolean` — official oblast alerts ring on the alarm stream at night (default **off** → follow phone)
+
+**New shared file `NightMode.kt`** (mirror rule — both consumers):
+- `NightConfig` (the above window + sound/zone values)
+- `isNightActive(config, nowMillis): Boolean` — overnight-window aware, needs day-of-week? no, simple time-of-day
+- `effectiveParams(day, night, active)` and `effectiveArmed(day, night, active)` — pure helpers used by **both** `AlertService` and `MainViewModel`
+
+**`AlertService.kt`:**
+- Add night prefs to the `combine`; compute `nightActive` per tick from `now`.
+- `zoneThreats` + `alertTier` use effective params/armed.
+- `postAlert` gets the effective per-kind override: zone posts → `nightZoneSirenOverride`, official posts → `nightOfficialSirenOverride` (replace the single `state.sirenOverride` param with a per-post value).
+
+**`MainViewModel.kt`:** effective params feed map circles + zone tiers + the armed pill (map shows effective zones, per your answer). ZonesSheet keeps editing day values, labeled "Day".
+
+**`SettingsScreen.kt`:** new `SectionHeader` (moon icon, needs a drawable) + card: master toggle → when on, two time pickers, "Always sound at night" row with two `AlertToggleRow`s (zones / official), "Night zones" toggle revealing the 4 `ZoneRow` sliders + bells (reuse from `ZonesSheet.kt`).
+
+**`Strings.kt`:** ~12 new UA/EN strings. **`CHANGELOG.md`:** Unreleased entry. **Tests:** `NightModeTest` for `isNightActive` (overnight, boundary minutes) — run `:app:testDebugUnitTest` + `:app:assembleDebug`.
+
+Wait — one check: official alerts currently share `postAlert(zone = null, …, sirenOverride)` at `AlertService.kt:367/384`. Per-kind override is a small parameter split, no channel changes needed (existing `CHANNEL_ALERTS[_OUTER]_ALARM` + notification channels suffice).
+
+Approve this and I'll implement.
+## 16/08/2026, 23:45:07
+
+Now update the two call sites to pass the coming-soon string. I need to re-add the string first
+## 16/08/2026, 23:45:42
+
+Now update the two `ComingSoonTile` call sites in `IconSetSelector`
+
+
+## 16/08/2026, 23:45:52
+
+Now build. `toPx`/`Box`/`fillMaxHeight`/`width` imports — Box and fillMaxHeight/width come from `foundation.layout.*` (already wildcard). Let me build
+## 16/08/2026, 23:46:17
+
+Build + tests pass.
+
+- **H-scroll affordance**: each icon card now shows a right-edge fade while more icons are hidden, and a left-edge fade once you've scrolled (driven by `scrollState.value`/`maxValue`, blended with the card's `surfaceContainer` color).
+- **Coming soon**: the bottom Army/Comic cards show "Скоро"/"Coming soon" in the 38dp slot where icons would go (no scroll), pack name below.
+## 16/08/2026, 23:50:31
+
+
+
+
+## 16/08/2026, 23:50:36
+
+Now implementing the fixes. First, `sanitizeCourse`
+## 16/08/2026, 23:50:46
+
+Now the AlertService re-post guard and the now-unused `currentReason`
+## 16/08/2026, 23:51:06
+
+Both are already in the plan — the night zones card has independent red and yellow armed bells (`nightRedArmed` / `nightYellowArmed`), so at night you can disarm yellow, red, or both and sleep through everything, without touching your phone's DND. They default to the day values.
+
+Plan is unchanged and complete. Ready to implement on your go.
+## 16/08/2026, 23:51:19
+
+Now adding tests for the trailing-count sanitization
+
+
+## 16/08/2026, 23:51:31
+
+Clean. Now building and running the tests
+
+
+## 16/08/2026, 23:51:49
+
+Let me see the actual failure values
+
+
+## 16/08/2026, 23:51:56
+
+
+
+
+## 16/08/2026, 23:51:59
+
+The regex correctly consumes the trailing period along with the count — the result is cleaner without it. Updating test expectations
+
+
+## 16/08/2026, 23:52:39
+
+All four points understood. Here's the plan:
+
+## Plan: localized "R"/"Д", matched R↔skull sizes, no icon/title jump
+
+**1. Localized reliability label — `Strings.kt`**
+- Add `val reliabilityShort: String` to the `StringSet` interface (next to `reliabilityLabel:81`).
+- UA: `reliabilityShort = "Д"` (Достовірність); EN: `reliabilityShort = "R"`.
+- `ThreatPopupCard.kt`: replace the hardcoded `"R"` text with `s.reliabilityShort`.
+
+**2. R bar ↔ skull bar closer + aligned — SMALL branch**
+- Enlarge "R": `labelSmall` → `labelMedium`.
+- `ReliabilityBar(compact = true)` segments: `14.dp` → `16.dp` each (~52dp total).
+- Shrink skull: `26.dp` → `22.dp`; level bar `56.dp` → `50.dp` (~78dp row).
+- Right column `horizontalAlignment = CenterHorizontally` → `Start` — so "R"/skull share the left edge (matches your sketch) and the two bars sit at similar widths, skull still a bit bigger.
+
+**3. Icon + title no longer shift when toggling — SMALL branch**
+- Root cause: SMALL uses `padding(vertical = 10.dp)` while LARGE uses `padding(14.dp)` → 4dp jump.
+- Change SMALL padding to `14.dp` (same as LARGE). Title top then matches exactly; icon within ~1dp (LARGE centers the 32dp icon against its 2-line title+region header). No change to LARGE needed.
+
+**4. Docs** — tweak `CHANGELOG.md` ("R" → localized "R"/"Д") and `ARCHITECTURE.md:70`.
+
+One decision: the SMALL title text currently uses a smaller style (`titleSmall`) vs LARGE's `titleMedium`. With the padding fix the *position* stops moving, but the text still resizes when toggling.
+
+- **Keep `titleSmall`** (smaller text is the point of a small card; position stable) — Recommended
+- **Switch to `titleMedium`** (title identical to large in size and position)
+
+Which do you want?
+## 16/08/2026, 23:54:05
+
+PowerShell corrupted the file encoding. Restoring it from git and reapplying clean
+## 16/08/2026, 23:54:08
+
+Got it — same text sizes both cards, the difference is just how much info is shown. Plan updated:
+
+## Plan: localized "R"/"Д", matched R↔skull, zero icon/title movement
+
+**1. Localized label — `Strings.kt`**
+- Add `reliabilityShort` to `StringSet` (near `reliabilityLabel:81`): UA `"Д"` (Достовірність), EN `"R"`.
+- `ThreatPopupCard.kt` SMALL: hardcoded `"R"` → `s.reliabilityShort`.
+
+**2. R ↔ skull sizes + alignment — SMALL branch**
+- Enlarge R label: `labelSmall` → `labelMedium`.
+- `ReliabilityBar(compact = true)`: segments `14.dp` → `16.dp` (~52dp row).
+- Shrink skull: `26.dp` → `22.dp`; level bar `56.dp` → `50.dp` (~78dp row) — skull stays the bigger element.
+- Right column `horizontalAlignment` → `Start` so "R"/skull share the left edge, bars roughly equal width.
+
+**3. No icon/title shift when toggling**
+- SMALL padding `(horizontal 14, vertical 10)` → `14.dp` (was the 4dp jump).
+- SMALL title `titleSmall` → `titleMedium` (same size as LARGE).
+- SMALL main Row and LARGE header Row both `verticalAlignment = Alignment.Top` — so in both cards the 32dp icon and the title top-edge sit at exactly `14dp` (pixel-identical when switching). This nudges the LARGE card's icon to ride the top edge (small visual change there).
+
+**4. Docs** — `CHANGELOG.md` ("R"/"Д", stable header) + `ARCHITECTURE.md:70`.
+
+Verify with `.\gradlew.bat :app:assembleDebug`.
+## 16/08/2026, 23:54:09
+
+Let me find the card self-destruct logic before
+## 16/08/2026, 23:54:37
+
+
+
+
+## 16/08/2026, 23:54:55
+
+
+
+
+## 16/08/2026, 23:55:14
+
+Let me check the MapView signature/call site and how it gets its inputs
+## 16/08/2026, 23:55:30
+
+Test file restored. Re-applying the test edits properly
+## 16/08/2026, 23:55:51
+
+ThreatTest passes. Now running the full unit tests and debug
+## 16/08/2026, 23:55:56
+
+
+
+
+## 16/08/2026, 23:56:13
+
+All green. Now appending the changelog entry per the
+## 16/08/2026, 23:56:29
+
+Let me verify the final diff is clean and encoding intact
+## 16/08/2026, 23:56:40
+
+Done. Fixed and verified (`testDebugUnitTest` + `assembleDebug` both green).
+
+**Root cause:** that notification is the *official oblast* alert, not a zone alert — it fires whenever your oblast is under official alarm regardless of your red/yellow circles. Two defects made it repeat every few minutes:
+- `sanitizeCourse` (Threat.kt:244) left the trailing confirmation count (`": 6"`) in the reason text; NEPTUN ticks that count up as sources confirm the swarm, so the string changed each time.
+- The wait-for-reason re-post (AlertService.kt:372) compared that raw string, so every count change re-posted the same notification id and re-triggered the siren.
+
+**Fixes:**
+- `sanitizeCourse` now strips trailing count fragments too — the `": 6"` artifact is gone (also cleans the same text in the threat popup).
+- The re-post guard now keys on the winning *threat id* instead of the text — same threat re-sounds only once; a genuinely new reason still updates the body.
+
+Added 2 tests for the sanitize fix; changelog updated under `[Unreleased]`.
+## 16/08/2026, 23:56:44
+
+Found it — the card self-destruct already exists: when the selected threat is "gone", `MainViewModel` sets `neutralizedThreat` (`MainViewModel.kt:442-445`) and `MainScreen` shows a card that holds then fades (~2s) and dismisses (`MainScreen.kt:585-621`). The fake long-press never triggers it because the threat's real status is unchanged. Plan below.
+
+## Plan
+
+### 1. `MainViewModel.kt` — temp "neutralize this id" override
+- Add `private val tempNeutralizedFlow = MutableStateFlow<String?>(null)` (next to `selectedThreatFlow`, line 104).
+- Thread it through: add to the `liveSnapshot` combine (line 203, 7th slot), `LiveSnapshot` data class (line 174), and `buildUiState` param.
+- In `buildUiState`, make `selectedGone` (line 442) also true when the override matches:
+  ```kotlin
+  val selectedGone = selected != null && (
+      (refreshedSelected?.let { t ->
+          t.status == "resolved" || t.areaOnly || t.isGhost(now)
+      } ?: true) || selected.id == tempNeutralizedId
+  )
+  ```
+- Add `fun tempNeutralize(id: String) { tempNeutralizedFlow.value = id }`.
+- Clear the override in `selectThreat` and `revealThreat` (the two writers of `selectedThreatFlow`) so it never poisons later selections.
+- Result: `selectedThreat` → null, `neutralizedThreat` = the pressed threat → existing card self-destruct runs untouched.
+
+### 2. `MapView.kt` — temp wiring
+- Add temp param `onTempNeutralize: (String) -> Unit = {}`.
+- In the long-press handler after finding `nearest`, resolve its id via `markerRefs.value.entries.firstOrNull { it.value === nearest }?.key`; if it matches `uiState.selectedThreat?.id`, call `onTempNeutralize(id)`.
+
+### 3. `MainScreen.kt`
+- Pass `onTempNeutralize = { id -> viewModel.tempNeutralize(id) }` into `NeptunMapView`.
+
+### 4. Docs
+- CHANGELOG: extend the temp bullet (long-press also self-destructs the selected card). ARCHITECTURE: note the temp hook.
+
+### 5. Verify
+- `.\gradlew.bat :app:assembleDebug`.
+
+**One heads-up:** the card fade is ~2s (1.6s hold + fade), independent of the 5s map animation — the real path has the same mismatch today. Reusing as-is keeps the temp test honest with real behavior; want it aligned to the 5s instead?
+## 16/08/2026, 23:57:48
+
+
+
+
+## 16/08/2026, 23:57:58
+
+
+
+
+## 16/08/2026, 23:58:04
+
+Now the `LiveSnapshot`
+## 16/08/2026, 23:58:51
+
+Plan — `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt` (pill, lines 85-97):
+
+1. **Offline text red**: `Text.color` at line 95 → `0xFFE57373` when offline (`neptunDown`), keep green for online, white for backup.
+2. **Bigger logo**: `Modifier.size(10.dp)` at line 90 → **14.dp** (square, ~40% larger; pill still compact). I'll pick 14.dp unless you want a different size.
+
+That's the whole change — the dialog's `dotColor` and attribution stay untouched. Say go and I'll apply + rebuild.
+## 16/08/2026, 23:59:04
+
+Now thread it into `buildUiState`
+
+
+## 16/08/2026, 23:59:23
+
+Now add `tempNeutralize` and clear the override in the
+## 16/08/2026, 23:59:38
+
+Now `MapView.kt` — add the temp param and hook it into the long-press
+## 16/08/2026, 23:59:57
+
+Bug: I look up the id after removing the entry. Capture it before removal.
+
+
+## 17/08/2026, 00:00:16
+
+Now `MainScreen.kt` — pass the callback and align the card fade
+## 17/08/2026, 00:00:34
+
+Now docs. Let me read the CHANGELOG Unreleased and ARCHITECTURE relevant
+## 17/08/2026, 00:02:04
+
+
+
+
+## 17/08/2026, 00:02:09
+
+`viewModel` isn't in scope inside `MapScreen`. Let me thread a callback through
+
+
+## 17/08/2026, 00:02:33
+
+Found it. The battery card is in `SettingsScreen.kt:437-454`: when granted, it collapses to a bare status row (`check` icon + `batteryGranted` = "Unrestricted in background") with zero explanation. The full context (`batteryBody`) only shows in the not-granted state.
+
+## Plan
+
+Give the granted state context in **Additional settings**:
+
+1. **`Strings.kt`** — add a `batteryGrantedBody` string in both languages (new `StringSet` field + EN/UA values). Phrased for the already-granted state, e.g.:
+   - EN: *"Android won't pause this app in the background, so alerts keep ringing even with the screen off. The app still uses very little power."*
+   - UA: *«Android не зупинятиме застосунок у фоні, тож тривоги лунатимуть навіть коли екран вимкнено. Застосунок усе одно споживає дуже мало енергії.»*
+
+2. **`SettingsScreen.kt:437-454`** — when `batteryOptimized`, render a `Column` (instead of the bare `Row`): the existing check + status line, then the new granted-body text in `bodyMedium` / `onSurfaceVariant` beneath it.
+
+3. Add a `CHANGELOG.md` entry under `## [Unreleased]`.
+
+**Alternative** (more minimal): reuse the existing `batteryBody` under the granted status instead of adding a new string — but its wording ("so allowing unrestricted background use won't drain your phone… Safety first.") is written for the action prompt, not the granted state, so a dedicated shorter string reads better.
+
+Want me to go with the new dedicated `batteryGrantedBody`, or reuse `batteryBody`?
+## 17/08/2026, 00:03:34
+
+Done, builds clean.
+
+- Long-pressing the **selected** threat now self-destructs its card: `MapView` resolves the pressed id and calls `onTempNeutralize(id)` → `MainViewModel.tempNeutralize` sets a `tempNeutralizedFlow` override that makes `selectedGone` true in `buildUiState`, reusing the real `neutralizedThreat` card flow (`MainScreen.kt:587`). The override clears on any `selectThreat`/`revealThreat`.
+- Card fade aligned to 5s: `tween(2000, ...)` → `tween(5000, ...)` — holds opaque 4s, fades 1s, dismisses in sync with the explosion completing.
+- Docs updated; `assembleDebug` green.
+## 17/08/2026, 00:04:37
+
+Now the SMALL branch in Threat
+## 17/08/2026, 00:05:15
+
+Now LARGE header top
+## 17/08/2026, 00:06:06
+
+Now the compact segments width in Reliability
+## 17/08/2026, 00:06:16
+
+
+
+
+## 17/08/2026, 00:06:59
+
+Done. "R" is now localized (`Д` in UA via `Strings.reliabilityShort`), the R label is bigger (`labelMedium`) with 16dp segments, the skull shrank to 22dp with a 50dp bar, both rows left-align in the right column (skull still bigger), and both cards now share 14dp padding + `titleMedium` + top-aligned icon so nothing shifts when toggling Small↔Large. Build passes.
+## 17/08/2026, 00:08:06
+
+Done. Offline text is now red (`0xFFE57373`), logo bumped to 14dp.
+## 17/08/2026, 00:08:11
+
+Build passes. Offline label is now red, and the NEPTUN emblem grew from 10dp to 14dp (ConnectionStatus.kt:85-99).
+## 17/08/2026, 00:08:41
+
+Done. The granted state now shows a titled "Unrestricted in background" header plus the same explanatory body as the request card (`SettingsScreen.kt:437`), and CHANGELOG updated. Build passes.

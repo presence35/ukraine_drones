@@ -2,23 +2,28 @@
 
 ## [Unreleased]
 
+- Settings → Additional: the "Unrestricted in background" status now explains itself — once the app runs unrestricted, the card shows the same context as the request (Android won't pause it, so alerts keep ringing on very little power) instead of a bare status line.
+
+- Notifications: an official alert no longer re-sounds every few minutes when its reason text is the same threat — the reason body updates only when a genuinely different threat becomes the reason (NEPTUN refreshes confirmation counts on the same object, which used to retrigger the siren).
+- Notifications: the official-alert reason line no longer carries a dangling confirmation count (e.g. "…: 6") in the body — count-only text is stripped.
+
 - Notifications: tapping a threat alert opens the app on that threat — the map pans so your GPS/pinned city sits near the top and the threat near the bottom (zoom matches how far away it is), and a green ring highlights the new threat for a few seconds.
 
 - Map: zooming in now shows smaller towns across all regions (~300 more minor city labels, ~3–15 per oblast) in addition to the major cities, so you get a sense of distance/scale everywhere — not just around Odesa. Minor towns are map-context only: follow-me attribution and the banner city still resolve to major cities, and the pin picker is unchanged.
 
 - Zones panel: the Fast/Slow group Map & Alerts toggles are gone from the bottom of the "Edit zones" sheet (they stay in Settings and the first-run dialog). Slider bands are now Slow red 2–20 km / yellow 21–50 km and Fast red 2–5 min / yellow 6–20 min, with fresh-install defaults at the top of each band (20/50/5/20).
 
-- Threat popup: the "Middle" card size is gone — only Small and Large remain. The Small card's threat icon and skull now match the Large card's sizes, shows a compact "R" reliability bar stacked above the skull, and its distance/ETA/speed pills stay on one line.
+- Threat popup: the "Middle" card size is gone — only Small and Large remain. The Small card's threat icon, title and skull match the Large card's look (no jumping when you switch), shows a compact "R" (UA "Д") reliability bar stacked above the skull, and its distance/ETA/speed pills stay on one line.
 - Photo threat icons are now the default for everyone (users who prefer the classic vectors can switch back in Settings → Additional).
 - Settings → Additional: the "Threat icons" picker is a 2x2 grid — the Classic and Photos cards each show all seven icons 25% bigger in a row that scrolls horizontally within the card, with two bordered placeholder cards below (Army, Comic). All four cards have borders. The Additional section opens expanded so the scale/icon toggles are visible, and the "Show scale" row now shows a ruler icon instead of the gear.
 - System status: a new collapsible connection log shows the last 10 status changes — time, online/offline/backup, and how long each drop lasted. Drops under 30 seconds are ignored so random hiccups don't pollute the log, and the log survives app restarts. The currently-open episode shows a live running duration.
 - Header: the connection pill now shows the NEPTUN emblem with a green "Online" label while the feed is healthy.
-- Header: the NEPTUN emblem in the connection pill is now color-coded — green while online, red when offline, amber when on the backup source.
+- Header: the NEPTUN emblem in the connection pill is now color-coded — green while online, red when offline, amber when on the backup source; the Offline label is red too, and the emblem is larger.
 - Header + notifications: the misleading "Offline 0m" counter is gone — offline just says offline; the connection log gives the real duration.
 - Zones panel: a gear in the top-right opens Settings directly on the Threats section.
 - Language: English text is now fully offline. Place names (cities, oblasts, districts) are romanized — never "translated" — via the official Ukrainian transliteration rules (Золоте → Zolote, not "Gold"), and military vocabulary (UAV, Shahed, missile, heading toward…) is hard-coded. The live Google translate call is gone, so EN notifications post instantly with no network dependency.
 
-- Map: when a threat is resolved or removed by the server, a playful 5-second "neutralized" animation plays at its last position — a quick ping, a 3-2-1 countdown, then a small explosion. The threat's icon stays on the map for the full animation and is removed for good only once it completes. (Long-pressing a threat marker or empty map fires it on demand — a temporary dev/testing aid.)
+- Map: when a threat is resolved or removed by the server, a playful 5-second "neutralized" animation plays at its last position — a quick ping, a 3-2-1 countdown, then a small explosion. The threat's icon stays on the map for the full animation and is removed for good only once it completes. The "Neutralized" popup card now fades out in sync with the animation. (Long-pressing a threat marker or empty map fires it on demand, including the card self-destruct — a temporary dev/testing aid.)
 - Settings → top card: now the "Disclaimers" section with a full list of caveats (approximate numbers, unofficial rating, coarse location, no safety guarantee). It auto-expands on the first 3 Settings opens, then remembers the state you leave it in.
 - Threat popup: the "Neutralized" fade now also triggers when the selected threat goes stale past the ghost cap, and the card carries a caption that it's just a visual flourish — the threat is no longer around for whatever reason.
 - Settings → Additional: a new "Threat icons" picker switches the whole app between the classic vector icons and the new photo set (each option shows all seven icons in a scrollable panel). Photo markers on the map are rotated so each subject points along its true course; in small slots they keep their aspect ratio instead of stretching.

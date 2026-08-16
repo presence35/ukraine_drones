@@ -247,6 +247,7 @@ data class Threat(
             var t = text.replace(Regex("(?iu)підтвердж$cyr*"), " ")
             t = t.replace(Regex("^[\\s:.,—-]+"), "").trim()
             t = t.replaceFirst(Regex("(?iu)^\\d+\\s*(?:джерел$cyr*|sources?)?[\\s:.,—-]*"), "").trim()
+            t = t.replace(Regex("(?iu)[\\s:.,—-]+\\d+(?:\\s*(?:джерел$cyr*|sources?|підтвердж$cyr*))?\\s*$"), "")
             if (t.isEmpty()) return null
             // A bare count like "3" or "3 джерела" carries no course info.
             if (t.matches(Regex("(?iu)^\\d+(?:\\s*(?:джерел$cyr*|sources?))?\\.?$"))) return null

@@ -110,7 +110,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onRedArmedChange = { viewModel.setRedArmed(it) },
             onYellowArmedChange = { viewModel.setYellowArmed(it) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
-            onForceOfflineChange = viewModel::setForceOffline
+            onForceOfflineChange = viewModel::setForceOffline,
+            onTempNeutralize = { id -> viewModel.tempNeutralize(id) }
         )
         if (screen == Screen.SETTINGS) {
             // Composed after MapScreen, so its handler is checked first on Back.
@@ -341,7 +342,8 @@ private fun MapScreen(
     onRedArmedChange: (Boolean) -> Unit,
     onYellowArmedChange: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
-    onForceOfflineChange: (Boolean) -> Unit
+    onForceOfflineChange: (Boolean) -> Unit,
+    onTempNeutralize: (String) -> Unit
 ) {
     val s = Strings.get(uiState.language)
     var fitUkraineTick by remember { mutableStateOf(0) }
@@ -465,6 +467,7 @@ private fun MapScreen(
                         fitZonesTick = fitZonesTick,
                         revealRequest = uiState.revealRequest,
                         paused = settingsOpen,
+                        onTempNeutralize = onTempNeutralize,
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -591,7 +594,7 @@ private fun MapScreen(
                         fade.animateTo(
                             0f,
                             tween(
-                                2000,
+                                5000,
                                 easing = { t -> if (t < 0.8f) 1f else 1f - (t - 0.8f) / 0.2f }
                             )
                         )

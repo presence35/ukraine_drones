@@ -41,7 +41,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `MainViewModel.kt` | `AndroidViewModel`. Combines NEPTUN state + GPS + prefs + a 1s clock into `StateFlow<UiState>` via `buildUiState`. Also drives the update flow. This is the UI-side copy of the zone/focus/alert logic (see invariants). |
+| `MainViewModel.kt` | `AndroidViewModel`. Combines NEPTUN state + GPS + prefs + a 1s clock into `StateFlow<UiState>` via `buildUiState`. Also drives the update flow. This is the UI-side copy of the zone/focus/alert logic (see invariants). A TEMP `tempNeutralize` hook treats a long-pressed threat id as neutralized so its card self-destructs like a real resolution. |
 | `ConnectionLog.kt` | `object` singleton. Persisted ring buffer of the last 10 connection statuses (ONLINE/OFFLINE/BACKUP with episode durations). Fed by `NeptunClient`'s 5s watchdog via `observe(...)`; only commits a drop once it outlasts the shared `OFFLINE_GRACE_MS` (random hiccups are ignored); the in-progress episode is exposed live (`currentEpisode`). Rendered in the System-status popup. |
 | `Prediction.kt` | `LatLng`, `distanceMeters`, per-type staleness (`staleAfterMs`/`isExpired`), `predictPosition` dead-reckoning, and `ThreatSpeedTracker` (speed from server → measured fixes → nominal). |
 
@@ -64,10 +64,10 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | --- | --- |
 | `MainScreen.kt` | Top-level Compose UI: header (trident glow, title — tap to fit the whole country, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet` (fully-visible zones panel), `UpdateDialog`, first-run `LanguageChooseDialog` (with slim threat toggles). |
 | `ConnectionStatus.kt` | Connection pill (red "offline" / amber "backup" / green "online" — the online state shows the NEPTUN emblem and a green label) + the "System status" dialog: per-source dot rows (NEPTUN + backup alerts.com.ua), backup scope note, TEMP force-offline toggle, legend, attribution link, and a collapsible connection log (`ConnectionLog`, last 10 statuses with durations). |
-| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: slow-distance zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. |
+| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: slow-distance zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. A TEMP map long-press fires the death animation (and self-destructs the selected threat's card) on demand. |
 | `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, alert toggles, updates, battery exemption, feature guide. The top "Disclaimers" card auto-expands on the first 3 Settings opens (`disclaimer_read_count`) then remembers the user's collapse state. |
 | `ZonesSheet.kt` | "Edit zones" bottom sheet over the live map: Slow (km) and Fast (min) red/yellow sliders with per-zone alert bells and section captions — everything visible at once. A gear in the top-right opens Settings scrolled to the Threats section. |
-| `ThreatPopupCard.kt` | Threat detail popup in two sizes (small / large): type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / "R" bar stacked above the skull in small), wave size, time since seen. |
+| `ThreatPopupCard.kt` | Threat detail popup in two sizes (small / large): type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / "R" (UA "Д") bar stacked above the skull in small), wave size, time since seen. |
 | `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, and `SlimThreatToggles` — the per-type compact panel reused by the first-run dialog and Settings. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
 | `FeatureDiagrams.kt` | Diagram drawables used by the feature guide. |
@@ -186,7 +186,8 @@ Treat these as a contract. If you change one, update **every** place that relies
   the **selected** threat is gone this way (removed from the map, server-marked `resolved` /
   area-only, or a ghost), `MainViewModel` sets `UiState.neutralizedThreat` and nulls
   `selectedThreat`, so the UI swaps the popup for a compact "neutralized" card (icon + type +
-  a caption that it's just a visual flourish) and fades it out over 2s. Stale-but-trackable
+  a caption that it's just a visual flourish) and fades it out over the same 5s as the map
+  death animation. Stale-but-trackable
   threats never trigger it.
   Dead-reckoning applies to any active threat with a real heading (velocity `bearingDeg`,
   else top-level `heading`) and caps at a per-type horizon and max-ghost distance. The ViewModel
