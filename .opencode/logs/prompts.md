@@ -14854,3 +14854,9 @@ go
 ## 16/08/2026, 21:47:52
 
 git push
+## 16/08/2026, 21:49:40
+
+can we scrape other telegram channels and pupt data like Neptun does? Seems complicated.
+## 16/08/2026, 21:52:25
+
+git push

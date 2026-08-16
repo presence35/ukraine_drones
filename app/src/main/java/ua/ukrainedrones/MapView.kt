@@ -6,14 +6,18 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Point
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -22,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import org.osmdroid.config.Configuration
 import org.osmdroid.api.IGeoPoint
 import org.osmdroid.events.MapListener
@@ -40,6 +45,7 @@ import org.osmdroid.views.overlay.Polygon
 import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 internal val DARK_TILE_SOURCE = XYTileSource(
     "CartoDB_DarkNoLabels", 0, 17, 256, ".png",
@@ -232,9 +238,11 @@ fun NeptunMapView(
     val markerRefs = remember { mutableStateOf<MutableMap<String, Marker>>(mutableMapOf()) }
     val speedTracker = remember { ThreatSpeedTracker() }
     val pausedState by rememberUpdatedState(paused)
+    val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
 
+    Box(modifier = modifier.fillMaxSize()) {
     AndroidView(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
             Configuration.getInstance().userAgentValue = ctx.packageName
             // Keep the tile cache in the OS cache dir so Android treats it as "Cache"
@@ -362,7 +370,40 @@ fun NeptunMapView(
                             onMapTapped()
                             return true
                         }
-                        override fun longPressHelper(p: GeoPoint): Boolean = true
+                        // TEMP debug: long-press a threat marker (or empty map) to fire the death
+                        // animation on demand instead of waiting for a real resolution. Remove
+                        // before release.
+                        override fun longPressHelper(p: GeoPoint): Boolean {
+                            val pressPx = Point()
+                            mapView.projection.toPixels(p, pressPx)
+                            val density = mapView.context.resources.displayMetrics.density
+                            val threshold = 48 * density
+                            var nearest: Threat? = null
+                            var nearestD = threshold
+                            for (t in uiState.mapThreats) {
+                                val m = markerRefs.value[t.id] ?: continue
+                                val mp = m.position ?: continue
+                                val tp = Point()
+                                mapView.projection.toPixels(mp, tp)
+                                val dx = tp.x - pressPx.x
+                                val dy = tp.y - pressPx.y
+                                val d = sqrt((dx * dx + dy * dy).toFloat())
+                                if (d <= nearestD) {
+                                    nearest = t
+                                    nearestD = d
+                                }
+                            }
+                            if (nearest != null) {
+                                NeptunClient.debugEmitRemoved(nearest.id, nearest.lat, nearest.lon, nearest.type)
+                            } else {
+                                val type = ThreatType.values().firstOrNull { it !in uiState.hiddenTypes }
+                                    ?: ThreatType.SHAHED
+                                NeptunClient.debugEmitRemoved(
+                                    "test-" + System.nanoTime(), p.latitude, p.longitude, type
+                                )
+                            }
+                            return true
+                        }
                     })
                 )
 
@@ -472,6 +513,24 @@ fun NeptunMapView(
             mapViewRef.value = null
         }
     )
+
+        // Threat death animations (resolved/removed frames; long-press is a TEMP test trigger).
+        val deaths = remember { mutableStateListOf<ThreatRemoved>() }
+        LaunchedEffect(Unit) {
+            NeptunClient.removedThreats.collect { r ->
+                if (r.type !in hiddenTypesState && deaths.size < 6) deaths.add(r)
+            }
+        }
+        for (r in deaths) {
+            key(r.id) {
+                ThreatDeathFx(
+                    removed = r,
+                    mapViewRef = mapViewRef,
+                    onDone = { deaths.remove(r) }
+                )
+            }
+        }
+    }
 
     // Smoothly advance markers between the (sparse) server fixes: predict each threat's
     // current position from its heading + estimated speed and move the marker in-place,

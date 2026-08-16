@@ -17,6 +17,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +63,7 @@ internal fun ThreatDeathFx(
         val pt = Point()
         while (true) {
             mapViewRef.value?.let { mv ->
-                mv.projectToPixels(GeoPoint(removed.lat, removed.lon), pt)
+                mv.projection.toPixels(GeoPoint(removed.lat, removed.lon), pt)
                 pixel = IntOffset(pt.x, pt.y)
             }
             withFrameNanos { }

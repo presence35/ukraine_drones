@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Map: when a threat is resolved or removed by the server, a playful 5-second "neutralized" animation plays at its last position — a quick ping, a 3-2-1 countdown, then a small explosion. (Long-pressing a threat marker or empty map fires it on demand — a temporary dev/testing aid.)
 - Settings → top card: now the "Disclaimers" section with a full list of caveats (approximate numbers, unofficial rating, coarse location, no safety guarantee). It auto-expands on the first 3 Settings opens, then remembers the state you leave it in.
 - Threat popup: the "Neutralized" fade now also triggers when the selected threat goes stale past the ghost cap, and the card carries a caption that it's just a visual flourish — the threat is no longer around for whatever reason.
 - Settings → Additional: a new "Threat icons" picker switches the whole app between the classic vector icons and the new photo set (each option shows one example). Photo markers on the map are rotated so each subject points along its true course; in small slots they keep their aspect ratio instead of stretching.

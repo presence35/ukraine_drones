@@ -37855,3 +37855,55 @@ git commit -m "Neutralized fade fix, disclaimers section, 3-read auto-expand"
 ## 16/08/2026, 21:48:53
 
 Now the animation composable. Let me check existing imports/style in ThreatPopupCard or FeatureDiagrams for conventions.
+## 16/08/2026, 21:49:13
+
+Now `MapView.kt` — imports first:
+## 16/08/2026, 21:49:32
+
+Now wrap the `AndroidView` in a `Box` and add the death-an
+## 16/08/2026, 21:49:46
+
+Let me look at the architecture and how the app currently ing
+## 16/08/2026, 21:49:55
+
+Now the long-press TEMP trigger:
+## 16/08/2026, 21:50:05
+
+Let me verify the MapView structure:
+## 16/08/2026, 21:50:21
+
+Now ARCHITECTURE.md and CH
+## 16/08/2026, 21:51:11
+
+Two fixes: osmdroid uses `projection.toPixels`, and I need the `setValue` import.
+
+
+## 16/08/2026, 21:51:17
+
+Short answer: yes it's *technically* possible, but worth being honest about what's hard.
+
+**What NEPTUN is today.** NEPTUN is an aggregator — it already scrapes/merges Telegram channels server-side and exposes a clean structured API (`lat/lon/type/heading/speed/status`, and even the raw Telegram message text for alert reasons). This app consumes that. So "scrape Telegram like NEPTUN does" = re-implementing the messy part NEPTUN already solved for you.
+
+**The three realistic routes (client-side, since we have no backend):**
+
+1. **`t.me/s/<channel>` public preview HTML** — no auth, no token. Poll ~30–60s, parse posts, regex coordinates, classify threat type. This is the *only* auth-free option. Fragile: HTML structure changes, channels can go private/rate-limit, and most channels don't post clean coords — they post free text like «БпЛА зі сходу» which you can't place on a map. Real value only if your target channels post structured coordinates.
+2. **Bot/MTProto (TDLib)** — needs a bot token embedded in the APK (security anti-pattern; anyone can extract it) or a small backend (which is just rebuilding NEPTUN). Realistic only with a backend.
+3. **Use an existing aggregator API** covering the channels you want — zero scraping.
+
+**Integration cost if you go route 1:** any scraped threat must merge into `NeptunClient.state.threats` so both `MainViewModel` and `AlertService` see it (that's automatic once it feeds the same StateFlow), plus a "TG never clobbers NEPTUN" dedup rule mirroring the existing REST invariant, plus a new source row in the system-status dialog, plus battery.
+
+Before I plan further, I need to know what
+## 16/08/2026, 21:52:11
+
+Done. Build passes. To test: long-press any threat marker (or empty map) → ping, 3-2-1, explosion, all 5s.
+
+Changes:
+- `NeptunClient.kt` — `removedThreats: SharedFlow<ThreatRemoved>` emitted on `resolved` upserts and `remove` frames, plus `debugEmitRemoved()` (TEMP).
+- `ThreatDeathAnimation.kt` — the 5s flourish, re-anchored to the geo point each frame, touch-transparent.
+- `MapView.kt` — Box overlay collecting the flow (skips hidden types, caps 6 concurrent) + TEMP long-press trigger (`longPressHelper`, MapView.kt:366).
+- `ARCHITECTURE.md`, `CHANGELOG.md` updated.
+
+To strip for release: remove `debugEmitRemoved`, the `longPressHelper` body, and the two `// TEMP` blocks.
+## 16/08/2026, 21:52:21
+
+Let me look at what `t.me/delta_odesa` actually posts — that decides everything

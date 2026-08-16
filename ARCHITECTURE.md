@@ -33,7 +33,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `NeptunClient.kt` | `object` singleton. Owns the NEPTUN WebSocket (`wss://neptun.in.ua/api/v1/stream`) with backoff reconnect + keep-alive/watchdog tasks, plus REST merge (`/api/v1/threats`). Exposes `StateFlow<NeptunState>` (threats map, oblastAlerts, connected, `offlineSince`/`offlineElapsedSec`). Handles `snapshot`/`upsert`/`remove`/`alerts`/`heartbeat` frames. `retryNow()` forces an immediate reconnect (used by the offline-notification Retry action). |
+| `NeptunClient.kt` | `object` singleton. Owns the NEPTUN WebSocket (`wss://neptun.in.ua/api/v1/stream`) with backoff reconnect + keep-alive/watchdog tasks, plus REST merge (`/api/v1/threats`). Exposes `StateFlow<NeptunState>` (threats map, oblastAlerts, connected, `offlineSince`/`offlineElapsedSec`). Handles `snapshot`/`upsert`/`remove`/`alerts`/`heartbeat` frames. Emits `removedThreats: SharedFlow<ThreatRemoved>` (resolved/remove frames — drives the map death animation). `retryNow()` forces an immediate reconnect (used by the offline-notification Retry action). |
 | `AlertsUaClient.kt` | `object` singleton. Independent oblast-alert backup source: polls the keyless public `https://alerts.com.ua/api/states` every ~20s and exposes `StateFlow<AlertsUaState>` (alerts + `lastOkAt`/`lastError` health). Merged into `NeptunState.oblastAlerts` only when NEPTUN is down or its alert feed is silent (`backupActive`); its own health (`backupUp`/`backupOfflineElapsedSec`) feeds the system-status popup. |
 | `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, `AlertSource`, `mergeAlerts`, and `translateCourseAssessment` (best-effort EN translation of NEPTUN's Ukrainian course text). |
 
@@ -69,6 +69,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, `GroupOnlyToggles` (the compact group-master panel for the zones sheet), and `SlimThreatToggles` — the per-type compact panel reused by the first-run dialog. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
 | `FeatureDiagrams.kt` | Diagram drawables used by the feature guide. |
+| `ThreatDeathAnimation.kt` | 5s "neutralized" flourish drawn over the map at a threat's last position when NEPTUN resolves/removes it: lead-in ping → 3-2-1 countdown in a dark pill → quick explosion. Re-anchors to the geo point every frame (`projectToPixels`) and never intercepts touches. A TEMP map long-press (on a marker or empty ground) fires it on demand for testing. |
 
 ### Background / alerting
 
