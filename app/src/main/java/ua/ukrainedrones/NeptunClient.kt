@@ -119,6 +119,14 @@ object NeptunClient {
     private val _state = MutableStateFlow(NeptunState())
     val state: StateFlow<NeptunState> = _state.asStateFlow()
 
+    private val _removedThreats = MutableSharedFlow<ThreatRemoved>(extraBufferCapacity = 16)
+    val removedThreats: SharedFlow<ThreatRemoved> = _removedThreats.asSharedFlow()
+
+    // TEMP debug: fire the death animation on demand (map long-press). Remove before release.
+    fun debugEmitRemoved(id: String, lat: Double, lon: Double, type: ThreatType) {
+        _removedThreats.tryEmit(ThreatRemoved(id, lat, lon, type))
+    }
+
     fun start() {
         if (ws != null) return
         if (!scope.isActive) {
@@ -375,14 +383,19 @@ object NeptunClient {
                     val data = env.optJSONObject("data") ?: return
                     val t = Threat.fromJson(data) ?: return
                     val updated = _state.value.threats.toMutableMap()
-                    if (t.status == "resolved") updated.remove(t.id) else updated[t.id] = t
+                    if (t.status == "resolved") {
+                        _removedThreats.tryEmit(ThreatRemoved(t.id, t.lat, t.lon, t.type))
+                        updated.remove(t.id)
+                    } else updated[t.id] = t
                     _state.value = _state.value.copy(threats = updated)
                 }
                 "remove" -> {
                     val data = env.optJSONObject("data") ?: return
                     val id = data.optString("id")
                     val updated = _state.value.threats.toMutableMap()
-                    updated.remove(id)
+                    updated.remove(id)?.let { gone ->
+                        _removedThreats.tryEmit(ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type))
+                    }
                     _state.value = _state.value.copy(threats = updated)
                 }
                 "alerts" -> {

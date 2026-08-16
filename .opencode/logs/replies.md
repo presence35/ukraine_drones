@@ -37852,3 +37852,6 @@ On the "gone" question: NEPTUN removes a threat the moment it sends `resolved`/`
 git add .
 git commit -m "Neutralized fade fix, disclaimers section, 3-read auto-expand"
 ```
+## 16/08/2026, 21:48:53
+
+Now the animation composable. Let me check existing imports/style in ThreatPopupCard or FeatureDiagrams for conventions.
