@@ -345,7 +345,7 @@ class AlertService : Service() {
             val (id, zone) = newEntries.first()
             val t = all[id]
             val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
-            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride, state.lang)
+            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride)
             posted = true
             knownZones = knownZones + (id to zone)
         }
@@ -365,8 +365,7 @@ class AlertService : Service() {
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
-                state.sirenOverride,
-                state.lang
+                state.sirenOverride
             )
             currentReason = state.officialReason
             currentReasonThreatId = state.officialReasonThreatId
@@ -382,8 +381,7 @@ class AlertService : Service() {
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
-                state.sirenOverride,
-                state.lang
+                state.sirenOverride
             )
             currentReason = state.officialReason
             currentReasonThreatId = state.officialReasonThreatId
@@ -551,22 +549,10 @@ class AlertService : Service() {
         zone: ThreatZone?,
         title: String,
         body: String,
-        sirenOverride: Boolean,
-        lang: AppLanguage
+        sirenOverride: Boolean
     ) {
         alertEpoch++
         safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, body, sirenOverride).build())
-        // Post the raw (Ukrainian) body immediately; translate to English in the background and
-        // re-post on the same id only if no newer alert/clear has replaced it. A same-id re-post
-        // doesn't re-sound — same assumption as the wait-for-reason path.
-        if (lang == AppLanguage.EN) {
-            val gen = alertEpoch
-            scope.launch {
-                val translated = Translator.translate(body) ?: return@launch
-                if (gen != alertEpoch) return@launch
-                safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, translated, sirenOverride).build())
-            }
-        }
     }
 
     private fun cancelAlert() {

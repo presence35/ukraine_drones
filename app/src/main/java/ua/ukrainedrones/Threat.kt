@@ -326,10 +326,11 @@ private val COURSE_PATTERNS: List<Pair<Regex, String>> = listOf(
 )
 
 /**
- * Best-effort EN translation of NEPTUN's course assessment (`explanationShort`), which is
+ * Best-effort EN rendering of NEPTUN's course assessment (`explanationShort`), which is
  * always Ukrainian. Only known sentence templates are translated; the place name is looked
- * up in our city dictionary, and anything unrecognised stays as the raw Ukrainian text —
- * a wrong "translation" in a safety app is worse than none.
+ * up in our city dictionary and otherwise transliterated, never semantically translated —
+ * a wrong "translation" in a safety app is worse than none. Unrecognised sentence forms get
+ * their hard-coded vocabulary swapped to EN and the remainder transliterated.
  */
 fun translateCourseAssessment(text: String?, lang: AppLanguage): String? {
     if (text.isNullOrBlank()) return null
@@ -338,8 +339,37 @@ fun translateCourseAssessment(text: String?, lang: AppLanguage): String? {
     for ((pattern, template) in COURSE_PATTERNS) {
         val m = pattern.find(t) ?: continue
         val place = m.groupValues.getOrNull(1)?.trim()?.trimEnd('.', '—', '-') ?: continue
-        val en = Cities.uaToEn[place] ?: place
+        val en = Cities.uaToEn[place] ?: Transliteration.transliterate(place)
         return template.replace("{X}", en)
     }
-    return text
+    return courseFallback(text)
+}
+
+/** Military vocabulary hard-coded for the EN fallback; longest phrases first so "на" never
+ *  swallows "у напрямку". Applied as whole words only (Unicode word boundaries). */
+private val COURSE_GLOSSARY: List<Pair<String, String>> = listOf(
+    "рухається в напрямку" to "moving toward",
+    "курсом на" to "heading toward",
+    "зі сторони" to "from the direction of",
+    "з боку" to "from the side",
+    "у напрямку" to "toward",
+    "БпЛА" to "UAV",
+    "шахед" to "Shahed",
+    "КАБ" to "bomb",
+    "ракета" to "missile",
+    "група" to "group",
+    "курс" to "course",
+    "летить" to "flying",
+    "над" to "over"
+)
+
+private fun courseFallback(raw: String): String {
+    var out = raw
+    for ((ua, en) in COURSE_GLOSSARY) {
+        out = out.replace(
+            Regex("(?iu)(?<![\\p{L}])" + Regex.escape(ua) + "(?![\\p{L}])"),
+            en
+        )
+    }
+    return Transliteration.transliterate(out)
 }

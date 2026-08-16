@@ -176,67 +176,8 @@ fun SlimThreatToggles(
 }
 
 /**
- * Group-only Fast/Slow toggles (no per-type rows): a slim row per group with the emoji,
- * title and Map/Alerts master toggles. Used by the always-visible zones panel.
+ * A single threat's slim toggle row: icon + name, compact Map/Alerts toggles on the right.
  */
-@Composable
-internal fun GroupOnlyToggles(
-    lang: AppLanguage,
-    hiddenTypes: Set<ThreatType>,
-    silencedTypes: Set<ThreatType>,
-    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
-    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val s = Strings.get(lang)
-    Column(modifier = modifier) {
-        fastAndSlowGroups(lang).forEach { (groupIcon, groupTitle, types) ->
-            val groupMapOn = types.none { it in hiddenTypes }
-            val groupAlertsOn = types.none { it in silencedTypes }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = groupIcon,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .semantics {
-                            contentDescription =
-                                if (groupIcon == "\u26A1") s.fastGroupIconDesc else s.slowGroupIconDesc
-                        }
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    groupTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                SlimIconToggle(
-                    icon = Icons.Filled.Place,
-                    contentDescription = s.threatMapLabel,
-                    on = groupMapOn,
-                    enabled = true,
-                    onClick = { onThreatMapToggleAll(types, !groupMapOn) }
-                )
-                SlimIconToggle(
-                    icon = Icons.Filled.Notifications,
-                    contentDescription = s.threatAlertLabel,
-                    on = groupAlertsOn,
-                    enabled = groupMapOn,
-                    onClick = { onThreatAlertToggleAll(types, !groupAlertsOn) }
-                )
-            }
-        }
-    }
-}
-
-/** A single threat's slim toggle row: icon + name, compact Map/Alerts toggles on the right. */
 @Composable
 private fun SlimTypeRow(
     type: ThreatType,

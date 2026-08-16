@@ -11,13 +11,10 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -200,7 +197,7 @@ private fun circlePoints(center: GeoPoint, radiusMeters: Double, segments: Int =
 fun NeptunMapView(
     uiState: UiState,
     lang: AppLanguage,
-    iconSet: ThreatIconSet = ThreatIconSet.CLASSIC,
+    iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     onScaleChange: (Double) -> Unit,
     onThreatTapped: (Threat) -> Unit,
     onMapTapped: () -> Unit,
@@ -239,10 +236,11 @@ fun NeptunMapView(
     val speedTracker = remember { ThreatSpeedTracker() }
     val pausedState by rememberUpdatedState(paused)
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
+    val iconSetState by rememberUpdatedState(uiState.iconSet)
+    val deathFx = remember { ThreatDeathOverlay() }
 
-    Box(modifier = modifier.fillMaxSize()) {
     AndroidView(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         factory = { ctx ->
             Configuration.getInstance().userAgentValue = ctx.packageName
             // Keep the tile cache in the OS cache dir so Android treats it as "Cache"
@@ -362,7 +360,8 @@ fun NeptunMapView(
                 markerRefs.value.clear()
 
                 // Bottom-most overlay: single-tap on empty map closes the popup, while
-                // markers added after it keep tap priority.
+                // markers added after it keep tap priority. Long-press is handled by the
+                // top-most overlay (markers swallow their own long-presses).
                 mapView.overlays.add(
                     0,
                     MapEventsOverlay(object : MapEventsReceiver {
@@ -370,40 +369,7 @@ fun NeptunMapView(
                             onMapTapped()
                             return true
                         }
-                        // TEMP debug: long-press a threat marker (or empty map) to fire the death
-                        // animation on demand instead of waiting for a real resolution. Remove
-                        // before release.
-                        override fun longPressHelper(p: GeoPoint): Boolean {
-                            val pressPx = Point()
-                            mapView.projection.toPixels(p, pressPx)
-                            val density = mapView.context.resources.displayMetrics.density
-                            val threshold = 48 * density
-                            var nearest: Threat? = null
-                            var nearestD = threshold
-                            for (t in uiState.mapThreats) {
-                                val m = markerRefs.value[t.id] ?: continue
-                                val mp = m.position ?: continue
-                                val tp = Point()
-                                mapView.projection.toPixels(mp, tp)
-                                val dx = tp.x - pressPx.x
-                                val dy = tp.y - pressPx.y
-                                val d = sqrt((dx * dx + dy * dy).toFloat())
-                                if (d <= nearestD) {
-                                    nearest = t
-                                    nearestD = d
-                                }
-                            }
-                            if (nearest != null) {
-                                NeptunClient.debugEmitRemoved(nearest.id, nearest.lat, nearest.lon, nearest.type)
-                            } else {
-                                val type = ThreatType.values().firstOrNull { it !in uiState.hiddenTypes }
-                                    ?: ThreatType.SHAHED
-                                NeptunClient.debugEmitRemoved(
-                                    "test-" + System.nanoTime(), p.latitude, p.longitude, type
-                                )
-                            }
-                            return true
-                        }
+                        override fun longPressHelper(p: GeoPoint): Boolean = true
                     })
                 )
 
@@ -506,6 +472,50 @@ fun NeptunMapView(
                     }
                 }
 
+                // Top-most touch overlay: markers swallow their own long-presses, so a
+                // separate overlay gets them first. Taps fall through to the map/markers.
+                // TEMP debug: long-press a threat marker (or empty map) to fire the death
+                // animation on demand instead of waiting for a real resolution. Remove the
+                // long-press handling here before release.
+                mapView.overlays.add(
+                    MapEventsOverlay(object : MapEventsReceiver {
+                        override fun singleTapConfirmedHelper(p: GeoPoint): Boolean = false
+                        override fun longPressHelper(p: GeoPoint): Boolean {
+                            val pressPx = Point()
+                            mapView.projection.toPixels(p, pressPx)
+                            val density = mapView.context.resources.displayMetrics.density
+                            val threshold = 48 * density
+                            var nearest: Marker? = null
+                            var nearestD = threshold
+                            for (t in uiState.mapThreats) {
+                                val m = markerRefs.value[t.id] ?: continue
+                                val mp = m.position ?: continue
+                                val tp = Point()
+                                mapView.projection.toPixels(mp, tp)
+                                val dx = tp.x - pressPx.x
+                                val dy = tp.y - pressPx.y
+                                val d = sqrt((dx * dx + dy * dy).toFloat())
+                                if (d <= nearestD) {
+                                    nearest = m
+                                    nearestD = d
+                                }
+                            }
+                            if (nearest != null) {
+                                // Hide the icon right away (the threat will re-draw on the
+                                // next overlay rebuild) so the death plays on empty ground.
+                                mapView.overlays.remove(nearest)
+                                markerRefs.value.entries.removeAll { it.value === nearest }
+                                mapView.invalidate()
+                            }
+                            deathFx.spawn(nearest?.position ?: GeoPoint(p.latitude, p.longitude))
+                            return true
+                        }
+                    })
+                )
+
+                // Death flourish on top of everything else.
+                mapView.overlays.add(deathFx)
+
                 mapView.invalidate()
             }
         },
@@ -514,23 +524,35 @@ fun NeptunMapView(
         }
     )
 
-        // Threat death animations (resolved/removed frames; long-press is a TEMP test trigger).
-        val deaths = remember { mutableStateListOf<ThreatRemoved>() }
+        // Death animations: real resolved/remove frames. The threat's own marker icon keeps
+        // rendering in the overlay through the full 5s and is hidden forever only when the
+        // animation completes; without a live marker, fall back to the raw fix + a fresh icon.
         LaunchedEffect(Unit) {
             NeptunClient.removedThreats.collect { r ->
-                if (r.type !in hiddenTypesState && deaths.size < 6) deaths.add(r)
+                if (r.type !in hiddenTypesState) {
+                    val marker = markerRefs.value[r.id]
+                    val anchor = marker?.position ?: GeoPoint(r.lat, r.lon)
+                    val base = if (iconSetState == ThreatIconSet.PHOTO) IconCatalog.photoBaseDeg(r.type) else 0f
+                    val rotation = marker?.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
+                    val icon = marker?.icon ?: threatIcon(context, r.type, iconSetState)
+                    deathFx.spawn(
+                        anchor,
+                        icon = icon,
+                        rotationDeg = rotation,
+                        alpha = marker?.alpha ?: 1f
+                    )
+                }
             }
         }
-        for (r in deaths) {
-            key(r.id) {
-                ThreatDeathFx(
-                    removed = r,
-                    mapViewRef = mapViewRef,
-                    onDone = { deaths.remove(r) }
-                )
+
+        // Redraw the map at ~60fps while a death animation is playing so the overlay
+        // animates; idle otherwise (no battery cost).
+        LaunchedEffect(Unit) {
+            while (true) {
+                if (deathFx.isActive && !pausedState) mapViewRef.value?.invalidate()
+                delay(16)
             }
         }
-    }
 
     // Smoothly advance markers between the (sparse) server fixes: predict each threat's
     // current position from its heading + estimated speed and move the marker in-place,

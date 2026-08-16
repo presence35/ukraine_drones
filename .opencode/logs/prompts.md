@@ -14882,3 +14882,91 @@ why each card is so wide and has empty space on right? It should show 2 other it
 ## 16/08/2026, 22:16:07
 
 go
+## 16/08/2026, 22:18:38
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 16/08/2026, 22:21:39
+
+in settings, assidionatl settings, threat icons (move this to ba better location):
+I'm saying there are 2 icon toggle, and they take up half the width each.  the icon is on the far left, then it's empty space on the right, looks like it'd hold 2 other icon samples.
+make the new icons set the new default for all users.  
+
+## 16/08/2026, 22:27:46
+
+the neptun logo should be green on the online pill, when online, else red.  i put 2 pngs. neptun_green.png neptun_red.png in D:\Desktop\drones\app\src\main\res\drawable-nodpi
+
+prob better to use an SVG if we can get it perfect, but this is ok for now
+## 16/08/2026, 22:28:24
+
+go
+## 16/08/2026, 22:30:13
+
+done?
+## 16/08/2026, 22:32:10
+
+move the scale on the map to right corner.
+## 16/08/2026, 22:35:02
+
+alert zones popup.  slow km red: 2-20km; yellow: 21-50km. fast red: 2-5min; yellow: 6min-20min (anything over 20min for fast would be weird, no?)
+
+remove the fast/slow toggles at the bottom.
+
+Is it confusing to have Fast and Slow with Red/yellow, or should we group it fast red, slow read then fast yellow, slow yellow?
+## 16/08/2026, 22:35:54
+
+go
+## 16/08/2026, 22:36:59
+
+go
+## 16/08/2026, 22:37:31
+
+go
+## 16/08/2026, 22:40:05
+
+go
+## 16/08/2026, 22:44:04
+
+the drone is facing the wrong way, sometiems it's moving backward, sometimes sideways. it is facing up in the image, so it should be easy to rotate it.
+## 16/08/2026, 22:44:20
+
+go.  4. no need for clamp, beta version still.
+## 16/08/2026, 22:46:58
+
+can we add the smaller cities to the map when zoomed in? again, maybe 3 or 4 per area.  adds weight?
+## 16/08/2026, 22:48:44
+
+put them all in the icon set cards, make them scrollable within the 2 cards. put 2 more cards below, empty, "comming soon".  so it's 2x2 (4 icon sets, each w 7 icons scrollable panel).
+## 16/08/2026, 22:49:40
+
+how many minor/majors we already have?
+## 16/08/2026, 22:50:29
+
+so add about 15-20 for each of the majors, so about 350 total.
+## 16/08/2026, 22:51:33
+
+go
+## 16/08/2026, 22:53:29
+
+go
+## 16/08/2026, 22:57:31
+
+in this temp code the icon should hide too.  it's ok if the threat draws again a few seconds later, im just testing.  we'll remove this code tomorrow.
+## 16/08/2026, 22:59:21
+
+in small, the 3 pills wrap.  they shouldn't.  maybe put the "R" bar on top of the .
+also "R" should literally be there, short for Reliabitliy, so it's not just a green bar.
+## 16/08/2026, 22:59:43
+
+ensure the logic once temp code is gone that the explsoin is timed properly and after it completes is when the real threat is hidden from the map forever.
+## 16/08/2026, 23:01:35
+
+go
+## 16/08/2026, 23:03:13
+
+make folders for each of the icons packs.  
+## 16/08/2026, 23:04:10
+
+go
+## 16/08/2026, 23:05:14
+
+?

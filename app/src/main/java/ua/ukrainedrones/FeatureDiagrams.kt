@@ -239,10 +239,10 @@ private fun DrawScope.drawPin() {
 private fun DrawScope.drawCardSize(t: Float) {
     bg()
     val yBase = size.height * 0.82f
-    val heights = floatArrayOf(0.34f, 0.5f, 0.68f)
-    for (i in 0..2) {
-        val cw = size.width * 0.2f
-        val x = size.width * (0.09f + i * 0.28f)
+    val heights = floatArrayOf(0.4f, 0.68f)
+    for (i in 0..1) {
+        val cw = size.width * 0.24f
+        val x = size.width * (0.16f + i * 0.44f)
         val ch = size.height * heights[i]
         val frac = 1f + 0.05f * ((t + i * 0.15f) % 1f)
         val color = if (i == 1) Yellow else DimGrey.copy(alpha = 0.6f)

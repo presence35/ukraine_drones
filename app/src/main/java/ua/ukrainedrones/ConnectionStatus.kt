@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -81,22 +82,13 @@ internal fun ConnectionStatus(
             .clickable { showInfo = true },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (online) {
-            // Online: the small NEPTUN emblem replaces the green dot.
-            Image(
-                painter = painterResource(R.drawable.neptun),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(width = 10.dp, height = 10.dp)
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(dotColor)
-            )
-        }
+        Image(
+            painter = painterResource(if (online) R.drawable.neptun_green else R.drawable.neptun_red),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            colorFilter = if (backupActive && !online) ColorFilter.tint(Color(0xFFF9A825)) else null,
+            modifier = Modifier.size(width = 10.dp, height = 10.dp)
+        )
         Spacer(Modifier.width(6.dp))
         Text(
             text = label,

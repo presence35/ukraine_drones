@@ -20,7 +20,7 @@ private val YellowZoneColor = Color(0xFFF9A825)
  * Alert-zone panel shown in the bottom sheet over the map, so the sliders can be
  * tuned while the slow-distance circles are live on the map behind. Slow threats tier
  * by distance (km), fast threats by time-to-arrival (minutes). Everything is visible
- * at once — the Fast/Slow group toggles never need a slide to reveal.
+ * at once.
  */
 @Composable
 fun ZonesPanel(
@@ -31,16 +31,12 @@ fun ZonesPanel(
     redArmed: Boolean,
     yellowArmed: Boolean,
     lang: AppLanguage,
-    hiddenTypes: Set<ThreatType>,
-    silencedTypes: Set<ThreatType>,
     onSlowRedChange: (Int) -> Unit,
     onSlowYellowChange: (Int) -> Unit,
     onFastRedChange: (Int) -> Unit,
     onFastYellowChange: (Int) -> Unit,
     onRedArmedChange: (Boolean) -> Unit,
     onYellowArmedChange: (Boolean) -> Unit,
-    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
-    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onOpenThreatSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -72,7 +68,7 @@ fun ZonesPanel(
         SectionCaption(s.slowSectionLabel)
         ZoneRow(
             value = slowRedKm,
-            range = 5f..100f,
+            range = 2f..20f,
             unit = s.kmUnit,
             accent = RedZoneColor,
             armed = redArmed,
@@ -85,7 +81,7 @@ fun ZonesPanel(
         Spacer(Modifier.height(8.dp))
         ZoneRow(
             value = slowYellowKm,
-            range = 20f..300f,
+            range = 21f..50f,
             unit = s.kmUnit,
             accent = YellowZoneColor,
             armed = yellowArmed,
@@ -97,7 +93,7 @@ fun ZonesPanel(
         SectionCaption(s.fastSectionLabel)
         ZoneRow(
             value = fastRedMin,
-            range = 2f..20f,
+            range = 2f..5f,
             unit = s.minUnit,
             accent = RedZoneColor,
             armed = redArmed,
@@ -110,7 +106,7 @@ fun ZonesPanel(
         Spacer(Modifier.height(8.dp))
         ZoneRow(
             value = fastYellowMin,
-            range = 5f..60f,
+            range = 6f..20f,
             unit = s.minUnit,
             accent = YellowZoneColor,
             armed = yellowArmed,
@@ -120,14 +116,6 @@ fun ZonesPanel(
         )
         Spacer(Modifier.height(14.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(2.dp))
-        GroupOnlyToggles(
-            lang = lang,
-            hiddenTypes = hiddenTypes,
-            silencedTypes = silencedTypes,
-            onThreatMapToggleAll = onThreatMapToggleAll,
-            onThreatAlertToggleAll = onThreatAlertToggleAll
-        )
         Spacer(Modifier.height(18.dp))
     }
 }

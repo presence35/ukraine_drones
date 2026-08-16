@@ -50,6 +50,17 @@ object IconCatalog {
         ThreatType.UNKNOWN -> null
     }
 
+    /** The seven threat types that have bundled photos, in display order. */
+    fun photoTypes(): List<ThreatType> = listOf(
+        ThreatType.SHAHED,
+        ThreatType.FPV_LOITERING,
+        ThreatType.CRUISE_MISSILE,
+        ThreatType.BALLISTIC,
+        ThreatType.KAB,
+        ThreatType.AVIATION,
+        ThreatType.RECON
+    )
+
     /**
      * Direction each photo's subject faces as baked into the image, in degrees clockwise
      * from north/up (the filename suffix, e.g. "top_right" = 45°). Map markers rotate the

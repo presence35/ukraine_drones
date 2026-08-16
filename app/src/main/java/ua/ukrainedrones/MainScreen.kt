@@ -109,10 +109,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onFastYellowChange = { viewModel.setFastYellowMin(it) },
             onRedArmedChange = { viewModel.setRedArmed(it) },
             onYellowArmedChange = { viewModel.setYellowArmed(it) },
-            onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
-            onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
-            onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
-            onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline
         )
@@ -344,10 +340,6 @@ private fun MapScreen(
     onFastYellowChange: (Int) -> Unit,
     onRedArmedChange: (Boolean) -> Unit,
     onYellowArmedChange: (Boolean) -> Unit,
-    onThreatMapToggle: (ThreatType, Boolean) -> Unit,
-    onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
-    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
-    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit
 ) {
@@ -678,16 +670,12 @@ private fun MapScreen(
                             redArmed = uiState.redArmed,
                             yellowArmed = uiState.yellowArmed,
                             lang = uiState.language,
-                            hiddenTypes = uiState.hiddenTypes,
-                            silencedTypes = uiState.silencedTypes,
                             onSlowRedChange = onSlowRedChange,
                             onSlowYellowChange = onSlowYellowChange,
                             onFastRedChange = onFastRedChange,
                             onFastYellowChange = onFastYellowChange,
                             onRedArmedChange = onRedArmedChange,
                             onYellowArmedChange = onYellowArmedChange,
-                            onThreatMapToggleAll = onThreatMapToggleAll,
-                            onThreatAlertToggleAll = onThreatAlertToggleAll,
                             onOpenThreatSettings = openThreatSettings,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
@@ -980,13 +968,13 @@ private fun ThreatStatusCell(
     }
 }
 
-/** Popup card-size stepper: SMALL → MEDIUM → LARGE → SMALL… */
+/** Popup card-size stepper: SMALL → LARGE → SMALL… */
 private fun nextThreatCardSize(current: ThreatCardSize): ThreatCardSize {
     val values = ThreatCardSize.values()
     return values[(current.ordinal + 1) % values.size]
 }
 
-/** Three stacked lines (thin/thick/thicker) under the popup; tap cycles the card size. */
+/** Two stacked lines (thin/thick) under the popup; tap cycles the card size. */
 @Composable
 private fun ThreatCardSizeControl(
     current: ThreatCardSize,
@@ -1005,7 +993,7 @@ private fun ThreatCardSizeControl(
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
-        listOf(2.dp, 4.dp, 6.dp).forEachIndexed { i, thickness ->
+        listOf(2.dp, 6.dp).forEachIndexed { i, thickness ->
             Box(
                 modifier = Modifier
                     .width(18.dp)
@@ -1016,7 +1004,7 @@ private fun ThreatCardSizeControl(
                         else Color(0xFF9E9E9E)
                     )
             )
-            if (i < 2) Spacer(Modifier.height(3.dp))
+            if (i < 1) Spacer(Modifier.height(3.dp))
         }
     }
 }

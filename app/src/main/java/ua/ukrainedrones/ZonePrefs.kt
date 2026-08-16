@@ -17,7 +17,7 @@ private val Context.dataStore by preferencesDataStore(name = "zone_prefs")
 enum class AppLanguage { UA, EN }
 
 /** Density of the threat detail popup. */
-enum class ThreatCardSize { SMALL, MEDIUM, LARGE }
+enum class ThreatCardSize { SMALL, LARGE }
 
 /** Which visual style is used for threat icons everywhere (map, strip, popups, toggles). */
 enum class ThreatIconSet { CLASSIC, PHOTO }
@@ -52,36 +52,36 @@ class ZonePrefs(private val context: Context) {
     private val connLogPendingSinceKey = longPreferencesKey("conn_log_pending_since")
     private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
 
-    /** Red (inner) slow-threat distance threshold in km — slider range 5–100, default 60. */
+    /** Red (inner) slow-threat distance threshold in km — slider range 2–20, default 20. */
     fun slowRedKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[slowRedKmKey] ?: 60 }
+        context.dataStore.data.map { prefs -> prefs[slowRedKmKey] ?: 20 }
 
     suspend fun setSlowRedKm(km: Int) {
-        context.dataStore.edit { it[slowRedKmKey] = km.coerceIn(5, 100) }
+        context.dataStore.edit { it[slowRedKmKey] = km.coerceIn(2, 20) }
     }
 
-    /** Yellow (outer) slow-threat distance threshold in km — slider range 20–300, default 180. */
+    /** Yellow (outer) slow-threat distance threshold in km — slider range 21–50, default 50. */
     fun slowYellowKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[slowYellowKmKey] ?: 180 }
+        context.dataStore.data.map { prefs -> prefs[slowYellowKmKey] ?: 50 }
 
     suspend fun setSlowYellowKm(km: Int) {
-        context.dataStore.edit { it[slowYellowKmKey] = km.coerceIn(20, 300) }
+        context.dataStore.edit { it[slowYellowKmKey] = km.coerceIn(21, 50) }
     }
 
-    /** Red (inner) fast-threat time-to-arrival threshold in minutes — range 2–20, default 10. */
+    /** Red (inner) fast-threat time-to-arrival threshold in minutes — range 2–5, default 5. */
     fun fastRedMin(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[fastRedMinKey] ?: 10 }
+        context.dataStore.data.map { prefs -> prefs[fastRedMinKey] ?: 5 }
 
     suspend fun setFastRedMin(min: Int) {
-        context.dataStore.edit { it[fastRedMinKey] = min.coerceIn(2, 20) }
+        context.dataStore.edit { it[fastRedMinKey] = min.coerceIn(2, 5) }
     }
 
-    /** Yellow (outer) fast-threat time-to-arrival threshold in minutes — range 5–60, default 30. */
+    /** Yellow (outer) fast-threat time-to-arrival threshold in minutes — range 6–20, default 20. */
     fun fastYellowMin(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[fastYellowMinKey] ?: 30 }
+        context.dataStore.data.map { prefs -> prefs[fastYellowMinKey] ?: 20 }
 
     suspend fun setFastYellowMin(min: Int) {
-        context.dataStore.edit { it[fastYellowMinKey] = min.coerceIn(5, 60) }
+        context.dataStore.edit { it[fastYellowMinKey] = min.coerceIn(6, 20) }
     }
 
     /** Whether the red zone can fire urgent siren alerts. */
@@ -241,7 +241,7 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.data.map { prefs ->
             prefs[threatIconSetKey]?.let { stored ->
                 ThreatIconSet.values().firstOrNull { it.name == stored }
-            } ?: ThreatIconSet.CLASSIC
+            } ?: ThreatIconSet.PHOTO
         }
 
     suspend fun setThreatIconSet(set: ThreatIconSet) {

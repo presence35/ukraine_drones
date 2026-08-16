@@ -35,7 +35,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | --- | --- |
 | `NeptunClient.kt` | `object` singleton. Owns the NEPTUN WebSocket (`wss://neptun.in.ua/api/v1/stream`) with backoff reconnect + keep-alive/watchdog tasks, plus REST merge (`/api/v1/threats`). Exposes `StateFlow<NeptunState>` (threats map, oblastAlerts, connected, `offlineSince`/`offlineElapsedSec`). Handles `snapshot`/`upsert`/`remove`/`alerts`/`heartbeat` frames. Emits `removedThreats: SharedFlow<ThreatRemoved>` (resolved/remove frames — drives the map death animation). `retryNow()` forces an immediate reconnect (used by the offline-notification Retry action). Hosts the shared `OFFLINE_GRACE_MS` (30s) and a 5s watchdog feeding `ConnectionLog`. |
 | `AlertsUaClient.kt` | `object` singleton. Independent oblast-alert backup source: polls the keyless public `https://alerts.com.ua/api/states` every ~20s and exposes `StateFlow<AlertsUaState>` (alerts + `lastOkAt`/`lastError` health). Merged into `NeptunState.oblastAlerts` only when NEPTUN is down or its alert feed is silent (`backupActive`); its own health (`backupUp`/`backupOfflineElapsedSec`) feeds the system-status popup. |
-| `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, `AlertSource`, `mergeAlerts`, and `translateCourseAssessment` (best-effort EN translation of NEPTUN's Ukrainian course text). |
+| `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, `AlertSource`, `mergeAlerts`, and `translateCourseAssessment` (EN rendering of NEPTUN's course text: hard-coded sentence templates + glossary, place names transliterated). |
 
 ### State / orchestration
 
@@ -51,7 +51,8 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | --- | --- |
 | `Zones.kt` | `ThreatZone` (INNER/OUTER), `ZoneParams` (slow km / fast min thresholds), `FastThreatTypes` (the single source for the fast group), `zoneTier(t, distKm, speedKmh, params)` — the single source of truth for zone tiering, plus `etaMinutes`, `reachKm` (per-type max cover) and `BALLISTIC_SPEED_KMH` (AVIATION override). |
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 threat gauge for the popup (severity × distance × reliability × sources × count × quality × staleness × ETA). |
-| `Cities.kt` | Curated city list + `CityLabelOverlay` (draws city names, red when oblast on alert, threat counts). `focusAttribution` maps the focus point (pinned city, else nearest city to GPS) to an oblast stem via `cityOblast`. |
+| `Cities.kt` | Curated city list (grouped by oblast region, ~350 places) + `CityLabelOverlay` (draws city names, red when oblast on alert, threat counts). EN names derive from the app's own КМУ №55 transliteration. `focusAttribution` maps the focus point (pinned city, else nearest **major** city to GPS) to an oblast stem via `cityOblast`; minor cities are map-context only (zoom ≥ 10) and never drive attribution/banner. |
+| `Transliteration.kt` | `Transliteration` — official КМУ №55 Ukrainian→Latin romanization. Place names are transliterated, never semantically translated (the EN gate). |
 | `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, `ThreatIconSet`, and the DataStore-backed preference store (`zone_prefs`). All toggles/km+min zone thresholds/language/follow/pin/threat map-visibility + alert-enable + map-scale + icon-set live here, plus the serialized `ConnectionLog` entries and in-progress episode. Also `threatMapFlow` and `threatAlertFlow`. |
 | `Strings.kt` | `Strings` → `StringSet` — the UA/EN string table (the app never relies on Android resource localization). |
 | `ThreatImages.kt` | Reference photos for the expanded threat card: bundled webp for some types, Wikimedia Commons hotlinks for the rest. |
@@ -65,12 +66,12 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | `ConnectionStatus.kt` | Connection pill (red "offline" / amber "backup" / green "online" — the online state shows the NEPTUN emblem and a green label) + the "System status" dialog: per-source dot rows (NEPTUN + backup alerts.com.ua), backup scope note, TEMP force-offline toggle, legend, attribution link, and a collapsible connection log (`ConnectionLog`, last 10 statuses with durations). |
 | `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: slow-distance zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. |
 | `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, alert toggles, updates, battery exemption, feature guide. The top "Disclaimers" card auto-expands on the first 3 Settings opens (`disclaimer_read_count`) then remembers the user's collapse state. |
-| `ZonesSheet.kt` | "Edit zones" bottom sheet over the live map: Slow (km) and Fast (min) red/yellow sliders with per-zone alert bells, section captions, and the Fast/Slow group Map/Alerts toggles — everything visible at once. A gear in the top-right opens Settings scrolled to the Threats section. |
-| `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / text pill in medium), wave size, time since seen. |
-| `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, `GroupOnlyToggles` (the compact group-master panel for the zones sheet), and `SlimThreatToggles` — the per-type compact panel reused by the first-run dialog. |
+| `ZonesSheet.kt` | "Edit zones" bottom sheet over the live map: Slow (km) and Fast (min) red/yellow sliders with per-zone alert bells and section captions — everything visible at once. A gear in the top-right opens Settings scrolled to the Threats section. |
+| `ThreatPopupCard.kt` | Threat detail popup in two sizes (small / large): type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / top "R" reliability row in small), wave size, time since seen. |
+| `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, and `SlimThreatToggles` — the per-type compact panel reused by the first-run dialog and Settings. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
 | `FeatureDiagrams.kt` | Diagram drawables used by the feature guide. |
-| `ThreatDeathAnimation.kt` | 5s "neutralized" flourish drawn over the map at a threat's last position when NEPTUN resolves/removes it: lead-in ping → 3-2-1 countdown in a dark pill → quick explosion. Re-anchors to the geo point every frame (`projectToPixels`) and never intercepts touches. A TEMP map long-press (on a marker or empty ground) fires it on demand for testing. |
+| `ThreatDeathAnimation.kt` | `ThreatDeathOverlay` — an osmdroid overlay drawing a 5s "neutralized" flourish at a threat's last position when NEPTUN resolves/removes it: lead-in ping → 3-2-1 countdown in a dark pill → quick explosion. The threat's own marker icon keeps rendering in the overlay for the full 5s and is hidden forever the moment the animation completes. The map's projection anchors it (tracks pan/zoom); a per-frame invalidate ticker in `MapView` animates it. A TEMP map long-press (on a marker or empty ground) fires it on demand for testing. |
 
 ### Background / alerting
 
@@ -87,7 +88,6 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | --- | --- |
 | `UpdateManager.kt` | `UPDATE_BASE_URL` constant, `check()` (version.json → `Available`/`UpToDate`/`Failed`), `download()` (streams APK, validates), `buildInstallIntent()` (FileProvider). |
 | `UkraineTileProvider.kt` | OSMdroid tile provider that refuses to download/cache tiles outside Ukraine (+margin) — saves data/battery. |
-| `Translate.kt` | `Translator` — unofficial Google translate endpoint (`client=gtx`) for NEPTUN course text; Ukrainian is the fallback. |
 
 ### Build / release
 
@@ -160,7 +160,9 @@ Treat these as a contract. If you change one, update **every** place that relies
 - **Focus point.** `followMe` → camera + zones + alerts centre on GPS; otherwise on the pinned
   city (`ZonePrefs.pinnedCity`). Pinning auto-disables follow-me. Oblast attribution goes
   through `focusAttribution` → `Cities.cityOblast` stem match (e.g. `"Харківськ"` hits
-  `"Харківська область"`).
+  `"Харківська область"`). Attribution resolves to **major** cities only (`Cities.nearestCity`
+  skips minors) — the ~300 minor city labels are map-context and never change the banner or
+  alert region.
 
 - **Zone tiering.** Per-group model: `zoneTier(t, distKm, speedKmh, ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin))`.
   Fast threats (`FastThreatTypes`: ballistic, cruise, aviation, KAB) tier by ETA — ETA ≤
@@ -189,6 +191,14 @@ Treat these as a contract. If you change one, update **every** place that relies
   Dead-reckoning applies to any active threat with a real heading (velocity `bearingDeg`,
   else top-level `heading`) and caps at a per-type horizon and max-ghost distance. The ViewModel
   refreshes every 1s via `nowFlow`; `AlertService` uses a 60s grace window before clearing.
+
+- **Place names transliterate, never translate.** Any Ukrainian proper noun shown in the EN
+  UI (city, oblast, district — from NEPTUN's structured fields or a course-sentence capture)
+  goes through `Cities.uaToEn` first, then `Transliteration.transliterate` — it is romanized,
+  never passed to a live translator. A semantic "translation" (Золоте → "Gold") is a wrong
+  result in a safety app. There is deliberately **no network translation** left in the app;
+  military vocabulary (UAV, Shahed, missile, bomb, heading toward…) is hard-coded in
+  `COURSE_PATTERNS` / `COURSE_GLOSSARY` / `ThreatTypeCatalog`.
 
 - **REST never clobbers WS.** REST merge keeps the newer record per threat id
   (`updatedAtMillis` compare); a REST snapshot is CDN-cached and can be older than the stream.
@@ -219,6 +229,8 @@ Treat these as a contract. If you change one, update **every** place that relies
 JUnit unit tests in `app/src/test/java/ua/ukrainedrones/`:
 
 - `PredictionTest.kt` — `predictPosition`, `distanceMeters`, staleness, speed tracking.
+- `CitiesTest.kt` — city-list integrity (unique names, full `cityOblast` coverage, derived EN
+  names, count sanity) and majors-only `nearestCity`/`focusAttribution`.
 - `ThreatTest.kt` — JSON parsing, type mapping, course translation.
 - `ThreatLevelTest.kt` — threat-level scoring.
 - `ZonesTest.kt` — slow km tiering, fast min tiering, `etaMinutes`, `reachKm`, AVIATION override, null-speed fast.

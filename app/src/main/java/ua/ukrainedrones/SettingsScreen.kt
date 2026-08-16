@@ -8,10 +8,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -118,8 +120,8 @@ fun SettingsScreen(
     }
     var expandedType by remember { mutableStateOf<ThreatType?>(null) }
     // Fast/Slow groups' collapsed state is persisted (ZonePrefs), so it survives restarts.
-    // The "Additional settings" section starts collapsed; only the battery/scale live in it so far.
-    var additionalExpanded by remember { mutableStateOf(false) }
+    // The "Additional settings" section starts expanded so the scale/icon toggles are visible.
+    var additionalExpanded by remember { mutableStateOf(true) }
     // The disclaimers card auto-expands on the first 3 Settings opens, then just remembers
     // the state the user leaves it in.
     var disclaimerExpanded by remember { mutableStateOf(disclaimerReadCount < 3 || !disclaimerCollapsed) }
@@ -412,7 +414,7 @@ fun SettingsScreen(
                                     description = s.showMapScaleDesc,
                                     checked = showMapScale,
                                     onCheckedChange = onShowMapScaleChange,
-                                    icon = painterResource(R.drawable.ic_settings_ua),
+                                    icon = painterResource(R.drawable.ic_scale),
                                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -868,12 +870,12 @@ private val PreviewProximity = ThreatProximity(
     predicted = LatLng(46.48, 30.72),
     distToUserKm = 6.0,
     etaToUserMin = 4.5,
-    params = ZoneParams(slowRedKm = 60, slowYellowKm = 180, fastRedMin = 10, fastYellowMin = 30),
+    params = ZoneParams(slowRedKm = 20, slowYellowKm = 50, fastRedMin = 5, fastYellowMin = 20),
     speedSource = SpeedSource.RECORDED,
     speedKmh = 180.0
 )
 
-/** Three selectable tiles, each a live scaled preview of that card size. */
+/** Two selectable tiles, each a live scaled preview of that card size. */
 @Composable
 private fun ThreatCardSizeSelector(
     lang: AppLanguage,
@@ -962,7 +964,8 @@ private fun CardSizeTile(
     }
 }
 
-/** Icon-style picker (classic vector set vs photo set) with one example each. */
+/** Icon-style picker: a 2x2 grid of cards — the two real sets with all seven icons in a
+ *  scrollable panel, plus two empty "coming soon" placeholders below. */
 @Composable
 private fun IconSetSelector(
     lang: AppLanguage,
@@ -970,24 +973,33 @@ private fun IconSetSelector(
     onChange: (ThreatIconSet) -> Unit
 ) {
     val s = Strings.get(lang)
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconSetTile(
-            set = ThreatIconSet.CLASSIC,
-            label = s.iconSetClassicLabel,
-            selected = selected == ThreatIconSet.CLASSIC,
-            onClick = { onChange(ThreatIconSet.CLASSIC) },
-            modifier = Modifier.weight(1f)
-        )
-        IconSetTile(
-            set = ThreatIconSet.PHOTO,
-            label = s.iconSetPhotoLabel,
-            selected = selected == ThreatIconSet.PHOTO,
-            onClick = { onChange(ThreatIconSet.PHOTO) },
-            modifier = Modifier.weight(1f)
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconSetTile(
+                set = ThreatIconSet.CLASSIC,
+                label = s.iconSetClassicLabel,
+                selected = selected == ThreatIconSet.CLASSIC,
+                onClick = { onChange(ThreatIconSet.CLASSIC) },
+                modifier = Modifier.weight(1f)
+            )
+            IconSetTile(
+                set = ThreatIconSet.PHOTO,
+                label = s.iconSetPhotoLabel,
+                selected = selected == ThreatIconSet.PHOTO,
+                onClick = { onChange(ThreatIconSet.PHOTO) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ComingSoonTile(
+                label = s.iconSetComingSoonLabel,
+                modifier = Modifier.weight(1f)
+            )
+            ComingSoonTile(
+                label = s.iconSetComingSoonLabel,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -1009,17 +1021,61 @@ private fun IconSetTile(
         } else null
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // One example per set: the Shahed icon (photo set letterboxed to the square slot).
-            ThreatIcon(
-                type = ThreatType.SHAHED,
-                set = set,
-                size = 40.dp,
-                contentDescription = label
-            )
+            // All 7 photo-backed threat types in a fixed-height scrollable grid; the photo
+            // set letterboxes each into its square slot, so the panel reads as a clean row.
+            val sampleTypes = IconCatalog.photoTypes()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(104.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                sampleTypes.chunked(3).forEach { rowTypes ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowTypes.forEach { type ->
+                            ThreatIcon(
+                                type = type,
+                                set = set,
+                                size = 30.dp,
+                                contentDescription = label
+                            )
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun ComingSoonTile(label: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.clip(RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
             Text(
                 label,
                 style = MaterialTheme.typography.labelMedium,

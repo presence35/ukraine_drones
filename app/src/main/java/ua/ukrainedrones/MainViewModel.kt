@@ -36,10 +36,10 @@ data class UiState(
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
     val userLocation: LatLng? = null,
-    val slowRedKm: Int = 60,      // slow threats: distance to the red (inner) zone, km
-    val slowYellowKm: Int = 180,  // slow threats: distance to the yellow (outer) zone, km
-    val fastRedMin: Int = 10,     // fast threats: ETA to the red (inner) zone, minutes
-    val fastYellowMin: Int = 30,  // fast threats: ETA to the yellow (outer) zone, minutes
+    val slowRedKm: Int = 20,      // slow threats: distance to the red (inner) zone, km
+    val slowYellowKm: Int = 50,  // slow threats: distance to the yellow (outer) zone, km
+    val fastRedMin: Int = 5,     // fast threats: ETA to the red (inner) zone, minutes
+    val fastYellowMin: Int = 20,  // fast threats: ETA to the yellow (outer) zone, minutes
     val redArmed: Boolean = true,
     val yellowArmed: Boolean = true,
     val officialAlertsEnabled: Boolean = true,
@@ -66,7 +66,7 @@ data class UiState(
     val latestVersion: String? = null,
     val languageChosen: Boolean = false,
     val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
-    val iconSet: ThreatIconSet = ThreatIconSet.CLASSIC,
+    val iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     val showMapScale: Boolean = true,
     val fastGroupCollapsed: Boolean = false,
     val slowGroupCollapsed: Boolean = false

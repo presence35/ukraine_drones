@@ -33,7 +33,7 @@ To replace a capture, run the app (e.g. in an emulator) and use
 - **Eight threat types** with vector icons, plain-language descriptions and reference
   photos: UAV (Shahed), FPV/loitering (Lancet), cruise missile, ballistic, guided bomb,
   aviation (MiG-31K), reconnaissance, unknown.
-- **Threat detail cards in three sizes** (Small / Medium / Large, pick in Settings): type,
+- **Threat detail cards in two sizes** (Small / Large, pick in Settings): type,
   region, an experimental 0–10 threat-level gauge, speed, distance/ETA, precision (±km),
   reliability with source count, wave size and time since last seen. Tap the map to dismiss.
 - **Live city alerts** — city labels turn red while their oblast is on official alert and

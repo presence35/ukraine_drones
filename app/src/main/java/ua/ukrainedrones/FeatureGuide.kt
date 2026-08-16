@@ -50,7 +50,7 @@ fun guideFeatures(s: Strings.StringSet): List<GuideFeature> = listOf(
     GuideFeature("pin", s.guideCategoryLocation, s.guidePinTitle, s.guidePinSummary,
         listOf(s.guidePinD1, s.guidePinD2), GuideDiagram.PIN),
     GuideFeature("cardSize", s.guideCategoryCards, s.guideCardSizeTitle, s.guideCardSizeSummary,
-        listOf(s.guideCardSizeD1, s.guideCardSizeD2, s.guideCardSizeD3), GuideDiagram.CARD_SIZE),
+        listOf(s.guideCardSizeD1, s.guideCardSizeD3), GuideDiagram.CARD_SIZE),
     GuideFeature("cardRead", s.guideCategoryCards, s.guideCardReadTitle, s.guideCardReadSummary,
         listOf(s.guideCardReadD1, s.guideCardReadD2, s.guideCardReadD3), GuideDiagram.CARD_READ),
     GuideFeature("lang", s.guideCategorySettings, s.guideLangTitle, s.guideLangSummary,

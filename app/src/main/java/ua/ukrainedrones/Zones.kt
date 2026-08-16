@@ -14,8 +14,8 @@ internal val FastThreatTypes = setOf(
 /**
  * Alert-zone thresholds. Slow threats tier by distance from the focus point ([slowRedKm] INNER /
  * [slowYellowKm] OUTER); fast threats tier by time-to-arrival ([fastRedMin] INNER /
- * [fastYellowMin] OUTER). Defaults: slow red 60 km, slow yellow 180 km, fast red 10 min,
- * fast yellow 30 min.
+ * [fastYellowMin] OUTER). Defaults: slow red 20 km, slow yellow 50 km, fast red 5 min,
+ * fast yellow 20 min.
  */
 data class ZoneParams(
     val slowRedKm: Int,

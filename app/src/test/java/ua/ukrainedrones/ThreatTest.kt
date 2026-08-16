@@ -104,11 +104,23 @@ class ThreatTest {
     }
 
     @Test
-    fun `translateCourseAssessment leaves unknown text raw`() {
+    fun `translateCourseAssessment transliterates unknown text`() {
         val raw = "Деякий невідомий текст"
-        assertEquals(raw, translateCourseAssessment(raw, AppLanguage.EN))
+        assertEquals("Deiakyi nevidomyi tekst", translateCourseAssessment(raw, AppLanguage.EN))
         assertNull(translateCourseAssessment(null, AppLanguage.EN))
         assertNull(translateCourseAssessment("", AppLanguage.EN))
+    }
+
+    @Test
+    fun `translateCourseAssessment transliterates unknown places`() {
+        assertEquals(
+            "UAV heading toward Zolote",
+            translateCourseAssessment("БпЛА курсом на Золоте", AppLanguage.EN)
+        )
+        assertEquals(
+            "Course toward Zhovti Vody",
+            translateCourseAssessment("Курс на Жовті Води", AppLanguage.EN)
+        )
     }
 
     @Test
