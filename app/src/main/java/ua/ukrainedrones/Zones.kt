@@ -3,20 +3,26 @@ package ua.ukrainedrones
 /** The two alert tiers, most specific first: INNER (urgent siren) then OUTER (warning chime). */
 enum class ThreatZone { INNER, OUTER }
 
-/**
- * Time-to-arrival alert thresholds in minutes around the focus point. A threat whose ETA
- * is within [redMin] is INNER (urgent siren), within [yellowMin] is OUTER (warning chime),
- * beyond that is outside both. Defaults: red 20 min, yellow 60 min.
- */
-data class TimeZones(val redMin: Int, val yellowMin: Int)
+/** Fast-moving threats (missiles/bombs) that tier by time-to-arrival; everything else is slow. */
+internal val FastThreatTypes = setOf(
+    ThreatType.BALLISTIC,
+    ThreatType.CRUISE_MISSILE,
+    ThreatType.AVIATION,
+    ThreatType.KAB
+)
 
-/** Which tier a threat with an ETA of [etaMin] minutes falls in (null = outside both). */
-fun timeZone(etaMin: Double?, zones: TimeZones): ThreatZone? = when {
-    etaMin == null -> null
-    etaMin <= zones.redMin -> ThreatZone.INNER
-    etaMin <= zones.yellowMin -> ThreatZone.OUTER
-    else -> null
-}
+/**
+ * Alert-zone thresholds. Slow threats tier by distance from the focus point ([slowRedKm] INNER /
+ * [slowYellowKm] OUTER); fast threats tier by time-to-arrival ([fastRedMin] INNER /
+ * [fastYellowMin] OUTER). Defaults: slow red 60 km, slow yellow 180 km, fast red 10 min,
+ * fast yellow 30 min.
+ */
+data class ZoneParams(
+    val slowRedKm: Int,
+    val slowYellowKm: Int,
+    val fastRedMin: Int,
+    val fastYellowMin: Int
+)
 
 /** Ballistic nominal speed (km/h) — also the AVIATION tier speed, since a Kinzhal is country-wide. */
 const val BALLISTIC_SPEED_KMH = 3300.0
@@ -45,21 +51,24 @@ fun reachKm(type: ThreatType): Double = when (type) {
 /**
  * The alert tier for a threat at [distKm] from the focus with speed [speedKmh] (server →
  * measured → nominal estimate). Honors per-type reach caps and the AVIATION→ballistic speed
- * override (MiG-31K's Kinzhal is country-wide regardless of the plane's 900 km/h). This is
- * the single source of truth for zone tiering — used by both MainViewModel and AlertService.
+ * override (MiG-31K's Kinzhal is country-wide regardless of the plane's 900 km/h). Fast
+ * threats tier by ETA, slow threats by plain distance. This is the single source of truth for
+ * zone tiering — used by both MainViewModel and AlertService.
  */
-fun timeTier(t: Threat, distKm: Double, speedKmh: Double?, zones: TimeZones): ThreatZone? {
+fun zoneTier(t: Threat, distKm: Double, speedKmh: Double?, params: ZoneParams): ThreatZone? {
     if (distKm > reachKm(t.type)) return null
-    val speed = if (t.type == ThreatType.AVIATION) BALLISTIC_SPEED_KMH else speedKmh
-    return timeZone(etaMinutes(distKm, speed), zones)
+    if (t.type in FastThreatTypes) {
+        val speed = if (t.type == ThreatType.AVIATION) BALLISTIC_SPEED_KMH else speedKmh
+        val eta = etaMinutes(distKm, speed) ?: return null
+        return when {
+            eta <= params.fastRedMin -> ThreatZone.INNER
+            eta <= params.fastYellowMin -> ThreatZone.OUTER
+            else -> null
+        }
+    }
+    return when {
+        distKm <= params.slowRedKm -> ThreatZone.INNER
+        distKm <= params.slowYellowKm -> ThreatZone.OUTER
+        else -> null
+    }
 }
-
-/**
- * Slow-threat reference speed (km/h) for the map's zone circles — the Shahed nominal. The
- * circles show where a *slow* object becomes urgent, so fast objects legitimately alert from
- * farther out than the drawn circle.
- */
-const val ZONE_CIRCLE_REF_KMH = 180.0
-
-/** Radius (km) of the red/yellow zone circle for a [minute] threshold, at the Shahed reference speed. */
-fun zoneCircleKm(minutes: Int): Double = minutes * ZONE_CIRCLE_REF_KMH / 60.0

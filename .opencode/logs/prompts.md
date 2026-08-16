@@ -14799,3 +14799,18 @@ git push
 ## 16/08/2026, 15:19:41
 
 go
+## 16/08/2026, 15:35:15
+
+keep the old SVGs.  add a toggle in settings,additional settings of which icons set to use.  show one example for each only.  
+## 16/08/2026, 15:42:51
+
+change: slow red 1-20km, yellow 21-50km.  ensure the map centers to the yellow zone when opening the panel.
+put the fast/slow emojis, and move the bottom map/alert toggles into each slider's section.
+wait.  how do the slider alerts interact w each threat's alerts?
+## 16/08/2026, 15:44:29
+
+aspect: idk do what feels right.
+picker: ok
+## 16/08/2026, 15:45:26
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.

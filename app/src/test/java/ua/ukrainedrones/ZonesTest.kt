@@ -6,18 +6,12 @@ import org.junit.Test
 
 class ZonesTest {
 
-    private val zones = TimeZones(redMin = 20, yellowMin = 60)
-
-    @Test
-    fun `timeZone assigns the right tier by ETA`() {
-        assertEquals(ThreatZone.INNER, timeZone(0.0, zones))
-        assertEquals(ThreatZone.INNER, timeZone(20.0, zones)) // boundary inclusive
-        assertEquals(ThreatZone.OUTER, timeZone(20.1, zones))
-        assertEquals(ThreatZone.OUTER, timeZone(60.0, zones))
-        assertNull(timeZone(60.1, zones))
-        assertNull(timeZone(120.0, zones))
-        assertNull(timeZone(null, zones))
-    }
+    private val params = ZoneParams(
+        slowRedKm = 60,
+        slowYellowKm = 180,
+        fastRedMin = 10,
+        fastYellowMin = 30
+    )
 
     @Test
     fun `etaMinutes converts distance and speed`() {
@@ -41,24 +35,49 @@ class ZonesTest {
     }
 
     @Test
-    fun `timeTier ignores threats beyond reach`() {
+    fun `slow threats tier by distance`() {
         val shahed = threat(type = ThreatType.SHAHED)
-        assertNull(timeTier(shahed, 2000.0, 180.0, zones))
+        assertEquals(ThreatZone.INNER, zoneTier(shahed, 30.0, 180.0, params))
+        assertEquals(ThreatZone.INNER, zoneTier(shahed, 60.0, 180.0, params)) // boundary inclusive
+        assertEquals(ThreatZone.OUTER, zoneTier(shahed, 61.0, 180.0, params))
+        assertEquals(ThreatZone.OUTER, zoneTier(shahed, 180.0, 180.0, params))
+        assertNull(zoneTier(shahed, 181.0, 180.0, params))
+        assertNull(zoneTier(shahed, 2000.0, 180.0, params)) // beyond reach
     }
 
     @Test
-    fun `fast objects alert from beyond the drawn circle`() {
+    fun `slow threats ignore speed`() {
+        val shahed = threat(type = ThreatType.SHAHED)
+        // Distance-only tiering: a slow object tiers even without a usable speed.
+        assertEquals(ThreatZone.INNER, zoneTier(shahed, 30.0, null, params))
+        assertEquals(ThreatZone.OUTER, zoneTier(shahed, 100.0, null, params))
+    }
+
+    @Test
+    fun `fast threats tier by time to arrival`() {
         val ballistic = threat(type = ThreatType.BALLISTIC)
-        // 100 km away at 3000 km/h = 2 min ETA — a red alert from far out.
-        assertEquals(ThreatZone.INNER, timeTier(ballistic, 100.0, 3000.0, zones))
+        val cruise = threat(type = ThreatType.CRUISE_MISSILE)
+        // 3300 km/h → 300 km is ~5.5 min (INNER), 700 km is ~12.7 min (OUTER).
+        assertEquals(ThreatZone.INNER, zoneTier(ballistic, 300.0, 3300.0, params))
+        assertEquals(ThreatZone.OUTER, zoneTier(ballistic, 700.0, 3300.0, params))
+        // 1500 km at 3300 km/h = ~27.3 min → still OUTER (within the 30-min yellow).
+        assertEquals(ThreatZone.OUTER, zoneTier(ballistic, 1500.0, 3300.0, params))
+        // 700 km at 850 km/h = ~49.4 min → beyond the 30-min yellow.
+        assertNull(zoneTier(cruise, 700.0, 850.0, params))
     }
 
     @Test
-    fun `slow objects tier by their own ETA`() {
-        val shahed = threat(type = ThreatType.SHAHED)
-        assertEquals(ThreatZone.INNER, timeTier(shahed, 30.0, 180.0, zones))   // 10 min
-        assertEquals(ThreatZone.OUTER, timeTier(shahed, 120.0, 180.0, zones))  // 40 min
-        assertNull(timeTier(shahed, 400.0, 180.0, zones))                      // 133 min
+    fun `fast threat ETA boundary is inclusive`() {
+        val cruise = threat(type = ThreatType.CRUISE_MISSILE)
+        // 850 km/h × 10 min = 141.7 km exactly at the red boundary.
+        assertEquals(ThreatZone.INNER, zoneTier(cruise, 141.666, 850.0, params))
+        assertEquals(ThreatZone.OUTER, zoneTier(cruise, 141.7, 850.0, params))
+    }
+
+    @Test
+    fun `fast threats with no speed never tier`() {
+        val ballistic = threat(type = ThreatType.BALLISTIC)
+        assertNull(zoneTier(ballistic, 300.0, null, params))
     }
 
     @Test
@@ -66,20 +85,22 @@ class ZonesTest {
         val mig = threat(type = ThreatType.AVIATION)
         // At the plane's own 900 km/h a 100 km approach would be OUTER (~6.7 min is INNER anyway);
         // the override matters at distance — 400 km at 900 km/h = 26.7 min (OUTER), but the
-        // Kinzhal covers it instantly, so it must be INNER.
-        assertEquals(ThreatZone.INNER, timeTier(mig, 400.0, 900.0, zones))
+        // Kinzhal covers it in ~7.3 min, so it must be INNER.
+        assertEquals(ThreatZone.INNER, zoneTier(mig, 400.0, 900.0, params))
     }
 
     @Test
-    fun `no speed means no tier`() {
+    fun `aviation tiers even with no reported speed`() {
+        val mig = threat(type = ThreatType.AVIATION)
+        assertEquals(ThreatZone.INNER, zoneTier(mig, 400.0, null, params))
+    }
+
+    @Test
+    fun `reach caps out-of-range threats`() {
         val shahed = threat(type = ThreatType.SHAHED)
-        assertNull(timeTier(shahed, 30.0, null, zones))
-    }
-
-    @Test
-    fun `zone circle grows with the minute threshold at the reference speed`() {
-        assertEquals(60.0, zoneCircleKm(20), 1e-9)  // 20 min * 3 km/min
-        assertEquals(180.0, zoneCircleKm(60), 1e-9) // 60 min * 3 km/min
-        assertEquals(30.0, zoneCircleKm(10), 1e-9)
+        val kab = threat(type = ThreatType.KAB)
+        assertNull(zoneTier(shahed, 2000.0, 180.0, params))
+        // KAB reach is 70 km — inside the slow yellow (180) but physically impossible.
+        assertNull(zoneTier(kab, 100.0, 900.0, params))
     }
 }

@@ -48,10 +48,10 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `Zones.kt` | `ThreatZone` (INNER/OUTER), `TimeZones` (redMin/yellowMin time thresholds), `timeZone` (ETA→tier), `etaMinutes`, `reachKm` (per-type max cover), `timeTier(t, distKm, speedKmh, zones)` — the single source of truth for zone tiering, plus `BALLISTIC_SPEED_KMH` (AVIATION override), `ZONE_CIRCLE_REF_KMH` and `zoneCircleKm` for the map's reference circles. |
+| `Zones.kt` | `ThreatZone` (INNER/OUTER), `ZoneParams` (slow km / fast min thresholds), `FastThreatTypes` (the single source for the fast group), `zoneTier(t, distKm, speedKmh, params)` — the single source of truth for zone tiering, plus `etaMinutes`, `reachKm` (per-type max cover) and `BALLISTIC_SPEED_KMH` (AVIATION override). |
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 threat gauge for the popup (severity × distance × reliability × sources × count × quality × staleness × ETA). |
 | `Cities.kt` | Curated city list + `CityLabelOverlay` (draws city names, red when oblast on alert, threat counts). `focusAttribution` maps the focus point (pinned city, else nearest city to GPS) to an oblast stem via `cityOblast`. |
-| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, and the DataStore-backed preference store (`zone_prefs`). All toggles/radii/language/follow/pin/threat map-visibility + alert-enable + map-scale live here. Also `threatMapFlow` and `threatAlertFlow`. |
+| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, and the DataStore-backed preference store (`zone_prefs`). All toggles/km+min zone thresholds/language/follow/pin/threat map-visibility + alert-enable + map-scale live here. Also `threatMapFlow` and `threatAlertFlow`. |
 | `Strings.kt` | `Strings` → `StringSet` — the UA/EN string table (the app never relies on Android resource localization). |
 | `ThreatImages.kt` | Reference photos for the expanded threat card: bundled webp for some types, Wikimedia Commons hotlinks for the rest. |
 
@@ -59,13 +59,13 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `MainScreen.kt` | Top-level Compose UI: header (trident glow, title — tap to fit the whole country, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet`, `UpdateDialog`, first-run `LanguageChooseDialog` (with slim threat toggles). |
+| `MainScreen.kt` | Top-level Compose UI: header (trident glow, title — tap to fit the whole country, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet` (fully-visible zones panel), `UpdateDialog`, first-run `LanguageChooseDialog` (with slim threat toggles). |
 | `ConnectionStatus.kt` | Connection pill (red "offline" / amber "backup" / green "online") + the "System status" dialog: per-source dot rows (NEPTUN + backup alerts.com.ua), backup scope note, TEMP force-offline toggle, legend, attribution link. |
-| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. |
-| `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, zone radii, alert toggles, updates, battery exemption, feature guide. |
-| `ZonesSheet.kt` | "Edit zones" bottom sheet with live red/yellow radius sliders. |
+| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: slow-distance zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. |
+| `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, alert toggles, updates, battery exemption, feature guide. |
+| `ZonesSheet.kt` | "Edit zones" bottom sheet over the live map: Slow (km) and Fast (min) red/yellow sliders with per-zone alert bells, section captions, and the Fast/Slow group Map/Alerts toggles — everything visible at once. |
 | `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / text pill in medium), wave size, time since seen. |
-| `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, and `SlimThreatToggles` — the compact panel reused by the zones-sheet expansion and the first-run dialog. |
+| `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, `GroupOnlyToggles` (the compact group-master panel for the zones sheet), and `SlimThreatToggles` — the per-type compact panel reused by the first-run dialog. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
 | `FeatureDiagrams.kt` | Diagram drawables used by the feature guide. |
 
@@ -107,8 +107,8 @@ ALERTS.COM.UA REST ──┘   (AlertsUaClient: backup oblast alerts, merged onl
 MainViewModel                  AlertService (foreground)
   combine:                      combine:
     NeptunClient.state             NeptunClient.state
-    radii (ZonePrefs)              LocationTracker.location
-    LocationTracker.location       radii (ZonePrefs)
+    zone params (ZonePrefs)        LocationTracker.location
+    LocationTracker.location       zone params (ZonePrefs)
     selectedThreat                  prefs toggles/language/pin
     nowFlow (1s clock)             nowFlow (60s grace)
         │                            │
@@ -127,7 +127,7 @@ ThreatSpeedTracker.record(...)          # keep ≤4 recent fixes per id
    → predictPosition(t, speed, now)     # dead-reckon any ACTIVE track with a real heading (velocity
                                         #   bearingDeg, else top-level heading) along its course within
                                         #   per-type horizon/ghost cap; anchor = confirmedAtMillis
-   → distance to focus → timeTier (time-to-arrival, shared in Zones.kt)
+   → distance to focus → zoneTier (per-group: slow distance / fast ETA, shared in Zones.kt)
 ```
 
 Update flow: `UpdateManager.check()` → `UpdateState.Available` → `download()` (progress) →
@@ -139,9 +139,9 @@ Treat these as a contract. If you change one, update **every** place that relies
 
 - **Two independent alert paths.** `MainViewModel` (UI state) and `AlertService`
   (notifications) each reimplement zone tiering, focus attribution, and prediction. A change
-  to `timeTier`, `TimeZones`, `focusAttribution`, `staleAfterMs`,
+  to `zoneTier`, `ZoneParams`, `focusAttribution`, `staleAfterMs`,
   or `predictPosition` must be mirrored in **both** files or the UI and notifications drift.
-  `Zones.kt` is the single source of truth for tier math — call `timeTier`, never inline it.
+  `Zones.kt` is the single source of truth for tier math — call `zoneTier`, never inline it.
 
 - **Threat type gating.** `ZonePrefs.threatMapFlow` gates which types render on the map
   (`MainViewModel`); `threatAlertFlow` gates which types fire alerts (`AlertService`). The two
@@ -159,14 +159,18 @@ Treat these as a contract. If you change one, update **every** place that relies
   through `focusAttribution` → `Cities.cityOblast` stem match (e.g. `"Харківськ"` hits
   `"Харківська область"`).
 
-- **Zone tiering.** Time-to-arrival model: `timeTier(t, distKm, speedKmh, TimeZones(redMin, yellowMin))`.
-  ETA ≤ redMin → INNER (urgent siren), ≤ yellowMin → OUTER (warning chime), beyond → outside both.
-  Speed comes from `ThreatSpeedTracker` (server → measured → nominal, m/s × 3.6); AVIATION is forced
-  to `BALLISTIC_SPEED_KMH` (a MiG-31K Kinzhal is country-wide). Per-type `reachKm` caps distance
-  (KAB 70, FPV 40, recon 50, Shahed 1000, else 1500 km) — beyond it no alert. The map's red/yellow
-  circles are a reference visual only: `zoneCircleKm(minutes)` at the Shahed `ZONE_CIRCLE_REF_KMH`
-  (min × 3 km), so fast objects legitimately alert from outside the drawn circle. Advisory
-  (NEPTUN observation) threats never tier/sound — map-only in the UI.
+- **Zone tiering.** Per-group model: `zoneTier(t, distKm, speedKmh, ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin))`.
+  Fast threats (`FastThreatTypes`: ballistic, cruise, aviation, KAB) tier by ETA — ETA ≤
+  fastRedMin → INNER (urgent siren), ≤ fastYellowMin → OUTER (warning chime), beyond → outside
+  both. Slow threats (everything else, incl. UNKNOWN) tier by plain distance — distKm ≤
+  slowRedKm → INNER, ≤ slowYellowKm → OUTER. Speed comes from `ThreatSpeedTracker`
+  (server → measured → nominal, m/s × 3.6); AVIATION is forced to `BALLISTIC_SPEED_KMH`
+  (a MiG-31K Kinzhal is country-wide) and a fast threat with no usable speed never tiers.
+  Per-type `reachKm` caps distance (KAB 70, FPV 40, recon 50, Shahed 1000, else 1500 km) —
+  beyond it no alert for either group. The map's red/yellow circles show the **slow** km
+  thresholds (there is no time-reference circle), so fast objects legitimately alert from
+  outside the drawn circle. Advisory (NEPTUN observation) threats never tier/sound —
+  map-only in the UI.
 
 - **Expiry / ghosts.** `staleAfterMs` is per-type (90s ballistic … 300s UAV). `isExpired` marks
   a threat stale; stale/expired threats stay on the map **dimmed** (marker alpha 0.25, still
@@ -209,7 +213,7 @@ JUnit unit tests in `app/src/test/java/ua/ukrainedrones/`:
 - `PredictionTest.kt` — `predictPosition`, `distanceMeters`, staleness, speed tracking.
 - `ThreatTest.kt` — JSON parsing, type mapping, course translation.
 - `ThreatLevelTest.kt` — threat-level scoring.
-- `ZonesTest.kt` — `timeZone`, `etaMinutes`, `reachKm`, `timeTier`, `zoneCircleKm`.
+- `ZonesTest.kt` — slow km tiering, fast min tiering, `etaMinutes`, `reachKm`, AVIATION override, null-speed fast.
 - `UpdateManagerTest.kt` — `versionNameGreater`.
 - `TestThreats.kt` — shared `threat(...)` builder helper.
 

@@ -220,7 +220,7 @@ fun NeptunMapView(
     // the map, which is what made the banner above it flicker.
     val overlayKey = buildString {
         append(lang).append('A').append(uiState.activeZone)
-        append('R').append(uiState.redCircleKm).append('Y').append(uiState.yellowCircleKm)
+        append('R').append(uiState.slowRedKm).append('Y').append(uiState.slowYellowKm)
         append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
         append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
         append('O').append(uiState.focusOblastAlertActive)
@@ -301,7 +301,7 @@ fun NeptunMapView(
             if (!didDefaultFit.value && focus != null) {
                 didDefaultFit.value = true
                 mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.yellowCircleKm),
+                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.slowYellowKm.toDouble()),
                     true
                 )
             }
@@ -311,7 +311,7 @@ fun NeptunMapView(
             if (!uiState.followMe && pinned != null && lastPinnedCity.value != pinned.nameUa) {
                 lastPinnedCity.value = pinned.nameUa
                 mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.yellowCircleKm),
+                    zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.slowYellowKm.toDouble()),
                     true
                 )
             } else if (uiState.followMe) {
@@ -329,8 +329,8 @@ fun NeptunMapView(
                 lastZoomTick.value = zoomTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
                 val radiusKm = when (zoomZone) {
-                    ThreatZone.INNER -> uiState.redCircleKm
-                    else -> uiState.yellowCircleKm
+                    ThreatZone.INNER -> uiState.slowRedKm.toDouble()
+                    else -> uiState.slowYellowKm.toDouble()
                 }
                 mapView.zoomToBoundingBox(zoneBoundingBox(center, radiusKm), true)
             }
@@ -341,7 +341,7 @@ fun NeptunMapView(
             if (fitZonesTick != lastFitZonesTick.value) {
                 lastFitZonesTick.value = fitZonesTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
-                val zone = zoneBoundingBox(center, uiState.yellowCircleKm)
+                val zone = zoneBoundingBox(center, uiState.slowYellowKm.toDouble())
                 val visibleFrac = 0.6f
                 val dLat = zone.latNorth - center.latitude
                 val southPad = dLat * 2 * ((1f / visibleFrac) - 1f)
@@ -377,14 +377,14 @@ fun NeptunMapView(
                     CityLabelOverlay(context, lang, uiState.activeRegionTokens)
                 )
 
-                // Focus-centered alert zones: yellow ring (outer) and red circle (inner),
-                // outlines only — no fill so the map underneath stays clean.
+                // Focus-centered alert zones: yellow ring (outer) and red circle (inner) for
+                // the SLOW distance thresholds — outlines only, no fill so the map stays clean.
                 if (focus != null) {
                     val zoneCenter = GeoPoint(focus.lat, focus.lon)
                     val yellowAlert = uiState.activeZone == ThreatZone.OUTER
                     val redAlert = uiState.activeZone == ThreatZone.INNER
                     mapView.overlays.add(Polygon(mapView).apply {
-                        points = circlePoints(zoneCenter, uiState.yellowCircleKm * 1000.0)
+                        points = circlePoints(zoneCenter, uiState.slowYellowKm * 1000.0)
                         fillColor = Color.TRANSPARENT
                         strokeColor = if (yellowAlert) Color.argb(235, 255, 213, 0)
                         else Color.argb(150, 255, 213, 0)
@@ -393,7 +393,7 @@ fun NeptunMapView(
                         setInfoWindow(null)
                     })
                     mapView.overlays.add(Polygon(mapView).apply {
-                        points = circlePoints(zoneCenter, uiState.redCircleKm * 1000.0)
+                        points = circlePoints(zoneCenter, uiState.slowRedKm * 1000.0)
                         fillColor = Color.TRANSPARENT
                         strokeColor = if (redAlert) Color.argb(235, 255, 60, 60)
                         else Color.argb(160, 255, 82, 82)

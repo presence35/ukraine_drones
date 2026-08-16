@@ -34,7 +34,7 @@ Use it to jump straight to the right file instead of re-reading the codebase.
   localization.
 - User settings/prefs go through `ZonePrefs` (DataStore-backed); don't add a second prefs store.
 - **Mirror rule**: `MainViewModel` (UI) and `AlertService` (notifications) each reimplement the
-  zone/focus/alert logic. Any change to `timeTier`, `TimeZones`, `reachKm`,
+  zone/focus/alert logic. Any change to `zoneTier`, `ZoneParams`, `reachKm`,
   `focusAttribution`, `staleAfterMs`, or `predictPosition` must be applied in
   **both** files — see `ARCHITECTURE.md#key-invariants`.
 

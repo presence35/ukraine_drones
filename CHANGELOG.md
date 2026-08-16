@@ -16,8 +16,9 @@
 - Map: threats that report only a heading now glide along it (dead-reckoned) even without a velocity — they actually move instead of sitting still.
 - Wording: "coarse"/"rough" replaced with "approximate" throughout, and the background status notification now reads "Threat alarm is following your GPS" / pinned to a city.
 
-- Zones: red/yellow alert zones are now time-to-arrival instead of fixed distance radii. A threat that could reach you within the red time (default 20 min) sounds the urgent siren; within the yellow time (default 60 min) — the warning chime. Zone sliders now set minutes (red 5–20, yellow 20–60) and the map's red/yellow circles are a reference visual (how far a Shahed flies in that time), so fast objects alert from beyond the drawn circle.
-- Alerts: the "Fast objects alert sooner" setting is gone — the time model handles every object the same way, and faster objects naturally alert sooner/from farther out.
+- Zones: red/yellow tiers are now per-group — slow threats (drones, recon) are measured by distance (red within 60 km, yellow within 180 km by default) and fast threats (missiles, guided bombs, aviation) by time-to-arrival (red within 10 min, yellow within 30 min). Fast objects therefore alert from far outside the drawn circles, exactly when they're really imminent.
+- Alerts: the "Fast objects alert sooner" setting is gone — fast threats now always tier by their own ETA, and a fast object with no usable speed never sounds.
+- Zones: the zones panel is fully visible at once — Slow (km) and Fast (min) sliders plus the Fast/Slow Map & Alerts group toggles, with no sliding the panel up to reveal per-type toggles (those now live only in the first-launch dialog). The map's red/yellow circles show the slow distance zones and follow your position.
 - Zones: per-type reach caps (guided bombs 70 km, FPV 40 km, recon 50 km, Shahed 1000 km, ballistic/cruise/aviation/unknown 1500 km) stop distant noise — an object that physically can't reach you never alerts.
 - Zones: advisory (NEPTUN observation) threats no longer tier or sound an alert — map-only in the UI.
 

@@ -96,8 +96,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onThreatTapped = { viewModel.selectThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
             onMapTapped = { viewModel.selectThreat(null) },
-            onRedZoneChange = { viewModel.setRedZoneMin(it) },
-            onYellowZoneChange = { viewModel.setYellowZoneMin(it) },
+            onSlowRedChange = { viewModel.setSlowRedKm(it) },
+            onSlowYellowChange = { viewModel.setSlowYellowKm(it) },
+            onFastRedChange = { viewModel.setFastRedMin(it) },
+            onFastYellowChange = { viewModel.setFastYellowMin(it) },
             onRedArmedChange = { viewModel.setRedArmed(it) },
             onYellowArmedChange = { viewModel.setYellowArmed(it) },
             onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
@@ -320,8 +322,10 @@ private fun MapScreen(
     onThreatTapped: (Threat) -> Unit,
     onDismissPopup: () -> Unit,
     onMapTapped: () -> Unit,
-    onRedZoneChange: (Int) -> Unit,
-    onYellowZoneChange: (Int) -> Unit,
+    onSlowRedChange: (Int) -> Unit,
+    onSlowYellowChange: (Int) -> Unit,
+    onFastRedChange: (Int) -> Unit,
+    onFastYellowChange: (Int) -> Unit,
     onRedArmedChange: (Boolean) -> Unit,
     onYellowArmedChange: (Boolean) -> Unit,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
@@ -335,7 +339,6 @@ private fun MapScreen(
     var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
     var showZonesSheet by remember { mutableStateOf(false) }
-    var zonesExpanded by remember { mutableStateOf(false) }
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
@@ -602,6 +605,7 @@ private fun MapScreen(
 
             // Alert-zone editor: a non-modal bottom panel over the live map so the
             // red/yellow circles update while you drag, and the map above stays pannable.
+            // Every control (sliders + Fast/Slow group toggles) is visible at once.
             if (showZonesSheet) {
                 Surface(
                     modifier = Modifier
@@ -614,8 +618,7 @@ private fun MapScreen(
                         val density = LocalDensity.current
                         val dismissThresholdPx = with(density) { 80.dp.toPx() }
                         var dragAccum by remember { mutableFloatStateOf(0f) }
-                        val closeSheet = { showZonesSheet = false; zonesExpanded = false }
-                        val expandedNow by rememberUpdatedState(zonesExpanded)
+                        val closeSheet = { showZonesSheet = false }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -623,14 +626,7 @@ private fun MapScreen(
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
-                                            if (expandedNow) {
-                                                // Dragging down collapses the slim toggles panel.
-                                                if (dragAccum > dismissThresholdPx) zonesExpanded = false
-                                            } else {
-                                                // Dragging up reveals the slim toggles; down closes the sheet.
-                                                if (dragAccum < -dismissThresholdPx) zonesExpanded = true
-                                                else if (dragAccum > dismissThresholdPx) closeSheet()
-                                            }
+                                            if (dragAccum > dismissThresholdPx) closeSheet()
                                             dragAccum = 0f
                                         },
                                         onDragCancel = { dragAccum = 0f }
@@ -650,33 +646,26 @@ private fun MapScreen(
                                     .background(Color(0xFF555555))
                             )
                         }
-                        ZonesEditContent(
-                            redMin = uiState.redZoneMin,
-                            yellowMin = uiState.yellowZoneMin,
+                        ZonesPanel(
+                            slowRedKm = uiState.slowRedKm,
+                            slowYellowKm = uiState.slowYellowKm,
+                            fastRedMin = uiState.fastRedMin,
+                            fastYellowMin = uiState.fastYellowMin,
                             redArmed = uiState.redArmed,
                             yellowArmed = uiState.yellowArmed,
                             lang = uiState.language,
-                            onRedZoneChange = onRedZoneChange,
-                            onYellowZoneChange = onYellowZoneChange,
+                            hiddenTypes = uiState.hiddenTypes,
+                            silencedTypes = uiState.silencedTypes,
+                            onSlowRedChange = onSlowRedChange,
+                            onSlowYellowChange = onSlowYellowChange,
+                            onFastRedChange = onFastRedChange,
+                            onFastYellowChange = onFastYellowChange,
                             onRedArmedChange = onRedArmedChange,
                             onYellowArmedChange = onYellowArmedChange,
+                            onThreatMapToggleAll = onThreatMapToggleAll,
+                            onThreatAlertToggleAll = onThreatAlertToggleAll,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
-                        if (zonesExpanded) {
-                            HorizontalDivider(color = Color(0xFF3A3A3A))
-                            Spacer(Modifier.height(6.dp))
-                            SlimThreatToggles(
-                                lang = uiState.language,
-                                hiddenTypes = uiState.hiddenTypes,
-                                silencedTypes = uiState.silencedTypes,
-                                onThreatMapToggle = onThreatMapToggle,
-                                onThreatAlertToggle = onThreatAlertToggle,
-                                onThreatMapToggleAll = onThreatMapToggleAll,
-                                onThreatAlertToggleAll = onThreatAlertToggleAll,
-                                modifier = Modifier.padding(horizontal = 20.dp)
-                            )
-                            Spacer(Modifier.height(14.dp))
-                        }
                     }
                 }
             }

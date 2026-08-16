@@ -118,7 +118,7 @@ fun ThreatPopupCard(
     val confirmations = threat.confirmations.takeIf { it > 0 }
 
     val band = proximity?.let { p ->
-        timeTier(threat, p.distToUserKm ?: return@let null, p.speedKmh, TimeZones(p.redMin, p.yellowMin))
+        zoneTier(threat, p.distToUserKm ?: return@let null, p.speedKmh, p.params)
     }
     val bandColor = when (band) {
         ThreatZone.INNER -> DistUserRed

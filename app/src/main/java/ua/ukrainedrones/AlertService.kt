@@ -87,6 +87,7 @@ class AlertService : Service() {
             val officialReason: String?,
             val officialReasonThreatId: String?,
             val zoneThreats: Map<String, ThreatZone>,
+            val params: ZoneParams,
             val lang: AppLanguage,
             val redArmed: Boolean,
             val yellowArmed: Boolean,
@@ -163,7 +164,11 @@ class AlertService : Service() {
                     LocationTracker.location,
                     nowFlow
                 ) { neptun, gps, now -> Triple(neptun, gps, now) },
-                combine(prefs.redZoneMin(), prefs.yellowZoneMin()) { red, yellow -> red to yellow },
+                combine(
+                    prefs.slowRedKm(), prefs.slowYellowKm(), prefs.fastRedMin(), prefs.fastYellowMin()
+                ) { slowRed, slowYellow, fastRed, fastYellow ->
+                    ZoneParams(slowRed, slowYellow, fastRed, fastYellow)
+                },
                 combine(
                     prefs.redZoneArmed(),
                     prefs.yellowZoneArmed(),
@@ -178,7 +183,7 @@ class AlertService : Service() {
                     prefs.language(),
                     prefs.pinnedCity()
                 ) { enabled, lang, pinned -> Triple(enabled, lang, pinned) }
-            ) { core, radii, config, tail ->
+            ) { core, params, config, tail ->
                 val neptun = core.first
                 val gps = core.second
                 val now = core.third
@@ -193,7 +198,7 @@ class AlertService : Service() {
                 val (officialReason, officialReasonThreatId) = if (officialActive) {
                     buildReason(
                         neptun, attribution.token, lang, focus,
-                        zoneCircleKm(radii.first).toInt(), zoneCircleKm(radii.second).toInt(), now,
+                        params, now,
                         tail.first,
                         focusRegionText(lang, followMe, pinned)
                     )
@@ -206,7 +211,8 @@ class AlertService : Service() {
                     focusPinned = !followMe && pinned != null,
                     officialReason = officialReason,
                     officialReasonThreatId = officialReasonThreatId,
-                    zoneThreats = zoneThreats(neptun, radii.first, radii.second, focus, tail.first, now),
+                    zoneThreats = zoneThreats(neptun, params, focus, tail.first, now),
+                    params = params,
                     lang = lang,
                     redArmed = config.redArmed,
                     yellowArmed = config.yellowArmed,
@@ -234,21 +240,19 @@ class AlertService : Service() {
     }
 
     /**
-     * Active threats inside either tier (INNER > OUTER), keyed by id. Tiers are time-to-arrival
-     * bands around the focus point (GPS or pinned city): a threat whose predicted position would
-     * reach the focus within redMin minutes is INNER, within yellowMin minutes is OUTER. Advisory
-     * (NEPTUN observation) threats, disabled types and out-of-reach types are skipped.
+     * Active threats inside either tier (INNER > OUTER), keyed by id. Tiers follow
+     * [zoneTier]: slow threats by distance, fast threats by time-to-arrival, both around the
+     * focus point (GPS or pinned city). Advisory (NEPTUN observation) threats, disabled types
+     * and out-of-reach types are skipped.
      */
     private fun zoneThreats(
         st: NeptunState,
-        redMin: Int,
-        yellowMin: Int,
+        params: ZoneParams,
         focus: LatLng?,
         enabled: Set<ThreatType>,
         now: Long
     ): Map<String, ThreatZone> {
         if (focus == null) return emptyMap()
-        val zones = TimeZones(redMin, yellowMin)
         val map = LinkedHashMap<String, ThreatZone>()
         for (t in st.threats.values) {
             if (t.status == "resolved" || t.status == "stale" || isExpired(t, now) || t.areaOnly) continue
@@ -261,7 +265,7 @@ class AlertService : Service() {
             val lon = p?.longitude ?: t.lon
             val distKm = distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0
             val speedKmh = estimate?.times(3.6)
-            val zone = timeTier(t, distKm, speedKmh, zones) ?: continue
+            val zone = zoneTier(t, distKm, speedKmh, params) ?: continue
             map[t.id] = zone
         }
         return map
@@ -440,8 +444,7 @@ class AlertService : Service() {
         token: String?,
         lang: AppLanguage,
         focus: LatLng?,
-        redKm: Int,
-        yellowKm: Int,
+        params: ZoneParams,
         now: Long,
         enabled: Set<ThreatType>,
         regionFallback: String
@@ -460,7 +463,10 @@ class AlertService : Service() {
             val speed = speedTracker.estimate(t.id, t)
             val eta = if (speed != null && speed > 0.0 && distKm != null) distKm / (speed * 3.6) * 60.0 else null
             val score = if (distKm != null) {
-                ThreatLevelModel.scoreOf(t, distKm, eta, redKm, yellowKm, now)
+                val (redVal, yellowVal) =
+                    if (t.type in FastThreatTypes) params.fastRedMin to params.fastYellowMin
+                    else params.slowRedKm to params.slowYellowKm
+                ThreatLevelModel.scoreOf(t, distKm, eta, redVal, yellowVal, now)
             } else 0.0
             if (score > bestScore) {
                 bestScore = score

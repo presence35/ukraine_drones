@@ -835,8 +835,7 @@ private val PreviewProximity = ThreatProximity(
     predicted = LatLng(46.48, 30.72),
     distToUserKm = 6.0,
     etaToUserMin = 4.5,
-    redMin = 5,
-    yellowMin = 20,
+    params = ZoneParams(slowRedKm = 60, slowYellowKm = 180, fastRedMin = 10, fastYellowMin = 30),
     speedSource = SpeedSource.RECORDED,
     speedKmh = 180.0
 )

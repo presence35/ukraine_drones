@@ -36873,3 +36873,351 @@ git add .
 git commit -m "UI polish & toggle model: neutralized card, decoupled Map/Alerts, persisted groups"
 git push
 ```
+## 16/08/2026, 15:19:58
+
+Starting with Zones.kt:
+## 16/08/2026, 15:20:05
+
+Now ZonePrefs.kt — replace the min keys/flows/setters:
+## 16/08/2026, 15:20:24
+
+Now MainViewModel.kt — multiple
+## 16/08/2026, 15:21:00
+
+Now the buildUiState signature and
+## 16/08/2026, 15:21:07
+
+
+
+
+## 16/08/2026, 15:21:16
+
+Now the proximity build and return
+## 16/08/2026, 15:21:37
+
+
+
+
+## 16/08/2026, 15:21:55
+
+Now AlertService.kt:
+
+
+## 16/08/2026, 15:22:22
+
+
+
+
+## 16/08/2026, 15:22:34
+
+
+
+
+## 16/08/2026, 15:22:44
+
+
+
+
+## 16/08/2026, 15:23:16
+
+Now Map
+## 16/08/2026, 15:24:25
+
+Now ThreatPopupCard.
+## 16/08/2026, 15:24:31
+
+Now ThreatTogglePanel.kt — remove local FastThreatTypes and add GroupOnlyToggles:
+
+
+## 16/08/2026, 15:24:39
+
+
+
+
+## 16/08/2026, 15:25:03
+
+Now rewrite ZonesSheet.kt — `ZonesEditContent` → `ZonesPanel`:
+
+
+## 16/08/2026, 15:25:16
+
+Now MainScreen.kt — drop the drag-to-expand and wire the new panel.
+## 16/08/2026, 15:25:46
+
+
+
+
+## 16/08/2026, 15:26:31
+
+Now Strings.kt — update captions/guide. Let me update the `StringSet` data class, UA and EN. First remove the hint/explain fields and add the captions:
+
+
+## 16/08/2026, 15:26:41
+
+Now update the guide string fields — I need to see what fields exist. Let me check current guideZones/editZones fields in the data class (lines 184-193). They remain as-is structurally. Now update UA values:
+
+
+## 16/08/2026, 15:26:45
+
+The hint/explain lines are separate in UA. Let me read the exact region:
+
+
+## 16/08/2026, 15:26:53
+
+I need the exact UA `zoneExplain` text — it says "Координати загроз приблизні" not "грубі". Let me redo with correct text:
+
+
+## 16/08/2026, 15:27:04
+
+Now UA guide strings (zones + editZones):
+
+
+## 16/08/2026, 15:27:07
+
+
+
+
+## 16/08/2026, 15:27:19
+
+Now EN guide strings:
+
+
+## 16/08/2026, 15:27:55
+
+All remaining hits are in ZonesTest.kt, which I'm
+## 16/08/2026, 15:28:21
+
+Now docs. CHANGELOG [
+## 16/08/2026, 15:28:39
+
+The CHANGELOG changed during my session. Let me re-read the current [Unreleased]
+## 16/08/2026, 15:28:55
+
+A parallel session has been updating the CHANGELOG. The time-model entries are now at lines 19-22. I'll update
+## 16/08/2026, 15:29:03
+
+Now ARCH
+## 16/08/2026, 15:30:25
+
+Now the key invariant and the invariant's first bullet (mirror
+## 16/08/2026, 15:31:14
+
+Now update the repo AGENTS.md mirror rule (it names `timeTier`/`TimeZones`):
+
+
+## 16/08/2026, 15:31:49
+
+Let me verify the AlertService combine section reads correctly
+## 16/08/2026, 15:32:01
+
+All wired. Now build and
+## 16/08/2026, 15:32:25
+
+SettingsScreen (updated by the parallel session) references `redMin`/`yellowMin
+## 16/08/2026, 15:33:11
+
+Build passes. Now the unit tests:
+
+
+## 16/08/2026, 15:33:44
+
+
+
+
+## 16/08/2026, 15:33:57
+
+My arithmetic error — 1500 km at 3300 km/h is 27.3 min, still within the 30-min yellow. Fix
+## 16/08/2026, 15:34:29
+
+All green. Let me re-run the build once more to confirm the current file state is clean (the repo is being edited concurrently
+## 16/08/2026, 15:34:55
+
+Done. `:app:assembleDebug` + `:app:testDebugUnitTest` both pass.
+
+**Domain** — `Zones.kt`: `FastThreatTypes`, `ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)`, `zoneTier` (fast = ETA, slow = distance, reach-capped, AVIATION override); dropped `TimeZones`/`timeZone`/`timeTier`/`zoneCircleKm`/`ZONE_CIRCLE_REF_KMH`.
+
+**Prefs** — `ZonePrefs.kt`: 4 keys (`slow_red_km` 60/5-100, `slow_yellow_km` 180/20-300, `fast_red_min` 10/2-20, `fast_yellow_min` 30/5-60); old `red_zone_min`/`yellow_zone_min` retired.
+
+**Mirrored logic** — `MainViewModel.kt` and `AlertService.kt` both use `ZoneParams` (through `LiveSnapshot` / `MonitorEvent.State`), `zoneTier` for tiering, and pass per-group values into `ThreatLevelModel.scoreOf`.
+
+**UI** — `ZonesSheet.kt` → `ZonesPanel` (Slow km + Fast min sliders, captions, `GroupOnlyToggles` ⚡/🐢 row, always visible); `MainScreen.kt` kept the edit button + sheet but dropped the drag-to-expand; `MapView.kt` circles = `slowRedKm`/`slowYellowKm`; `ThreatPopupCard` band → `zoneTier(p.params)`.
+
+**Strings/tests/docs** — UA+EN captions + guide updates; `ZonesTest.kt` rewritten (one assertion fixed: 1500 km ballistic is OUTER, not null — my arithmetic slip); CHANGELOG + ARCHITECTURE (module map, data flow, Zone-tiering invariant) + AGENTS.md mirror rule updated.
+
+Note: the repo had concurrent edits mid-session (CHANGELOG/SettingsScreen changed) — I rebased onto the current state, including a `ThreatProximity` preview in `SettingsScreen.kt:834` that needed the new `params` field.
+## 16/08/2026, 15:35:44
+
+Let me examine the duplicated icon-mapping sites and the prefs store to plan the toggle properly
+## 16/08/2026, 15:35:53
+
+Let me check the `threatIconRes` helper usage, the Settings "additional settings" section, and how MapView rotation works with these photo icons
+## 16/08/2026, 15:36:04
+
+Let me see how Settings gets its state/prefs and the other icon mapping contexts
+
+
+## 16/08/2026, 15:36:11
+
+The ThreatPopupCard mapping shifted. Let me find the exact location and check how the map rotation interacts, plus the threat strip in MainScreen
+## 16/08/2026, 15:36:36
+
+Let me check the popup-card icon usage, the threat strip caller, and how prefs flow from ViewModel into these
+## 16/08/2026, 15:37:16
+
+Let me check whether these photos have a background fill (matters for how they render
+## 16/08/2026, 15:37:54
+
+Let me verify how `UiState` and the popup/toggle composables are wired so the plan threads the icon-set pref correctly
+
+
+## 16/08/2026, 15:38:47
+
+Let me check the remaining wiring points: MapScreen signature, SettingsScreen photo-card region, and call sites
+
+
+## 16/08/2026, 15:39:45
+
+Let me confirm the toggle panel / popup entry signatures so the plan threads the pref
+## 16/08/2026, 15:41:00
+
+Let me check the card-size selector pattern in Settings (to mirror for the icon-set picker) and the remaining call
+## 16/08/2026, 15:41:53
+
+Let me check `courseDeg` semantics and the strip icon size context, then finalize the plan
+
+
+## 16/08/2026, 15:43:05
+
+I have a full picture now. Here's my plan.
+
+## Plan: Threat icon-set toggle (SVG vs photo)
+
+### What the 7 root PNGs are
+Full-bleed photos (opaque, transparent corners) of each threat type, each with a **baked-in facing direction** encoded in its filename. Map markers currently rotate the SVG by `courseDeg` (`MapView.kt:431`), so the photo set must rotate by `courseDeg − baseFacingDeg` per type. Inferred bases: `ballistic_top`=0°, `cruise_top_right`=45°, `fpv_bottom_middle`=180°, `guided_bottom_left`=225°, `mig_left`=270°, `recon_bottom_left`=225°, `shahed_top_middle`=0°. (I can't view the images — please correct any of these if wrong.)
+
+### Changes
+
+1. **Assets** — Move the 7 PNGs from repo root into `app/src/main/res/drawable-nodpi/` as `threat_photo_ballistic.png`, `…_cruise.png`, `…_fpv.png`, `…_kab.png`, `…_aviation.png`, `…_recon.png`, `…_shahed.png`. UNKNOWN keeps the SVG in both sets.
+
+2. **`ZonePrefs.kt`** — New `enum class ThreatIconSet { CLASSIC, PHOTO }` (default `CLASSIC`), DataStore key `icon_set`, `iconSet(): Flow` + `setIconSet()`.
+
+3. **New shared catalog `IconCatalog.kt`** (small file) — single source of truth to kill the 5 duplicated `when(type)` mappings (`MapView.iconFor`, `MainScreen.threatIconRes`, `SettingsScreen.iconResFor`, `ThreatTogglePanel.iconResFor`, `ThreatPopupCard.iconResFor`):
+   - `fun threatIconRes(type, set): Int` — SVG res or photo res.
+   - `fun photoBaseDeg(type): Float` — baked facing for rotation math.
+
+4. **`MainViewModel.kt`** — Add `iconSet: ThreatIconSet = CLASSIC` to `UiState`, wire into `PrefsSnapshot`, add `setIconSet()`.
+
+5. **Thread `iconSet` through the UI** — `MainScreen` → `MapScreen` → `NeptunMapView`, `ThreatStatusCell` (strip), `ThreatPopupCard`, `SlimThreatToggles`, and `SettingsScreen` (+ `onIconSetChange`). Replace the 5 private mappings with `threatIconRes(type, iconSet)`.
+
+6. **`MapView.kt`** — Generalize `threatIcon()` so the photo set scales each photo to marker size (~32dp, preserving aspect, like shahed.webp today); rotation becomes `courseDeg − photoBaseDeg` (mod 360) for PHOTO, unchanged for CLASSIC.
+
+7. **`SettingsScreen.kt`** — In the existing **"Additional settings"** card (`SettingsScreen.kt:397`), add an icon-set selector row showing **one example preview per set only** (e.g. shahed SVG vs shahed photo), mirroring the `ThreatCardSizeSelector` chip-row pattern; plus a divider.
+
+8. **`Strings.kt`** — UA + EN strings: title, description, `CLASSIC`/`PHOTO` labels, preview content-description.
+
+9. **`CHANGELOG.md`** — Append under `## [Unreleased]`. **`ARCHITECTURE.md`** — update the module map (new `IconCatalog.kt`, `ThreatImages` unchanged).
+
+10. **Verify** — `.\gradlew.bat :app:assembleDebug`; `testDebugUnitTest` (add a small `IconCatalogTest` if touching rotation math).
+
+### Open questions
+- **Small-slot aspect**: `Icon()` stretches non-square bitmaps (shahed.webp already behaves this way today). `mig_left` (335×108) and `ballistic_top` (56×208) will look squished at 18–36dp. OK to keep stretching like the current shahed, or should photo icons letterbox-fit inside their slots?
+- **Settings picker style**: chip-row (like card size) with one preview each — good?
+
+Want me to proceed with this, or adjust anything first?
+## 16/08/2026, 15:44:35
+
+Let me ground the plan in the current code state (the repo changed mid-session earlier
+## 16/08/2026, 15:45:20
+
+Starting implementation. Let me set up todos and check the remaining call sites.
+## 16/08/2026, 15:45:24
+
+## Objective
+- Implement SESSION 3 rework: per-group zone tiering (slow threats = distance in km, fast threats = time-to-arrival in min) + zones panel whose contents are fully visible once open (no drag-to-reveal), updating MainViewModel + AlertService together.
+
+## Important Details
+- User clarified: edit-zones button and the openable bottom sheet stay; only the panel *contents* become fully visible once open (no drag-to-expand, no per-type toggles in sheet — replaced by a Fast/Slow group-only toggle row). SlimThreatToggles remains only in the first-run dialog.
+- Confirmed defaults/ranges: slowRedKm 60 (5–100), slowYellowKm 180 (20–300), fastRedMin 10 (2–20), fastYellowMin 30 (5–60).
+- AllAlertsOffWarning + edit-zones button stay (open the panel); fitZonesTick stays.
+- Single source: `FastThreatTypes` lives in Zones.kt; `zoneTier` is the one tiering function used by MainViewModel, AlertService, ThreatPopupCard.
+- Slow group = all non-fast types (incl. UNKNOWN). Fast = BALLISTIC, CRUISE_MISSILE, AVIATION, KAB.
+- AVIATION forced to BALLISTIC_SPEED_KMH (3300.0) regardless of reported/null speed; null-speed non-AVIATION fast → no tier. Slow ignores speed entirely.
+- `ThreatLevelModel.scoreOf` signature unchanged (still redKm/yellowKm Int); only callers change to pass per-group values.
+- Old prefs keys red_zone_min/yellow_zone_min retired (stop reading).
+- Map circles = slow km only; no time-reference circle.
+- Docs to update: CHANGELOG.md [Unreleased], ARCHITECTURE.md, AGENTS.md mirror rule.
+- Build/verify: `.\gradlew.bat :app:assembleDebug`, `.\gradlew.bat :app:testDebugUnitTest`.
+- A parallel session has been editing the repo (CHANGELOG grew from 282→296 lines mid-session; [Unreleased] entries at top are new) — beware conflicts/stale reads; re-read before editing shared files.
+- New strings needed: slowSectionLabel/fastSectionLabel (EN+UA); removed zoneExplain/redZoneHint/yellowZoneHint; zoneButtonRed/Yellow dropped long-press hint.
+- ZoneRow now takes a `unit: String` param.
+
+## Work State
+### Completed
+- **Zones.kt**: rewrote — `internal val FastThreatTypes`, `data class ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)`, `fun zoneTier(t, distKm, speedKmh, params): ThreatZone?` (reach cap first; fast via etaMinutes with AVIATION override; slow via distance). Deleted timeZone/timeTier/ZONE_CIRCLE_REF_KMH/zoneCircleKm. Kept etaMinutes, reachKm, BALLISTIC_SPEED_KMH.
+- **ZonePrefs.kt**: replaced redZoneMin/yellowZoneMin keys+flows+setters with slowRedKm (default 60, coerce 5–100), slowYellowKm (180, 20–300), fastRedMin (10, 2–20), fastYellowMin (30, 5–60); keys slow_red_km/slow_yellow_km/fast_red_min/fast_yellow_min. redArmed/yellowArmed untouched.
+- **MainViewModel.kt**: UiState 4 fields (defaults 60/180/10/30); ThreatProximity redMin/yellowMin → `params: ZoneParams`; zonesFlow combines 4 prefs → ZoneParams; LiveSnapshot carries 4 ints; buildUiState takes 4 ints + constructs ZoneParams; tiering via zoneTier; scoreOf per-group (FastThreatTypes check); proximity passes params; return fields updated; seedFlow primes 4 prefs; setSlowRedKm/setSlowYellowKm/setFastRedMin/setFastYellowMin replace setRedZoneMin/setYellowZoneMin; stale comments updated.
+- **AlertService.kt**: radii combine → 4 prefs → ZoneParams (`params` variable); MonitorEvent.State gains `params: ZoneParams`; buildReason signature redKm/yellowKm → params; scoreOf per-group; zoneThreats(st, params, focus, enabled, now) using zoneTier; no leftover redZoneMin/yellowZoneMin/TimeZones/timeTier/zoneCircleKm/radii refs.
+- **MapView.kt**: all redCircleKm/yellowCircleKm → slowRedKm/slowYellowKm (with .toDouble() where bbox needs Double); circle comment updated to slow-distance zones; fitZonesTick kept.
+- **ThreatPopupCard.kt**: band uses `zoneTier(threat, p.distToUserKm ?: return@let null, p.speedKmh, p.params)`.
+- **ThreatTogglePanel.kt**: removed local FastThreatTypes (now from Zones.kt); added `GroupOnlyToggles` (per-group Map/Alerts master row reusing SlimIconToggle, no type rows).
+- **ZonesSheet.kt**: rewrote `ZonesEditContent` → `ZonesPanel` (title, Slow caption + red/yellow km sliders with bells, Fast caption + red/yellow min sliders with bells, GroupOnlyToggles row, dividers); ZoneRow takes `unit: String`.
+- **MainScreen.kt**: removed zonesExpanded + drag-to-expand logic (handle now tap/drag-to-close only); sheet calls ZonesPanel wired to 4 setters + armed + hiddenTypes/silencedTypes + group toggle handlers; MapScreen/outer signatures updated to 4 setter callbacks; edit button + AllAlertsOffWarning kept; no leftovers (grep clean).
+- **Strings.kt**: removed zoneExplain/redZoneHint/yellowZoneHint; added slowSectionLabel/fastSectionLabel; zoneButton texts simplified; UA+EN guideZones*/guideEditZones* updated to km/min model.
+- **ZonesTest.kt**: rewrote — slow km tiering, slow ignores speed, fast min tiering (incl. boundary), null-speed fast → null, AVIATION override (with/without reported speed), reach caps; dropped timeZone/zoneCircleKm tests; kept etaMinutes + reachKm.
+- **CHANGELOG.md**: replaced the two stale time-model [Unreleased] bullets (now at old lines 19–20) with per-group model + fully-visible panel entries.
+- **ARCHITECTURE.md**: updated Zones.kt/ZonePrefs.kt/MapView.kt/SettingsScreen.kt (dropped "zone radii")/ZonesSheet.kt/ThreatTogglePanel.kt/MainScreen.kt entries; data-flow "radii (ZonePrefs)" → "zone params (ZonePrefs)"; key invariants "Two independent alert paths" + "Zone tiering" rewritten for zoneTier/ZoneParams; ZonesTest line updated.
+- **AGENTS.md**: repo file mirror rule still says `timeTier`, `TimeZones` (line 37) — NOT yet updated.
+
+### Active
+- Doc updates just finished; not yet verified by build/tests.
+
+### Blocked
+- (none)
+
+## Next Move
+1. Update AGENTS.md line 37 mirror rule: `timeTier`, `TimeZones` → `zoneTier`, `ZoneParams`.
+2. Run `.\gradlew.bat :app:assembleDebug`; fix any compile errors (beware concurrent-session changes to shared files).
+3. Run `.\gradlew.bat :app:testDebugUnitTest`; confirm ThreatLevelTest still compiles (scoreOf signature unchanged).
+4. Re-check ZonePrefs.kt flow names and AlertService lambda wiring if the build flags them.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/Zones.kt`: FastThreatTypes, ZoneParams, zoneTier (single source of tiering).
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: 4 new km/min prefs; old min keys retired.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: UI mirror — UiState, ThreatProximity, buildUiState, setters.
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt`: notification mirror — ZoneParams through combine/MonitorEvent.State/zoneThreats/buildReason.
+- `app/src/main/java/ua/ukrainedrones/MapView.kt`: slow-km circles + overlayKey/fits/zoom.
+- `app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt`: popup band via zoneTier + p.params.
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: sheet wiring, ZonesPanel call, callbacks.
+- `app/src/main/java/ua/ukrainedrones/ZonesSheet.kt`: ZonesPanel (km/min sliders + group toggles).
+- `app/src/main/java/ua/ukrainedrones/ThreatTogglePanel.kt`: GroupOnlyToggles; FastThreatTypes now from Zones.kt.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: new section captions; removed hint/explain strings; guide texts.
+- `app/src/test/java/ua/ukrainedrones/ZonesTest.kt`: rewritten tests.
+- `CHANGELOG.md`, `ARCHITECTURE.md`, `AGENTS.md` (line 37 still pending): docs.
+- `app/src/test/java/ua/ukrainedrones/TestThreats.kt`: shared `threat(...)` builder used by tests (unchanged).
+## 16/08/2026, 15:45:37
+
+Now the alert-interaction logic — the user
+## 16/08/2026, 15:45:37
+
+Now copy the PNGs into res/drawable-nodpi:
+
+
+## 16/08/2026, 15:45:48
+
+Assets moved. Now ZonePrefs:
+
+
+## 16/08/2026, 15:46:16
+
+
+
+
+## 16/08/2026, 15:46:23
+
+Now the shared catalog
+## 16/08/2026, 15:46:33
+
+Now MainViewModel. Let me look at the PrefsSnapshot class and the setIconSet spot
+## 16/08/2026, 15:46:42
+
+Now wire it all into the ViewModel. First UiState field, PrefsSnapshot, the combine, and the uiState combine

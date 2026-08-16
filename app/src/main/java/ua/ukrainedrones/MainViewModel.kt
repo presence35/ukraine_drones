@@ -37,10 +37,10 @@ data class UiState(
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
     val userLocation: LatLng? = null,
-    val redZoneMin: Int = 20,
-    val yellowZoneMin: Int = 60,
-    val redCircleKm: Double = 60.0,   // drawn red circle = redZoneMin at Shahed reference speed
-    val yellowCircleKm: Double = 180.0, // drawn yellow circle = yellowZoneMin at Shahed reference speed
+    val slowRedKm: Int = 60,      // slow threats: distance to the red (inner) zone, km
+    val slowYellowKm: Int = 180,  // slow threats: distance to the yellow (outer) zone, km
+    val fastRedMin: Int = 10,     // fast threats: ETA to the red (inner) zone, minutes
+    val fastYellowMin: Int = 30,  // fast threats: ETA to the yellow (outer) zone, minutes
     val redArmed: Boolean = true,
     val yellowArmed: Boolean = true,
     val officialAlertsEnabled: Boolean = true,
@@ -66,6 +66,7 @@ data class UiState(
     val latestVersion: String? = null,
     val languageChosen: Boolean = false,
     val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
+    val iconSet: ThreatIconSet = ThreatIconSet.CLASSIC,
     val showMapScale: Boolean = true,
     val fastGroupCollapsed: Boolean = false,
     val slowGroupCollapsed: Boolean = false
@@ -76,8 +77,7 @@ data class ThreatProximity(
     val predicted: LatLng,
     val distToUserKm: Double?,   // null when GPS unavailable
     val etaToUserMin: Double?,   // null when GPS unavailable or no speed
-    val redMin: Int,
-    val yellowMin: Int,
+    val params: ZoneParams,
     val speedSource: SpeedSource,
     val speedKmh: Double?        // the displayed speed value (measured or nominal)
 )
@@ -99,8 +99,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val nowFlow = MutableStateFlow(System.currentTimeMillis())
     private var isChecking = false
 
-    private val zonesFlow = combine(prefs.redZoneMin(), prefs.yellowZoneMin()) { red, yellow ->
-        red to yellow
+    private val zonesFlow = combine(
+        prefs.slowRedKm(), prefs.slowYellowKm(), prefs.fastRedMin(), prefs.fastYellowMin()
+    ) { slowRed, slowYellow, fastRed, fastYellow ->
+        ZoneParams(slowRed, slowYellow, fastRed, fastYellow)
     }
 
     init {
@@ -142,6 +144,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val pinnedCity: String?,
         val languageChosen: Boolean,
         val cardSize: ThreatCardSize,
+        val iconSet: ThreatIconSet,
         val showMapScale: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean
@@ -150,8 +153,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Live inputs that change every frame/second: stream, GPS, selection, time. */
     private data class LiveSnapshot(
         val neptun: NeptunState,
-        val redMin: Int,
-        val yellowMin: Int,
+        val slowRedKm: Int,
+        val slowYellowKm: Int,
+        val fastRedMin: Int,
+        val fastYellowMin: Int,
         val userLocation: LatLng?,
         val selected: Threat?,
         val now: Long
@@ -181,7 +186,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selectedThreatFlow,
         nowFlow
     ) { neptun, radii, location, selected, now ->
-        LiveSnapshot(neptun, radii.first, radii.second, location, selected, now)
+        LiveSnapshot(
+            neptun,
+            radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
+            location, selected, now
+        )
     }
 
     private val prefsSnapshot = combine(
@@ -245,8 +254,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val seedFlow: Flow<Unit> = flow {
         prefs.language().first()
-        prefs.redZoneMin().first()
-        prefs.yellowZoneMin().first()
+        prefs.slowRedKm().first()
+        prefs.slowYellowKm().first()
+        prefs.fastRedMin().first()
+        prefs.fastYellowMin().first()
         prefs.followMe().first()
         prefs.pinnedCity().first()
         prefs.languageChosen().first()
@@ -261,8 +272,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     ) { _, live, prefs, updateUi ->
         buildUiState(
             neptun = live.neptun,
-            redMin = live.redMin,
-            yellowMin = live.yellowMin,
+            slowRedKm = live.slowRedKm,
+            slowYellowKm = live.slowYellowKm,
+            fastRedMin = live.fastRedMin,
+            fastYellowMin = live.fastYellowMin,
             mapEnabledTypes = prefs.mapEnabled,
             alertedTypes = prefs.alertEnabled,
             language = prefs.language,
@@ -296,8 +309,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun buildUiState(
         neptun: NeptunState,
-        redMin: Int,
-        yellowMin: Int,
+        slowRedKm: Int,
+        slowYellowKm: Int,
+        fastRedMin: Int,
+        fastYellowMin: Int,
         mapEnabledTypes: Set<ThreatType>,
         alertedTypes: Set<ThreatType>,
         language: AppLanguage,
@@ -307,9 +322,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selected: Threat?,
         now: Long
     ): UiState {
-        val zones = TimeZones(redMin, yellowMin)
-        val redCircleKm = zoneCircleKm(redMin)
-        val yellowCircleKm = zoneCircleKm(yellowMin)
+        val params = ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
         val focusLocation = if (followMe) userLocation
         else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: userLocation
@@ -336,9 +349,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // Red zone tier: threats that could reach the focus within redMin minutes.
+        // Red zone tier: threats inside the red band (slow: within slowRedKm, fast: ETA ≤ fastRedMin).
         val inInner = mutableListOf<Threat>()
-        // Yellow ring tier: threats that could reach the focus within yellowMin minutes.
+        // Yellow ring tier: threats inside the yellow band (slow: within slowYellowKm, fast: ETA ≤ fastYellowMin).
         val inOuter = mutableListOf<Threat>()
         // All active threats across the whole country, shown while any air-raid alert is
         // active — lets the user pan to other regions during alerts.
@@ -367,11 +380,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 focusLocation.lat, focusLocation.lon, predicted.latitude, predicted.longitude
             ) / 1000.0
             val speedKmh = speedTracker.estimate(t.id, t)?.times(3.6)
-            val tier = timeTier(t, distKm, speedKmh, zones)
+            val tier = zoneTier(t, distKm, speedKmh, params)
             if (tier != null) {
                 val eta = etaMinutes(distKm, speedKmh)
+                val (redVal, yellowVal) =
+                    if (t.type in FastThreatTypes) params.fastRedMin to params.fastYellowMin
+                    else params.slowRedKm to params.slowYellowKm
                 threatScores.add(
-                    ThreatLevelModel.scoreOf(t, distKm, eta, redCircleKm.toInt(), yellowCircleKm.toInt(), now)
+                    ThreatLevelModel.scoreOf(t, distKm, eta, redVal, yellowVal, now)
                 )
             }
             when (tier) {
@@ -411,8 +427,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     predicted = predicted,
                     distToUserKm = distUser,
                     etaToUserMin = etaUser,
-                    redMin = redMin,
-                    yellowMin = yellowMin,
+                    params = params,
                     speedSource = speedPair?.second ?: SpeedSource.TYPICAL,
                     speedKmh = speedPair?.first?.let { it * 3.6 }
                 )
@@ -433,10 +448,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             threatsOuter = inOuter,
             mapThreats = mapThreats,
             userLocation = userLocation,
-            redZoneMin = redMin,
-            yellowZoneMin = yellowMin,
-            redCircleKm = redCircleKm,
-            yellowCircleKm = yellowCircleKm,
+            slowRedKm = slowRedKm,
+            slowYellowKm = slowYellowKm,
+            fastRedMin = fastRedMin,
+            fastYellowMin = fastYellowMin,
             hiddenTypes = ThreatType.values().toSet() - mapEnabledTypes,
             silencedTypes = ThreatType.values().toSet() - alertedTypes,
             activeZone = activeZone,
@@ -455,12 +470,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    fun setRedZoneMin(min: Int) {
-        viewModelScope.launch { prefs.setRedZoneMin(min) }
+    fun setSlowRedKm(km: Int) {
+        viewModelScope.launch { prefs.setSlowRedKm(km) }
     }
 
-    fun setYellowZoneMin(min: Int) {
-        viewModelScope.launch { prefs.setYellowZoneMin(min) }
+    fun setSlowYellowKm(km: Int) {
+        viewModelScope.launch { prefs.setSlowYellowKm(km) }
+    }
+
+    fun setFastRedMin(min: Int) {
+        viewModelScope.launch { prefs.setFastRedMin(min) }
+    }
+
+    fun setFastYellowMin(min: Int) {
+        viewModelScope.launch { prefs.setFastYellowMin(min) }
     }
 
     fun setRedArmed(armed: Boolean) {

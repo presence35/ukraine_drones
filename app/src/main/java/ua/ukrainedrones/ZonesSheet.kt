@@ -16,20 +16,30 @@ private val RedZoneColor = Color(0xFFD32F2F)
 private val YellowZoneColor = Color(0xFFF9A825)
 
 /**
- * Alert-zone editor shown in a bottom panel over the map, so the sliders can be
- * tuned while the red/yellow circles are live on the map behind.
+ * Alert-zone panel shown in the bottom sheet over the map, so the sliders can be
+ * tuned while the slow-distance circles are live on the map behind. Slow threats tier
+ * by distance (km), fast threats by time-to-arrival (minutes). Everything is visible
+ * at once — the Fast/Slow group toggles never need a slide to reveal.
  */
 @Composable
-fun ZonesEditContent(
-    redMin: Int,
-    yellowMin: Int,
+fun ZonesPanel(
+    slowRedKm: Int,
+    slowYellowKm: Int,
+    fastRedMin: Int,
+    fastYellowMin: Int,
     redArmed: Boolean,
     yellowArmed: Boolean,
     lang: AppLanguage,
-    onRedZoneChange: (Int) -> Unit,
-    onYellowZoneChange: (Int) -> Unit,
+    hiddenTypes: Set<ThreatType>,
+    silencedTypes: Set<ThreatType>,
+    onSlowRedChange: (Int) -> Unit,
+    onSlowYellowChange: (Int) -> Unit,
+    onFastRedChange: (Int) -> Unit,
+    onFastYellowChange: (Int) -> Unit,
     onRedArmedChange: (Boolean) -> Unit,
     onYellowArmedChange: (Boolean) -> Unit,
+    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
+    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val s = Strings.get(lang)
@@ -40,53 +50,93 @@ fun ZonesEditContent(
             fontWeight = FontWeight.SemiBold
         )
         Spacer(Modifier.height(6.dp))
+        SectionCaption(s.slowSectionLabel)
         ZoneRow(
-            valueMin = redMin,
-            range = 5f..20f,
-            steps = 0,
+            value = slowRedKm,
+            range = 5f..100f,
+            unit = s.kmUnit,
             accent = RedZoneColor,
             armed = redArmed,
             bellDesc = s.alertsBellToggle,
             onArmedChange = onRedArmedChange,
-            onCommit = onRedZoneChange
+            onCommit = onSlowRedChange
         )
         Spacer(Modifier.height(8.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Spacer(Modifier.height(8.dp))
         ZoneRow(
-            valueMin = yellowMin,
-            range = 20f..60f,
-            steps = 0,
+            value = slowYellowKm,
+            range = 20f..300f,
+            unit = s.kmUnit,
             accent = YellowZoneColor,
             armed = yellowArmed,
             bellDesc = s.alertsBellToggle,
             onArmedChange = onYellowArmedChange,
-            onCommit = onYellowZoneChange
+            onCommit = onSlowYellowChange
         )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            s.zoneExplain,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        Spacer(Modifier.height(14.dp))
+        SectionCaption(s.fastSectionLabel)
+        ZoneRow(
+            value = fastRedMin,
+            range = 2f..20f,
+            unit = s.minUnit,
+            accent = RedZoneColor,
+            armed = redArmed,
+            bellDesc = s.alertsBellToggle,
+            onArmedChange = onRedArmedChange,
+            onCommit = onFastRedChange
         )
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(8.dp))
+        ZoneRow(
+            value = fastYellowMin,
+            range = 5f..60f,
+            unit = s.minUnit,
+            accent = YellowZoneColor,
+            armed = yellowArmed,
+            bellDesc = s.alertsBellToggle,
+            onArmedChange = onYellowArmedChange,
+            onCommit = onFastYellowChange
+        )
+        Spacer(Modifier.height(14.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(2.dp))
+        GroupOnlyToggles(
+            lang = lang,
+            hiddenTypes = hiddenTypes,
+            silencedTypes = silencedTypes,
+            onThreatMapToggleAll = onThreatMapToggleAll,
+            onThreatAlertToggleAll = onThreatAlertToggleAll
+        )
+        Spacer(Modifier.height(18.dp))
     }
 }
 
 @Composable
+private fun SectionCaption(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
+}
+
+@Composable
 private fun ZoneRow(
-    valueMin: Int,
+    value: Int,
     range: ClosedFloatingPointRange<Float>,
-    steps: Int,
+    unit: String,
     accent: Color,
     armed: Boolean,
     bellDesc: String,
     onArmedChange: (Boolean) -> Unit,
     onCommit: (Int) -> Unit
 ) {
-    val minUnit = Strings.get(AppLanguage.EN).minUnit
-    var local by remember { mutableStateOf(valueMin.toFloat()) }
-    LaunchedEffect(valueMin) { local = valueMin.toFloat() }
+    var local by remember { mutableStateOf(value.toFloat()) }
+    LaunchedEffect(value) { local = value.toFloat() }
     Row(verticalAlignment = Alignment.CenterVertically) {
         // Per-zone alert bell + switch on the left: filled/colored while armed,
         // red crossed bell when muted.
@@ -126,7 +176,7 @@ private fun ZoneRow(
                 onCommit(v)
             },
             valueRange = range,
-            steps = steps,
+            steps = 0,
             colors = SliderDefaults.colors(
                 thumbColor = accent,
                 activeTrackColor = accent
@@ -135,7 +185,7 @@ private fun ZoneRow(
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            "$valueMin $minUnit",
+            "$value $unit",
             color = accent,
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.labelLarge
