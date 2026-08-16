@@ -14134,3 +14134,653 @@ go, but we don't need the red, it's so close to gps it's pointless.  just yellow
 ## 15/08/2026, 19:22:21
 
 go
+## 15/08/2026, 19:24:48
+
+the turtle in settings is bad.  suggestions?  redraw or something else.
+## 15/08/2026, 19:28:02
+
+go
+## 15/08/2026, 19:29:07
+
+does this help?
+
+https://designbundles.net/mydigitalart13/6261853-turtle-svg
+## 15/08/2026, 19:32:03
+
+go
+## 15/08/2026, 23:37:11
+
+go
+## 15/08/2026, 23:52:24
+
+Offline notification. Tap to retry. 
+Shelter locations.
+Play Store features. 
+Ensure threat times are to zones and me. 
+Threat history. 
+Family tracking (multiple alert location).
+Backup api
+
+claude found bugs:
+Summary of confirmed findings (code-verified, not speculative)
+#	File / line	Issue	Severity
+1	MainViewModel.kt:345	Missing t.areaOnly exclusion (present in AlertService.kt:251) — oblast-centroid phantom threats can appear in zone tiers, threat-level gauge, and UI banners, causing map/siren state to diverge	High — directly causes the exact "map says X, alert says Y" mismatch
+2	AlertService.kt:328-342	Multi-threat batch coalescing picks only the single most urgent new-tier threat per tick and marks all threats in the batch as "known," silently absorbing other simultaneous zone entries	High — silent alert loss, worst exactly during reconnect bursts / saturation waves
+3	Threat.kt:219	No blank/missing id guard in fromJson — a malformed NEPTUN payload could silently overwrite one threat with another in the map, or make remove frames misbehave	Medium — depends entirely on upstream data quality, but costless to add a guard
+4	NeptunClient.kt:199-201, 223-225	REST refresh failures are silently swallowed — no state signal, no retry scheduling, no counter	Low-Medium — masked by the 45s watchdog, but creates an unsignaled degraded window
+5	README.md vs ZonePrefs.kt/Zones.kt	Doc says red 1–5 km / yellow 6–20 km; code ships red 1–20 km / yellow 21–50 km	Cosmetic but user-facing — misleads anyone reading docs before using the app
+
+
+Screenshots. 
+Zones panel, threat settings card pull up. 
+Fast and slow collapse, keep toggles visibly.
+Update pipup pictures. 
+Drag handle on threat popup to change size.
+## 16/08/2026, 11:37:31
+
+does this help?
+
+https://designbundles.net/mydigitalart13/6261853-turtle-svg
+## 16/08/2026, 11:37:36
+
+Offline notification. Tap to retry. 
+Shelter locations.
+Play Store features. 
+Ensure threat times are to zones and me. 
+Threat history. 
+Family tracking (multiple alert location).
+Backup api
+
+claude found bugs:
+Summary of confirmed findings (code-verified, not speculative)
+#	File / line	Issue	Severity
+1	MainViewModel.kt:345	Missing t.areaOnly exclusion (present in AlertService.kt:251) — oblast-centroid phantom threats can appear in zone tiers, threat-level gauge, and UI banners, causing map/siren state to diverge	High — directly causes the exact "map says X, alert says Y" mismatch
+2	AlertService.kt:328-342	Multi-threat batch coalescing picks only the single most urgent new-tier threat per tick and marks all threats in the batch as "known," silently absorbing other simultaneous zone entries	High — silent alert loss, worst exactly during reconnect bursts / saturation waves
+3	Threat.kt:219	No blank/missing id guard in fromJson — a malformed NEPTUN payload could silently overwrite one threat with another in the map, or make remove frames misbehave	Medium — depends entirely on upstream data quality, but costless to add a guard
+4	NeptunClient.kt:199-201, 223-225	REST refresh failures are silently swallowed — no state signal, no retry scheduling, no counter	Low-Medium — masked by the 45s watchdog, but creates an unsignaled degraded window
+5	README.md vs ZonePrefs.kt/Zones.kt	Doc says red 1–5 km / yellow 6–20 km; code ships red 1–20 km / yellow 21–50 km	Cosmetic but user-facing — misleads anyone reading docs before using the app
+
+
+Screenshots. 
+Zones panel, threat settings card pull up. 
+Fast and slow collapse, keep toggles visibly.
+Update pipup pictures. 
+Drag handle on threat popup to change size.
+## 16/08/2026, 11:38:11
+
+only show time to gps dot, and give the dot a subtle glow so it's understood.
+## 16/08/2026, 11:53:20
+
+tapping header shuld zoom out to full , not refocus to gps.
+
+on large-font phones, the 3 pills in the medium-size card wrap, so let's make them stay on the same line but move the skull bar to the 2nd row, and expand it.
+Reliabilty, and other "can be bars" on threat popup.  The less reading the better.
+Can "Sources" pill be tapped to see the reasons from the api? 
+
+"go touch grass" text in footer should say "no relevant threats", not just "no threats".
+
+Zones panel should expand further up if dragged, reavelaing ,threat settings card, but without its expanded sutff (just ability to toggle alerts, so a smaller panel overall, we can reuse horiztinal space better.  I'm also thinking for the "First Steps" we use this slimmer version too.
+
+in Settings, the Fast and Slow should collapse, but keep its section toggles visible.
+
+Drag handle on threat popup to change size, or some other small, but accessible way.  Maybe a thin, thick, thicker line that hovers in the bottom right, below the card.  They might need transparent larger "down" borders so fingers can tap the small icons easily.
+## 16/08/2026, 11:54:21
+
+why we mention yellow and amber...shouldn't it only be one?
+## 16/08/2026, 11:55:23
+
+🐢 does'nt this icon work fine?
+## 16/08/2026, 11:56:52
+
+i like the amber colors we use (distinct from the ukr officail yellow), so just rename it.
+## 16/08/2026, 12:02:16
+
+(while you're in strings remove the 2nd setnece "all quiet" from the all-clear messages.)
+
+2 you mean this? update any releveant android notifactions w a reason as soon as one becomes avaialble?  That way if the officail alert triggers but the user doesnt look at their phone for 2 min, when they finally do the reason will be there.
+## 16/08/2026, 12:02:24
+
+go
+## 16/08/2026, 12:03:24
+
+this could get annoying tho, many missiels in the east of the country that never need to know for odesa or lviv...but they travel so fast...so idk what we do to not annoy everybody all the time, but at the same time they should be aware if they set it so.
+## 16/08/2026, 12:09:18
+
+2. not adaptive, make it 3 rows always, w skull on bottom.
+3. maybe we have the segment bar in the full card and pills in the medium card? we need to clean this up a bit.
+
+default fast/slow is expanded. slim panel needs headers.
+alos there's some weird symbol after the region (2nd row in full card) that's always there at the end.  remove it.
+## 16/08/2026, 12:10:25
+
+## Fix 1 — `MainViewModel.kt` line 345 — missing `areaOnly` exclusion
+
+```kotlin
+// BEFORE
+for (t in neptun.threats.values) {
+    if (t.status == "resolved" || t.status == "stale" || isExpired(t, now)) continue
+    if (t.type !in mapEnabledTypes) continue
+
+// AFTER
+for (t in neptun.threats.values) {
+    if (t.status == "resolved" || t.status == "stale" || isExpired(t, now) || t.areaOnly) continue
+    if (t.type !in mapEnabledTypes) continue
+```
+
+## Fix 2 — `AlertService.kt` lines 328–342 — single-winner batch coalescing swallows simultaneous zone entries
+
+```kotlin
+// BEFORE
+val alertable = state.zoneThreats.entries
+    .mapNotNull { (id, spatial) -> alertTier(id, spatial)?.let { id to it } }
+    .toMap()
+var posted = false
+val newZone = alertable.entries
+    .filter { (id, zone) -> knownZones[id] != zone }
+    .minWithOrNull(compareBy { it.value.ordinal })
+if (newZone != null) {
+    val (id, zone) = newZone
+    val t = all[id]
+    val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
+    postAlert(zone, bannerFor(zone, s), body, state.sirenOverride)
+    posted = true
+}
+knownZones = alertable
+
+// AFTER
+val alertable = state.zoneThreats.entries
+    .mapNotNull { (id, spatial) -> alertTier(id, spatial)?.let { id to it } }
+    .toMap()
+var posted = false
+val newEntries = alertable.entries
+    .filter { (id, zone) -> knownZones[id] != zone }
+    .sortedBy { it.value.ordinal } // INNER before OUTER
+if (newEntries.isNotEmpty()) {
+    // Post one notification for the most urgent newly-changed threat, exactly as before,
+    // but only mark THAT threat as known — every other newly-changed threat stays
+    // "unknown" so it gets its own alert on the very next tick instead of being silently
+    // absorbed into this one.
+    val (id, zone) = newEntries.first()
+    val t = all[id]
+    val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
+    postAlert(zone, bannerFor(zone, s), body, state.sirenOverride)
+    posted = true
+    knownZones = knownZones + (id to zone)
+}
+// Threats whose tier didn't change keep their existing knownZones entry; threats that
+// left zoneThreats entirely (resolved/expired/out of range) are dropped so a future
+// re-entry is treated as new.
+knownZones = state.zoneThreats.keys
+    .associateWith { id -> alertable[id] ?: knownZones[id] }
+    .filterValues { it != null }
+    .mapValues { it.value!! } + if (posted) mapOf(newEntries.first().key to newEntries.first().value) else emptyMap()
+```
+
+*(Note: the last block is a touch verbose — if your other AI simplifies it, the invariant that must hold is: **only the id that actually got a notification should be marked "known" this tick; every other newly-changed id must remain eligible to fire on the next tick.** A simpler equivalent: keep `knownZones` as-is for ids not in `newEntries`, add only the fired id, and leave the rest of `newEntries` untouched in `knownZones` so they're re-evaluated next tick.)*
+
+## Fix 3 — `Threat.kt` — blank/missing `id` guard in `fromJson`
+
+```kotlin
+// BEFORE
+fun fromJson(o: JSONObject): Threat? {
+    val lat = o.optDouble("lat", Double.NaN)
+    val lon = o.optDouble("lon", Double.NaN)
+    if (lat.isNaN() || lon.isNaN()) return null
+
+// AFTER
+fun fromJson(o: JSONObject): Threat? {
+    val lat = o.optDouble("lat", Double.NaN)
+    val lon = o.optDouble("lon", Double.NaN)
+    if (lat.isNaN() || lon.isNaN()) return null
+    if (o.optString("id").isBlank()) return null
+```
+
+## Fix 4 — `NeptunClient.kt` — silent REST failures get surfaced into state
+
+```kotlin
+// BEFORE
+client.newCall(request).enqueue(object : Callback {
+    override fun onFailure(call: Call, e: IOException) {
+        restInFlight.set(false)
+    }
+
+    override fun onResponse(call: Call, response: Response) {
+        restInFlight.set(false)
+        response.use {
+            if (!it.isSuccessful) return
+            val body = it.body?.string() ?: return
+            try {
+                val env = JSONObject(body)
+                val arr = env.optJSONArray("threats") ?: return
+                val merged = LinkedHashMap<String, Threat>(_state.value.threats)
+                for (i in 0 until arr.length()) {
+                    val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
+                    val existing = merged[t.id]
+                    if (existing == null || (t.updatedAtMillis ?: 0L) > (existing.updatedAtMillis ?: 0L)) {
+                        merged[t.id] = t
+                    }
+                }
+                _state.value = _state.value.copy(threats = merged)
+            } catch (_: Exception) {
+                // Malformed REST payload — keep current state.
+            }
+        }
+    }
+})
+
+// AFTER
+client.newCall(request).enqueue(object : Callback {
+    override fun onFailure(call: Call, e: IOException) {
+        restInFlight.set(false)
+        _state.value = _state.value.copy(lastError = e.message)
+    }
+
+    override fun onResponse(call: Call, response: Response) {
+        restInFlight.set(false)
+        response.use {
+            if (!it.isSuccessful) {
+                _state.value = _state.value.copy(lastError = "REST HTTP ${it.code}")
+                return
+            }
+            val body = it.body?.string() ?: return
+            try {
+                val env = JSONObject(body)
+                val arr = env.optJSONArray("threats") ?: return
+                val merged = LinkedHashMap<String, Threat>(_state.value.threats)
+                for (i in 0 until arr.length()) {
+                    val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
+                    val existing = merged[t.id]
+                    if (existing == null || (t.updatedAtMillis ?: 0L) > (existing.updatedAtMillis ?: 0L)) {
+                        merged[t.id] = t
+                    }
+                }
+                _state.value = _state.value.copy(threats = merged, lastError = null)
+            } catch (_: Exception) {
+                // Malformed REST payload — keep current threats, but surface that a refresh failed.
+                _state.value = _state.value.copy(lastError = "Malformed REST payload")
+            }
+        }
+    }
+})
+```
+
+## Fix 5 — README doc/code mismatch (red/yellow zone ranges)
+
+```markdown
+<!-- BEFORE (README) -->
+red 1–5 km / yellow 6–20 km
+
+<!-- AFTER (README) -->
+red 1–20 km / yellow 21–50 km
+```
+
+## Fix 6 — `NeptunClient.kt` — `forceOffline` never sets `offlineSince`, elapsed time pinned at 0
+
+```kotlin
+// BEFORE
+fun setForceOffline(force: Boolean) {
+    _state.value = _state.value.copy(forceOffline = force)
+}
+
+// AFTER
+fun setForceOffline(force: Boolean) {
+    _state.value = _state.value.copy(
+        forceOffline = force,
+        // Mirror a real disconnect's offlineSince so the elapsed-time math (and thus the
+        // offline notification/UI text) actually exercises a rising duration under the
+        // test toggle instead of being pinned at 0. Only stamp it if not already set by a
+        // real drop; only clear it on turn-off if the real socket is actually connected.
+        offlineSince = when {
+            force && _state.value.offlineSince == null -> System.currentTimeMillis()
+            !force && _state.value.connected -> null
+            else -> _state.value.offlineSince
+        }
+    )
+}
+```
+
+## Fix 7 — `MainScreen.kt` — backup row shows "Active" badge while its own dot is red at cold start
+
+```kotlin
+// BEFORE
+SourceStatusRow(
+    color = when {
+        backupUp -> Color(0xFF4CAF50)
+        backupSeen -> Color(0xFFF9A825)
+        else -> Color(0xFFE57373)
+    },
+    name = s.connBackupLabel,
+    status = backupStatus,
+    active = backupActive,
+    activeLabel = s.connActiveLabel
+)
+
+// AFTER
+SourceStatusRow(
+    color = when {
+        backupUp -> Color(0xFF4CAF50)
+        backupSeen -> Color(0xFFF9A825)
+        else -> Color(0xFFE57373)
+    },
+    name = s.connBackupLabel,
+    status = backupStatus,
+    // Don't badge the backup as "Active" if it has never once succeeded — a source that's
+    // red (never confirmed healthy) shouldn't simultaneously read as the active source.
+    active = backupActive && backupSeen,
+    activeLabel = s.connActiveLabel
+)
+```
+
+*(Companion change: the NEPTUN row's `active = !backupActive` should become `active = !backupActive || !backupSeen` for the same reason — if backup isn't actually confirmed active, NEPTUN should still read as the de facto active row even while nominally "down"/reconnecting.)*
+
+```kotlin
+// BEFORE
+SourceStatusRow(
+    color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
+    name = s.connNeptunLabel,
+    status = neptunStatus,
+    active = !backupActive,
+    activeLabel = s.connActiveLabel
+)
+
+// AFTER
+SourceStatusRow(
+    color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
+    name = s.connNeptunLabel,
+    status = neptunStatus,
+    active = !backupActive || !backupSeen,
+    activeLabel = s.connActiveLabel
+)
+```
+
+## Fix 8 — `Threat.kt` — `mergeAlerts` deduplicates by exact string match instead of the stem-tolerant matching used everywhere else
+
+```kotlin
+// BEFORE
+fun mergeAlerts(primary: List<OblastAlert>, backup: List<OblastAlert>): List<OblastAlert> {
+    val seen = HashSet<String>()
+    val out = ArrayList<OblastAlert>(primary.size + backup.size)
+    for (a in primary) {
+        if (seen.add(a.oblast)) out.add(a)
+    }
+    for (a in backup) {
+        if (seen.add(a.oblast)) out.add(a)
+    }
+    return out
+}
+
+// AFTER
+/**
+ * Merge two oblast-alert lists into one, de-duplicated by whether they refer to the same
+ * oblast. Uses the same startsWith/stem-tolerant comparison as [inOblast] rather than exact
+ * string equality, since the two sources format oblast names independently (NEPTUN's
+ * `oblast` field vs. alerts.com.ua's `name` reused as `oblast`) and are not guaranteed to
+ * match verbatim. NEPTUN entries win on tie; the backup only adds oblasts NEPTUN didn't
+ * already list.
+ */
+fun mergeAlerts(primary: List<OblastAlert>, backup: List<OblastAlert>): List<OblastAlert> {
+    val out = ArrayList<OblastAlert>(primary.size + backup.size)
+    out.addAll(primary)
+    for (b in backup) {
+        val alreadyCovered = primary.any { p ->
+            p.oblast.startsWith(b.oblast, ignoreCase = true) ||
+                b.oblast.startsWith(p.oblast, ignoreCase = true) ||
+                p.name.startsWith(b.name, ignoreCase = true) ||
+                b.name.startsWith(p.name, ignoreCase = true)
+        }
+        if (!alreadyCovered) out.add(b)
+    }
+    return out
+}
+```
+
+---
+
+That's all 9 fixes (#1–#9, skipping the pill/dialog cosmetic inconsistency #8-in-my-earlier-numbering since it's superseded by fix 7's badge logic — resolving the badge mismatch resolves the story-consistency issue too). Hand these to your other AI with the file names attached; each is a minimal, localized change that doesn't touch surrounding logic.
+## 16/08/2026, 12:15:18
+
+the alerts-off bell looks like it USES alerts, so we need like a red cross, or red colored instead of gray.  same for the floating on map.  we can reuse in multiple places?
+## 16/08/2026, 12:26:52
+
+go
+## 16/08/2026, 12:42:43
+
+go
+## 16/08/2026, 12:45:51
+
+go
+## 16/08/2026, 12:48:13
+
+go
+## 16/08/2026, 12:50:06
+
+the oepn call confsues me, explain more
+## 16/08/2026, 12:51:51
+
+3. relaiblaity as red when high should be green no? Threats that are high are red, but reliabilty/precision are kidn of the opposite meaning, where the more sure they are the more "green".  does that make sense?
+## 16/08/2026, 12:55:26
+
+A
+## 16/08/2026, 12:56:24
+
+ic_bolt.xml should be the emoji too, delete it.
+ignore changelog.
+## 16/08/2026, 12:58:10
+
+go
+## 16/08/2026, 13:00:48
+
+unrelated to this project: it's possible to start adding the timestamp to replies so i know how long ago the session was last used, or is that in the source code of opencode client itself?
+## 16/08/2026, 13:02:53
+
+i think we should separate the system status screen into its own file now
+## 16/08/2026, 13:05:39
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 16/08/2026, 13:12:11
+
+ ConnectionStatus.kt  is more best practise? use it.  
+## 16/08/2026, 13:15:38
+
+go
+## 16/08/2026, 13:25:25
+
+connectionstatus should show the URL only to neptun, regardless of status.
+## 16/08/2026, 13:30:48
+
+i put neptun.png in root.  use it 
+## 16/08/2026, 13:32:03
+
+go
+## 16/08/2026, 13:33:17
+
+the city names on the map have "(x)" next to them...is that the number of threats?  seems to not work.  i see 4 drones, but odesa shows 1
+## 16/08/2026, 13:34:21
+
+its transparent, w just an orange trident-like logo.  should be fine.
+## 16/08/2026, 13:35:10
+
+the header, red trident is hidden when the entire header is filled red.  
+## 16/08/2026, 13:41:43
+
+go
+## 16/08/2026, 13:48:30
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 16/08/2026, 14:22:23
+
+the header, red trident is hidden when the entire header is filled red.  
+
+in connectionstatus the neptun logo needs the url next to it as well.  all clickable. 
+
+The city names on the map have "(x)" next to them...is that the number of threats?  seems to not work.  i see 4 drones, but odesa shows 1.  prob we don't need it at all.
+
+when a threat is gone, if the threatcard is up, it should remove evertyhing but the threat type logo and title, and replace all else with "neutralized", then fade the box out over 2s, of which the last 0.4s is most of the fading.
+
+the connectionstatus is still buggy.  I have seen "backup" for like 10min, but still neptun seems to be online.  the neptun connection seems to not indicate it was reconnected.
+
+in settings, we dont' need the red dot on pin to city for each city.  so just make it a normal dropdown box.
+
+the threat poup should not show the "typical" speed.  only show the speed if it's actually measured.
+
+any notification that need translating should show the notif immediately, but do the background translation and update the body once received.
+
+replace the word "coarse" with "approximate"; ukrainin might need better word too.
+reword "Zones follow your GPS" to "Threat alarm is following your GPS" or "Threat alarm is pinned to [city]".  I notice they use "anxiety" in ukraine to mean threat?
+
+why aren't threats actually moving on the map?
+## 16/08/2026, 14:24:15
+
+relaibality is way to big...no need the words.  make it like the Precision bar, but keep the same total width.  low should be on the left, high on the right, 
+## 16/08/2026, 14:31:19
+
+go
+## 16/08/2026, 14:36:46
+
+in settings, fast/slow collapse should remember state.
+
+in alert zone panel let's just make it only fast or slow as a group.  only in settings screen can you toggle individaul threats.  make them always visible at the bottom--no longer an additional pull up needed.
+
+in settings, the fast/slow toggles sometimes are confusing...i should be able to press alerts even if maps is off, but auto turn on maps if needed.  currently i can't even press alerts for the group because one threat is off, which feels buggy.
+
+i still don't like the zones km/time functaionality.  I want a km zone market for slow, and time-based sliders for fast.  no zone is needed for time-based, it makse no sense, but sliders indicating.  the blob of text is confusing.  now that we have fast/slow in multiple places, the panel should be organized better.
+
+
+is it too muhc work for one session?
+## 16/08/2026, 14:45:05
+
+6. is it a custom dropdown we can use native now? 
+9. rought estimate should be "approximate" too
+## 16/08/2026, 14:46:23
+
+give me expanded plans split into reasonable token-friendly sessions... 2 or 3 is good enough?  i'll put each into brand new sessions.
+## 16/08/2026, 14:51:00
+
+Scope: dead-reckoning, backup liveness, city-count removal, speed pill, notification translation, wording. Self-contained, medium risk.
+
+1. Remove city "(x)" threat counts
+MainViewModel.kt: delete cityCounts from UiState (line 54); delete the cityCounts computation block (lines 337–349, incl. the t.locality?.takeIf { it in Cities.cityOblast }... block); delete cityCounts = cityCounts (line 437).
+Cities.kt: remove cityCounts param from CityLabelOverlay (line 177) and the count-draw logic (lines 214–215); label = name(c) only. Keep the red-oblast highlight (activeRegionTokens).
+MapView.kt: remove the for ((c, n) in uiState.cityCounts) line from overlayKey (line 228) and drop the uiState.cityCounts arg at line 378.
+2. Backup pill — base on any data liveness
+NeptunClient.kt:
+Add lastFrameAt: Long = 0 to NeptunState; remove lastAlertAt (line 33).
+backupActive (lines 63–64): neptunDown || (lastFrameAt > 0 && System.currentTimeMillis() - lastFrameAt > NeptunClient.BACKUP_FALLBACK_MS).
+Stamp lastFrameAt = now in _state.value.copy(...) inside onOpen (line 290) and onMessage (line 295); remove lastAlertAt = ... from the "alerts" frame handler (line 391).
+AlertsUaTest.kt: replace every lastAlertAt = System.currentTimeMillis() with lastFrameAt = System.currentTimeMillis() (lines 51, 82, 113, 124, 133). Add: connected + lastFrameAt = now - 70_000 → backupActive true; reconnected (lastFrameAt fresh) → false.
+3. Popup speed only when actually measured
+ThreatPopupCard.kt PillTrio (line 543): show the speed pill only when proximity.speedSource == SpeedSource.RECORDED (skip TYPICAL/nominal).
+4. Notifications: post raw, translate in background
+AlertService.kt:
+Add an alertEpoch: Int counter, incremented in postAlert, postAllClear, and cancelAlert.
+Extract the builder in postAlert (lines 526–534) into buildAlertNotification(zone, title, body, sirenOverride).
+Add lang: AppLanguage param to postAlert; call sites pass state.lang (lines 343, 359, 375).
+After safeNotify, when lang == EN: capture val gen = alertEpoch, scope.launch { val translated = Translator.translate(body) ?: return@launch; if (gen != alertEpoch) return@launch; safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, translated, sirenOverride)) }. (Same-id re-post doesn't re-sound — same assumption as the existing wait-for-reason path, lines 367–383.)
+5. Wording — "coarse"/"rough" → "approximate"
+Strings.kt:
+zoneExplain UA (276): Координати загроз грубі → Координати загроз приблизні
+zoneExplain EN (512): Threat positions are coarse → Threat positions are approximate
+disclaimerBody UA (286): груба оцінка → приблизна оцінка
+disclaimerBody EN (519): rough estimate → approximate estimate; rough guide → approximate guide
+cardSkullNote UA (346): груба оцінка → приблизна оцінка
+cardSkullNote EN (579): rough estimate → approximate estimate
+guideCardReadD1 UA (454): груба оцінка рівня загрози → приблизна оцінка рівня загрози
+guideCardReadD1 EN (687): rough threat level → approximate threat level
+Threat.kt CRUISE detailsEn (76): Positions can be rough → Positions can be approximate.
+(ThreatLevel.kt:9 is a code comment — leave.)
+6. Reword "Zones follow your GPS"
+Strings.kt: notifStatusZones UA (296) Тривога слідкує за твоїм GPS; EN (532) Threat alarm is following your GPS. notifStatusPinned UA (382) Тривога прикріплена до %1$s; EN (618) Threat alarm is pinned to %1$s.
+AlertService.kt line 313: s.notifStatusPinned → String.format(s.notifStatusPinned, state.focusBannerCity).
+7. Threats actually move on the map (dead-reckoning)
+Prediction.kt predictPosition (lines 123–136): replace the if (!t.flying) return null gate with:
+if (t.status != "active") return null
+val heading = t.bearingDeg ?: t.heading ?: return null (then use heading for the projection; keep confirmedAtMillis anchor, horizon, ghost-cap).
+Speed stays the passed estimate (server → measured → nominal).
+PredictionTest.kt: existing null-cases still hold (stale→null via status gate; no-heading→null). Add: a threat with only top-level heading + confirmedAtMillis + active glides along heading; a heading = null active threat returns null.
+Docs & verify (all sessions)
+Append one CHANGELOG.md [Unreleased] entry summarizing the user-visible changes for this session.
+Update ARCHITECTURE.md where this session changes documented behavior (NeptunClient backupActive liveness; Prediction invariant now "dead-reckons tracks with a real heading").
+.\gradlew.bat :app:assembleDebug; .\gradlew.bat :app:testDebugUnitTest.
+## 16/08/2026, 14:51:13
+
+SESSION 2 — UI polish & toggle model
+Scope: trident, Neptun URL, neutralized card, pin dropdown, persist collapse, decouple Map/Alerts. Self-contained, mostly Compose UI.
+
+1. Trident visible on red header
+MainScreen.kt UkraineEmblem (644–666): add contrast: Boolean = false; when contrast, colorFilter = ColorFilter.tint(Color.White) (ignores active); else existing logic. Call site (386–389): pass contrast = activeZone != null.
+2. Neptun logo + URL, clickable row
+ConnectionStatus.kt (164–177): replace the Image with a Row(verticalAlignment = CenterVertically) of Image (same painter, height 40.dp) + Spacer(6.dp) + Text("neptun.in.ua", bodySmall, white/onSurfaceVariant), whole row clickable → existing startActivity(Intent(ACTION_VIEW, Uri.parse("https://neptun.in.ua/"))).
+3. Neutralized card + fade
+Strings.kt: add neutralizedLabel → UA Нейтралізовано, EN Neutralized.
+MainViewModel.kt: add UiState.neutralizedThreat: Threat? = null; in buildUiState after refreshedSelected (line 378): neutralizedThreat = if (selected != null && refreshedSelected == null) selected else null; set in the returned UiState.
+ThreatPopupCard.kt: add neutralized: Boolean = false. When true, render only a compact Surface: Icon(iconResFor(type)) + Text(typeLabel) + Text(s.neutralizedLabel) — no pills/skull/region/close; non-interactive.
+MainScreen.kt popup block (525–558): if uiState.selectedThreat == null && uiState.neutralizedThreat != null, show the neutralized card wrapped in graphicsLayer { alpha = fade.value } with Animatable(1f) → animateTo(0f, tween(2000, easing = { t -> if (t < 0.8f) 1f else 1f - (t - 0.8f) / 0.2f })), then onDismissPopup(). Hide ThreatCardSizeControl during this state.
+4. Pin-city dropdown → plain rows
+SettingsScreen.kt PinCityRow (756–817): delete the red-dot Box block (797–805); item = Text(label(city)) only. Remove the redCities param from PinCityRow, from SettingsScreen (line 74), and the pass-through at line 229–235 (and MainScreen.kt:120). Keep UiState.redCities (still used by hasActiveAlert, MainViewModel.kt:584).
+Wording: pinCityDesc UA (375) drop Червоним позначені області з офіційною тривогою.; EN (611) drop Cities with an official oblast alert are marked red.; guidePinD3 UA (452) drop the red-marked sentence; EN (688) drop Cities with an official alert are marked red in the list.
+5. Remember fast/slow collapse state
+ZonePrefs.kt: add fastGroupCollapsedKey/slowGroupCollapsedKey booleans + fastGroupCollapsed()/slowGroupCollapsed() flows + setters.
+MainViewModel.kt: thread both into PrefsSnapshot → UiState (fastGroupCollapsed, slowGroupCollapsed); add setFastGroupCollapsed(Boolean)/setSlowGroupCollapsed(Boolean).
+SettingsScreen.kt: replace the local collapsedGroups (line 112) with the two params; header click (lines 285–288) calls the callback; groupCollapsed (line 279) reads the param.
+6. Decouple Map/Alerts toggles (alerts always pressable, auto-enable map)
+MainViewModel.kt:
+setThreatMapVisible (502–508): delete if (!visible) prefs.setThreatAlertsEnabled(type, false).
+setGroupThreatMapVisible (517–525): delete the force-disable loop.
+setThreatAlertsEnabled (510–515): when enabled, also prefs.setThreatMapVisible(type, true).
+setGroupThreatAlertsEnabled (527–532): when enabled, also set map visible for every type.
+ThreatTogglePanel.kt: alerts toggle enabled = onMap → enabled = true (SlimTypeRow line 229); group alerts enabled = groupMapOn → enabled = true (SlimThreatToggles line 165).
+SettingsScreen.kt: ThreatSettingsCard alerts enabled = onMap → true (line 682); group-header alerts enabled = groupMapOn → true (line 317).
+ARCHITECTURE.md: rewrite the "Threat type gating" invariant (map-off no longer silences alerts; alerts-on auto-enables map).
+Docs & verify
+CHANGELOG.md [Unreleased] entry; ARCHITECTURE.md updates.
+.\gradlew.bat :app:assembleDebug; .\gradlew.bat :app:testDebugUnitTest.
+## 16/08/2026, 14:51:30
+
+SESSION 3 — Zones km/time rework + always-visible panel
+Scope: the big one — per-group tiering (slow=km, fast=min) + permanent bottom panel. Safety-critical: both MainViewModel and AlertService must be updated together. All design decisions are locked in below.
+
+Domain — Zones.kt
+Add val FastThreatTypes = setOf(BALLISTIC, CRUISE_MISSILE, AVIATION, KAB) here (single source); ThreatTogglePanel.kt references it instead of defining it (line 25). Slow = all others (incl. UNKNOWN — matches current UI grouping).
+Replace TimeZones (line 11) with:
+data class ZoneParams(val slowRedKm: Int, val slowYellowKm: Int, val fastRedMin: Int, val fastYellowMin: Int)
+New fun zoneTier(t, distKm, speedKmh, params): ThreatZone?:
+if (distKm > reachKm(t.type)) return null
+Fast group: speed = if (t.type == AVIATION) BALLISTIC_SPEED_KMH else speedKmh; eta = etaMinutes(distKm, speed); eta != null && eta <= fastRedMin → INNER; <= fastYellowMin → OUTER; else null.
+Slow group: distKm <= slowRedKm → INNER; <= slowYellowKm → OUTER; else null.
+Delete timeZone, zoneCircleKm, ZONE_CIRCLE_REF_KMH. Keep etaMinutes, reachKm, BALLISTIC_SPEED_KMH.
+Prefs — ZonePrefs.kt
+Replace redZoneMin/yellowZoneMin (lines 26–27, 44–56) with four int keys + flows + setters. Proposed defaults/ranges (confirm during impl): slowRedKm 60 (5–100), slowYellowKm 180 (20–300), fastRedMin 10 (2–20), fastYellowMin 30 (5–60). Keep redArmed/yellowArmed (shared tier bells). Old red_zone_min/yellow_zone_min keys retired (stop reading).
+MainViewModel.kt
+zonesFlow (100–102) → combine the 4 prefs into ZoneParams. PrefsSnapshot ints → 4 fields.
+UiState: replace redZoneMin/yellowZoneMin/redCircleKm/yellowCircleKm (40–43) with slowRedKm, slowYellowKm, fastRedMin, fastYellowMin (drawn circles = slow km). buildUiState (298–300): params = ZoneParams(...); tiering at 363 → zoneTier(t, distKm, speedKmh, params); return fields (427–428).
+ThreatProximity (73–81): replace redMin/yellowMin with params: ZoneParams; proximity build (401–409) passes it.
+AlertService.kt
+radii combine (line 165) → 4 prefs → ZoneParams; thread through MonitorEvent.State.
+zoneThreats (250–263): zoneTier(t, distKm, speedKmh, params).
+buildReason (195, 459–461): ThreatLevelModel.scoreOf's redKm/yellowKm args → per-threat group values (if (type in FastThreatTypes) fastRedMin to fastYellowMin else slowRedKm to slowYellowKm); verify ThreatLevelModel.scoreOf signature still compiles.
+Map — MapView.kt
+Circles (383–405): draw red at uiState.slowRedKm, yellow at uiState.slowYellowKm (literal slow zone; no time-reference circle). Update overlayKey (223). Drop the "reference speed" comment.
+Popup band — ThreatPopupCard.kt
+Lines 119–121: timeTier(threat, dist, speed, TimeZones(p.redMin, p.yellowMin)) → zoneTier(threat, dist, speed, p.params).
+UI — always-visible bottom panel (B)
+MainScreen.kt: delete showZonesSheet/zonesExpanded/openZonesPanel/fitZonesTick (330–346) and the if (showZonesSheet) block (562–639). ZoneButtons: remove the edit-zones button (743–…); keep red/yellow zoom pills. Render a permanent ZonesPanel above the threat strip (or below map — decide during impl; map keeps weight(1f)).
+ZonesSheet.kt: rewrite ZonesEditContent → ZonesPanel:
+Slow section: red-km slider + yellow-km slider (bells), unit km.
+Fast section: red-min slider + yellow-min slider (bells), unit min.
+One Fast/Slow group-toggle row: ⚡ [Map][Alerts] 🐢 [Map][Alerts] (group-only — no per-type rows here; SlimThreatToggles stays only for the first-run dialog).
+Replace the zoneExplain blob with short captions ("Slow — distance km" / "Fast — time to arrival"). ZoneRow gains a unit: String param.
+New group-only toggle composable in ThreatTogglePanel.kt (reuse group-row logic from SlimThreatToggles, no type rows).
+Strings / guide
+Update/remove zoneExplain, redZoneHint, yellowZoneHint, guideZones*, guideEditZones*, guideFollow* to match the km/min model (EN + UA). Add section captions.
+Tests
+ZonesTest.kt: rewrite — slow km tiering (INNER/OUTER/null), fast min tiering, reach caps, AVIATION override, null-speed fast → null. Drop zoneCircleKm tests.
+Confirm ThreatLevelTest.kt compiles after scoreOf arg change.
+Docs & verify
+CHANGELOG.md [Unreleased] entry; ARCHITECTURE.md module map + "Zone tiering" invariant (per-group zoneTier, slow circles only).
+.\gradlew.bat :app:assembleDebug; .\gradlew.bat :app:testDebugUnitTest.
+## 16/08/2026, 14:51:48
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 16/08/2026, 14:57:06
+
+go

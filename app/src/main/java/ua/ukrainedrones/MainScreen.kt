@@ -2,7 +2,6 @@ package ua.ukrainedrones
 
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,9 +16,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,12 +40,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription as semanticsContentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
@@ -99,10 +94,15 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onThreatTapped = { viewModel.selectThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
             onMapTapped = { viewModel.selectThreat(null) },
-            onRedZoneChange = { viewModel.setRedZoneKm(it) },
-            onYellowZoneChange = { viewModel.setYellowZoneKm(it) },
+            onRedZoneChange = { viewModel.setRedZoneMin(it) },
+            onYellowZoneChange = { viewModel.setYellowZoneMin(it) },
             onRedArmedChange = { viewModel.setRedArmed(it) },
             onYellowArmedChange = { viewModel.setYellowArmed(it) },
+            onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
+            onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
+            onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
+            onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
+            onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline
         )
         if (screen == Screen.SETTINGS) {
@@ -112,7 +112,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 lang = uiState.language,
                 hiddenTypes = uiState.hiddenTypes,
                 silencedTypes = uiState.silencedTypes,
-                fastAlertsSooner = uiState.fastAlertsSooner,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
                 sirenOverride = uiState.sirenOverride,
                 disclaimerCollapsed = uiState.disclaimerCollapsed,
@@ -130,7 +129,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
                 onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
                 onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
-                onFastAlertsSoonerChange = { viewModel.setFastAlertsSooner(it) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
                 onFollowMeChange = { viewModel.setFollowMe(it) },
@@ -190,8 +188,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     if (!uiState.languageChosen) {
         LanguageChooseDialog(
             current = uiState.language,
+            hiddenTypes = uiState.hiddenTypes,
+            silencedTypes = uiState.silencedTypes,
             onChoose = { viewModel.setLanguage(it) },
-            onLater = { viewModel.skipLanguageChoose() }
+            onLater = { viewModel.skipLanguageChoose() },
+            onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
+            onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
+            onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
+            onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) }
         )
     }
 }
@@ -199,8 +203,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 @Composable
 private fun LanguageChooseDialog(
     current: AppLanguage,
+    hiddenTypes: Set<ThreatType>,
+    silencedTypes: Set<ThreatType>,
     onChoose: (AppLanguage) -> Unit,
-    onLater: () -> Unit
+    onLater: () -> Unit,
+    onThreatMapToggle: (ThreatType, Boolean) -> Unit,
+    onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
+    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
+    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit
 ) {
     val s = Strings.get(current)
     AlertDialog(
@@ -208,7 +218,7 @@ private fun LanguageChooseDialog(
         confirmButton = { TextButton(onClick = onLater) { Text(s.okButton) } },
         title = { Text(s.languageChooseTitle) },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -253,6 +263,24 @@ private fun LanguageChooseDialog(
                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                     text = s.onboardingTipSiren
                 )
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    s.threatsLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SlimThreatToggles(
+                    lang = current,
+                    hiddenTypes = hiddenTypes,
+                    silencedTypes = silencedTypes,
+                    onThreatMapToggle = onThreatMapToggle,
+                    onThreatAlertToggle = onThreatAlertToggle,
+                    onThreatMapToggleAll = onThreatMapToggleAll,
+                    onThreatAlertToggleAll = onThreatAlertToggleAll
+                )
             }
         }
     )
@@ -291,12 +319,18 @@ private fun MapScreen(
     onYellowZoneChange: (Int) -> Unit,
     onRedArmedChange: (Boolean) -> Unit,
     onYellowArmedChange: (Boolean) -> Unit,
+    onThreatMapToggle: (ThreatType, Boolean) -> Unit,
+    onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
+    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
+    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
+    onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit
 ) {
     val s = Strings.get(uiState.language)
-    var recenterTick by remember { mutableStateOf(0) }
+    var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
     var showZonesSheet by remember { mutableStateOf(false) }
+    var zonesExpanded by remember { mutableStateOf(false) }
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
@@ -359,7 +393,7 @@ private fun MapScreen(
                 ) {
                     Text(
                         text = alertText,
-                        modifier = Modifier.clickable(onClick = { recenterTick++ }),
+                        modifier = Modifier.clickable(onClick = { fitUkraineTick++ }),
                         style = when {
                             activeZone != null -> MaterialTheme.typography.titleMedium.copy(color = Color.White)
                             officialOnly -> MaterialTheme.typography.titleMedium.copy(color = Color(0xFFE57373))
@@ -403,7 +437,7 @@ private fun MapScreen(
                         onScaleChange = { scaleMpp = it },
                         onThreatTapped = onThreatTapped,
                         onMapTapped = onMapTapped,
-                        recenterTick = recenterTick,
+                        fitUkraineTick = fitUkraineTick,
                         zoomZone = zoomZone,
                         zoomTick = zoomTick,
                         fitZonesTick = fitZonesTick,
@@ -494,18 +528,32 @@ private fun MapScreen(
                         .align(Alignment.TopCenter)
                         .padding(top = 12.dp, start = 16.dp, end = 16.dp)
                 ) {
-                    ThreatPopupCard(
-                        threat = threat,
-                        lang = uiState.language,
-                        proximity = uiState.selectedThreatInfo,
-                        pinnedCity = if (uiState.followMe) null else uiState.pinnedCity,
-                        threatLevel = uiState.threatLevel,
-                        fastAlertsSooner = uiState.fastAlertsSooner,
-                        cardSize = uiState.threatCardSize,
-                        alertsOff = threat.type in uiState.silencedTypes,
-                        onDismiss = onDismissPopup,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Column {
+                        ThreatPopupCard(
+                            threat = threat,
+                            lang = uiState.language,
+                            proximity = uiState.selectedThreatInfo,
+                            pinnedCity = if (uiState.followMe) null else uiState.pinnedCity,
+                            threatLevel = uiState.threatLevel,
+                            cardSize = uiState.threatCardSize,
+                            alertsOff = threat.type in uiState.silencedTypes,
+                            onDismiss = onDismissPopup,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            ThreatCardSizeControl(
+                                current = uiState.threatCardSize,
+                                contentDescription = s.cardSizeLabel,
+                                onClick = {
+                                    onThreatCardSizeChange(nextThreatCardSize(uiState.threatCardSize))
+                                },
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -523,7 +571,8 @@ private fun MapScreen(
                         val density = LocalDensity.current
                         val dismissThresholdPx = with(density) { 80.dp.toPx() }
                         var dragAccum by remember { mutableFloatStateOf(0f) }
-                        val closeSheet = { showZonesSheet = false }
+                        val closeSheet = { showZonesSheet = false; zonesExpanded = false }
+                        val expandedNow by rememberUpdatedState(zonesExpanded)
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -531,7 +580,14 @@ private fun MapScreen(
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
-                                            if (dragAccum > dismissThresholdPx) closeSheet()
+                                            if (expandedNow) {
+                                                // Dragging down collapses the slim toggles panel.
+                                                if (dragAccum > dismissThresholdPx) zonesExpanded = false
+                                            } else {
+                                                // Dragging up reveals the slim toggles; down closes the sheet.
+                                                if (dragAccum < -dismissThresholdPx) zonesExpanded = true
+                                                else if (dragAccum > dismissThresholdPx) closeSheet()
+                                            }
                                             dragAccum = 0f
                                         },
                                         onDragCancel = { dragAccum = 0f }
@@ -552,8 +608,8 @@ private fun MapScreen(
                             )
                         }
                         ZonesEditContent(
-                            redKm = uiState.redZoneKm,
-                            yellowKm = uiState.yellowZoneKm,
+                            redMin = uiState.redZoneMin,
+                            yellowMin = uiState.yellowZoneMin,
                             redArmed = uiState.redArmed,
                             yellowArmed = uiState.yellowArmed,
                             lang = uiState.language,
@@ -563,6 +619,21 @@ private fun MapScreen(
                             onYellowArmedChange = onYellowArmedChange,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
+                        if (zonesExpanded) {
+                            HorizontalDivider(color = Color(0xFF3A3A3A))
+                            Spacer(Modifier.height(6.dp))
+                            SlimThreatToggles(
+                                lang = uiState.language,
+                                hiddenTypes = uiState.hiddenTypes,
+                                silencedTypes = uiState.silencedTypes,
+                                onThreatMapToggle = onThreatMapToggle,
+                                onThreatAlertToggle = onThreatAlertToggle,
+                                onThreatMapToggleAll = onThreatMapToggleAll,
+                                onThreatAlertToggleAll = onThreatAlertToggleAll,
+                                modifier = Modifier.padding(horizontal = 20.dp)
+                            )
+                            Spacer(Modifier.height(14.dp))
+                        }
                     }
                 }
             }
@@ -744,13 +815,8 @@ private fun ZoneButton(
             contentAlignment = Alignment.Center
         ) {
             if (!armed) {
-                // Dimmed bell floating above the pill signals this zone's alerts are off.
-                Icon(
-                    imageVector = Icons.Outlined.Notifications,
-                    contentDescription = null,
-                    tint = Color(0xFF888888),
-                    modifier = Modifier.size(16.dp)
-                )
+                // Red crossed bell floating above the pill signals this zone's alerts are off.
+                AlertsOffBell(size = 16.dp)
             }
         }
         ZonePill(zone, armed, contentDescription, onZoneTap)
@@ -817,193 +883,6 @@ private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ConnectionStatus(
-    neptunDown: Boolean,
-    backupActive: Boolean,
-    backupUp: Boolean,
-    backupSeen: Boolean,
-    backupOfflineElapsedSec: Long?,
-    offlineElapsedSec: Long?,
-    forceOffline: Boolean,
-    onForceOfflineChange: (Boolean) -> Unit,
-    s: Strings.StringSet,
-    modifier: Modifier = Modifier
-) {
-    val dotColor = when {
-        neptunDown -> Color(0xFFE57373) // red — NEPTUN offline (real or simulated)
-        backupActive -> Color(0xFFF9A825) // amber — NEPTUN alive but on the backup source
-        else -> Color(0xFF4CAF50)
-    }
-    val label = when {
-        neptunDown -> offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
-            ?: s.connOffline
-        backupActive -> s.connBackup
-        else -> s.connOnline
-    }
-    var showInfo by remember { mutableStateOf(false) }
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.55f))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
-            .clickable { showInfo = true },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(dotColor)
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = label,
-            color = Color.White,
-            style = MaterialTheme.typography.labelMedium
-        )
-    }
-    if (showInfo) {
-        val context = LocalContext.current
-        AlertDialog(
-            onDismissRequest = { showInfo = false },
-            confirmButton = {
-                TextButton(onClick = { showInfo = false }) { Text(s.backButton) }
-            },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(dotColor)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(s.connStatusTitle)
-                }
-            },
-            text = {
-                val neptunStatus = if (!neptunDown) s.connOnline
-                else offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
-                    ?: s.connOffline
-                val backupStatus = if (backupUp) s.connOnline
-                else backupOfflineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
-                    ?: s.connOffline
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SourceStatusRow(
-                        color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
-                        name = s.connNeptunLabel,
-                        status = neptunStatus,
-                        active = !backupActive,
-                        activeLabel = s.connActiveLabel
-                    )
-                    SourceStatusRow(
-                        color = when {
-                            backupUp -> Color(0xFF4CAF50)
-                            backupSeen -> Color(0xFFF9A825)
-                            else -> Color(0xFFE57373)
-                        },
-                        name = s.connBackupLabel,
-                        status = backupStatus,
-                        active = backupActive,
-                        activeLabel = s.connActiveLabel
-                    )
-                    Text(
-                        s.connBackupNoMapDesc,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            s.connForceOfflineTitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = forceOffline,
-                            onCheckedChange = onForceOfflineChange
-                        )
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF4CAF50))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(s.connUpLine, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFE57373))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    val annotated = buildAnnotatedString {
-                        withStyle(
-                            SpanStyle(
-                                color = MaterialTheme.colorScheme.primary,
-                                textDecoration = TextDecoration.Underline
-                            )
-                        ) {
-                            append(if (backupActive) s.attributionBackup else s.attributionText)
-                        }
-                    }
-                    ClickableText(text = annotated, onClick = {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse(if (backupActive) "https://alerts.com.ua/" else "https://neptun.in.ua/")
-                            )
-                        )
-                    })
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun SourceStatusRow(color: Color, name: String, status: String, active: Boolean, activeLabel: String) {
-    val accent = Color(0xFFF9A825)
-    val nameColor = if (active) accent else MaterialTheme.colorScheme.onSurface
-    val statusColor = if (active) accent else MaterialTheme.colorScheme.onSurfaceVariant
-    val statusWeight = if (active) FontWeight.Bold else FontWeight.Normal
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.alpha(if (active) 1f else 0.65f)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = nameColor)
-        Spacer(Modifier.width(6.dp))
-        Text(status, style = MaterialTheme.typography.bodyMedium, fontWeight = statusWeight, color = statusColor)
-        if (active) {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                activeLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = accent,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
 private fun ThreatStatusCell(
     type: ThreatType,
     count: Int,
@@ -1051,6 +930,47 @@ private fun threatIconRes(type: ThreatType): Int = when (type) {
     ThreatType.AVIATION -> R.drawable.ic_threat_aviation
     ThreatType.RECON -> R.drawable.ic_threat_recon
     ThreatType.UNKNOWN -> R.drawable.ic_threat_unknown
+}
+
+/** Popup card-size stepper: SMALL → MEDIUM → LARGE → SMALL… */
+private fun nextThreatCardSize(current: ThreatCardSize): ThreatCardSize {
+    val values = ThreatCardSize.values()
+    return values[(current.ordinal + 1) % values.size]
+}
+
+/** Three stacked lines (thin/thick/thicker) under the popup; tap cycles the card size. */
+@Composable
+private fun ThreatCardSizeControl(
+    current: ThreatCardSize,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier
+            .sizeIn(minWidth = 44.dp, minHeight = 44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+            .semantics { semanticsContentDescription = contentDescription }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        listOf(2.dp, 4.dp, 6.dp).forEachIndexed { i, thickness ->
+            Box(
+                modifier = Modifier
+                    .width(18.dp)
+                    .height(thickness)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (i == current.ordinal) MaterialTheme.colorScheme.primary
+                        else Color(0xFF9E9E9E)
+                    )
+            )
+            if (i < 2) Spacer(Modifier.height(3.dp))
+        }
+    }
 }
 
 @Composable

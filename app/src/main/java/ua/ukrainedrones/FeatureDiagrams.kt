@@ -111,15 +111,18 @@ private fun DrawScope.drawStrip(t: Float) {
         drawRoundRect(Yellow.copy(alpha = 0.85f), Offset(x + tileW * 0.12f, y + h - h * frac), Size(tileW * 0.48f, h * frac), CornerRadius(2.dp.toPx()))
     }
     bell(size.width * 0.07f + tileW * 0.36f, size.height * 0.26f, Yellow)
-    bell(size.width * 0.07f + tileW * 1.36f, size.height * 0.26f, DimGrey)
+    bell(size.width * 0.07f + tileW * 1.36f, size.height * 0.26f, DimGrey, muted = true)
     drawCross(size.width * 0.07f + tileW * 2.36f, size.height * 0.26f, Red)
 }
 
-private fun DrawScope.bell(cx: Float, cy: Float, color: Color) {
+private fun DrawScope.bell(cx: Float, cy: Float, color: Color, muted: Boolean = false) {
     val r = 5.dp.toPx()
     drawCircle(color, r, Offset(cx, cy))
     drawLine(color, Offset(cx - r, cy + r * 0.6f), Offset(cx + r, cy + r * 0.6f), 2.dp.toPx(), StrokeCap.Round)
     drawCircle(color, 1.5.dp.toPx(), Offset(cx, cy + r * 1.1f))
+    if (muted) {
+        drawLine(Red, Offset(cx + r * 0.7f, cy - r * 0.7f), Offset(cx - r * 0.7f, cy + r * 0.7f), 2.dp.toPx(), StrokeCap.Round)
+    }
 }
 
 private fun DrawScope.drawCross(cx: Float, cy: Float, color: Color) {
@@ -165,7 +168,7 @@ private fun DrawScope.drawEditZones() {
     drawLine(DimGrey.copy(alpha = 0.5f), Offset(sx, y1), Offset(sx, y0), 3.dp.toPx(), StrokeCap.Round)
     drawLine(White, Offset(sx, y1), Offset(sx, y0 + (y1 - y0) * 0.45f), 3.dp.toPx(), StrokeCap.Round)
     drawCircle(Yellow, 5.dp.toPx(), Offset(sx, y0 + (y1 - y0) * 0.45f))
-    bell(size.width * 0.8f, size.height * 0.5f, DimGrey)
+    bell(size.width * 0.8f, size.height * 0.5f, DimGrey, muted = true)
 }
 
 private fun DrawScope.drawNotif(t: Float) {

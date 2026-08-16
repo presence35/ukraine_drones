@@ -3,7 +3,6 @@ package ua.ukrainedrones
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,8 +21,8 @@ private val YellowZoneColor = Color(0xFFF9A825)
  */
 @Composable
 fun ZonesEditContent(
-    redKm: Int,
-    yellowKm: Int,
+    redMin: Int,
+    yellowMin: Int,
     redArmed: Boolean,
     yellowArmed: Boolean,
     lang: AppLanguage,
@@ -42,8 +41,8 @@ fun ZonesEditContent(
         )
         Spacer(Modifier.height(6.dp))
         ZoneRow(
-            valueKm = redKm,
-            range = 1f..20f,
+            valueMin = redMin,
+            range = 5f..20f,
             steps = 0,
             accent = RedZoneColor,
             armed = redArmed,
@@ -55,8 +54,8 @@ fun ZonesEditContent(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Spacer(Modifier.height(8.dp))
         ZoneRow(
-            valueKm = yellowKm,
-            range = 21f..50f,
+            valueMin = yellowMin,
+            range = 20f..60f,
             steps = 0,
             accent = YellowZoneColor,
             armed = yellowArmed,
@@ -76,7 +75,7 @@ fun ZonesEditContent(
 
 @Composable
 private fun ZoneRow(
-    valueKm: Int,
+    valueMin: Int,
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
     accent: Color,
@@ -85,21 +84,26 @@ private fun ZoneRow(
     onArmedChange: (Boolean) -> Unit,
     onCommit: (Int) -> Unit
 ) {
-    var local by remember { mutableStateOf(valueKm.toFloat()) }
-    LaunchedEffect(valueKm) { local = valueKm.toFloat() }
+    val minUnit = Strings.get(AppLanguage.EN).minUnit
+    var local by remember { mutableStateOf(valueMin.toFloat()) }
+    LaunchedEffect(valueMin) { local = valueMin.toFloat() }
     Row(verticalAlignment = Alignment.CenterVertically) {
         // Per-zone alert bell + switch on the left: filled/colored while armed,
-        // outlined gray when muted.
+        // red crossed bell when muted.
         IconButton(
             onClick = { onArmedChange(!armed) },
             modifier = Modifier.size(40.dp)
         ) {
-            Icon(
-                imageVector = if (armed) Icons.Filled.Notifications else Icons.Outlined.Notifications,
-                contentDescription = bellDesc,
-                tint = if (armed) accent else Color(0xFF777777),
-                modifier = Modifier.size(26.dp)
-            )
+            if (armed) {
+                Icon(
+                    imageVector = Icons.Filled.Notifications,
+                    contentDescription = bellDesc,
+                    tint = accent,
+                    modifier = Modifier.size(26.dp)
+                )
+            } else {
+                AlertsOffBell(size = 26.dp, contentDescription = bellDesc)
+            }
         }
         Switch(
             checked = armed,
@@ -131,7 +135,7 @@ private fun ZoneRow(
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            "$valueKm ${Strings.get(AppLanguage.EN).kmUnit}",
+            "$valueMin $minUnit",
             color = accent,
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.labelLarge

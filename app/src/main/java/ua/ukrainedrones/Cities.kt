@@ -173,8 +173,7 @@ fun focusAttribution(followMe: Boolean, userLocation: LatLng?, pinned: City?): F
 class CityLabelOverlay(
     context: Context,
     private val lang: AppLanguage,
-    private val activeRegionTokens: Set<String> = emptySet(),
-    private val cityCounts: Map<String, Int> = emptyMap()
+    private val activeRegionTokens: Set<String> = emptySet()
 ) : Overlay() {
 
     private val density = context.resources.displayMetrics.density
@@ -211,9 +210,7 @@ class CityLabelOverlay(
             } else {
                 Color.argb(230, 235, 235, 235)
             }
-            val count = cityCounts[c.nameUa] ?: 0
-            val label = if (count > 0) "${name(c)} ($count)" else name(c)
-            canvas.drawText(label, reuse.x.toFloat(), reuse.y.toFloat() - 6f * density, paint)
+            canvas.drawText(name(c), reuse.x.toFloat(), reuse.y.toFloat() - 6f * density, paint)
         }
     }
 }

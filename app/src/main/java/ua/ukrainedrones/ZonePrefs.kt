@@ -23,11 +23,10 @@ class ZonePrefs(private val context: Context) {
 
     private val languageKey = stringPreferencesKey("app_language")
     private val languageChosenKey = booleanPreferencesKey("language_chosen")
-    private val redZoneKmKey = intPreferencesKey("red_zone_km")
-    private val yellowZoneKmKey = intPreferencesKey("yellow_zone_km")
+    private val redZoneMinKey = intPreferencesKey("red_zone_min")
+    private val yellowZoneMinKey = intPreferencesKey("yellow_zone_min")
     private val redArmedKey = booleanPreferencesKey("red_zone_armed")
     private val yellowArmedKey = booleanPreferencesKey("yellow_zone_armed")
-    private val fastAlertsSoonerKey = booleanPreferencesKey("fast_alerts_sooner")
     private val officialAlertsKey = booleanPreferencesKey("official_alerts_enabled")
     private val sirenOverrideKey = booleanPreferencesKey("siren_override")
     private val disclaimerCollapsedKey = booleanPreferencesKey("disclaimer_collapsed")
@@ -41,20 +40,20 @@ class ZonePrefs(private val context: Context) {
     private val showMapScaleKey = booleanPreferencesKey("show_map_scale")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
 
-    /** Red (inner) zone radius in km — slider range 1–20, default 10. */
-    fun redZoneKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[redZoneKmKey] ?: 10 }
+    /** Red (inner) time-to-arrival threshold in minutes — slider range 5–20, default 20. */
+    fun redZoneMin(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[redZoneMinKey] ?: 20 }
 
-    suspend fun setRedZoneKm(km: Int) {
-        context.dataStore.edit { it[redZoneKmKey] = km.coerceIn(1, 20) }
+    suspend fun setRedZoneMin(min: Int) {
+        context.dataStore.edit { it[redZoneMinKey] = min.coerceIn(5, 20) }
     }
 
-    /** Yellow (outer) zone radius in km — slider range 21–50, default min (21). */
-    fun yellowZoneKm(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[yellowZoneKmKey] ?: 21 }
+    /** Yellow (outer) time-to-arrival threshold in minutes — slider range 20–60, default 60. */
+    fun yellowZoneMin(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[yellowZoneMinKey] ?: 60 }
 
-    suspend fun setYellowZoneKm(km: Int) {
-        context.dataStore.edit { it[yellowZoneKmKey] = km.coerceIn(21, 50) }
+    suspend fun setYellowZoneMin(min: Int) {
+        context.dataStore.edit { it[yellowZoneMinKey] = min.coerceIn(20, 60) }
     }
 
     /** Whether the red zone can fire urgent siren alerts. */
@@ -71,14 +70,6 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setYellowZoneArmed(armed: Boolean) {
         context.dataStore.edit { it[yellowArmedKey] = armed }
-    }
-
-    /** Fast objects (missiles, KAB, MiG-31K) sound the siren at any zone entry. */
-    fun fastAlertsSooner(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[fastAlertsSoonerKey] ?: true }
-
-    suspend fun setFastAlertsSooner(sooner: Boolean) {
-        context.dataStore.edit { it[fastAlertsSoonerKey] = sooner }
     }
 
     /** Whether the app notifies on the official oblast air-raid alert. Zone alerts are unaffected. */

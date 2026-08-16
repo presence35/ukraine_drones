@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+- Map: city labels no longer show "(N)" threat counts next to the name — just the city name, red while its oblast is on alert.
+- Notifications: official alert bodies are posted raw in Ukrainian and translated to English in the background (in-place, silent re-post).
+- Threat popup: the speed pill now shows only when the speed was actually measured (server/measured fixes), not the nominal typical speed.
+- Alerts/status: the backup source also steps in when the NEPTUN stream is completely silent for over a minute (any frame type), not just its alert feed.
+- Map: threats that report only a heading now glide along it (dead-reckoned) even without a velocity — they actually move instead of sitting still.
+- Wording: "coarse"/"rough" replaced with "approximate" throughout, and the background status notification now reads "Threat alarm is following your GPS" / pinned to a city.
+
+- Zones: red/yellow alert zones are now time-to-arrival instead of fixed distance radii. A threat that could reach you within the red time (default 20 min) sounds the urgent siren; within the yellow time (default 60 min) — the warning chime. Zone sliders now set minutes (red 5–20, yellow 20–60) and the map's red/yellow circles are a reference visual (how far a Shahed flies in that time), so fast objects alert from beyond the drawn circle.
+- Alerts: the "Fast objects alert sooner" setting is gone — the time model handles every object the same way, and faster objects naturally alert sooner/from farther out.
+- Zones: per-type reach caps (guided bombs 70 km, FPV 40 km, recon 50 km, Shahed 1000 km, ballistic/cruise/aviation/unknown 1500 km) stop distant noise — an object that physically can't reach you never alerts.
+- Zones: advisory (NEPTUN observation) threats no longer tier or sound an alert — map-only in the UI.
+
+- Map: threats that only mark an oblast area (no real position) are no longer drawn or counted — only threats with a real point show on the map and in the threat strip.
+- Alerts: when several threats enter a zone at once, each newly-entered threat now gets its own notification on successive ticks instead of only the most urgent one ever alerting.
+- Status: the "Active" badge no longer appears on the backup source until it has actually delivered data at least once — a source that is red (never confirmed healthy) no longer reads as the active one.
+- Status: NEPTUN connection failures (including background refresh) now surface an error, so a silent REST drop is visible in the system status instead of looking healthy.
+
+- Alerts: the "alerts off" bell is now a red bell with a slash through it everywhere — in the threat popup, on the muted zone buttons floating over the map, and in the zone-mute controls — so a muted state can never be mistaken for alerts being on.
+
+- Alerts: official oblast-alert notifications now show a reason line — the strongest active threat in the oblast ("Shahed heading toward Odesa", or a "Threats reported in …" fallback). If the alert fires before a threat appears, the notification updates in place with the reason as soon as one does. On all-clear, the siren notification is dismissed immediately when no zone alert is ringing.
+
+- Threat popup: the ETA pill is now marked with a glowing blue GPS dot, making it clear at a glance that the countdown is the time until the threat reaches you.
 - Threat popup: when a threat type's Alerts are switched off in Settings, its card shows a small grayed-out alarm bell next to the type name as a reminder that notifications for it are muted.
 - Settings: new collapsible "Additional settings" section (bottom of the list) with a "Show scale" toggle for the map's bottom-left scale bar. The battery-exemption card moved into it.
 - Map: the scale bar label is now a bold white font with no background pill — less intrusive over the map tiles.
@@ -14,7 +36,7 @@
 - Threat popup: the wordy "Distance / ETA" line and coloured speed pill are replaced with a neutral trio of pills where the number is the hero — «3 км» · «10 хв» · «180 км/год» (EN: `3 km` · `10 min` · `180 km/h`). ETA is shown in minutes only. Pills are muted, wrap-friendly and work in small/medium/large. Settings → threat card size now notes that all numbers in the app are approximate.
 - Zones: red zone radius now adjustable up to 20 km (default 10 km) and yellow zone up to 50 km (default 21 km), for wider-area monitoring.
 - Alerts: oblast alerts now have a real backup system. When the main NEPTUN feed is down or silent for over a minute, the app falls back to an independent official source (alerts.com.ua, the same state data other air-raid aggregators use) so air-raid notifications keep working. When an alert comes from the backup it's tagged in the notification body.
-- Status: the connection pill shows one of three clear states — red "offline" with a timer when NEPTUN is down (real or simulated), amber "backup" when NEPTUN is alive but the app is on the backup source, or green "online". Tapping it opens a "System status" popup that lists NEPTUN and the backup (alerts.com.ua) each with their own Online/Offline-with-timer indicator, highlights the source actually in effect (orange bold + "Active"), and notes the backup is oblast-level only (no live map positions).
+- Status: the connection pill shows one of three clear states — red "offline" with a timer when NEPTUN is down (real or simulated), amber "backup" when NEPTUN is alive but the app is on the backup source, or green "online". Tapping it opens a "System status" popup that lists NEPTUN and the backup (alerts.com.ua) as colored status dots with the source actually in effect marked "Active", and notes the backup is oblast-level only (no live map positions).
 - Status: a temporary "Test: simulate NEPTUN offline" toggle inside the System status popup makes NEPTUN appear red/offline (as if the stream dropped) so the different online/offline states can be verified (resets on app restart via the same toggle).
 
 - Alerts: when the live feed drops, a silent-but-attentive offline notification appears (after a 30s grace, or immediately when an official air-raid alert is active at drop or fires during the grace) reminding you to rely on official sirens, with a Retry action that forces an immediate reconnect. The ongoing status notification switches to "Offline for Xm" / «Офлайн Xхв» with the same Retry action, and the header connection pill shows the elapsed offline time.
@@ -114,6 +136,13 @@
 - Threats: the popup now shows the specific threat name from the server (e.g. «Шахед», «Орлан-10») under the type label.
 - Map: threats with a wide position uncertainty now show a soft amber ring of that size (±km) around the marker.
 - Reliability: staleness, ETA and elapsed time now follow the server clock (serverTime), so a wrong device clock no longer makes threats expire early or linger.
+
+- Map: tapping the top title banner now zooms out to show the whole of Ukraine (instead of just recentring on you).
+- Threat popup: the medium card is now a fixed three rows — header (icon + type + region), a single-line pills row (ETA / distance / speed, capped font scale so it can't wrap), and a bottom row with skull + expanded level bar + reliability/age. It no longer grows as content changes.
+- Threat popup: the full card's reliability is now a compact Precision-style 3-segment bar (low → high, progressive fill; High green / Average amber / Low red, gray when unknown) instead of a red text pill; the medium card keeps the text pill. The rotated course arrow was removed from the card headers.
+- Threat popup: a three-line size control (thin / thick / thicker) sits under the bottom-right corner of the card — tap it to cycle Small → Medium → Full (persisted).
+- Alert zones: dragging the panel up reveals a slim Fast/Slow threat-toggles panel (the same Map/Alerts controls as Settings); dragging down collapses it again or closes the panel. The first-launch "A few tips" dialog now includes the same slim threat toggles so they can be set before first use.
+- Settings: the Fast and Slow threat groups start expanded; tapping a group header collapses its per-type cards (headers with their Map/Alerts master toggles stay visible).
 
 ## [0.3.9] — 2026-08-13
 

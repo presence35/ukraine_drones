@@ -84,10 +84,10 @@ private fun iconFor(type: ThreatType): Int = when (type) {
     ThreatType.UNKNOWN -> R.drawable.ic_threat_unknown
 }
 
-private fun StringBuilder.appendThreatKey(t: Threat) {
+private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
     append(t.id).append('@').append(t.status).append('@')
     append(t.lat).append(',').append(t.lon).append('@')
-    append(t.courseDeg).append(';')
+    append(t.courseDeg).append('@').append(if (t.isStale(now)) 'S' else 'L').append(';')
 }
 
 /**
@@ -205,7 +205,7 @@ fun NeptunMapView(
     onScaleChange: (Double) -> Unit,
     onThreatTapped: (Threat) -> Unit,
     onMapTapped: () -> Unit,
-    recenterTick: Int = 0,
+    fitUkraineTick: Int = 0,
     zoomZone: ThreatZone? = null,
     zoomTick: Int = 0,
     fitZonesTick: Int = 0,
@@ -220,16 +220,15 @@ fun NeptunMapView(
     // the map, which is what made the banner above it flicker.
     val overlayKey = buildString {
         append(lang).append('A').append(uiState.activeZone)
-        append('R').append(uiState.redZoneKm).append('Y').append(uiState.yellowZoneKm)
+        append('R').append(uiState.redCircleKm).append('Y').append(uiState.yellowCircleKm)
         append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
         append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
         append('O').append(uiState.focusOblastAlertActive)
         for (token in uiState.activeRegionTokens) append('R').append(token).append(';')
-        for ((c, n) in uiState.cityCounts) append('N').append(c).append('=').append(n).append(';')
-        for (t in uiState.mapThreats) appendThreatKey(t)
+        for (t in uiState.mapThreats) appendThreatKey(t, System.currentTimeMillis())
     }
     val lastOverlayKey = remember { mutableStateOf<String?>(null) }
-    val lastRecenterTick = remember { mutableStateOf(-1) }
+    val lastFitUkraineTick = remember { mutableStateOf(-1) }
     val lastFollow = remember { mutableStateOf<LatLng?>(null) }
     val lastZoomTick = remember { mutableStateOf(-1) }
     val lastFitZonesTick = remember { mutableStateOf(-1) }
@@ -302,7 +301,7 @@ fun NeptunMapView(
             if (!didDefaultFit.value && focus != null) {
                 didDefaultFit.value = true
                 mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.yellowZoneKm.toDouble()),
+                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.yellowCircleKm),
                     true
                 )
             }
@@ -312,18 +311,17 @@ fun NeptunMapView(
             if (!uiState.followMe && pinned != null && lastPinnedCity.value != pinned.nameUa) {
                 lastPinnedCity.value = pinned.nameUa
                 mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.yellowZoneKm.toDouble()),
+                    zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.yellowCircleKm),
                     true
                 )
             } else if (uiState.followMe) {
                 lastPinnedCity.value = null
             }
 
-            // Explicit recenter (title tap) snaps back to the focus point, or Odesa pre-fix.
-            if (recenterTick != lastRecenterTick.value) {
-                lastRecenterTick.value = recenterTick
-                val target = focus?.let { GeoPoint(it.lat, it.lon) } ?: DEFAULT_CENTER
-                mapView.controller.animateTo(target)
+            // Header tap: zoom out so the whole of Ukraine fills the screen.
+            if (fitUkraineTick != lastFitUkraineTick.value) {
+                lastFitUkraineTick.value = fitUkraineTick
+                mapView.zoomToBoundingBox(UA_VIEW_LIMITS, true)
             }
 
             // Zone-button tap: zoom the camera to fit that zone circle with a 5% margin.
@@ -331,8 +329,8 @@ fun NeptunMapView(
                 lastZoomTick.value = zoomTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
                 val radiusKm = when (zoomZone) {
-                    ThreatZone.INNER -> uiState.redZoneKm.toDouble()
-                    else -> uiState.yellowZoneKm.toDouble()
+                    ThreatZone.INNER -> uiState.redCircleKm
+                    else -> uiState.yellowCircleKm
                 }
                 mapView.zoomToBoundingBox(zoneBoundingBox(center, radiusKm), true)
             }
@@ -343,7 +341,7 @@ fun NeptunMapView(
             if (fitZonesTick != lastFitZonesTick.value) {
                 lastFitZonesTick.value = fitZonesTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
-                val zone = zoneBoundingBox(center, uiState.yellowZoneKm.toDouble())
+                val zone = zoneBoundingBox(center, uiState.yellowCircleKm)
                 val visibleFrac = 0.6f
                 val dLat = zone.latNorth - center.latitude
                 val southPad = dLat * 2 * ((1f / visibleFrac) - 1f)
@@ -376,7 +374,7 @@ fun NeptunMapView(
 
                 // City labels (English names on top of label-free tiles)
                 mapView.overlays.add(
-                    CityLabelOverlay(context, lang, uiState.activeRegionTokens, uiState.cityCounts)
+                    CityLabelOverlay(context, lang, uiState.activeRegionTokens)
                 )
 
                 // Focus-centered alert zones: yellow ring (outer) and red circle (inner),
@@ -386,7 +384,7 @@ fun NeptunMapView(
                     val yellowAlert = uiState.activeZone == ThreatZone.OUTER
                     val redAlert = uiState.activeZone == ThreatZone.INNER
                     mapView.overlays.add(Polygon(mapView).apply {
-                        points = circlePoints(zoneCenter, uiState.yellowZoneKm * 1000.0)
+                        points = circlePoints(zoneCenter, uiState.yellowCircleKm * 1000.0)
                         fillColor = Color.TRANSPARENT
                         strokeColor = if (yellowAlert) Color.argb(235, 255, 213, 0)
                         else Color.argb(150, 255, 213, 0)
@@ -395,7 +393,7 @@ fun NeptunMapView(
                         setInfoWindow(null)
                     })
                     mapView.overlays.add(Polygon(mapView).apply {
-                        points = circlePoints(zoneCenter, uiState.redZoneKm * 1000.0)
+                        points = circlePoints(zoneCenter, uiState.redCircleKm * 1000.0)
                         fillColor = Color.TRANSPARENT
                         strokeColor = if (redAlert) Color.argb(235, 255, 60, 60)
                         else Color.argb(160, 255, 82, 82)
@@ -405,7 +403,8 @@ fun NeptunMapView(
                     })
                 }
 
-                // Threats anywhere in the country — full opacity, tappable, type icon
+                // Threats anywhere in the country — tappable, type icon; stale/expired ones
+                // render dimmed (still tappable) until they pass the hard ghost cap.
                 for (t in uiState.mapThreats) {
                     speedTracker.record(t.id, t.updatedAtMillis ?: System.currentTimeMillis(), t.lat, t.lon)
                     val typeInfo = ThreatTypeCatalog.INFO.getValue(t.type)
@@ -419,11 +418,12 @@ fun NeptunMapView(
                         predictPosition(t, it, System.currentTimeMillis())
                     }
                     val pos = predicted ?: GeoPoint(t.lat, t.lon)
+                    val stale = t.isStale(System.currentTimeMillis())
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                         icon = threatIcon(context, t.type)
-                        alpha = 1.0f
+                        alpha = if (stale) 0.25f else 1.0f
                         title = typeLabel
                         snippet = regionLabel
                         // Rotate to show course, mirroring NEPTUN's predict().heading: velocity

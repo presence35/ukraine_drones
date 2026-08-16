@@ -48,7 +48,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `Zones.kt` | `ThreatZone` (INNER/OUTER), `RadialZones`, `radialZone` (distance→tier), `effectiveZone` + `FAST_THREAT_TYPES` (fast objects claim INNER at any zone entry when "alert sooner"). |
+| `Zones.kt` | `ThreatZone` (INNER/OUTER), `TimeZones` (redMin/yellowMin time thresholds), `timeZone` (ETA→tier), `etaMinutes`, `reachKm` (per-type max cover), `timeTier(t, distKm, speedKmh, zones)` — the single source of truth for zone tiering, plus `BALLISTIC_SPEED_KMH` (AVIATION override), `ZONE_CIRCLE_REF_KMH` and `zoneCircleKm` for the map's reference circles. |
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 threat gauge for the popup (severity × distance × reliability × sources × count × quality × staleness × ETA). |
 | `Cities.kt` | Curated city list + `CityLabelOverlay` (draws city names, red when oblast on alert, threat counts). `focusAttribution` maps the focus point (pinned city, else nearest city to GPS) to an oblast stem via `cityOblast`. |
 | `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, and the DataStore-backed preference store (`zone_prefs`). All toggles/radii/language/follow/pin/threat map-visibility + alert-enable + map-scale live here. Also `threatMapFlow` and `threatAlertFlow`. |
@@ -59,11 +59,13 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `MainScreen.kt` | Top-level Compose UI: header (trident glow, title, connection pill, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet`, `UpdateDialog`, first-run `LanguageChooseDialog`. |
-| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits. |
-| `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row, reference photos, threat card size, zone radii, alert toggles, updates, battery exemption, feature guide. |
+| `MainScreen.kt` | Top-level Compose UI: header (trident glow, title — tap to fit the whole country, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet`, `UpdateDialog`, first-run `LanguageChooseDialog` (with slim threat toggles). |
+| `ConnectionStatus.kt` | Connection pill (red "offline" / amber "backup" / green "online") + the "System status" dialog: per-source dot rows (NEPTUN + backup alerts.com.ua), backup scope note, TEMP force-offline toggle, legend, attribution link. |
+| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. |
+| `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, zone radii, alert toggles, updates, battery exemption, feature guide. |
 | `ZonesSheet.kt` | "Edit zones" bottom sheet with live red/yellow radius sliders. |
-| `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability, wave size, time since seen. |
+| `ThreatPopupCard.kt` | Threat detail popup in three sizes: type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / text pill in medium), wave size, time since seen. |
+| `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, and `SlimThreatToggles` — the compact panel reused by the zones-sheet expansion and the first-run dialog. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
 | `FeatureDiagrams.kt` | Diagram drawables used by the feature guide. |
 
@@ -71,7 +73,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `AlertService.kt` | Foreground `dataSync` service — the always-on monitor. Owns `NeptunClient.start()`, consumes `NeptunClient.state` + `LocationTracker.location` + prefs, and posts siren/chime/all-clear notifications with a 60s grace window and event coalescing. Also posts silent offline notifications (30s grace, immediate when an official alert is active) with a Retry action → `NeptunClient.retryNow()`. **Independent reimplementation of the zone/focus logic.** |
+| `AlertService.kt` | Foreground `dataSync` service — the always-on monitor. Owns `NeptunClient.start()`, consumes `NeptunClient.state` + `LocationTracker.location` + prefs, and posts siren/chime/all-clear notifications with a 60s grace window and event coalescing. Official-alert bodies carry a threat reason (best `ThreatLevelModel`-scored threat in the focus oblast, else a region fallback) and are silently re-posted on the same id as reasons arrive; all-clear cancels the siren immediately when no zone alert is active. Also posts silent offline notifications (30s grace, immediate when an official alert is active) with a Retry action → `NeptunClient.retryNow()`. **Independent reimplementation of the zone/focus logic.** |
 | `BootReceiver.kt` | Restarts `AlertService` after reboot (`BOOT_COMPLETED`) and in-app update (`MY_PACKAGE_REPLACED`). |
 | `LocationTracker.kt` | `object` singleton. Battery-cheap coarse location: `NETWORK_PROVIDER` only, ~2 min / 250 m, falls back to last known. Exposes `StateFlow<LatLng?>`. |
 | `BatteryOptimization.kt` | Helpers for the "keep monitoring alive" battery-exemption flow. |
@@ -121,9 +123,11 @@ Position prediction per threat (both ViewModel and AlertService):
 
 ```
 ThreatSpeedTracker.record(...)          # keep ≤4 recent fixes per id
-   → estimateWithSource(id, t)          # server speedKmh → measured fixes → nominal
-   → predictPosition(t, speed, now)     # advance along courseDeg within per-type horizon/ghost cap
-   → distance to focus → radialZone → effectiveZone (fast-object override)
+   → estimateWithSource(id, t)          # server speedKmh → measured fixes → nominal (m/s)
+   → predictPosition(t, speed, now)     # dead-reckon any ACTIVE track with a real heading (velocity
+                                        #   bearingDeg, else top-level heading) along its course within
+                                        #   per-type horizon/ghost cap; anchor = confirmedAtMillis
+   → distance to focus → timeTier (time-to-arrival, shared in Zones.kt)
 ```
 
 Update flow: `UpdateManager.check()` → `UpdateState.Available` → `download()` (progress) →
@@ -135,35 +139,51 @@ Treat these as a contract. If you change one, update **every** place that relies
 
 - **Two independent alert paths.** `MainViewModel` (UI state) and `AlertService`
   (notifications) each reimplement zone tiering, focus attribution, and prediction. A change
-  to `effectiveZone`, `FAST_THREAT_TYPES`, `focusAttribution`, `RadialZones`, `staleAfterMs`,
+  to `timeTier`, `TimeZones`, `focusAttribution`, `staleAfterMs`,
   or `predictPosition` must be mirrored in **both** files or the UI and notifications drift.
+  `Zones.kt` is the single source of truth for tier math — call `timeTier`, never inline it.
 
 - **Threat type gating.** `ZonePrefs.threatMapFlow` gates which types render on the map
   (`MainViewModel`); `threatAlertFlow` gates which types fire alerts (`AlertService`). Turning a
   type's map visibility off also turns its alerts off (coupling); turning alerts off keeps it on
   the map but dimmed. A type hidden from the map is omitted from the footer threat strip. When a
-  type's alerts are off, its detail popup (`ThreatPopupCard`) shows a small grayed-out alarm bell
+  type's alerts are off, its detail popup (`ThreatPopupCard`) shows a red crossed bell
   next to the type name (presentational only — no effect on the mirrored zone/alert logic).
+  The same red crossed bell (`AlertsOffBell` in `ThreatPopupCard.kt`, drawable
+  `ic_notifications_off`) marks muted zone bells in `ZonesSheet` and floats above the
+  disarmed zone pill on the map (`MainScreen.ZoneButton`).
 
 - **Focus point.** `followMe` → camera + zones + alerts centre on GPS; otherwise on the pinned
   city (`ZonePrefs.pinnedCity`). Pinning auto-disables follow-me. Oblast attribution goes
   through `focusAttribution` → `Cities.cityOblast` stem match (e.g. `"Харківськ"` hits
   `"Харківська область"`).
 
-- **Zone tiering.** `RadialZones`: INNER = distance ≤ red (1–20 km), OUTER = ≤ yellow (21–50 km),
-  else outside both. With `fastAlertsSooner` on, fast types
-  (`FAST_THREAT_TYPES`: ballistic, cruise, KAB, aviation) claim INNER at any zone entry.
+- **Zone tiering.** Time-to-arrival model: `timeTier(t, distKm, speedKmh, TimeZones(redMin, yellowMin))`.
+  ETA ≤ redMin → INNER (urgent siren), ≤ yellowMin → OUTER (warning chime), beyond → outside both.
+  Speed comes from `ThreatSpeedTracker` (server → measured → nominal, m/s × 3.6); AVIATION is forced
+  to `BALLISTIC_SPEED_KMH` (a MiG-31K Kinzhal is country-wide). Per-type `reachKm` caps distance
+  (KAB 70, FPV 40, recon 50, Shahed 1000, else 1500 km) — beyond it no alert. The map's red/yellow
+  circles are a reference visual only: `zoneCircleKm(minutes)` at the Shahed `ZONE_CIRCLE_REF_KMH`
+  (min × 3 km), so fast objects legitimately alert from outside the drawn circle. Advisory
+  (NEPTUN observation) threats never tier/sound — map-only in the UI.
 
-- **Expiry / ghosts.** `staleAfterMs` is per-type (90s ballistic … 300s UAV). `isExpired` drops
-  stale threats. Dead-reckoning caps at a per-type horizon and max-ghost distance. The ViewModel
+- **Expiry / ghosts.** `staleAfterMs` is per-type (90s ballistic … 300s UAV). `isExpired` marks
+  a threat stale; stale/expired threats stay on the map **dimmed** (marker alpha 0.25, still
+  tappable; popup shows "Last seen m:ss ago" / «Востаннє m:ss тому») but are excluded from the
+  threat strip, zone tiers, gauge and alerts in both `MainViewModel` and `AlertService`. A
+  threat is removed entirely only when the server resolves it (or a `remove` frame arrives),
+  or once `isGhost` — the staleness window plus `STALE_GHOST_CAP_MS` (~30 min) — passes.
+  Dead-reckoning applies to any active threat with a real heading (velocity `bearingDeg`,
+  else top-level `heading`) and caps at a per-type horizon and max-ghost distance. The ViewModel
   refreshes every 1s via `nowFlow`; `AlertService` uses a 60s grace window before clearing.
 
 - **REST never clobbers WS.** REST merge keeps the newer record per threat id
   (`updatedAtMillis` compare); a REST snapshot is CDN-cached and can be older than the stream.
 
 - **Backup never overrides a healthy NEPTUN.** The alerts.com.ua backup (`AlertsUaClient`)
-  feeds `NeptunState.oblastAlerts` only when NEPTUN is disconnected or its own alert feed has
-  been silent for >60s (`backupActive`). Both `MainViewModel` and `AlertService` read the same
+  feeds `NeptunState.oblastAlerts` only when NEPTUN is disconnected or the stream has been
+  completely silent for >60s (`backupActive` — driven by `lastFrameAt`, the timestamp of the
+  last frame of any type, not just the alert feed). Both `MainViewModel` and `AlertService` read the same
   union (`oblastAlerts`), so the backup needs no changes to the mirrored zone/focus logic. The
   `AlertSource` tag (NEPTUN / BACKUP / BOTH) only labels the notification body. Backup health
   (`backupUp`/`backupOfflineElapsedSec`) is surfaced read-only in the system-status popup. A
@@ -175,7 +195,7 @@ Treat these as a contract. If you change one, update **every** place that relies
   it stops ("Stop Monitoring & Exit"). There is no intermediate server to buffer anything.
 
 - **Battery-first location.** `LocationTracker` uses coarse `NETWORK_PROVIDER` only
-  (~2 min / 250 m) — never fine GPS. The alert zones are km-scale, so this is deliberate.
+  (~2 min / 250 m) — never fine GPS. The alert tiers are minute-scale, so this is deliberate.
 
 - **Siren channels.** Notification stream by default (respects ringer/vibrate). Only with
   `sirenOverride` do sirens use the alarm stream (sound even on vibrate/silent). All-clear
@@ -188,7 +208,7 @@ JUnit unit tests in `app/src/test/java/ua/ukrainedrones/`:
 - `PredictionTest.kt` — `predictPosition`, `distanceMeters`, staleness, speed tracking.
 - `ThreatTest.kt` — JSON parsing, type mapping, course translation.
 - `ThreatLevelTest.kt` — threat-level scoring.
-- `ZonesTest.kt` — `radialZone` / `effectiveZone`.
+- `ZonesTest.kt` — `timeZone`, `etaMinutes`, `reachKm`, `timeTier`, `zoneCircleKm`.
 - `UpdateManagerTest.kt` — `versionNameGreater`.
 - `TestThreats.kt` — shared `threat(...)` builder helper.
 

@@ -30,7 +30,7 @@ data class NeptunState(
     val connected: Boolean = false,
     val lastError: String? = null,
     val offlineSince: Long? = null,
-    val lastAlertAt: Long = 0L,
+    val lastFrameAt: Long = 0,     // epoch millis of the last frame (any type) from the stream
     val forceOffline: Boolean = false,   // TEMP test toggle — force backup as if NEPTUN were down
     val backupUp: Boolean = false,      // backup source has polled successfully recently
     val backupLastOkAt: Long = 0L,      // epoch millis of the backup's last successful poll
@@ -61,7 +61,8 @@ data class NeptunState(
      * so we never second-guess a legitimate "no alert".
      */
     val backupActive: Boolean
-        get() = neptunDown || System.currentTimeMillis() - lastAlertAt > NeptunClient.BACKUP_FALLBACK_MS
+        get() = neptunDown || (lastFrameAt > 0 &&
+            System.currentTimeMillis() - lastFrameAt > NeptunClient.BACKUP_FALLBACK_MS)
 
     /** Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. */
     val oblastAlerts: List<OblastAlert>
@@ -134,7 +135,18 @@ object NeptunClient {
      * can be verified. Updates the shared state so both the UI and AlertService re-derive it.
      */
     fun setForceOffline(force: Boolean) {
-        _state.value = _state.value.copy(forceOffline = force)
+        _state.value = _state.value.copy(
+            forceOffline = force,
+            // Mirror a real disconnect's offlineSince so the elapsed-time math (and thus the
+            // offline notification/UI text) actually exercises a rising duration under the
+            // test toggle instead of being pinned at 0. Only stamp it if not already set by a
+            // real drop; only clear it on turn-off if the real socket is actually connected.
+            offlineSince = when {
+                force && _state.value.offlineSince == null -> System.currentTimeMillis()
+                !force && _state.value.connected -> null
+                else -> _state.value.offlineSince
+            }
+        )
     }
 
     /** Relay the backup source's oblast alerts into our state whenever it updates. */
@@ -198,12 +210,16 @@ object NeptunClient {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 restInFlight.set(false)
+                _state.value = _state.value.copy(lastError = e.message)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 restInFlight.set(false)
                 response.use {
-                    if (!it.isSuccessful) return
+                    if (!it.isSuccessful) {
+                        _state.value = _state.value.copy(lastError = "REST HTTP ${it.code}")
+                        return
+                    }
                     val body = it.body?.string() ?: return
                     try {
                         val env = JSONObject(body)
@@ -219,9 +235,10 @@ object NeptunClient {
                                 merged[t.id] = t
                             }
                         }
-                        _state.value = _state.value.copy(threats = merged)
+                        _state.value = _state.value.copy(threats = merged, lastError = null)
                     } catch (_: Exception) {
-                        // Malformed REST payload — keep current state.
+                        // Malformed REST payload — keep current threats, but surface that a refresh failed.
+                        _state.value = _state.value.copy(lastError = "Malformed REST payload")
                     }
                 }
             }
@@ -271,12 +288,16 @@ object NeptunClient {
                 reconnectAttempt = 0
                 openedAt = System.currentTimeMillis()
                 lastFrameAt = System.currentTimeMillis()
-                _state.value = _state.value.copy(connected = true, lastError = null, offlineSince = null)
+                _state.value = _state.value.copy(
+                    connected = true, lastError = null, offlineSince = null,
+                    lastFrameAt = System.currentTimeMillis()
+                )
                 refreshFromRest()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 lastFrameAt = System.currentTimeMillis()
+                _state.value = _state.value.copy(lastFrameAt = System.currentTimeMillis())
                 handleFrame(text)
             }
 
@@ -371,8 +392,7 @@ object NeptunClient {
                         }
                     }
                     _state.value = _state.value.copy(
-                        neptunAlerts = list,
-                        lastAlertAt = System.currentTimeMillis()
+                        neptunAlerts = list
                     )
                 }
                 "heartbeat" -> { /* no-op, connection alive */ }

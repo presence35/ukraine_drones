@@ -45,6 +45,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription as semanticsContentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
@@ -64,7 +66,6 @@ fun SettingsScreen(
     lang: AppLanguage,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
-    fastAlertsSooner: Boolean,
     officialAlertsEnabled: Boolean,
     sirenOverride: Boolean,
     disclaimerCollapsed: Boolean,
@@ -82,7 +83,6 @@ fun SettingsScreen(
     onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
     onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
-    onFastAlertsSoonerChange: (Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
@@ -108,6 +108,8 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var expandedType by remember { mutableStateOf<ThreatType?>(null) }
+    // Fast/Slow groups start expanded; tapping a group header collapses its per-type cards.
+    var collapsedGroups by remember { mutableStateOf(setOf<String>()) }
     // The "Additional settings" section starts collapsed; only the battery/scale live in it so far.
     var additionalExpanded by remember { mutableStateOf(false) }
     // The "Official signals" card needs two collapse taps before it actually stays collapsed.
@@ -271,19 +273,27 @@ fun SettingsScreen(
             }
 
             item { SectionHeader(s.threatsLabel, rememberVectorPainter(Icons.Default.Warning)) }
-            fastAndSlowGroups(lang).forEach { (iconRes, groupTitle, types) ->
+            fastAndSlowGroups(lang).forEach { (groupIcon, groupTitle, types) ->
                 val groupMapOn = types.none { it in hiddenTypes }
                 val groupAlertsOn = types.none { it in silencedTypes }
+                val groupCollapsed = collapsedGroups.contains(groupTitle)
                 item {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                collapsedGroups = if (groupCollapsed) collapsedGroups - groupTitle
+                                else collapsedGroups + groupTitle
+                            }
+                            .padding(top = 4.dp, bottom = 4.dp)
                     ) {
-                        Icon(
-                            painter = painterResource(id = iconRes),
-                            contentDescription = if (iconRes == R.drawable.ic_bolt) s.fastGroupIconDesc else s.slowGroupIconDesc,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                        Text(
+                            text = groupIcon,
+                            fontSize = 16.sp,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .semantics { semanticsContentDescription = if (groupIcon == "\u26A1") s.fastGroupIconDesc else s.slowGroupIconDesc }
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
@@ -307,19 +317,29 @@ fun SettingsScreen(
                             enabled = groupMapOn,
                             onClick = { onThreatAlertToggleAll(types, !groupAlertsOn) }
                         )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = if (groupCollapsed) Icons.Default.KeyboardArrowDown
+                            else Icons.Default.KeyboardArrowUp,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
-                items(types.toList()) { type ->
-                    ThreatSettingsCard(
-                        type = type,
-                        lang = lang,
-                        expanded = expandedType == type,
-                        onExpandChange = { expandedType = if (expandedType == type) null else type },
-                        hiddenTypes = hiddenTypes,
-                        silencedTypes = silencedTypes,
-                        onThreatMapToggle = onThreatMapToggle,
-                        onThreatAlertToggle = onThreatAlertToggle
-                    )
+                if (!groupCollapsed) {
+                    items(types.toList()) { type ->
+                        ThreatSettingsCard(
+                            type = type,
+                            lang = lang,
+                            expanded = expandedType == type,
+                            onExpandChange = { expandedType = if (expandedType == type) null else type },
+                            hiddenTypes = hiddenTypes,
+                            silencedTypes = silencedTypes,
+                            onThreatMapToggle = onThreatMapToggle,
+                            onThreatAlertToggle = onThreatAlertToggle
+                        )
+                    }
                 }
             }
 
@@ -327,15 +347,6 @@ fun SettingsScreen(
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        AlertToggleRow(
-                            title = s.fastAlertsSoonerTitle,
-                            description = s.fastAlertsSoonerDesc,
-                            checked = fastAlertsSooner,
-                            onCheckedChange = onFastAlertsSoonerChange,
-                            icon = painterResource(R.drawable.ic_bolt),
-                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         AlertToggleRow(
                             title = s.officialAlertsTitle,
                             description = s.officialAlertsDesc,
@@ -541,6 +552,7 @@ private fun AlertToggleRow(
     onCheckedChange: (Boolean) -> Unit,
     icon: Painter? = null,
     iconTint: Color? = null,
+    emoji: String? = null,
     note: String? = null
 ) {
     Row(
@@ -550,13 +562,21 @@ private fun AlertToggleRow(
             .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        icon?.let {
-            Image(
-                painter = it,
-                contentDescription = null,
-                colorFilter = iconTint?.let { c -> ColorFilter.tint(c) },
+        if (emoji != null) {
+            Text(
+                text = emoji,
+                fontSize = 20.sp,
                 modifier = Modifier.padding(end = 12.dp).size(24.dp)
             )
+        } else {
+            icon?.let {
+                Image(
+                    painter = it,
+                    contentDescription = null,
+                    colorFilter = iconTint?.let { c -> ColorFilter.tint(c) },
+                    modifier = Modifier.padding(end = 12.dp).size(24.dp)
+                )
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
@@ -577,84 +597,6 @@ private fun AlertToggleRow(
         }
         Spacer(Modifier.width(8.dp))
         Switch(checked = checked, onCheckedChange = null)
-    }
-}
-
-/** The two threat groupings shown in Settings: fast (missiles, bombs) and slow (drones). */
-private fun fastAndSlowGroups(lang: AppLanguage): List<Triple<Int, String, Set<ThreatType>>> {
-    val s = Strings.get(lang)
-    val fast = FAST_THREAT_TYPES
-    val slow = ThreatType.values().toSet() - fast
-    return listOf(
-        Triple(R.drawable.ic_bolt, s.fastGroupLabel, fast),
-        Triple(R.drawable.ic_turtle, s.slowGroupLabel, slow)
-    )
-}
-
-/** A compact icon-chip Map/Alerts toggle: bordered card with an icon and label, on/off/dimmed. */
-@Composable
-private fun ToggleChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    on: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .alpha(if (enabled) 1f else 0.4f),
-        border = if (on && enabled) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (on && enabled) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 0.7f else 0.5f),
-                modifier = Modifier.size(20.dp)
-            )
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-/** A small icon-only toggle for the Fast/Slow section title rows (Map / Alerts). */
-@Composable
-private fun IconToggle(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    on: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier
-            .alpha(if (enabled) 1f else 0.4f)
-            .size(30.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = if (on && enabled) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
-        )
     }
 }
 
@@ -906,8 +848,8 @@ private val PreviewProximity = ThreatProximity(
     predicted = LatLng(46.48, 30.72),
     distToUserKm = 6.0,
     etaToUserMin = 4.5,
-    redKm = 3,
-    yellowKm = 8,
+    redMin = 5,
+    yellowMin = 20,
     speedSource = SpeedSource.RECORDED,
     speedKmh = 180.0
 )
@@ -979,7 +921,6 @@ private fun CardSizeTile(
                             proximity = PreviewProximity,
                             pinnedCity = null,
                             threatLevel = 7.0,
-                            fastAlertsSooner = true,
                             onDismiss = {},
                             cardSize = size,
                             interactive = false

@@ -63,6 +63,8 @@ class AlertService : Service() {
     private var monitoringJob: Job? = null
 
     private var wasFocusAlertActive = false
+    private var currentReason: String? = null
+    private var currentReasonThreatId: String? = null
     private var knownZones: Map<String, ThreatZone> = emptyMap()
     private var lastChannelLang: AppLanguage? = null
     private var emptySince: Long? = null
@@ -73,6 +75,7 @@ class AlertService : Service() {
     private var offlineNotifShown = false
     private var offlineAlertJob: Job? = null
     private val speedTracker = ThreatSpeedTracker()
+    private var alertEpoch = 0
 
     private sealed class MonitorEvent {
         data class State(
@@ -81,11 +84,12 @@ class AlertService : Service() {
             val focusBannerCity: String,
             val focusRegion: String,
             val focusPinned: Boolean,
+            val officialReason: String?,
+            val officialReasonThreatId: String?,
             val zoneThreats: Map<String, ThreatZone>,
             val lang: AppLanguage,
             val redArmed: Boolean,
             val yellowArmed: Boolean,
-            val fastAlertsSooner: Boolean,
             val officialAlertsEnabled: Boolean,
             val sirenOverride: Boolean,
             val connected: Boolean,
@@ -97,7 +101,6 @@ class AlertService : Service() {
     private data class AlertConfig(
         val redArmed: Boolean,
         val yellowArmed: Boolean,
-        val fastAlertsSooner: Boolean,
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean
@@ -160,16 +163,15 @@ class AlertService : Service() {
                     LocationTracker.location,
                     nowFlow
                 ) { neptun, gps, now -> Triple(neptun, gps, now) },
-                combine(prefs.redZoneKm(), prefs.yellowZoneKm()) { red, yellow -> red to yellow },
+                combine(prefs.redZoneMin(), prefs.yellowZoneMin()) { red, yellow -> red to yellow },
                 combine(
                     prefs.redZoneArmed(),
                     prefs.yellowZoneArmed(),
-                    prefs.fastAlertsSooner(),
                     prefs.officialAlertsEnabled(),
                     prefs.sirenOverride(),
                     prefs.followMe()
                 ) { flags: Array<Boolean> ->
-                    AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5])
+                    AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4])
                 },
                 combine(
                     threatAlertFlow(prefs),
@@ -181,19 +183,33 @@ class AlertService : Service() {
                 val gps = core.second
                 val now = core.third
                 val followMe = config.followMe
+                val lang = tail.second
                 val pinned = tail.third?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
                 val focus = if (followMe) gps else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
+                val attribution = focusAttribution(followMe, gps, pinned)
+                val officialActive = attribution.token?.let { token ->
+                    neptun.oblastAlerts.any { it.inOblast(token) }
+                } == true
+                val (officialReason, officialReasonThreatId) = if (officialActive) {
+                    buildReason(
+                        neptun, attribution.token, lang, focus,
+                        zoneCircleKm(radii.first).toInt(), zoneCircleKm(radii.second).toInt(), now,
+                        tail.first,
+                        focusRegionText(lang, followMe, pinned)
+                    )
+                } else null to null
                 MonitorEvent.State(
-                    focusOblastAlertActive = focusOblastAlertActive(neptun, followMe, gps, pinned),
-                    focusAlertSource = focusAlertSource(neptun, followMe, gps, pinned),
-                    focusBannerCity = focusBannerCity(tail.second, followMe, gps, pinned),
-                    focusRegion = focusRegionText(tail.second, followMe, pinned),
+                    focusOblastAlertActive = officialActive,
+                    focusAlertSource = attribution.token?.let { token -> neptun.alertSourceFor(token) },
+                    focusBannerCity = if (lang == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn,
+                    focusRegion = focusRegionText(lang, followMe, pinned),
                     focusPinned = !followMe && pinned != null,
+                    officialReason = officialReason,
+                    officialReasonThreatId = officialReasonThreatId,
                     zoneThreats = zoneThreats(neptun, radii.first, radii.second, focus, tail.first, now),
-                    lang = tail.second,
+                    lang = lang,
                     redArmed = config.redArmed,
                     yellowArmed = config.yellowArmed,
-                    fastAlertsSooner = config.fastAlertsSooner,
                     officialAlertsEnabled = config.officialAlertsEnabled,
                     sirenOverride = config.sirenOverride,
                     connected = neptun.connected,
@@ -201,21 +217,6 @@ class AlertService : Service() {
                 )
             }.collect { handleState(it) }
         }
-    }
-
-    private fun focusOblastAlertActive(st: NeptunState, followMe: Boolean, gps: LatLng?, pinned: City?): Boolean {
-        val token = focusAttribution(followMe, gps, pinned).token ?: return false
-        return st.oblastAlerts.any { it.inOblast(token) }
-    }
-
-    private fun focusAlertSource(st: NeptunState, followMe: Boolean, gps: LatLng?, pinned: City?): AlertSource? {
-        val token = focusAttribution(followMe, gps, pinned).token ?: return null
-        return st.alertSourceFor(token)
-    }
-
-    private fun focusBannerCity(lang: AppLanguage, followMe: Boolean, gps: LatLng?, pinned: City?): String {
-        val att = focusAttribution(followMe, gps, pinned)
-        return if (lang == AppLanguage.UA) att.bannerCityUa else att.bannerCityEn
     }
 
     private fun focusRegionText(lang: AppLanguage, followMe: Boolean, pinned: City?): String {
@@ -233,31 +234,34 @@ class AlertService : Service() {
     }
 
     /**
-     * Active threats inside either tier (INNER > OUTER), keyed by id. Zones are radii around
-     * the focus point (GPS or pinned city); disabled threat types are skipped.
+     * Active threats inside either tier (INNER > OUTER), keyed by id. Tiers are time-to-arrival
+     * bands around the focus point (GPS or pinned city): a threat whose predicted position would
+     * reach the focus within redMin minutes is INNER, within yellowMin minutes is OUTER. Advisory
+     * (NEPTUN observation) threats, disabled types and out-of-reach types are skipped.
      */
     private fun zoneThreats(
         st: NeptunState,
-        redKm: Int,
-        yellowKm: Int,
+        redMin: Int,
+        yellowMin: Int,
         focus: LatLng?,
         enabled: Set<ThreatType>,
         now: Long
     ): Map<String, ThreatZone> {
         if (focus == null) return emptyMap()
-        val zones = RadialZones(redKm, yellowKm)
+        val zones = TimeZones(redMin, yellowMin)
         val map = LinkedHashMap<String, ThreatZone>()
         for (t in st.threats.values) {
             if (t.status == "resolved" || t.status == "stale" || isExpired(t, now) || t.areaOnly) continue
             if (t.type !in enabled) continue
+            if (t.advisory) continue
             speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-            val p = speedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
+            val estimate = speedTracker.estimate(t.id, t)
+            val p = estimate?.let { predictPosition(t, it, now) }
             val lat = p?.latitude ?: t.lat
             val lon = p?.longitude ?: t.lon
-            val zone = radialZone(
-                distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0,
-                zones
-            ) ?: continue
+            val distKm = distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0
+            val speedKmh = estimate?.times(3.6)
+            val zone = timeTier(t, distKm, speedKmh, zones) ?: continue
             map[t.id] = zone
         }
         return map
@@ -307,16 +311,14 @@ class AlertService : Service() {
             title = if (offline != null) s.offlineStatusTitle else s.notifOngoingTitle,
             text = if (offline != null) {
                 String.format(s.offlineBodyFormat, String.format(s.offlineDurMinFormat, offline / 60))
-            } else if (state.focusPinned) s.notifStatusPinned else s.notifStatusZones,
+            } else if (state.focusPinned) String.format(s.notifStatusPinned, state.focusBannerCity) else s.notifStatusZones,
             retryLabel = if (offline != null) s.offlineRetryAction else null
         )
 
         val all = NeptunClient.state.value.threats
 
         /** Channel tier after arming toggles are applied; null = no sound for this object. */
-        fun alertTier(id: String, spatial: ThreatZone): ThreatZone? = when (
-            all[id]?.let { effectiveZone(it, spatial, state.fastAlertsSooner) } ?: spatial
-        ) {
+        fun alertTier(id: String, spatial: ThreatZone): ThreatZone? = when (spatial) {
             ThreatZone.INNER -> if (state.redArmed) ThreatZone.INNER
             else if (state.yellowArmed) ThreatZone.OUTER else null
             ThreatZone.OUTER -> if (state.yellowArmed) ThreatZone.OUTER else null
@@ -329,34 +331,71 @@ class AlertService : Service() {
             .mapNotNull { (id, spatial) -> alertTier(id, spatial)?.let { id to it } }
             .toMap()
         var posted = false
-        val newZone = alertable.entries
+        val newEntries = alertable.entries
             .filter { (id, zone) -> knownZones[id] != zone }
-            .minWithOrNull(compareBy { it.value.ordinal })
-        if (newZone != null) {
-            val (id, zone) = newZone
+            .sortedBy { it.value.ordinal }
+        if (newEntries.isNotEmpty()) {
+            // Post one notification for the most urgent newly-changed threat, but only mark
+            // THAT threat as known — every other newly-changed threat stays "unknown" so it
+            // gets its own alert on the very next tick instead of being silently absorbed.
+            val (id, zone) = newEntries.first()
             val t = all[id]
             val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
-            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride)
+            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride, state.lang)
             posted = true
+            knownZones = knownZones + (id to zone)
         }
-        knownZones = alertable
+        // Drop ids that left zoneThreats entirely (resolved/expired/out of range) so a future
+        // re-entry is treated as new; everything else keeps its value so the not-yet-fired
+        // new entries are re-evaluated on the next tick.
+        knownZones = knownZones.filterKeys { it in state.zoneThreats.keys }
 
         // Official oblast-level alert (independent of zone membership). Gated by the
         // Settings toggle — turning it off stops only official-alert notifications,
         // never the Red/Yellow zone alerts.
-        if (state.officialAlertsEnabled && state.focusOblastAlertActive && !wasFocusAlertActive && !posted) {
+        val officialActive = state.officialAlertsEnabled && state.focusOblastAlertActive
+        val officialBody = state.officialReason?.let { it + sourceTag(state.focusAlertSource, s) }
+            ?: state.focusRegion + sourceTag(state.focusAlertSource, s)
+        if (officialActive && !wasFocusAlertActive && !posted) {
             postAlert(
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
-                state.focusRegion + sourceTag(state.focusAlertSource, s),
-                state.sirenOverride
+                officialBody,
+                state.sirenOverride,
+                state.lang
             )
+            currentReason = state.officialReason
+            currentReasonThreatId = state.officialReasonThreatId
+        } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
+            state.officialReason != currentReason
+        ) {
+            // Wait-for-reason: the official alert fired with only a region-level body; keep
+            // updating the SAME NOTIF_ALERT silently as a specific threat reason arrives.
+            // Mirrors the knownZones change-tracking above — a same-id re-post is guarded on
+            // an actual reason change so the siren isn't re-triggered — and never clobbers a
+            // ringing zone alert (alertable is non-empty then).
+            postAlert(
+                null,
+                String.format(s.alertBannerFormat, state.focusBannerCity),
+                officialBody,
+                state.sirenOverride,
+                state.lang
+            )
+            currentReason = state.officialReason
+            currentReasonThreatId = state.officialReasonThreatId
         }
         // All clear: the official alert that was ringing has just ended. The cheerful chime
         // fires only for the official oblast alert — zone-threat clears stay silent — and
-        // never when the official-alert notifications are turned off.
+        // never when the official-alert notifications are turned off. When no zone alert is
+        // active, cancel the lingering siren notification immediately instead of waiting for
+        // the 60s grace path below; if a zone alert is still ringing, leave it up.
         if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertActive) {
+            if (alertable.isEmpty()) {
+                cancelAlert()
+            }
             postAllClear(s, state.focusBannerCity)
+            currentReason = null
+            currentReasonThreatId = null
         }
         wasFocusAlertActive = state.focusOblastAlertActive
 
@@ -389,6 +428,64 @@ class AlertService : Service() {
         return if (where != null) "$label — $where" else label
     }
 
+    /**
+     * Reason line for the official oblast alert: the highest-priority active, non-advisory,
+     * non-area-only threat whose region/district/locality sits in the focus oblast, ordered
+     * by ThreatLevelModel.scoreOf. Returns the localized reason text and the threat id that
+     * produced it (id null when no qualifying threat exists — then a region-level fallback
+     * template is returned).
+     */
+    private fun buildReason(
+        st: NeptunState,
+        token: String?,
+        lang: AppLanguage,
+        focus: LatLng?,
+        redKm: Int,
+        yellowKm: Int,
+        now: Long,
+        enabled: Set<ThreatType>,
+        regionFallback: String
+    ): Pair<String?, String?> {
+        var best: Threat? = null
+        var bestScore = -1.0
+        for (t in st.threats.values) {
+            if (t.status != "active" || t.advisory || t.areaOnly || t.type !in enabled ||
+                isExpired(t, now) || !inFocusOblast(t, token)
+            ) continue
+            speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
+            val predicted = speedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
+            val lat = predicted?.latitude ?: t.lat
+            val lon = predicted?.longitude ?: t.lon
+            val distKm = if (focus != null) distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0 else null
+            val speed = speedTracker.estimate(t.id, t)
+            val eta = if (speed != null && speed > 0.0 && distKm != null) distKm / (speed * 3.6) * 60.0 else null
+            val score = if (distKm != null) {
+                ThreatLevelModel.scoreOf(t, distKm, eta, redKm, yellowKm, now)
+            } else 0.0
+            if (score > bestScore) {
+                bestScore = score
+                best = t
+            }
+        }
+        return if (best != null) {
+            val reason = translateCourseAssessment(best.explanationShort, lang) ?: threatBody(best, lang)
+            reason to best.id
+        } else {
+            String.format(Strings.get(lang).notifReasonFormat, regionFallback) to null
+        }
+    }
+
+    /** True when any of the threat's region/district/locality names sits in the focus oblast. */
+    private fun inFocusOblast(t: Threat, token: String?): Boolean {
+        if (token == null) return false
+        return (t.region != null && inOblastText(t.region, token)) ||
+            (t.district != null && inOblastText(t.district, token)) ||
+            (t.locality != null && inOblastText(t.locality, token))
+    }
+
+    private fun inOblastText(text: String, token: String): Boolean =
+        text.startsWith(token, ignoreCase = true) || Cities.cityOblast[text] == token
+
     /** Small source tag appended to the official-alert body when it came from the backup. */
     private fun sourceTag(source: AlertSource?, s: Strings.StringSet): String = when (source) {
         AlertSource.BACKUP -> s.alertSourceBackup
@@ -419,7 +516,12 @@ class AlertService : Service() {
         safeNotify(NOTIF_MONITOR, monitorNotification(title, text, retryLabel))
     }
 
-    private fun postAlert(zone: ThreatZone?, title: String, body: String, sirenOverride: Boolean) {
+    private fun buildAlertNotification(
+        zone: ThreatZone?,
+        title: String,
+        body: String,
+        sirenOverride: Boolean
+    ): NotificationCompat.Builder {
         // Without the override, sirens follow the phone's ringer/vibrate mode via the
         // notification stream; with it, they ring on the alarm stream even in vibrate/silent.
         // All-clear never overrides — it's not an emergency.
@@ -429,7 +531,7 @@ class AlertService : Service() {
             zone == ThreatZone.OUTER -> CHANNEL_ALERTS_OUTER
             else -> CHANNEL_ALERTS
         }
-        val notif = NotificationCompat.Builder(this, channel)
+        return NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_launcher_drone)
             .setContentTitle(title)
             .setContentText(body)
@@ -437,11 +539,32 @@ class AlertService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
-            .build()
-        safeNotify(NOTIF_ALERT, notif)
+    }
+
+    private fun postAlert(
+        zone: ThreatZone?,
+        title: String,
+        body: String,
+        sirenOverride: Boolean,
+        lang: AppLanguage
+    ) {
+        alertEpoch++
+        safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, body, sirenOverride).build())
+        // Post the raw (Ukrainian) body immediately; translate to English in the background and
+        // re-post on the same id only if no newer alert/clear has replaced it. A same-id re-post
+        // doesn't re-sound — same assumption as the wait-for-reason path.
+        if (lang == AppLanguage.EN) {
+            val gen = alertEpoch
+            scope.launch {
+                val translated = Translator.translate(body) ?: return@launch
+                if (gen != alertEpoch) return@launch
+                safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, translated, sirenOverride).build())
+            }
+        }
     }
 
     private fun cancelAlert() {
+        alertEpoch++
         try {
             NotificationManagerCompat.from(this).cancel(NOTIF_ALERT)
         } catch (_: SecurityException) {
@@ -473,6 +596,7 @@ class AlertService : Service() {
     }
 
     private fun postAllClear(s: Strings.StringSet, city: String) {
+        alertEpoch++
         val notif = NotificationCompat.Builder(this, CHANNEL_ALLCLEAR)
             .setSmallIcon(R.drawable.ic_launcher_drone)
             .setContentTitle(String.format(s.allClearTitle, city))

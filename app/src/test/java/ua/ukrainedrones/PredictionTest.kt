@@ -47,6 +47,34 @@ class PredictionTest {
     }
 
     @Test
+    fun `isStale is true when server flags stale or fix aged past the window`() {
+        val now = 1_000_000L
+        assertFalse(threat(updatedAtMillis = now).isStale(now))
+        assertTrue(threat(status = "stale", updatedAtMillis = now).isStale(now))
+        assertTrue(threat(updatedAtMillis = now - 301_000L).isStale(now))
+        assertFalse(threat(updatedAtMillis = null, confirmedAtMillis = null).isStale(now))
+    }
+
+    @Test
+    fun `isGhost requires staleness window plus the hard cap`() {
+        val now = 1_000_000L
+        val window = staleAfterMs(ThreatType.SHAHED) // 300_000L
+        assertFalse(threat(updatedAtMillis = now).isGhost(now))
+        // Just past the window but inside the cap: dimmed, still shown.
+        assertFalse(threat(updatedAtMillis = now - window - 1_000L).isGhost(now))
+        // Past the window plus the cap: gone.
+        assertTrue(threat(updatedAtMillis = now - window - STALE_GHOST_CAP_MS - 1_000L).isGhost(now))
+        // A short-window type (ballistic) ghosts much sooner.
+        assertTrue(
+            threat(
+                type = ThreatType.BALLISTIC,
+                updatedAtMillis = now - staleAfterMs(ThreatType.BALLISTIC) - STALE_GHOST_CAP_MS - 1_000L
+            ).isGhost(now)
+        )
+        assertFalse(threat(updatedAtMillis = null, confirmedAtMillis = null).isGhost(now))
+    }
+
+    @Test
     fun `predictPosition returns null for non-flying or no bearing`() {
         assertNull(predictPosition(threat(bearingDeg = null), 50.0, 1_000_000L))
         assertNull(
@@ -85,6 +113,20 @@ class PredictionTest {
         assertNotNull(p)
         val dist = distanceMeters(t.lat, t.lon, p!!.latitude, p.longitude)
         assertTrue(dist <= 20_000.0 + 1.0)
+    }
+
+    @Test
+    fun `predictPosition moves east along a top-level heading without velocity`() {
+        val t = threat(heading = 90.0, confirmedAtMillis = 0L)
+        val p = predictPosition(t, 50.0, 1_000L) // 1s at 50 m/s = 50 m east
+        assertNotNull(p)
+        assertTrue(p!!.longitude > t.lon)
+        assertEquals(t.lat, p.latitude, 1e-6)
+    }
+
+    @Test
+    fun `predictPosition returns null for an active threat with no heading`() {
+        assertNull(predictPosition(threat(confirmedAtMillis = 0L), 50.0, 1_000_000L))
     }
 
     @Test
@@ -135,5 +177,35 @@ class PredictionTest {
     fun `typicalSpeedKmh exposes nominal speeds`() {
         assertEquals(180.0, typicalSpeedKmh(ThreatType.SHAHED)!!, 1e-9)
         assertNull(typicalSpeedKmh(ThreatType.UNKNOWN))
+    }
+
+    @Test
+    fun `etaToCircleEdge direct inbound equals distance over speed`() {
+        val center = LatLng(0.0, 0.0)
+        val from = LatLng(2000.0 / 110_574.0, 0.0) // 2000 m north of center
+        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 1000.0, bearingDeg = 180.0, speedMps = 50.0)
+        assertNotNull(eta)
+        assertEquals((2000.0 - 1000.0) / 50.0 / 60.0, eta!!, 0.05)
+    }
+
+    @Test
+    fun `etaToCircleEdge is null when already inside the circle`() {
+        val center = LatLng(0.0, 0.0)
+        val from = LatLng(500.0 / 110_574.0, 0.0) // 500 m north, inside a 1000 m circle
+        assertNull(etaToCircleEdgeMinutes(from, center, 1000.0, 180.0, 50.0))
+    }
+
+    @Test
+    fun `etaToCircleEdge is null when heading away`() {
+        val center = LatLng(0.0, 0.0)
+        val from = LatLng(2000.0 / 110_574.0, 0.0)
+        assertNull(etaToCircleEdgeMinutes(from, center, 1000.0, 0.0, 50.0))
+    }
+
+    @Test
+    fun `etaToCircleEdge is null with no speed`() {
+        val center = LatLng(0.0, 0.0)
+        val from = LatLng(2000.0 / 110_574.0, 0.0)
+        assertNull(etaToCircleEdgeMinutes(from, center, 1000.0, 180.0, 0.0))
     }
 }

@@ -78,8 +78,8 @@ private fun flyParams(type: ThreatType): FlyParams = when (type) {
 
 /**
  * How long a threat of this type is considered live after its last fix. After this window
- * it's treated as stale and dropped from the map/counts/alerts — a missile is never in the
- * region for more than a few minutes, so 10+ minute ghosts are noise.
+ * it's treated as stale: dimmed on the map and dropped from counts/alerts — a missile is
+ * never in the region for more than a few minutes, so 10+ minute ghosts are noise.
  */
 fun staleAfterMs(type: ThreatType): Long = when (type) {
     ThreatType.BALLISTIC -> 90_000L
@@ -95,15 +95,35 @@ fun isExpired(t: Threat, now: Long): Boolean {
 }
 
 /**
+ * How long a stale threat stays drawn (dimmed) on the map past its staleness window before
+ * it's removed entirely. NEPTUN documents no server-side death timeout, so this is the
+ * backstop that guarantees a ghost marker can't linger forever.
+ */
+const val STALE_GHOST_CAP_MS = 30 * 60 * 1000L
+
+/** True when the threat is past its per-type staleness window or the server flagged it stale. */
+fun Threat.isStale(now: Long): Boolean = status == "stale" || isExpired(this, now)
+
+/**
+ * True when a stale threat has been on screen for longer than the staleness window plus the
+ * ghost cap — it's then removed from the map entirely instead of staying dimmed.
+ */
+fun Threat.isGhost(now: Long): Boolean {
+    val updated = updatedAtMillis ?: confirmedAtMillis ?: return false
+    return now - updated > staleAfterMs(type) + STALE_GHOST_CAP_MS
+}
+
+/**
  * Predict a threat's current position by advancing from its last confirmed fix along its
  * course at the estimated speed, within NEPTUN's per-type fly horizon. Mirrors the SDK's
- * `predict()`: it only dead-reckons tracks that carry a real velocity + confirmed fix and are
- * active — everything else returns null so the caller keeps the raw fix. Anchors strictly on
- * `confirmedAtMillis` (the dead-reckon anchor), never on `updatedAtMillis`.
+ * `predict()`: it dead-reckons any active track that carries a real heading (the authoritative
+ * velocity `bearingDeg`, else the top-level reported `heading`) — everything else returns null
+ * so the caller keeps the raw fix. Anchors strictly on `confirmedAtMillis` (the dead-reckon
+ * anchor), never on `updatedAtMillis`.
  */
 fun predictPosition(t: Threat, speedMps: Double, nowMillis: Long): GeoPoint? {
-    if (!t.flying) return null
-    val heading = t.bearingDeg ?: return null
+    if (t.status != "active") return null
+    val heading = t.bearingDeg ?: t.heading ?: return null
     val confirmedAt = t.confirmedAtMillis ?: return null
     var elapsedSec = (nowMillis - confirmedAt) / 1000.0
     if (elapsedSec < 0) return null

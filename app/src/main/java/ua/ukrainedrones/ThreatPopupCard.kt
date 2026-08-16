@@ -7,11 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.draw.rotate
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -36,19 +34,23 @@ private val AdvisoryAmber = Color(0xFFFFC107)
 private val DistUserRed = Color(0xFFE57373)
 private val DistUserAmber = Color(0xFFFFD54F)
 private val DistUserGreen = Color(0xFF81C784)
+private val GpsDot = Color(0xFF4FC3F7)
 private val CyrillicRegex = Regex("[\\u0400-\\u04FF]")
 
 private fun containsCyrillic(text: String): Boolean = CyrillicRegex.containsMatchIn(text)
 
-/** Small grayed-out alarm bell marking a type whose alerts are switched off in Settings. */
+/** Red crossed bell marking a type whose alerts are switched off in Settings. */
 @Composable
-private fun AlertsOffBell() {
-    Spacer(Modifier.width(6.dp))
+internal fun AlertsOffBell(
+    size: Dp = 14.dp,
+    tint: Color = Color(0xFFE57373),
+    contentDescription: String? = null
+) {
     Icon(
-        imageVector = Icons.Outlined.Notifications,
-        contentDescription = null,
-        tint = Color(0xFF9E9E9E),
-        modifier = Modifier.size(fontAware(14.dp))
+        painter = painterResource(id = R.drawable.ic_notifications_off),
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = Modifier.size(size)
     )
 }
 
@@ -68,7 +70,6 @@ fun ThreatPopupCard(
     proximity: ThreatProximity?,
     pinnedCity: City?,
     threatLevel: Double,
-    fastAlertsSooner: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     cardSize: ThreatCardSize = ThreatCardSize.LARGE,
@@ -94,6 +95,19 @@ fun ThreatPopupCard(
     }
     val displayRegion = if (lang == AppLanguage.EN) regionEn ?: regionText else regionText
 
+    // Live 1s clock so the elapsed readout (and the stale "last seen" note) stays fresh.
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val stale = threat.isStale(now)
+    val elapsedText =
+        if (stale) s.lastSeenAgoFormat.format(formatElapsedMss(threat.updatedAtMillis, now))
+        else formatElapsedMss(threat.updatedAtMillis, now)
+
     val reliabilityText = when (threat.reliability) {
         Reliability.HIGH -> s.reliabilityHigh
         Reliability.MEDIUM -> s.reliabilityMedium
@@ -103,9 +117,7 @@ fun ThreatPopupCard(
     val confirmations = threat.confirmations.takeIf { it > 0 }
 
     val band = proximity?.let { p ->
-        val d = p.distToUserKm ?: return@let null
-        radialZone(d, RadialZones(p.redKm, p.yellowKm))
-            ?.let { spatial -> effectiveZone(threat, spatial, fastAlertsSooner) }
+        timeTier(threat, p.distToUserKm ?: return@let null, p.speedKmh, TimeZones(p.redMin, p.yellowMin))
     }
     val bandColor = when (band) {
         ThreatZone.INNER -> DistUserRed
@@ -118,8 +130,8 @@ fun ThreatPopupCard(
             .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier),
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF1E1E1E),
-        border = BorderStroke(2.dp, bandColor),
+        color = if (stale) Color(0xFF151515) else Color(0xFF1E1E1E),
+        border = BorderStroke(2.dp, if (stale) Color(0xFF3A3A3A) else bandColor),
         tonalElevation = 8.dp
     ) {
         when (cardSize) {
@@ -144,7 +156,10 @@ fun ThreatPopupCard(
                                 style = MaterialTheme.typography.titleSmall,
                                 color = Color.White
                             )
-                            if (alertsOff) AlertsOffBell()
+                            if (alertsOff) {
+                                    Spacer(Modifier.width(6.dp))
+                                    AlertsOffBell(size = fontAware(14.dp))
+                                }
                         }
                         Spacer(Modifier.height(2.dp))
                         SummaryPills(
@@ -158,12 +173,13 @@ fun ThreatPopupCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         LevelSkullIcon(level = threatLevel, size = fontAware(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        HorizontalLevelBar(level = threatLevel)
+                        HorizontalLevelBar(level = threatLevel, modifier = Modifier.width(fontAware(56.dp)))
                     }
                 }
             }
 
-            // Header + distance/ETA + speed, then a reliability/elapsed footer.
+            // Fixed 3 rows: header (icon + type + region), single-line pills, then
+            // skull + expanded level bar with reliability/age trailing.
             ThreatCardSize.MEDIUM -> {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -182,32 +198,16 @@ fun ThreatPopupCard(
                                     style = MaterialTheme.typography.titleSmall,
                                     color = Color.White
                                 )
-                                if (alertsOff) AlertsOffBell()
+                                if (alertsOff) {
+                                    Spacer(Modifier.width(6.dp))
+                                    AlertsOffBell(size = fontAware(14.dp))
+                                }
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    displayRegion,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFB0B0B0),
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                val course = threat.courseDeg
-                                Spacer(Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowUp,
-                                    contentDescription = null,
-                                    tint = Color(0xFFB0B0B0),
-                                    modifier = Modifier
-                                        .size(fontAware(12.dp))
-                                        .rotate(course.toFloat())
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            LevelSkullIcon(level = threatLevel, size = fontAware(24.dp))
-                            Spacer(Modifier.height(3.dp))
-                            HorizontalLevelBar(level = threatLevel)
+                            Text(
+                                displayRegion,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFB0B0B0)
+                            )
                         }
                     }
 
@@ -216,39 +216,35 @@ fun ThreatPopupCard(
                         proximity = proximity,
                         pinnedCity = pinnedCity,
                         s = s,
-                        lang = lang
+                        lang = lang,
+                        singleLine = true
                     )
 
                     Spacer(Modifier.height(10.dp))
                     HorizontalDivider(color = Color(0xFF3A3A3A))
                     Spacer(Modifier.height(8.dp))
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LevelSkullIcon(level = threatLevel, size = fontAware(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        HorizontalLevelBar(level = threatLevel, modifier = Modifier.weight(1f))
+                        Spacer(Modifier.width(10.dp))
                         Surface(
                             shape = RoundedCornerShape(20.dp),
                             color = ReliabilityRed.copy(alpha = 0.18f)
                         ) {
                             Text(
                                 reliabilityText,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                 color = ReliabilityRed,
                                 fontWeight = FontWeight.Medium,
-                                style = MaterialTheme.typography.labelMedium
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
-                        var now by remember { mutableStateOf(System.currentTimeMillis()) }
-                        LaunchedEffect(Unit) {
-                            while (true) {
-                                kotlinx.coroutines.delay(1000)
-                                now = System.currentTimeMillis()
-                            }
-                        }
+                        Spacer(Modifier.width(8.dp))
                         Text(
-                            formatElapsedMss(threat.updatedAtMillis, now),
-                            color = Color(0xFF9E9E9E),
+                            elapsedText,
+                            color = if (stale) AdvisoryAmber else Color(0xFF9E9E9E),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -276,7 +272,10 @@ fun ThreatPopupCard(
                                         style = MaterialTheme.typography.titleMedium,
                                         color = Color.White
                                     )
-                                    if (alertsOff) AlertsOffBell()
+                                    if (alertsOff) {
+                                    Spacer(Modifier.width(6.dp))
+                                    AlertsOffBell(size = fontAware(14.dp))
+                                }
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
@@ -284,16 +283,6 @@ fun ThreatPopupCard(
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = Color(0xFFB0B0B0),
                                         modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    val course = threat.courseDeg
-                                    Spacer(Modifier.width(6.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowUp,
-                                        contentDescription = null,
-                                        tint = Color(0xFFB0B0B0),
-                                        modifier = Modifier
-                                            .size(fontAware(12.dp))
-                                            .rotate(course.toFloat())
                                     )
                                 }
                             }
@@ -366,18 +355,7 @@ fun ThreatPopupCard(
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = ReliabilityRed.copy(alpha = 0.18f)
-                                ) {
-                                    Text(
-                                        reliabilityText,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        color = ReliabilityRed,
-                                        fontWeight = FontWeight.Medium,
-                                        style = MaterialTheme.typography.labelLarge
-                                    )
-                                }
+                                ReliabilityBar(reliability = threat.reliability, s = s)
                                 confirmations?.let { n ->
                                     Surface(
                                         shape = RoundedCornerShape(20.dp),
@@ -393,16 +371,9 @@ fun ThreatPopupCard(
                                     }
                                 }
                             }
-                            var now by remember { mutableStateOf(System.currentTimeMillis()) }
-                            LaunchedEffect(Unit) {
-                                while (true) {
-                                    kotlinx.coroutines.delay(1000)
-                                    now = System.currentTimeMillis()
-                                }
-                            }
                             Text(
-                                formatElapsedMss(threat.updatedAtMillis, now),
-                                color = Color(0xFF9E9E9E),
+                                elapsedText,
+                                color = if (stale) AdvisoryAmber else Color(0xFF9E9E9E),
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -442,15 +413,13 @@ private fun LevelSkullIcon(level: Double, size: Dp = 30.dp) {
     )
 }
 
-/** Compact horizontal 0–10 level bar for the small/medium cards. */
+/** Compact horizontal 0–10 level bar; `modifier` controls its width (fixed or expanded). */
 @Composable
-private fun HorizontalLevelBar(level: Double) {
+private fun HorizontalLevelBar(level: Double, modifier: Modifier = Modifier) {
     val fraction = (level / 10.0).coerceIn(0.0, 1.0)
-    val barWidth = fontAware(56.dp)
     val barHeight = fontAware(8.dp)
     Box(
-        modifier = Modifier
-            .width(barWidth)
+        modifier = modifier
             .height(barHeight)
             .clip(RoundedCornerShape(4.dp))
             .background(Color(0xFF3A3A3A))
@@ -458,8 +427,9 @@ private fun HorizontalLevelBar(level: Double) {
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .width((barWidth * fraction.toFloat()).coerceAtLeast(fontAware(6.dp)))
-                .height(barHeight)
+                .fillMaxHeight()
+                .fillMaxWidth(fraction.toFloat())
+                .widthIn(min = fontAware(6.dp))
                 .clip(RoundedCornerShape(4.dp))
                 .background(levelColor(level))
         )
@@ -507,7 +477,8 @@ private fun SummaryPills(
     proximity: ThreatProximity?,
     pinnedCity: City?,
     s: Strings.StringSet,
-    lang: AppLanguage
+    lang: AppLanguage,
+    singleLine: Boolean = false
 ) {
     val distUser = proximity?.distToUserKm
     if (distUser == null) {
@@ -522,41 +493,94 @@ private fun SummaryPills(
     val distCd = if (cityName != null) {
         String.format(s.pillDistanceCd, cityName, formatKm(distUser))
     } else null
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        proximity.etaToUserMin?.let { eta ->
-            MetricPill(
-                number = formatEtaMinutes(eta),
-                unit = s.etaUnit
+    if (singleLine) {
+        // Single-line pills can't wrap — cap the font scale so extreme accessibility
+        // sizes don't push the row off the card.
+        val density = LocalDensity.current
+        CompositionLocalProvider(
+            LocalDensity provides Density(
+                density = density.density,
+                fontScale = min(density.fontScale, 1.25f)
             )
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PillTrio(proximity = proximity, distUser = distUser, distCd = distCd, s = s)
+            }
         }
+    } else {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            PillTrio(proximity = proximity, distUser = distUser, distCd = distCd, s = s)
+        }
+    }
+}
+
+/** The ETA / distance / speed pill trio (no wrapping container of its own). */
+@Composable
+private fun PillTrio(
+    proximity: ThreatProximity?,
+    distUser: Double,
+    distCd: String?,
+    s: Strings.StringSet
+) {
+    proximity?.etaToUserMin?.let { eta ->
         MetricPill(
-            number = formatKm(distUser),
-            unit = s.kmUnit,
-            contentDescription = distCd
+            number = formatEtaMinutes(eta),
+            unit = s.etaUnit,
+            dotColor = GpsDot
         )
-        proximity.speedKmh?.let { speed ->
-            MetricPill(
-                number = speed.roundToInt().toString(),
-                unit = s.speedUnit
-            )
-        }
+    }
+    MetricPill(
+        number = formatKm(distUser),
+        unit = s.kmUnit,
+        contentDescription = distCd
+    )
+    proximity?.takeIf { it.speedSource == SpeedSource.RECORDED }?.speedKmh?.let { speed ->
+        MetricPill(
+            number = speed.roundToInt().toString(),
+            unit = s.speedUnit
+        )
     }
 }
 
 /** Neutral, low-color pill where the number is the hero and the unit stays muted. */
 @Composable
-private fun MetricPill(number: String, unit: String, contentDescription: String? = null) {
+private fun MetricPill(
+    number: String,
+    unit: String,
+    contentDescription: String? = null,
+    dotColor: Color? = null
+) {
     Surface(
         shape = RoundedCornerShape(50),
         color = Color(0xFF2A2A2A)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            if (dotColor != null) {
+                Box(
+                    modifier = Modifier
+                        .size(fontAware(14.dp))
+                        .clip(CircleShape)
+                        .background(dotColor.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(fontAware(8.dp))
+                            .clip(CircleShape)
+                            .background(dotColor)
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
                 number,
                 color = Color(0xFFCFCFCF),
@@ -623,6 +647,36 @@ private fun UncertaintyBar(uncertaintyKm: Double?, s: Strings.StringSet) {
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF9E9E9E)
         )
+    }
+}
+
+/** Precision-style reliability indicator: label + 3 segments, LOW left → HIGH right. */
+@Composable
+private fun ReliabilityBar(reliability: Reliability, s: Strings.StringSet) {
+    val level = when (reliability) {
+        Reliability.HIGH -> 3
+        Reliability.MEDIUM -> 2
+        Reliability.LOW -> 1
+        Reliability.UNKNOWN -> 0
+    }
+    val color = when (reliability) {
+        Reliability.HIGH -> DistUserGreen
+        Reliability.MEDIUM -> DistUserAmber
+        Reliability.LOW -> ReliabilityRed
+        Reliability.UNKNOWN -> Color(0xFF9E9E9E)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(s.reliabilityLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF9E9E9E))
+        Spacer(Modifier.width(8.dp))
+        repeat(3) { i ->
+            Box(
+                modifier = Modifier
+                    .size(width = 22.dp, height = 6.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (i < level) color else UncertaintyEmpty)
+            )
+            if (i < 2) Spacer(Modifier.width(2.dp))
+        }
     }
 }
 

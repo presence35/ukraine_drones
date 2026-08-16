@@ -33833,3 +33833,2792 @@ Let me add the helper to Prediction.kt.
 
 Now extend `ThreatProximity` and the proximity block in MainViewModel.kt.
 
+
+## 15/08/2026, 19:23:24
+
+Now add the two pills to the ThreatPopupCard (MEDIUM and LARGE). Let me look at how the summary row is laid out in both sizes and add an edge-ETA row.
+
+For MEDIUM, after the summary row (lines ~221-236), and for LARGE after the summary row (~318-333). Let me add a shared composable that renders the two pills (yellow edge + to-you), and insert it after the summary row in both.
+
+Let me look at the exact MEDIUM section again.
+
+
+## 15/08/2026, 19:23:29
+
+Let me look at the MEDIUM summary row (lines 220-236 in the original, but file shifted). Let me read the current MEDIUM section.
+
+
+## 15/08/2026, 19:23:33
+
+There's a `SummaryPills` composable used in MEDIUM now (the file changed from what I read earlier — there's a refactor). Let me check the LARGE section and find `SummaryPills` definition.
+
+
+## 15/08/2026, 19:23:41
+
+There's a shared `SummaryPills` composable used by all three card sizes (SMALL line 150, MEDIUM 215, LARGE 304). Let me read its definition (line 506) and one usage to add the edge-ETA pills there — that gives us all three sizes for free.
+
+
+## 15/08/2026, 19:23:47
+
+I see — the current popup already has `MetricPill`s for ETA (to user), distance, and speed. There's already an ETA pill. I'll add a yellow-edge ETA pill with a yellow marker, and give the existing to-user ETA pill a blue GPS-dot marker to distinguish "to you" from "yellow edge".
+
+The user asked: "just yellow and gps pills in the card." So I want two pills: yellow (edge) + blue (to you). The existing to-user ETA pill is the "you" one. I'll add a yellow-edge pill before it, and add small colored circle markers to both.
+
+Let me look at the `MetricPill` fully and add an optional color/marker parameter.
+
+
+## 15/08/2026, 19:23:55
+
+Now I understand the structure. The `formatEtaMinutes` just returns the number (unit shown separately). The to-user ETA pill already exists. I'll:
+
+1. Add a yellow-edge ETA pill with a yellow circle marker.
+2. Add a blue GPS-dot marker to the existing to-user ETA pill.
+
+Let me modify `MetricPill` to accept an optional `dotColor` (marker circle) parameter, then add the yellow pill in `SummaryPills` and pass the blue dot to the to-user pill.
+
+Let me update `MetricPill`:
+
+
+## 15/08/2026, 19:23:59
+
+I need to import `CircleShape`. Let me add it to the imports. The file imports `RoundedCornerShape` from material3. `CircleShape` is also in material3. Let me add the import.
+
+
+## 15/08/2026, 19:24:10
+
+Now update `SummaryPills` to add the yellow-edge pill (with yellow dot) and give the to-user ETA pill a blue GPS dot. Let me add the yellow pill before the to-user ETA pill and add the blue dot to the ETA pill.
+
+The user's guidance: "just yellow and gps pills in the card." So two pills: yellow edge + to-you. I'll add the yellow-edge ETA pill and mark the existing to-user ETA pill with a blue dot.
+
+
+## 15/08/2026, 19:24:14
+
+Now add the two color constants. Let me add them near the other color definitions at the top of the file.
+
+
+## 15/08/2026, 19:24:19
+
+Now let me update the todos and add unit tests.
+
+
+## 15/08/2026, 19:24:22
+
+Let me read the end of the test file to see where to add tests.
+
+
+## 15/08/2026, 19:24:40
+
+I'll add tests using the equator approximation. For a threat north of the center moving south (bearing 180°), the geometry is clean. Let me add tests at the end of the class (before the closing brace).
+
+Note: `etaToCircleEdgeMinutes` uses `distanceMeters`-style equirectangular conversion. For small angles it's fine. Let me design a test: center at (0,0), from at 0.01° north (~1105 m). Bearing 180° (due south). Yellow radius 1000m. Since the threat is 1105m north, it's 105m beyond the yellow circle, moving south toward center. `v = from - center` = north 1105m. Heading south = -y. v·u = 1105 * (-1) = -1105, so in my code vDotU = -(dLatM*ux + dLonM*uy) where v is center-from... let me recompute.
+
+In my code: `vx = from.lat - center.lat`, `dLatM = vx*110574` = 1105 (positive north, from is north of center). `v = from - center` points north. Then `vDotU = -(dLatM*ux + dLonM*uy)`. The vector inside is from-center (north). v·u (from-center)·(heading). Heading south = (0,-1) in lat/lon units... actually u is the heading unit vector in metre basis. For bearing 180°, rad=π, cos=-1, so uLat=cos(180°)=-1 (south), uLon=0. So u points south. (from-center) points north, dot with u(south) = -1105. Then vDotU = -(-1105) = 1105 > 0. Good, inbound. disc = 1105² - (1105² - 1000²) = 1000². dist = 1105 - 1000 = 105m. eta = 105/speed/60.
+
+With speed 50 m/s: 105/50/60 = 0.035 min. Good, that's the correct (D-R)/speed.
+
+Let me write the tests. I'll use a helper for the from point at a given distance north.
+
+Actually, let me keep it simple and robust:
+
+Test 1: direct inbound — center(0,0), from at north offset giving D=2000m, R=1000m, bearing 180, speed 50 → eta ≈ (2000-1000)/50/60 = 0.3333 min.
+
+Test 2: inside → null. from at 500m north, R=1000, bearing 180 → null.
+
+Test 3: heading away → null. from at 2000m north, bearing 0 (north, away) → null.
+
+Test 4: speed 0 → null.
+
+For "from at 2000m north": lat = 2000/110574 = 0.018088. Let me compute. For the test I'll compute lat offset via the same formula.
+
+Let me write these tests.
+
+
+## 15/08/2026, 19:24:44
+
+Now the CHANGELOG entry.
+
+
+## 15/08/2026, 19:24:47
+
+The file had a different structure. Let me re-read the top of CHANGELOG.
+
+
+## 15/08/2026, 19:24:52
+
+I'll investigate what "the turtle in settings" refers to in the codebase.
+
+
+## 15/08/2026, 19:24:52
+
+The file was modified. Let me add my entry at the top of the Unreleased section.
+
+
+## 15/08/2026, 19:24:56
+
+Let me look at the turtle icon drawable and how it's used.
+
+
+## 15/08/2026, 19:24:58
+
+Now let me run the tests and build.
+
+
+## 15/08/2026, 19:25:00
+
+The turtle icon is used in the `fastAndSlowGroups` list as `Triple(R.drawable.ic_turtle, ...)`. Let me see how the icon is rendered (as `ImageVector` vs painter/drawable) in the section header and group master column.
+
+
+## 15/08/2026, 19:25:03
+
+Let me look at the section header rendering around line 274-284.
+
+
+## 15/08/2026, 19:25:11
+
+Now let me check where else the turtle icon appears — the GroupMasterColumn. Let me look at the code around 300-340.
+
+
+## 15/08/2026, 19:25:19
+
+There's a `ThreatProximity` construction in SettingsScreen.kt:912 that needs the new field. Let me look at it.
+
+
+
+
+## 15/08/2026, 19:25:21
+
+I now have full context. The turtle icon (`ic_turtle.xml`) is used in two places in Settings: the Fast/Slow section header row (line 282-287) and — per the log/replies — the `GroupMasterColumn` titles. But the grep only showed `ic_turtle` referenced in `fastAndSlowGroups` (line 590). Let me confirm where else it's rendered. The replies log mentioned a GroupMasterColumn but the current code at lines 270-324 doesn't show one — it seems that was redesigned into the header row with inline IconToggles. Let me check the full render of the turtle icon usage once more and understand the "bad" complaint.
+
+The user says "the turtle in settings is bad" — this is the `ic_turtle.xml` vector drawable. Looking at the path data, this is actually a hand-scrawled/non-standard turtle. Let me compare with `ic_bolt.xml` to understand the icon style used.
+
+
+## 15/08/2026, 19:25:24
+
+This is a preview constant. I'll add the new field value.
+
+
+## 15/08/2026, 19:25:28
+
+Now let me check if there are any other `ThreatProximity(` constructions. Let me grep.
+
+
+## 15/08/2026, 19:25:30
+
+I now have enough context. The `ic_bolt.xml` is a clean, simple, recognizable Material-style bolt icon (single clear path). The `ic_turtle.xml` is a hand-authored vector that reads poorly — it's a complex, blobby, hard-to-recognize silhouette that doesn't read as a turtle at a small 18dp size. That's why it looks "bad."
+
+Let me check how the turtle path renders conceptually. The current path is a single complex fill. The problem: at 18dp with a dark-on-dark theme tinted primary, this blobby path is unrecognizable as a turtle and looks like a messy splat.
+
+I have enough to form a plan and options. Since the user asked "suggestions? redraw or something else", I should present options and let them choose.
+
+Let me ask the user which direction they prefer.
+
+
+## 15/08/2026, 19:25:31
+
+Both constructions are covered now. Let me re-run the tests and build.
+
+
+## 15/08/2026, 19:25:54
+
+Build and tests pass. Let me update the todos and ARCHITECTURE.md per AGENTS.md (the `etaToCircleEdgeMinutes` helper is a new function in Prediction.kt — the doc's one-line responsibility is unchanged, so no doc update strictly needed). Actually, ARCHITECTURE.md's Prediction.kt entry already says "predictPosition dead-reckoning, and ThreatSpeedTracker". The new helper is minor; I'll leave the module map as-is since its one-line responsibility still holds.
+
+Let me finalize the todos.
+
+
+## 15/08/2026, 19:26:01
+
+Done. Build + tests pass (`testDebugUnitTest` + `assembleDebug`).
+
+What changed:
+- `Prediction.kt:15` — new pure `etaToCircleEdgeMinutes(from, center, radiusM, bearingDeg, speedMps)` helper (ray–circle crossing → minutes).
+- `MainViewModel.kt` — `ThreatProximity` gains `etaToYellowEdgeMin`; the proximity block (`MainViewModel.kt:405`) computes it from the predicted position, heading, speed, and focus point against the yellow radius.
+- `ThreatPopupCard.kt` — the shared `SummaryPills` row (used by all card sizes) now shows two pills: a **yellow-dot** "time to cross the yellow edge" ETA and the existing **blue GPS-dot** "to you" ETA. Red skipped per your call.
+- `SettingsScreen.kt:905` — preview constant updated for the new field.
+- `PredictionTest.kt` — 4 new unit tests (inbound, inside, heading away, no speed).
+- `CHANGELOG.md` — entry added under `[Unreleased]`.
+
+No `AlertService` mirror needed — this is UI-only logic and doesn't touch any listed invariant.
+## 15/08/2026, 19:27:54
+
+The user didn't select an option, so let me go with my recommendation — redraw a clean turtle that matches the Material style. Since I'm in plan mode, I'll present the plan.
+
+Let me confirm the turtle is only used in that one place (the section header at line 283). The grep showed `ic_turtle` only referenced in `fastAndSlowGroups` (line 590), which feeds the `forEach` at line 274 rendering the header icon. So it's a single usage.
+
+Let me present the plan.
+
+## Plan: Fix the turtle icon in Settings
+
+**Problem:** `app/src/main/res/drawable/ic_turtle.xml` is a hand-authored vector whose path reads as a shapeless blob at 18dp — it doesn't look like a turtle and clashes with the clean Material-style `ic_bolt.xml` it sits beside (both Fast/Slow group headers, `SettingsScreen.kt:283`).
+
+**Change (1 file, minimal):** Replace the single `pathData` in `ic_turtle.xml` with a cleaner, recognizable turtle silhouette in the same Material style as `ic_bolt.xml` (24dp viewport, `#FF000000` fill, ~single path).
+
+**Proposed redraw:** A simple, flat Material-style turtle: a rounded shell (dome) with a head bump forward, two front legs and two rear legs, and a small tail — all one contiguous filled path so it stays crisp at 18dp. (I'll author an SVG path that reads clearly at small size — turtle shell with stubby limbs + head.)
+
+**No other files touched:**
+- `SettingsScreen.kt` — no code change needed; it already renders whatever `ic_turtle.xml` contains via `painterResource(id = iconRes)`.
+- Content descriptions (`Strings.kt:511` "Turtle — slow threats") still valid.
+- No mirrored-invariant files affected (`ARCHITECTURE.md` `SettingsScreen.kt` line unchanged).
+
+**Verification:** `.\gradlew.bat :app:assembleDebug` to confirm the drawable parses/builds. (No unit tests touch drawables.)
+
+Want me to proceed with this redraw, or would you prefer one of the alternatives (drop the icon / use a different icon)?
+## 15/08/2026, 19:28:16
+
+I'll redraw the turtle icon with a clean, recognizable silhouette.
+
+
+## 15/08/2026, 19:28:25
+
+Wait, let me reconsider that path — it's still complex and the shell/limbs aren't clearly delineated. Let me author a cleaner, more obviously-turtle silhouette with a distinct shell dome, head, and stubby legs in a single filled path. Let me redraw more carefully.
+
+
+## 15/08/2026, 19:28:39
+
+This path is hand-authored blind (I can't preview it visually), and hand-crafted turtle vectors are risky. This one adds spots on the shell (3 circles) which may read as a messy splat again at 18dp. Let me reconsider — I should build a much simpler, geometrically-clean turtle: a single shell dome with a head and 4 stubby legs, using basic rounded shapes composed into one path. 
+
+Let me be more disciplined. A clean recognizable turtle at 18dp needs: a prominent domed shell (the main visual), a small head protruding to one side, 4 stubby legs, and a tail. Let me author it carefully with a viewport grid.
+
+Actually, rather than hand-guessing and risking another "blob", let me verify my vector renders acceptably. I can't preview raster, but I can at least confirm the build parses. However, the real risk is visual quality which I can't verify directly.
+
+Let me think about what actually reads as a turtle and is geometrically simple. A side-view turtle:
+
+- Shell: a large dome (arc) over the middle, with a flat-ish bottom.
+- Head: a small circle/oval at the front (left), above leg level.
+- 4 legs: small rounded stubs below the shell.
+- Tail: small triangle at the rear (right).
+
+Rather than one complex path, I can use multiple `path` elements (all same fillColor) — that's allowed in Android vector drawables and keeps each shape simple and clean. This is much safer than a single hand-rolled contour.
+
+Let me rewrite using multiple simple paths: shell dome, head, 4 legs, tail.
+
+
+## 15/08/2026, 19:28:55
+
+Hmm, but multiple separate paths with legs placed awkwardly may still not read cleanly. I'm concerned about the leg positioning overlapping the shell bottom and the head/tail angles. This is getting risky without visual preview.
+
+Let me step back. The cleanest, most reliable approach for a *small, recognizable* slow-group icon might actually be to make the turtle unmistakable with a very simple and bold silhouette. Let me reconsider the whole thing.
+
+Actually, I have a better idea: I can build the vector as a simple, unambiguous turtle using well-spaced basic shapes, then **rasterize it to verify** by building a small test. But that's heavy.
+
+Let me instead render my vector to check it visually. I can use PowerShell/.NET to render the SVG to PNG and view it. But these are Android vector XML, not SVG. I could convert the pathData to an SVG and rasterize.
+
+Let me create a quick SVG from my shapes and render it with a tool to verify. Is ImageMagick or similar available? Let me check what's available for rasterizing. Actually, let me just construct an equivalent SVG and use the browser-less rendering... this is getting complex.
+
+A simpler verification: I'll write the pathData as an SVG, then convert using .NET System.Drawing to a PNG, then Read the PNG as an image. Let me try.
+
+
+## 15/08/2026, 19:28:59
+
+System.Drawing can't parse SVG. I need a real SVG rasterizer. Let me check if ImageMagick, rsvg, or a Node library is available.
+
+
+## 15/08/2026, 19:29:12
+
+Node is available. Let me check if there's an SVG-to-PNG capability. I could use a headless approach, but the simplest is to use an HTML/JS canvas via a small script, or use `npx` with a library like `sharp` or `canvas`. Let me check what's available globally, or just write a small node script that converts via a library. Actually, an easier path: Chrome headless could rasterize HTML, but that's heavy too.
+
+Let me try `npx sharp` or check if puppeteer/playwright is available. Actually simplest reliable: use node with a pure-JS SVG parser to canvas then PNG — needs the `canvas` native module (compilation). 
+
+Alternative: I can write the icon as an HTML page with inline SVG and screenshot it. Let me check for any headless browser.
+
+Actually, a cleaner approach — let me just build my SVG carefully and render it using a small node script with `@resvg/resvg-js` (a WASM rasterizer, no native compile). Let me try installing it in the temp dir.
+
+
+## 16/08/2026, 11:37:31
+
+Let me check the CHANGELOG to see if I need to append to Unreleased later.
+## 16/08/2026, 11:37:38
+
+Now let me start implementing. First, add strings to `Strings.kt`.
+## 16/08/2026, 11:37:49
+
+Not really. That's a paid commercial cut-file from a craft marketplace — it'd require a license, it's multi-layer decorative (designed for Cricut cutting, not a 24dp app icon), and the actual vector data isn't even accessible without purchasing. It also wouldn't match the flat Material style of the bolt icon it sits beside.
+
+Better path: I redraw a clean flat silhouette myself. Since I confirmed Node + `@resvg/resvg-js` are available, I can rasterize my candidate vector to PNG and visually verify it reads as a turtle before committing it.
+
+**Updated plan:**
+1. Author a simple flat Material-style turtle (shell dome + head + 4 stubby legs + tail) as `ic_turtle.xml` paths — mirroring `ic_bolt.xml` style (24dp viewport, `#FF000000` fill, used at 18dp tinted primary).
+2. Render the same paths as SVG → PNG via resvg to visually confirm it's recognizable at small size; iterate until it looks right.
+3. Replace `app/src/main/res/drawable/ic_turtle.xml` (only usage: `SettingsScreen.kt:283` header icon).
+4. Verify with `.\gradlew.bat :app:assembleDebug`.
+
+Want me to go ahead?
+## 16/08/2026, 11:37:55
+
+The file changed since my read (753 lines now). Let me find the exact anchors.
+## 16/08/2026, 11:38:39
+
+Strings done. Now the AlertService. Let me re-read the current state of the file around the relevant sections since
+## 16/08/2026, 11:38:45
+
+Current state: the popup shows two ETA pills (amber yellow-edge + blue to-you). You want to keep only the blue GPS-dot pill and add a subtle glow to the dot. Plan:
+
+## Plan: GPS-only ETA pill with glowing dot
+
+1. **`ThreatPopupCard.kt`**
+   - In `SummaryPills`: remove the `etaToYellowEdgeMin` (amber) pill block, leaving only the to-you ETA pill.
+   - Remove the now-unused `YellowEdgeDot` constant.
+   - Give the blue dot a subtle glow in `MetricPill`: replace the plain 8dp blue `Box` with a colored-halo version (e.g. `Modifier.shadow(…, shape = CircleShape, ambientColor = GpsDot, spotColor = GpsDot)` on the dot, or a slightly larger translucent blue circle behind it) — reads as a "you are here" GPS marker against the dark theme.
+
+2. **`MainViewModel.kt`**: remove `etaToYellowEdgeMin` from `ThreatProximity` (MainViewModel.kt:62) and its computation block (~line 405), since nothing displays it anymore.
+
+3. **`Prediction.kt`**: remove the now-dead `etaToCircleEdgeMinutes` helper.
+
+4. **`PredictionTest.kt`**: remove the 4 `etaToCircleEdgeMinutes` tests.
+
+5. **`SettingsScreen.kt`**: drop `etaToYellowEdgeMin = 7.5` from `PreviewProximity`.
+
+6. **`CHANGELOG.md`**: update the Unreleased entry to say the ETA pill carries a glowing blue GPS dot ("time until the threat reaches you") instead of mentioning the yellow edge.
+
+7. **Verify**: `.\gradlew.bat :app:testDebugUnitTest` + `.\gradlew.bat :app:assembleDebug`.
+
+One decision before I build
+## 16/08/2026, 11:38:47
+
+The file has grown. Let me re-read the current `handleState` and surrounding logic
+## 16/08/2026, 11:39:17
+
+All five reported bugs are code-verified against the working tree. Confirmed status:
+
+| # | Fix | Verified |
+|---|---|---|
+| 1 | `MainViewModel.kt:344` loop missing `t.areaOnly` skip that `AlertService.kt:251` has → oblast-centroid phantoms enter zones/gauge/banners but not notifications | yes |
+| 2 | `AlertService.kt:332-342` — `minWithOrNull` posts only the single most-urgent new-tier threat, then `knownZones = alertable` swallows the rest of the batch | yes |
+| 3 | `Threat.kt:219` `o.optString("id")` — blank/missing id → `""` key overwrites another threat in REST merge (`NeptunClient.kt:217-219`) and WS upsert (`:344`); guard is costless since `fromJson` is already nullable | yes |
+| 4 | `NeptunClient.kt:199-201,223-225` REST refresh failures fully silent — no signal/retry/counter | yes |
+| 5 | `README.md:29,52-53` says red 1–5 / yellow 6–20; code ships red ≤20 (default 10) / yellow ≤50 (default 21) | yes |
+
+Notes:
+- The Fast/Slow grouped toggles, ETA pills, alarm-bell, offline+Retry, and backup already exist in the working tree/CHANGELOG — those backlog items are done or in-flight.
+- There's a stray untracked `app/src/main/java/ua/ukrainedrones.zip` that should not be committed.
+
+The rest of your list is feature work (shelter locations, threat history, family tracking/multi-location, Play Store, screenshots, update-popup pictures, drag-handle popup resize, zones-panel pull-up). Before I write the plan, which scope
+## 16/08/2026, 11:42:38
+
+Got it — keep the helper dormant. Updated plan:
+
+## Plan: GPS-only ETA pill with glowing dot
+
+1. **`ThreatPopupCard.kt`**
+   - `SummaryPills`: remove the amber `etaToYellowEdgeMin` pill; keep only the to-you ETA pill.
+   - Remove the unused `YellowEdgeDot` constant.
+   - Give the blue dot a subtle glow in `MetricPill` (colored `Modifier.shadow` halo on the dot, or a slightly larger translucent blue circle behind it).
+
+2. **`MainViewModel.kt`**: remove `etaToYellowEdgeMin` from `ThreatProximity` (~line 62) and its computation block (~line 405) — field + compute go, since nothing displays it.
+
+3. **`Prediction.kt`**: **keep** `etaToCircleEdgeMinutes` unchanged (dormant utility for the future banner countdown).
+
+4. **`PredictionTest.kt`**: **keep** the 4 helper tests unchanged.
+
+5. **`SettingsScreen.kt`**: drop `etaToYellowEdgeMin = 7.5` from `PreviewProximity`.
+
+6. **`CHANGELOG.md`**: rewrite the Unreleased entry to describe only the GPS-dot ETA pill with its glow (no yellow-edge mention).
+
+7. **Verify**: `.\gradlew.bat :app:testDebugUnitTest` + `.\gradlew.bat :app:assembleDebug`.
+
+Ready to execute on "go".
+## 16/08/2026, 11:42:59
+
+Now let me verify a few symbols before editing Alert
+## 16/08/2026, 11:43:10
+
+All symbols confirmed. Now let me implement the changes. First, add the new state fields.
+## 16/08/2026, 11:43:18
+
+Now add fields to the `State` data class:
+## 16/08/2026, 11:43:35
+
+Now update the combine lambda to compute the attribution once, the focus token, and the official reason:
+## 16/08/2026, 11:43:41
+
+Now remove the three now-unused helper functions (`focusOblastAlertActive`, `focusAlertSource`, `focusBannerCity`):
+## 16/08/2026, 11:43:51
+
+Now the core `handleState` official-alert section. Let me re-read the exact current lines around it:
+## 16/08/2026, 11:44:01
+
+Now I'll replace the official-alert + all-clear block (lines 351-368) with the new wait-for-reason and immediate-cancel logic:
+## 16/08/2026, 11:44:17
+
+Now add the reason-builder helpers. Let me place them right after `threatBody`:
+## 16/08/2026, 11:44:37
+
+Let me review the modified regions to verify correctness:
+## 16/08/2026, 11:45:17
+
+The `focusToken` and `focus` fields on `State` are now unused (buildReason runs in the lambda). Let me remove them to avoid dead code.
+## 16/08/2026, 11:45:35
+
+Now let me build to verify compilation before updating docs.
+## 16/08/2026, 11:54:21
+
+
+
+
+## 16/08/2026, 11:54:59
+
+The changelog wording matches the actual code — and that's exactly the bug you're sniffing at.
+
+- The map draws the **yellow** zone in `0xFFFFD500` (`MainScreen.kt:59`, `MapView.kt:391`).
+- But the "time to cross the yellow edge" pill's dot is `YellowEdgeDot = Color(0xFFF9A825)` (`ThreatPopupCard.kt:40`) — that's **amber**, not the zone's yellow.
+
+So the pill is labeled as "yellow zone edge" yet rendered amber, and `0xFFF9A825` is *also* the "backup" status color in the header (`MainScreen.kt:834`) — same color, two meanings. The changelog line just faithfully described the mismatch.
+
+It should be one color: the dot should match the yellow zone (e.g. `YellowEdgeDot = Color(0xFFFFD500)`), or pick a distinct amber and rename the pill/term. Want me to plan the fix?
+## 16/08/2026, 11:55:44
+
+The command failed oddly. Let me retry clean
+## 16/08/2026, 11:55:52
+
+Honestly, yes — the emoji 🐢 would work fine and be instantly recognizable, arguably better than anything I hand-draw. It renders natively via Android's Noto Color Emoji font, so it's identical on every device (minSdk 26+), zero drawing risk, and it's a dead-simple change.
+
+The one real tradeoff: it's a **colored emoji**, so it can't be tinted to `colorScheme.primary` like the bolt. The Fast header keeps its monochrome tinted bolt; Slow would be a small colored turtle beside it. Slight style mismatch, but the turtle reads clearly and it's a common, tasteful pattern.
+
+Implementation would be small: change `fastAndSlowGroups` (`SettingsScreen.kt:584`) to carry a "kind" (drawable vs emoji) instead of just a res id, and render `Text("🐢", fontSize = 16.sp)` at the Slow header (`SettingsScreen.kt:282-287`) — bolt stays as-is.
+
+Which do you want
+## 16/08/2026, 11:55:58
+
+The Kotlin compile was UP-TO-DATE, which is suspicious since I edited files. Let me force a recompile to properly
+## 16/08/2026, 11:56:29
+
+
+
+
+## 16/08/2026, 11:56:55
+
+Compile passed. Now update ARCHITECTURE.md's AlertService row and the CHANGELOG.
+
+
+## 16/08/2026, 11:56:57
+
+I've reviewed the relevant code (`MainScreen.kt`, `ThreatPopupCard.kt`, `SettingsScreen.kt`, `ZonesSheet.kt`, `MapView.kt`, `Strings.kt`, `Threat.kt`, `ThreatLevel.kt`). Before I write the plan, a few things
+## 16/08/2026, 11:57:01
+
+Plan:
+
+1. `ThreatPopupCard.kt:40` — rename `YellowEdgeDot` → `AmberEdgeDot` (keep the amber `0xFFF9A825`).
+2. `ThreatPopupCard.kt:536` — update the single usage.
+
+No other references exist (`YellowEdgeDot` appears only in those two lines). The CHANGELOG already calls it "amber dot", so it stays accurate. No behavior change.
+
+Ready to apply — say go.
+## 16/08/2026, 11:57:23
+
+Now the CHANGELOG entry under `## [Unreleased]`
+## 16/08/2026, 11:57:30
+
+Now run the unit tests to verify nothing else broke.
+
+
+## 16/08/2026, 11:57:52
+
+Tests pass. Let me review the full diff to verify everything is
+## 16/08/2026, 11:58:34
+
+All my changes verified. Note: the working tree already had unrelated in-flight changes from other sessions (MainViewModel/ThreatPopupCard/SettingsScreen/PredictionTest/ic_turtle.xml) — I didn't touch those, and the build/tests passed
+## 16/08/2026, 11:58:45
+
+All three tasks are implemented, built, and tested. Summary of changes:
+
+**1. Reason builder** (`AlertService.kt`)
+- `buildReason()` selects the highest-`ThreatLevelModel.scoreOf` ACTIVE, non-advisory, non-areaOnly threat whose `region`/`district`/`locality` matches the focus oblast token (via `inFocusOblast`/`inOblastText` — prefix match or `Cities.cityOblast` lookup). Reason text = `translateCourseAssessment(explanationShort)` else `threatBody` ("label — locality"), else fallback `notifReasonFormat`. Returns reason + threat id; the chosen id is stored in `currentReasonThreatId`.
+
+**2. Wait-for-reason** (`handleState`, `AlertService.kt:354-382`)
+- Rising edge posts immediately with whatever body exists (`reason ?: focusRegion`). While the official alert is active, a same-`NOTIF_ALERT` re-post fires only when the reason text actually changed (`state.officialReason != currentReason`) — mirroring the `knownZones` coalescing guard — so no siren replay, and it never clobbers a ringing zone alert (`alertable.isEmpty()`).
+
+**3. All-clear cleanup** (`AlertService.kt:388-395`)
+- On the official falling edge, `cancelAlert()` runs immediately when no zone alert is active (skips the 60s grace path); if a zone alert is still ringing, the notification stays up. The all-clear chime always posts; reason state resets.
+
+**4. Strings** (`Strings.kt`) — `notifReasonFormat`: UA `"Загрози в %1$s"`, EN `"Threats reported in %1$s"`.
+
+**5. Docs** — `ARCHITECTURE.md` AlertService row and `CHANGELOG.md` Unreleased entry updated.
+
+Verified: `compileDebugKotlin --rerun-tasks` and `testDebugUnitTest` both pass. The unrelated in-flight changes in the working tree (ETA pills, turtle icon) were left untouched.
+## 16/08/2026, 12:02:30
+
+Yes on both.
+
+**1. All-clear string trim** — in the strings pass I'll also change:
+- UA `allClearText` (Strings.kt:318): `"Офіційна повітряна тривога завершилася."` (drop "Все спокійно.")
+- EN `allClearText` (Strings.kt:515): `"The official air-raid alert has ended."` (drop "All quiet.")
+
+**2. Yes, exactly that.** The WAIT-FOR-REASON step does precisely what you described: on the official rising edge we post `NOTIF_ALERT` immediately with whatever body we have (region-only if no reason yet), then **while the alert stays active** we re-notify the **same `NOTIF_ALERT` id** with the reason body the moment a reason becomes available. Since re-posting the same id on the same channel doesn't replay the siren sound (that's the existing coalescing idiom at AlertService.kt:271-280), it's a silent in-place body update — so a user who looks at their phone 2 minutes later sees the reason already there, without a second siren blast.
+
+Updated plan deltas:
+- Add `currentReason`/`currentReasonThreatId` fields + an ongoing-official-alert branch in `handleState` that silently re-posts `NOTIF_ALERT` with the new reason body (guarded by `reason != currentReason`).
+- Strings: add `reasonNoThreatFormat` (UA/EN) + trim `allClearText` in both tables.
+- Everything else (reason builder, all-clear cleanup, ARCHITECTURE.md, build/test) as before.
+
+Ready to implement on your go.
+## 16/08/2026, 12:02:33
+
+Got it — Sources pill stays as-is, and I'll fold in your medium-card refinement. Here's the plan.
+
+## Plan: map/popup/settings UX batch
+
+### 1. Header tap → zoom out to full Ukraine
+- `MainScreen.kt:362` — replace `recenterTick++` with a new `fitUkraineTick++`.
+- `MapView.kt` — add `fitUkraineTick: Int = 0` param + `lastFitUkraineTick`; on change, `mapView.zoomToBoundingBox(UA_VIEW_LIMITS, true)` (the full-country box; `minZoom` already floors there, so this is the maximum zoom-out). Remove the old recenter handler or keep it unused → remove.
+
+### 2. Medium threat card: pills on one line, skull bar adaptive
+`ThreatPopupCard.kt`, `ThreatCardSize.MEDIUM` branch:
+- **Adaptive header**: type label measured via `onTextLayout`/`BoxWithConstraints`. Short title → skull + small level bar stay in the header's right half (as today). Long title → skull+bar drop to their own full-width 2nd row (**bar expanded** to fill width), pills become row 3.
+- **Pills never wrap/scroll**: render `SummaryPills` in a single `Row`, and wrap it in `CompositionLocalProvider(LocalDensity provides density.copy(fontScale = min(fontScale, 1.25f)))` so pill text stays compact at large system fonts (3 pills fit one line); trim `MetricPill` padding to 8dp. LARGE/SMALL pills keep today's behavior.
+
+### 3. Reliability → segmented bar (less reading)
+- Replace the text reliability pill (MEDIUM footer + LARGE footer) with a small muted "Reliability" label + a 3-segment bar (HIGH=3 green, MEDIUM=2 amber, LOW=1 red, UNKNOWN=0 gray), same segment style as `UncertaintyBar`. Add `reliabilityLabel` string (EN "Reliability" / UA «Достовірність»).
+- Sources pill and elapsed time stay as-is.
+
+### 4. Sources pill tap
+Skipped per your answer — keep as-is.
+
+### 5. Footer "go touch grass" → "no relevant threats"
+- `Strings.kt`: `noThreatsMessage` EN → "No relevant threats", UA → «Немає актуальних загроз». Also update `guideStripD2` EN/UA which quotes "'No threats'"/«Загроз немає» to match.
+
+### 6. Zones panel: drag up reveals slim threat-toggles card
+- New shared composable `SlimThreatToggles` (new file `ThreatTogglePanel.kt`, `internal`): one compact row per type — icon + label + Map chip + Alerts chip (extract `ToggleChip` from `SettingsScreen.kt` and reuse). No expandable details, no photos.
+- `MainScreen.kt` zones panel: drag gesture gains upward expansion — past a threshold the panel grows (animated) to reveal `SlimThreatToggles` below the sliders; downward drag still closes past 80dp. Reuse existing `fitZonesTick` fit-on-open behavior.
+- **First Steps**: embed the same `SlimThreatToggles` in the first-launch "A few tips" dialog (`LanguageChooseDialog` in `MainScreen.kt`) below the existing tips.
+
+### 7. Settings: Fast/Slow groups collapse, headers stay
+`SettingsScreen.kt`: add `fastExpanded`/`slowExpanded` state (default expanded). Each group header row (icon + title + master Map/Alerts `IconToggle`s) stays always visible and gains a caret; collapsed hides the per-type `ThreatSettingsCard` items (`if (fastExpanded) items(...)`).
+
+### 8. Popup size control (thin/thick/thicker lines)
+- Small indicator at the popup's bottom-right, below the card: three stacked horizontal lines (1/2/3 thickness) showing current size; tap cycles SMALL→MEDIUM→LARGE and persists via `viewModel.setThreatCardSize`.
+- Wrap it in an oversized transparent touch target (≥40dp) with transparent padding so it's easy to hit.
+- Wire a new `onThreatCardSizeChange` param through `MapScreen` → popup overlay (`MainScreen.kt:491`).
+
+### Housekeeping
+- Append entries to `CHANGELOG.md` under `## [Unreleased]`.
+- Update `ARCHITECTURE.md` module map for the new `ThreatTogglePanel.kt`.
+- Verify: `.\gradlew.bat :app:assembleDebug`.
+
+Open questions I'll resolve during implementation: default collapse state for Fast/Slow (plan: expanded, unchanged), and whether the slim panel needs per-group Fast/Slow headers (plan: a single "Threats" heading with all 8 types). Ready to implement when you switch out of plan mode.
+## 16/08/2026, 12:02:44
+
+Let me read the current state of the relevant sections in ThreatPopup
+## 16/08/2026, 12:02:54
+
+Now I'll remove the yellow-edge pill block and add a glow to the dot. First the yellow pill
+## 16/08/2026, 12:03:08
+
+Now add the glow to the dot in `MetricPill`. I'll use a nested Box with a larger translucent halo behind the
+## 16/08/2026, 12:03:16
+
+Now remove the `YellowEdgeDot`
+## 16/08/2026, 12:03:24
+
+Now MainViewModel — remove the field and computation. Let me view the current
+## 16/08/2026, 12:04:02
+
+Now update SettingsScreen.
+## 16/08/2026, 12:04:08
+
+Now the CHANGELOG
+## 16/08/2026, 12:04:29
+
+Good instinct — that's the real design tension. The physics actually gives us a clean rule, because *reachability* isn't the same as a zone radius:
+
+**Why "anywhere" is right for some types and wrong for others:**
+- **Ballistic / MiG-31K (Kinzhal)**: a launch anywhere in Ukraine is genuinely minutes from Odesa or Lviv (3300 km/h ≈ 13 min across the whole country). The Threat.kt docs already say a MiG-31K takeoff alert is country-wide. Siren everywhere is correct.
+- **Cruise / KAB**: they have a direction and take ~40 min to cross the country. An east-front KAB or a cruise wandering over Kharkiv oblast is *not* coming to Odesa — siren-ing for it every time is exactly the annoyance you're worried about.
+
+So the anti-annoyance knob can be **travel-time to your focus point**, not a zone:
+
+
+## 16/08/2026, 12:05:03
+
+Done. Build + tests pass.
+
+Changes:
+- `ThreatPopupCard.kt` — only the to-you ETA pill remains, now with a glowing blue GPS dot (8dp dot over a translucent 14dp halo). Yellow-edge pill and `YellowEdgeDot` removed.
+- `MainViewModel.kt` — `etaToYellowEdgeMin` field and its computation removed.
+- `SettingsScreen.kt` — `PreviewProximity` updated.
+- `CHANGELOG.md` — entry rewritten for the GPS-dot ETA.
+- `etaToCircleEdgeMinutes` + tests kept dormant as requested.
+## 16/08/2026, 12:10:03
+
+Updated per your feedback.
+
+## Plan v2
+
+### 1. Header tap → zoom out to full Ukraine
+- `MainScreen.kt:362` — title tap now bumps a new `fitUkraineTick` instead of `recenterTick`.
+- `MapView.kt` — add `fitUkraineTick` param + `lastFitUkraineTick`; on change `zoomToBoundingBox(UA_VIEW_LIMITS, true)` (max zoom-out). Drop the old recenter handler.
+
+### 2. Medium threat card → fixed 3 rows, skull on bottom
+`ThreatPopupCard.kt`, `MEDIUM` branch becomes (always, not adaptive):
+- **Row 1 — header**: icon + type label (+ alerts-off bell) + region. *(course arrow removed, see #6)*
+- **Row 2 — pills**: single `Row` (never wraps), pill typography capped via `CompositionLocalProvider(LocalDensity … fontScale = min(fontScale, 1.25f))`, `MetricPill` padding trimmed to 8dp.
+- **Row 3 — skull**: skull icon + level bar **expanded** to full card width (bar on bottom row).
+
+### 3. Reliability: bar in full card, pill in medium
+- **MEDIUM**: keep the "Reliability: …" text pill exactly as-is.
+- **LARGE**: replace the reliability text pill with a small muted "Reliability" label + 3-segment bar (HIGH=3 green, MEDIUM=2 amber, LOW=1 red, UNKNOWN=0 gray), same segment style as `UncertaintyBar`. Sources pill + elapsed stay as-is.
+- New string `reliabilityLabel` (EN "Reliability" / UA «Достовірність»).
+
+### 4. Sources pill tap
+Skipped — keep as-is.
+
+### 5. Footer text
+`Strings.kt` `noThreatsMessage`: EN → "No relevant threats", UA → «Немає актуальних загроз». Update `guideStripD2` EN/UA ("'No threats'"/«Загроз немає») to match.
+
+### 6. Zones panel: drag up → slim threat-toggles card (+ headers)
+- New shared `ThreatTogglePanel.kt` with `internal` `ToggleChip` (extracted from `SettingsScreen.kt`) + `SlimThreatToggles`:
+  - **Fast** / **Slow** group headers (icon + title + master Map/Alerts toggles), then one compact row per type — icon + label + Map chip + Alerts chip. No expandable details/photos.
+- `MainScreen.kt` zones panel: upward drag expands (animated) to reveal `SlimThreatToggles` below the sliders; downward drag past 80dp still closes.
+- **First Steps** (first-launch "A few tips" dialog): embed the same `SlimThreatToggles` below the existing tips.
+
+### 7. Settings: Fast/Slow collapse
+`SettingsScreen.kt`: `fastExpanded`/`slowExpanded` default **expanded**. Group header row (icon + title + master Map/Alerts `IconToggle`s) stays visible and gains a caret; collapsed hides per-type `ThreatSettingsCard` items (`if (fastExpanded) items(...)`).
+
+### 8. Popup size control (thin/thick/thicker)
+- Bottom-right below the popup card: three stacked lines (1/2/3 thickness) showing current size; tap cycles SMALL→MEDIUM→LARGE, persisted via `viewModel.setThreatCardSize`. Oversized transparent touch target (≥40dp).
+- New `onThreatCardSizeChange` param through `MapScreen` → popup overlay (`MainScreen.kt:491`).
+
+### 9. (new) Remove course arrow
+Remove the rotated `KeyboardArrowUp` course arrow at the end of the region row in the **LARGE** header — and the identical one in the **MEDIUM** header, since it's the same "weird symbol" always sitting at the end.
+
+### Housekeeping
+- `CHANGELOG.md` entries under `## [Unreleased]`; update `ARCHITECTURE.md` module map (new `ThreatTogglePanel.kt`).
+- Verify: `.\gradlew.bat :app:assembleDebug`.
+
+Ready to implement once you switch out of plan mode.
+## 16/08/2026, 12:11:14
+
+
+
+
+## 16/08/2026, 12:11:17
+
+
+
+
+## 16/08/2026, 12:11:31
+
+
+
+
+## 16/08/2026, 12:12:48
+
+All 8 fixes verified against the source. One correction needed before execution:
+
+**Fix 2 caveat** — the proposed verbose block has a latent bug: `associateWith { alertable[id] ?: knownZones[id] }` re-stamps *every* alertable id with its current tier, so the non-fired simultaneous entrants would still be marked "known" — defeating the fix. The simpler form you endorsed in the note is the correct one. Plan below.
+
+## Plan — 8 fixes
+
+**1. `MainViewModel.kt:344`** — add `|| t.areaOnly` to the skip condition in the threat loop (confirmed `Threat.areaOnly` exists, `areaOnly: Boolean`).
+
+**2. `AlertService.kt:335-345`** — replace single-winner coalescing:
+```kotlin
+val newEntries = alertable.entries
+    .filter { (id, zone) -> knownZones[id] != zone }
+    .sortedBy { it.value.ordinal }
+if (newEntries.isNotEmpty()) {
+    val (id, zone) = newEntries.first()
+    val t = all[id]
+    val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
+    postAlert(zone, bannerFor(zone, s), body, state.sirenOverride)
+    posted = true
+    knownZones = knownZones + (id to zone)
+}
+// Drop ids that left zoneThreats so a future re-entry counts as new; leave every
+// other value untouched so the not-yet-fired entrants re-evaluate next tick.
+knownZones = knownZones.filterKeys { it in state.zoneThreats.keys }
+```
+Preserves: only the fired id becomes known; others stay eligible next tick; left-the-map ids are dropped (matches original `knownZones = alertable` semantics for re-entry).
+
+**3. `Threat.kt:198`** — insert `if (o.optString("id").isBlank()) return null` after the lat/lon NaN guard (note: `fromJson` also feeds WS snapshot/upsert, so blank-id frames drop everywhere — intended).
+
+**4. `NeptunClient.kt:199-227`** — `onFailure` → `lastError = e.message`; non-success → `lastError = "REST HTTP ${it.code}"`; success → `lastError = null`; malformed → `lastError = "Malformed REST payload"`. `lastError` already exists in `NeptunState`.
+
+**5. `README.md`** — three stale occurrences (lines 29, 52, 53): `red 1–5 km / yellow 6–20 km` → `red 1–20 km / yellow 21–50 km`. Confirmed against `ZonePrefs.kt` (`coerceIn(1,20)` / `coerceIn(21,50)`) and `ZonesSheet.kt` (`1f..20f` / `21f..50f`). `ARCHITECTURE.md:153` is already correct — no change.
+
+**6. `NeptunClient.kt:136-138`** — `setForceOffline` stamps `offlineSince` on force, clears on un-force when `connected`; compatible with the existing `offlineElapsedSec` getter fallback (`?: if (forceOffline) 0L else null` stays as a no-op safety net).
+
+**7. `MainScreen.kt:896,907`** — backup row `active = backupActive && backupSeen`; NEPTUN row `active = !backupActive || !backupSeen`. `backupSeen` confirmed available (MainScreen:378, MainViewModel:411).
+
+**8. `Threat.kt:304-318`** — rewrite `mergeAlerts` (KDoc + body) with the startsWith/stem-tolerant dedup, NEPTUN entries winning.
+
+**Verification** (per AGENTS.md): `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest` (Threat.kt touched).
+
+**Optional**: append a short `## [Unreleased]` CHANGELOG entry for the user-visible fixes (areaOnly map dots, backup Active badge).
+
+Ready to execute — confirm and I'll apply.
+## 16/08/2026, 12:15:53
+
+
+
+
+## 16/08/2026, 12:17:13
+
+Found it. The "off" bell is a plain gray bell in 3 spots, so it reads as "on": `AlertsOffBell()` in `ThreatPopupCard.kt:47` (gray `0xFF9E9E9E`) and the floating bell above the zone pill in `MainScreen.kt:746` (gray `0xFF888888`). A third muted bell is in `ZonesSheet.kt:98`.
+
+Key constraint: the project only ships `material-icons-core` — `Icons.NotificationsOff` needs the heavy `material-icons-extended`, which this repo deliberately avoids. So I'd add a small vector drawable (`ic_notifications_off.xml`, bell + diagonal slash, monochrome so it tints), like the existing `ic_zoom_in.xml`, and promote `AlertsOffBell` into
+## 16/08/2026, 12:25:38
+
+That's genuinely the better design — time-to-arrival unifies fast and slow objects and kills the special-case hack. Let me verify the speed data we'd lean on before weighing in
+## 16/08/2026, 12:26:15
+
+
+
+
+## 16/08/2026, 12:26:35
+
+Plan confirmed. Here it is:
+
+## Plan: "alerts-off" bell → red crossed bell (shared)
+
+`Icons.NotificationsOff` needs `material-icons-extended` (not a dependency here), so we add a small tintable vector drawable and one shared composable.
+
+**1. New drawable** — `app/src/main/res/drawable/ic_notifications_off.xml`
+Bell-with-diagonal-slash path (standard Material `NotificationsOff` shape), monochrome `#FF000000` so Compose `tint` recolors it — same pattern as `ic_zoom_in.xml`. Exact path verified during implementation.
+
+**2. Shared composable** — `ThreatPopupCard.kt:47`
+Promote `AlertsOffBell` to `internal fun AlertsOffBell(size: Dp, tint: Color = ...)`: renders the new drawable, drops the hardcoded spacer, default tint red (`0xFFE57373`, matches the popup's red). No new file → module map unchanged.
+
+**3. Apply at all 4 spots:**
+- `ThreatPopupCard.kt` lines 149/187/281 — pass size/tint (14dp font-aware).
+- `MainScreen.kt:746` `ZoneButton` floating bell — replace gray outlined bell with `AlertsOffBell(16.dp)`.
+- `ZonesSheet.kt:98` muted branch — replace gray outlined bell with `AlertsOffBell(26.dp)`.
+- `FeatureDiagrams.kt:118` `bell()` — add `muted: Boolean` that draws a red diagonal slash over the bell; pass `muted=true` at `drawStrip` line 114 and `drawEditZones` line 168.
+
+**4. Docs** — update the invariant note in `ARCHITECTURE.md:145` ("grayed-out alarm bell" → red crossed bell).
+
+**5. Verify** — `.\gradlew.bat :app:assembleDebug` (UI-only, no domain logic, no unit tests needed).
+
+No behavioral change — purely visual, and the mirrored alert logic is untouched.
+## 16/08/2026, 12:27:18
+
+This is a genuinely better model — and the codebase already supports it: `NOMINAL_SPEED_MPS` per type, `ThreatSpeedTracker` (server → measured → nominal), and even an existing heading-aware `etaToCircleEdgeMinutes` in Prediction.kt:29. Time-to-arrival naturally unifies fast/slow: a ballistic 1000 km away is red (≈18 min at 3300 km/h), a Shahed 60 km away is also red (≈20 min). The whole `FAST_THREAT_TYPES` special-casing and `effectiveZone` hack disappears.
+
+Before I plan it, three real gotchas to pin down (this is a big change — it touches `Zones.kt`, `AlertService.kt`, `MainViewModel.kt`, `MapView.kt`, `SettingsScreen.kt`, `ZonesSheet.kt`, `Strings.kt`, tests, and the ARCHITECTURE invariants):
+
+**1. Kinzhal/AVIATION breaks the "time to *plane*" math.** A MiG-31K at 900 km/h 500 km away computes to ~33 min (yellow), yet its Kinzhal is country-wide. Fix: give AVIATION an effective *ballistic* speed (3300 km/h) so it's red anywhere in Ukraine, matching the docs ("takeoff alert covers the whole country").
+
+**2. Short-range types need a reach cap.** A KAB at 200 km computes to 13 min red, but KABs physically fly only 40–70 km (frontline). Pure distance/speed would red-siren Odesa for every frontline bomb. Fix: per-type max-reach (KAB ~70 km, FPV ~40 km, recon smaller) — beyond that, no alert.
+
+**3. The map circles + "Edit zones" radius sliders become meaningless** under time alerting — there's no single geographic circle (each threat has its own reach). This is the biggest UX casualty
+## 16/08/2026, 12:29:52
+
+Implementing now. Let me track the work:
+
+
+## 16/08/2026, 12:29:56
+
+Now the edits. First, State fields +
+## 16/08/2026, 12:31:09
+
+The file already has `currentReason` fields (lines 66-67) and is now 726 lines (was 520) — it changed since my earlier reads. Let me re-read the
+## 16/08/2026, 12:31:20
+
+The file has already been substantially modified since my earlier read (a concurrent implementation). Let me read the full current state
+## 16/08/2026, 12:31:42
+
+The file has been heavily modified since my first read (offline-monitoring feature + reason builder already present). Let me check git state and verify what
+## 16/08/2026, 12:32:16
+
+The working tree already contains most of this feature (uncommitted changes from concurrent work): `buildReason`, wait-for-reason, and all-clear cleanup are present. The remaining gap is the all-clear string trim the user requested. Let me verify the referenced symbols exist and check the diff before final
+## 16/08/2026, 12:32:50
+
+The working tree already has most of the feature implemented (from concurrent work), but there are leftover duplicate State fields and the indentation glitch. Let me check for usages before cleaning up
+## 16/08/2026, 12:33:03
+
+My earlier edit added duplicate `reason`/`reasonThreatId` State fields on top of the concurrent implementation's `officialReason`/`officialReasonThreatId` — and the constructor only sets the latter. Removing my duplicates and fixing indentation:
+
+
+## 16/08/2026, 12:33:22
+
+Now the all-clear string trim. Let me read the exact lines
+## 16/08/2026, 12:33:27
+
+
+
+
+## 16/08/2026, 12:33:33
+
+Now let me review the rest of the current file (channels, retry, and remaining helpers) to ensure coherence
+
+
+## 16/08/2026, 12:33:53
+
+The AlertService implementation is complete and coherent. Now let me check the docs/changelog state and verify the StringSet declarations are complete
+## 16/08/2026, 12:34:32
+
+Docs and CHANGELOG are already updated by the concurrent work. Now let me verify my edit is consistent and check the test files, then build
+
+
+## 16/08/2026, 12:34:40
+
+There's a new `AlertsUaTest.kt` test file. Let me check it and the full current handleState to ensure
+## 16/08/2026, 12:35:20
+
+The working tree already contains the reason builder, wait-for-reason, all-clear cleanup, and strings (from concurrent work); I fixed a duplicate State-field glitch and applied the all-clear string trim the user requested. Let me verify remaining referenced symbols exist and then build
+## 16/08/2026, 12:35:38
+
+The three task parts (reason builder, wait-for-reason, all-clear cleanup) are present in the working tree, all referenced symbols exist, and I've fixed the duplicate State fields and trimmed the all-clear strings. Now let me build and test.
+
+
+## 16/08/2026, 12:36:04
+
+The concurrent work removed `focusAlertSource` from the `State` class but the constructor and `handleState` still use it. Let me restore that
+## 16/08/2026, 12:36:31
+
+Build passes. Now unit
+## 16/08/2026, 12:36:41
+
+You're not messy — you've hit the actual design decision, and there's a clean answer that resolves both of your instincts.
+
+**The insight:** "slow objects need km zones" is really "slow objects have short reach and drift around — they should only matter when actually near you." That's not a second model; it's two small additions to the *same* time model. One unified rule for all types:
+
+```
+eta = distance ÷ speed          (speed: server → measured fixes → nominal)
+< 20 min  → red siren
+20–60 min → yellow chime
+> 60 min  → nothing
+```
+
+With three guards that make it behave sensibly for every type:
+
+1. **AVIATION computes at ballistic speed** (3300 km/h) — a MiG-31K anywhere is red, matching the "Kinzhal covers the whole country" docs. Using its 900 km/h plane speed would wrongly make it yellow.
+2. **Per-type reach cap** — an object physically can't reach you, no alert. KAB ~70 km, FPV ~40 km, recon ~50 km, Shahed ~1000 km, cruise/ballistic/aviation = country-scale. This is what kills the east-coast noise: a frontline KAB 300 km from Odesa = unreachable = silent.
+3. **Heading-aware when NEPTUN gives a bearing** — a Shahed circling near Kharkiv is moving *away/tangentially* from Odesa → suppressed. This is exactly your "losing time-to-me meaning" problem; the existing `etaToCircleEdgeMinutes` (Prediction.kt:29) already returns null for heading-away. Unknown heading → worst-case ETA (conservative, safer).
+
+So slow objects never need a separate km rule: a Shahed 60 km out = 20 min = red (you DO want that), one circling 200 km away heading away = silent, one 200 km away with unknown heading = 66 min = nothing.
+
+**What dies:** `FAST_THREAT_TYPES`, `effectiveZone`, `RadialZones`, and the km sliders — replaced by one function. **The `fastAlertsSooner` toggle gets dropped** (the time model subsumes it; there's no OFF counterpart anymore).
+
+**UI suggestion** — your instinct is right that static circles are now a lie, but they don't have to disappear. My recommendation: the "Edit zones" sheet becomes **time sliders** (red 5–20 min, yellow 20–60 min, helper text updated), and the map draws a **dynamic reach glow per alerting threat** — a ballistic gets a ~1100 km circle (whole country = you see "country-wide alert"), a Shahed a 60 km one. One visual, honest about reach. If that's too busy, fallback: drop circles, keep just threat markers + time-tier
+## 16/08/2026, 12:36:41
+
+Both pass. Let me do a final review of the changed AlertService sections and confirm the State class is coherent
+
+
+## 16/08/2026, 12:36:47
+
+Minor indentation glitch on line 79 (from concurrent edits
+## 16/08/2026, 12:37:02
+
+Line 79 lost its leading indent. Fix
+## 16/08/2026, 12:37:54
+
+The string needs a leading 4 spaces. Let me use the edit tool with the actual leading-space difference
+
+
+## 16/08/2026, 12:39:45
+
+I need to add 4 leading spaces to line 79. The edit tool's oldString needs to match with different leading whitespace than newString. Since line 79 starts at column 1, I'll target the unique line
+
+
+## 16/08/2026, 12:40:02
+
+Build still passes. Let me update the todos and give a final summary.
+
+
+## 16/08/2026, 12:40:22
+
+All three task parts are done and verified. `assembleDebug` + `testDebugUnitTest` both pass.
+
+**What was already present (from concurrent work)** — the reason builder, wait-for-reason, and all-clear cleanup were already implemented in the working tree:
+- `buildReason` (AlertService.kt:431) picks the highest `ThreatLevelModel.scoreOf` ACTIVE, non-advisory, non-areaOnly threat in the focus oblast via `inFocusOblast` (prefix + `Cities.cityOblast`), reason = `translateCourseAssessment` else type label — locality, with `notifReasonFormat` fallback ("Threats reported in …" / «Загрози в …»).
+- Wait-for-reason (AlertService.kt:363) re-posts the same `NOTIF_ALERT` silently when `officialReason != currentReason`, guarded on `alertable.isEmpty()` so it never clobbers a ringing zone alert.
+- All-clear cleanup (AlertService.kt:385) calls `cancelAlert()` immediately when `alertable.isEmpty()`, else leaves the notification up, then posts the chime.
+
+**What I fixed/added:**
+- Removed my earlier duplicate `reason`/`reasonThreatId` State fields (superseded by `officialReason`/`officialReasonThreatId`) and restored the missing `focusAlertSource: AlertSource?` field that the constructor/handleState still reference — this was a compile break.
+- Fixed indentation glitches (`data class State` and the `sealed class` line) from the concurrent edit.
+- **All-clear string trim** (as you asked): UA `allClearText` → "Офіційна повітряна тривога завершилася." (dropped "Все спокійно."), EN → "The official air-raid alert has ended." (dropped "All quiet.").
+
+Docs/CHANGELOG were already updated; no further changes needed there.
+## 16/08/2026, 12:43:23
+
+Path fetched. Now implementing. First the drawable:
+
+
+## 16/08/2026, 12:43:30
+
+
+
+
+## 16/08/2026, 12:43:35
+
+Now the shared composable in `ThreatPopup
+## 16/08/2026, 12:43:51
+
+Now the floating bell on the
+## 16/08/2026, 12:43:51
+
+You're right — keep the circles. They're the "threats to me" picture you want, and per-threat circles would turn into noise with a dozen markers. Let me pin down the exact touchpoints so the plan is precise
+## 16/08/2026, 12:43:56
+
+Now the muted bell in `ZonesSheet.
+## 16/08/2026, 12:44:08
+
+`AlertsOffBell` needs a `contentDescription` param so the ZonesSheet button keeps its semantics. Up
+## 16/08/2026, 12:44:46
+
+Now the feature-guide diagram:
+## 16/08/2026, 12:44:56
+
+Now update the invariant note in `ARCHITECTURE.md`:
+## 16/08/2026, 12:45:15
+
+Now build to verify:
+
+
+## 16/08/2026, 12:45:33
+
+Build passes. Appending to the changelog per repo
+## 16/08/2026, 12:45:47
+
+Done. Red crossed bell everywhere:
+
+- `ic_notifications_off.xml` — new tintable bell-with-slash drawable (Material `NotificationsOff` shape; extended icons aren't a dependency here).
+- `ThreatPopupCard.kt:46` — `AlertsOffBell(size, tint, contentDescription)` is now shared/internal; 3 popup call sites use it at 14dp font-aware.
+- `MainScreen.kt:746` — floating muted-zone bell over the map pill is now the red crossed bell.
+- `ZonesSheet.kt` — muted per-zone bell uses it (26dp, keeps its tap description).
+- `FeatureDiagrams.kt:118` — `bell()` gained a `muted` flag drawing a red slash; the muted bells in the strip and edit-zones diagrams use it.
+- `ARCHITECTURE.md` invariant note + `CHANGELOG.md` updated. Build passes.
+## 16/08/2026, 12:45:57
+
+Let me confirm the remaining touchpoints — circle drawing in MapView and the zone-radius UI in SettingsScreen — so
+## 16/08/2026, 12:46:12
+
+The file changed since my earlier read. Let me check its
+## 16/08/2026, 12:46:29
+
+
+
+
+## 16/08/2026, 12:47:16
+
+Nothing to rename — the `YellowEdgeDot` constant no longer exists. The working tree already has uncommitted changes (from another session) that removed `etaToYellowEdgeMin` and the yellow-edge pill entirely; `grep` finds no `YellowEdgeDot` anywhere.
+
+The amber `0xFFF9A825` now lives only as the yellow-zone color (`ZonesSheet.kt:16`, `MainScreen.kt:325`), which is fine. No further action needed.
+## 16/08/2026, 12:47:59
+
+Got it — locked. Here's the complete plan based on all your decisions.
+
+## Plan: time-to-arrival alerting (keeps the km-circle visual)
+
+### Core model (new `Zones.kt`)
+
+Replace the km-radius tiering with a single time-based tier function used by **both** `MainViewModel` and `AlertService` (mirror rule — one source, no drift):
+
+```
+timeTier(etaMinutes, redMin, yellowMin):
+    eta <= redMin   -> INNER  (red siren)
+    eta <= yellowMin-> OUTER  (yellow chime)
+    else / no speed / unreachable -> null
+```
+
+- **Speed**: `ThreatSpeedTracker` estimate (server → measured → nominal). **AVIATION overridden to ballistic nominal** (3300 km/h) so Kinzhal = country-wide.
+- **`etaMinutes = distanceKm ÷ speedKmh × 60`** against the predicted position.
+- **Reach caps** per type (physically can't reach you → no alert): KAB 70 km, FPV 40 km, recon 50 km, Shahed 1000 km, cruise/ballistic/aviation uncapped. New `reachKm(type)`.
+- **Advisory** (`t.advisory`, NEPTUN = observation) excluded from tiering in both paths (per docs, advisory = no siren).
+- `FAST_THREAT_TYPES`, `effectiveZone`, `RadialZones`, `radialZone` removed.
+
+### Sliders → minutes; circles stay (your call)
+
+- **ZonesSheet.kt**: red slider 5–20 **min**, yellow 20–60 **min**, unit label switches to `minUnit` ("хв"/"min"); helper text updated.
+- **MapView.kt**: circles still drawn, radius = `minutes × 3 km/min` (Shahed 180 km/h reference — the slowest meaningful threat). Red = 60 km, yellow = 180 km at defaults. Keeps your "threats to me" visual; helper text clarifies fast objects alert from farther than the circle.
+- ZonePrefs keys → new `red_zone_min` / `yellow_zone_min` (defaults 20/60); drop `fast_alerts_sooner` key entirely.
+
+### Files touched
+
+| File | Change |
+| --- | --- |
+| `Zones.kt` | Rewrite: `timeTier`, `reachKm`, AVIATION speed override; delete km model + `FAST_THREAT_TYPES` |
+| `AlertService.kt` | `zoneThreats` → time-tier map (advisory excluded); State carries `redMin/yellowMin`; drop `fastAlertsSooner`; keep latch + coalescing (271-280) |
+| `MainViewModel.kt` | `buildUiState` uses `timeTier` + reach + advisory; `redZoneKm/yellowZoneKm` → `redZoneMin/yellowZoneMin` (+ derived circle km for map); drop `fastAlertsSooner` |
+| `ZonesSheet.kt` | Sliders to minutes, `minUnit` |
+| `MapView.kt` | Circles from derived km; keep red/yellow labels |
+| `SettingsScreen.kt` | Remove "Fast objects alert sooner" row; zone hints → minutes |
+| `ThreatPopupCard.kt` | Replace `radialZone`/`effectiveZone` use with `timeTier`; ETA display already exists |
+| `ThreatLevel.kt` | `scoreOf` gets derived circle km (min×3) so gauge distance logic keeps working |
+| `MainScreen.kt` | Field renames; drop `onFastAlertsSoonerChange` |
+| `ZonePrefs.kt` | New minute keys (defaults 20/60), drop sooner key |
+| `Strings.kt` | Remove `fastAlertsSooner*`; update `redZoneHint`/`yellowZoneHint`/`zoneExplain`/`guideFast*`; add `minUnit` (UA ~206-401, EN ~403-598) |
+| `FeatureGuide.kt` | Fast card → time-based wording, no "sooner" |
+| Tests | Rewrite `ZonesTest` for `timeTier`/`reachKm`; add `etaMinutes` tests |
+| `ARCHITECTURE.md` | Update invariants: zone tiering → time tiering, mirror rule now on `timeTier` |
+| `CHANGELOG.md` | Unreleased entry |
+
+### Behavior after
+- Ballistic anywhere in Ukraine = red (≈18 min at 3300 km/h). MiG-31K same. Cruise ~283 km reachable in 20 min → red; beyond 850 km silent. KAB >70 km silent (east noise gone). Shahed 60 km out = red, circling 200 km away heading away = silent/66 min = none. Slow objects keep their chime semantics via the same rule — no separate km path needed.
+
+### Verify
+`.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`.
+
+One open call for you: circles at Shahed-speed reference (`min × 3 km`) — a ballistic 300 km away shows red-alert while outside the drawn red circle. OK to accept that (circle = slow-threat reach reference), or prefer circles at a mid-speed reference?
+## 16/08/2026, 12:48:29
+
+
+
+
+## 16/08/2026, 12:49:13
+
+All 8 fixes applied. Adding the CHANGELOG entry per the workflow,
+## 16/08/2026, 12:49:28
+
+Now building and
+## 16/08/2026, 12:49:42
+
+Build succeeded. Running unit tests since Threat.kt was touched,
+
+
+## 16/08/2026, 12:49:51
+
+All 9 done — build and unit tests green.
+
+- Fix 1 `MainViewModel.kt:344` — `|| t.areaOnly` added
+- Fix 2 `AlertService.kt:334-352` — only the fired id marked known; rest re-evaluate next tick; left-map ids dropped
+- Fix 3 `Threat.kt:199` — blank-id guard in `fromJson`
+- Fix 4 `NeptunClient.kt:199-232` — REST failures surface into `lastError`
+- Fix 5 `README.md` — zone ranges now 1–20 / 21–50 (3 spots)
+- Fix 6 `NeptunClient.kt:136-150` — `setForceOffline` stamps/clears `offlineSince`
+- Fix 7 `MainScreen.kt:896,907` — backup badge gated on `backupSeen`, NEPTUN de-facto active fallback
+- Fix 8 `Threat.kt:304-333` — `mergeAlerts` stem-tolerant dedup
+- CHANGELOG `[Unreleased]` entry added
+
+I also corrected Fix 2 from your original block: the verbose version's `associateWith { alertable[id] ?: ... }` would have re-stamped non-fired entrants as known, defeating the fix; the applied version implements the invariant you specified in the note.
+## 16/08/2026, 12:51:06
+
+The open call is about what the drawn red/yellow circles *mean* once alerts are time-based. Here's the issue concretely:
+
+A "20-minute warning" is a different distance for every threat:
+- Ballistic @ 3300 km/h → 20 min = **1100 km** (basically all of Ukraine)
+- Cruise @ 850 km/h → 20 min = **283 km**
+- Shahed @ 180 km/h → 20 min = **60 km**
+
+But the map draws **one** red circle and **one** yellow circle around you. So to turn the minute sliders into km, we must pick *one* speed for the conversion. The circle can't be right for all threat types at once.
+
+**The mismatch:** say we draw the red circle at Shahed speed (60 km). A ballistic 300 km away *is* red-alerting (6 min), but it sits **outside** the drawn 60 km circle. So the map shows a quiet-looking empty red circle while your phone is screaming — the visual and the alert disagree. That's the confusion I flagged.
+
+Your options:
+
+**A. Circle = slow-threat reference (Shahed, min × 3 km).** The circle honestly shows "where a slow drone becomes urgent." Fast objects legitimately alert from beyond it. Downside: the drawn circle understates danger — a red alert can be outside the red circle.
+
+**B. Circle = fast-threat reference (ballistic, min × 55 km).** Red circle ≈ whole country (1100 km). Then every missile inside Ukraine is inside the circle, so the visual never contradicts the alert. Downside: the circle is huge and nearly useless as a "how close" picture — it can't show granularity for slow drones.
+
+**C. Circles stay purely decorative/km (unchanged visual).** Keep today's circles (1–20 / 21–50 km) as-is, label them "reference, not alert boundaries," and alerts are purely time-based. Least new confusion, but the circles no longer predict any alert.
+
+Honestly **A** is the best fit for your stated goal — the circles keep their "threats to me" feel for the slow stuff, and the helper text just notes fast objects fire from farther out. The contradiction (alert outside the circle) only shows up for fast objects, which is exactly the behavior you wanted anyway.
+
+Want to go with **A**, or prefer one of the others?
+## 16/08/2026, 12:52:04
+
+Yes, makes sense — for reliability, more certainty = "greener". I'll mirror the existing `UncertaintyBar` semantics:
+
+- **HIGH** → green (3/3 bars, `DistUserGreen`)
+- **MEDIUM** → amber (2/3, `AdvisoryAmber`)
+- **LOW** → red (1/3, `DistUserRed`)
+- **UNKNOWN** → gray (0/3, `0xFF9E9E9E`)
+
+Same for the small muted label tint. The current red-tinted pill text stays as-is in the MEDIUM card; only the LARGE card's new bar uses this green-up color scheme.
+## 16/08/2026, 12:53:36
+
+⚡ + 🐢 as a matched emoji pair — nice, that fixes the tint mismatch entirely. Here's the plan:
+
+## Plan: Emoji pair for Fast/Slow group icons
+
+**Change (1 file: `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`):**
+- `fastAndSlowGroups` (`:584`): change `Triple<Int, String, Set<ThreatType>>` → `Triple<String, String, Set<ThreatType>>`, carrying `"⚡"` for Fast and `"🐢"` for Slow.
+- Header render (`:282-287`): replace `Icon(painter = painterResource(id = iconRes), tint = primary)` with `Text(emoji, fontSize = 16.sp)` in the same centered Row. Content description compares the emoji to pick `fastGroupIconDesc`/`slowGroupIconDesc` (Strings.kt already has both — no string changes).
+
+**Unchanged:**
+- `ic_bolt.xml` stays — still used by the "alert sooner" toggle (`:335`) and MainScreen.
+- `ic_turtle.xml` becomes unused → delete it so there's no dead drawable.
+- No mirrored invariants / `ARCHITECTURE.md` structural change.
+
+**Also:** append a line under `## [Unreleased]` in `CHANGELOG.md` (Settings Fast/Slow headers now use ⚡/🐢 emoji pair).
+
+**Verify:** `.\gradlew.bat :app:assembleDebug`
+
+Say "go" and I'll implement.
+## 16/08/2026, 12:55:41
+
+Building Option A. Let me set up the todo list and read the remaining files I need to touch precisely
+## 16/08/2026, 12:55:45
+
+Let me read the files I haven't fully seen: MainViewModel (key parts), MainScreen wiring, SettingsScreen (full alerts/zone sections), ThreatPopupCard, ThreatLevel, MapView circle code, Strings sections, ZonePrefs, and the tests
+## 16/08/2026, 12:55:57
+
+Now let me read the remaining UI files and tests I need to modify
+## 16/08/2026, 12:56:02
+
+Now let me look at the ThreatLevel.kt, MapView circle area, SettingsScreen zones section, Strings full sections, and the tests
+## 16/08/2026, 12:56:08
+
+Now the SettingsScreen full relevant section, Strings sections, and tests
+
+
+## 16/08/2026, 12:56:22
+
+Let me read the tests and remaining
+## 16/08/2026, 12:56:33
+
+
+
+
+## 16/08/2026, 12:56:33
+
+Now let me read SettingsScreen's function signature + alerts section top, and full Strings UA/EN relevant
+## 16/08/2026, 12:56:38
+
+Now let me read the full UA/EN Strings sections and TestThreats, plus the ThreatPopupCard proximity
+## 16/08/2026, 12:57:18
+
+`ic_bolt` is used in 3 source spots (all `SettingsScreen.kt`): `:284` (header content-desc compare), `:335` ("alert sooner" toggle icon), `:589` (Fast group Triple). Let me check the `AlertToggleRow` composable to see how to swap its icon to an emoji.
+
+
+## 16/08/2026, 12:57:33
+
+Let me verify the `sp` import exists and check the `:330-355` call-site context for the alert
+## 16/08/2026, 12:57:43
+
+`sp` is already imported (`:52`). Everything's confirmed — here's the final plan:
+
+## Plan: ⚡ + 🐢 emoji pair, delete both drawables
+
+**`SettingsScreen.kt` (only source file touched):**
+- `fastAndSlowGroups` (`:584`): `Triple<Int, String, ...>` → `Triple<String, String, ...>` — Fast → `"⚡"`, Slow → `"🐢"`.
+- Group header render (`:274-311`): destructure `(emoji, groupTitle, types)`; replace the `Icon(painterResource(...), tint = primary)` with `Text(emoji, fontSize = 16.sp)` (Row already `CenterVertically`); content-desc pick becomes `if (emoji == "⚡") s.fastGroupIconDesc else s.slowGroupIconDesc`.
+- `AlertToggleRow` (`:536`): add `emoji: String? = null` param, rendered as `Text(emoji, fontSize = 20.sp)` when set (else existing painter path — `ic_trident`/`ic_volume_up` toggles stay untouched).
+- "Alert sooner" toggle call site (`:335`): `icon = painterResource(R.drawable.ic_bolt), iconTint = ...` → `emoji = "⚡"`.
+
+**Delete:** `app/src/main/res/drawable/ic_bolt.xml` and `ic_turtle.xml` (no remaining references after the above — `ic_bolt` is only used in these 3 SettingsScreen spots).
+
+**Skip:** CHANGELOG (per your instruction), ARCHITECTURE.md (no structural/invariant change).
+
+**Verify:** `.\gradlew.bat :app:assembleDebug`
+
+"go"?
+## 16/08/2026, 12:57:58
+
+Now I have full context. Let me check remaining references (FeatureGuide, AlertsUaTest, MainScreen map params, ThreatPopupCard rest) before editing
+
+
+## 16/08/2026, 12:58:31
+
+Now the `AlertToggleRow` composable and its bolt
+## 16/08/2026, 12:58:39
+
+Now delete both drawables and verify no remaining references,
+## 16/08/2026, 12:58:42
+
+No remaining references. Now build to
+## 16/08/2026, 12:58:54
+
+`Text` has no `contentDescription` param — need `Modifier.semantics`. Let me check imports
+## 16/08/2026, 12:58:57
+
+Need `semantics` + `contentDescription` imports in SettingsScreen.kt. Let me add them and fix the `Text`.
+
+
+## 16/08/2026, 12:59:17
+
+Let me check a few remaining usages: ThreatLevelTest, redZoneHint/yellowZoneHint usage, and the zone buttons in MainScreen
+
+
+## 16/08/2026, 12:59:28
+
+Build successful. Done:
+
+- Fast/Slow group headers + "alert sooner" toggle now use ⚡/🐢 emoji.
+- Deleted `ic_bolt.xml` and `ic_turtle.xml` (no remaining references).
+## 16/08/2026, 13:01:02
+
+Now I have complete context. Let me implement, starting with the core `Zones.kt`
+## 16/08/2026, 13:01:07
+
+No — there's no config option for that. The TUI config (`tui.json`) only exposes theme, keybinds, scrolling, cursor, mouse, and attention settings; none control message timestamps. Timestamp rendering would live in the opencode client source itself (the TUI), so it would require a feature request/change to the repo at https://github.com/anomalyco/opencode.
+
+As a workaround for "how long ago the session was last used", the `/sessions` picker is the place to look — but adding absolute/relative times there is also a source-level change.
+## 16/08/2026, 13:01:08
+
+Now remove `FAST_THREAT_TYPES` from Threat.kt (its only consumer `effectiveZone` is
+## 16/08/2026, 13:01:21
+
+Now ZonePrefs — minute keys + drop fastAl
+## 16/08/2026, 13:01:42
+
+## Objective
+## 16/08/2026, 13:02:01
+
+Now MainViewModel. Let me apply the edits carefully
+## 16/08/2026, 13:02:33
+
+Now update PrefsSnapshot, AlertConfig, LiveSnapshot and their combines
+## 16/08/2026, 13:03:00
+
+I'm in plan mode. Let me research the current structure to plan the extraction properly
+## 16/08/2026, 13:03:03
+
+
+
+
+## 16/08/2026, 13:03:09
+
+Now the uiState combine + buildUiState call
+
+
+## 16/08/2026, 13:03:14
+
+Now the buildUiState signature and body
+
+
+## 16/08/2026, 13:03:17
+
+Now let me check which imports are used only by `ConnectionStatus` (so I know what to move vs. keep in MainScreen), and confirm no other usages of `Intent`/`Uri` outside that function.
+## 16/08/2026, 13:03:25
+
+Now the loop in buildUiState (lines ~343-367)
+## 16/08/2026, 13:03:30
+
+Now the proximity block and UiState construction
+## 16/08/2026, 13:03:41
+
+Now the setter methods at the bottom
+## 16/08/2026, 13:03:50
+
+I have the full picture. Here's the plan.
+
+## Plan: Extract system status into its own file (bundling the 2 pending UI fixes)
+
+### 1. Fix `"Offline for 0m"` → `"Offline 0m"` — `Strings.kt:612`
+Change EN `offlineUiFormat` from `"Offline for %1\$s"` to `"Offline %1\$s"`. This fixes the header pill timer text (the only place "for " appears — the UA string `"Офлайн %1\$s"` is already correct).
+
+### 2. Remove the "Online/Offline" status text from the System status popup — inside the new file
+- Delete the `neptunStatus` / `backupStatus` computations.
+- Drop the `status = …` args from both `SourceStatusRow` calls.
+- `SourceStatusRow`: remove the `status: String` param and its `Text(...)` + the `statusColor`/`statusWeight` locals.
+- Rows keep: color dot + source name + orange "Active" pill. The green/red legend rows at the bottom remain (they're the legend, not the per-source text).
+- Header pill still uses `s.connOnline`/`s.connOffline`/`offlineUiFormat`, so no strings become dead.
+
+### 3. Extract to a new file `app/src/main/java/ua/ukrainedrones/SystemStatus.kt`
+Move both composables out of `MainScreen.kt` (lines ~815–1001):
+- `ConnectionStatus` (pill + the `AlertDialog` popup — they share `showInfo`/`dotColor`, so they move together)
+- `SourceStatusRow` (only used by `ConnectionStatus`)
+- Change both from `private` to `internal` (file-scoped `private` won't be visible from `MainScreen.kt`).
+- New file gets the needed imports: `Intent`, `Uri`, `ClickableText`, `CircleShape`, `RoundedCornerShape`, `buildAnnotatedString`/`SpanStyle`/`withStyle`/`TextDecoration`, `alpha`, `LocalContext`, `background`/`clickable`, `dp`, `FontWeight`, `Color`, plus `layout.*`/`material3.*`/`runtime.*` wildcards (matching MainScreen's import style).
+
+### 4. Trim `MainScreen.kt`
+- Delete the two moved functions.
+- Remove imports now only used there: `android.net.Uri`, `ClickableText`, `SpanStyle`, `buildAnnotatedString`, `withStyle`, `TextDecoration`.
+- **Keep**: `Intent` (used by `UpdateDialog` at :170/181), `CircleShape`/`RoundedCornerShape`/`LocalContext`/`alpha` (used elsewhere).
+- The `ConnectionStatus(...)` call site in `MapScreen`'s top bar is unchanged.
+
+### 5. Docs
+- `ARCHITECTURE.md`: add `SystemStatus.kt` to the module map (per the "keep docs current" rule).
+- `CHANGELOG.md`: fix the status bullet — popup no longer shows per-source "Online/Offline" text, and offline timer reads "Offline X m" (no "for").
+
+### 6. Verify
+`.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` — green (no tests touch these UI strings; unit tests cover `NeptunState` logic only).
+
+One open choice: file name — `SystemStatus.kt` (matches what you called it) vs `ConnectionStatus.kt` (matches the composable name). I'll go with `SystemStatus.kt`. OK to proceed?
+## 16/08/2026, 13:03:52
+
+Now AlertService. Let me update the config/state, combine, and zoneThreats
+## 16/08/2026, 13:04:03
+
+The file has grown since my first read (offline/connected features). Let me re-read it fully
+## 16/08/2026, 13:04:12
+
+Now let me apply the AlertService edits
+
+
+## 16/08/2026, 13:05:38
+
+## Objective
+Replace the app's km-radius alert zones with a unified **time-to-arrival** alert model: threats reaching the focus point in <20 min = red siren (INNER), 20–60 min = yellow chime (OUTER), >60 min = no alert. Keep the map's km circles as a visual "threats to me" reference drawn at Shahed speed (min × 3 km), convert the zone sliders to minutes, and drop the "Fast objects alert sooner" toggle entirely.
+
+## Important Details
+- User decisions (via Q&A): time-based tiers replace km zones for all types; sliders become minutes; **keep** km circles as reference (Option A: circle radius = minutes × 3 km, Shahed 180 km/h reference); **no** per-threat dynamic circles; "Fast objects alert immediately" toggle is dropped (model subsumes it).
+- Tier model (single source of truth in `Zones.kt`, used by **both** MainViewModel and AlertService — mirror rule): `timeTier(t, distKm, speedKmh, zones)` → INNER/OUTER/null.
+- Speed = `ThreatSpeedTracker` estimate (server → measured → nominal), stored in m/s; convert × 3.6 to km/h. **AVIATION tier speed overridden to `BALLISTIC_SPEED_KMH = 3300.0`** (Kinzhal is country-wide).
+- Per-type reach caps (`reachKm`): KAB 70, FPV 40, recon 50, Shahed 1000, ballistic/cruise/aviation/unknown 1500 km — beyond cap = no alert (kills east-front noise).
+- `t.advisory` (NEPTUN = observation) → excluded from tiering/siren in both paths; still shown on the UI map.
+- Preserve AlertService per-episode latch + siren coalescing (~lines 271–280).
+- Sliders: red 5–20 min (default 20), yellow 20–60 min (default 60). New DataStore keys `red_zone_min`/`yellow_zone_min`; old `red_zone_km` data abandoned (semantics changed, do not migrate values).
+- Old API deleted: `RadialZones`, `radialZone`, `effectiveZone`, `FAST_THREAT_TYPES`.
+- `ThreatLevelModel.scoreOf(t, distKm, eta, redKm, yellowKm, now)` signature kept — pass derived circle km ints (`zoneCircleKm(redMin).toInt()` etc.) so the gauge's distance logic keeps working.
+- FeatureGuide "fast" card is strings-driven; wording must drop "sooner"/zone-boundary.
+- Verify: `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`; update ARCHITECTURE.md invariants + CHANGELOG.md.
+- In build mode (implementation has started).
+
+## Work State
+### Completed
+- `Zones.kt` fully rewritten: `ThreatZone`, `TimeZones(redMin, yellowMin)`, `timeZone(etaMin, zones)`, `BALLISTIC_SPEED_KMH=3300.0`, `etaMinutes(distKm, speedKmh)`, `reachKm(type)`, `timeTier(t, distKm, speedKmh, zones)`, `ZONE_CIRCLE_REF_KMH=180.0`, `zoneCircleKm(minutes)`.
+- `Threat.kt`: `FAST_THREAT_TYPES` block removed.
+- `ZonePrefs.kt`: keys → `red_zone_min`/`yellow_zone_min` (defaults 20/60, coerce 5–20 / 20–60); `redZoneMin()`/`setRedZoneMin()`/`yellowZoneMin()`/`setYellowZoneMin()` added; `fastAlertsSoonerKey`, `fastAlertsSooner()`, `setFastAlertsSooner()` removed.
+- `MainViewModel.kt` (partial): `UiState` now `redZoneMin: Int = 20`, `yellowZoneMin: Int = 60`, `redCircleKm: Double = 60.0`, `yellowCircleKm: Double = 180.0`, `fastAlertsSooner` removed, `threatsInner`/`threatsOuter` comments updated to time-tier wording.
+
+### Active
+- `MainViewModel.kt` remaining edits: `buildUiState` signature + loop (use `TimeZones` + `timeTier`, skip `t.advisory` for tiering, gate threatScores on tier != null, pass circle km to `scoreOf`), `LiveSnapshot`/`ThreatProximity` `redKm`/`yellowKm` → `redMin`/`yellowMin`, `zonesFlow`/`seedFlow` → `redZoneMin()`/`yellowZoneMin()`, `prefsSnapshot.AlertConfig` remove `fastAlertsSooner`, `setRedZoneKm`→`setRedZoneMin` etc.
+
+### Blocked
+- (none) — no build/test run attempted yet.
+
+## Next Move
+1. Finish `MainViewModel.kt`: replace `RadialZones`/`radialZone`/`effectiveZone` with `TimeZones(redMin, yellowMin)` + `timeTier(t, distKm, speedKmh, zones)`; add `if (t.advisory) continue` after map/city-count block; `threatScores.add(ThreatLevelModel.scoreOf(t, distKm, eta, zoneCircleKm(redMin).toInt(), zoneCircleKm(yellowMin).toInt(), now))`; rename all `redKm`/`yellowKm` fields/params to `redMin`/`yellowMin`; remove every `fastAlertsSooner` reference.
+2. Update `AlertService.kt`: `combine(prefs.redZoneMin(), prefs.yellowZoneMin())`; drop `fastAlertsSooner` from `AlertConfig`/`MonitorEvent.State`/combine; rewrite `zoneThreats` using `timeTier` (skip resolved/stale/expired/areaOnly/advisory, type-enabled, predicted position); `alertTier` uses spatial zone directly (no `effectiveZone`); keep latch + coalescing.
+3. Then UI/strings: `Strings.kt` (remove `fastAlertsSoonerTitle/Desc`; update `redZoneHint`/`yellowZoneHint`/`zoneExplain`/`guideZones*`/`guideEditZones*`/`guideFast*`; add `minUnit` UA "хв"/EN "min"), `ZonesSheet.kt` (sliders minutes), `MapView.kt` (circles via `zoneCircleKm(uiState.redZoneMin)`), `SettingsScreen.kt` (remove fast row + params), `ThreatPopupCard.kt` (timeTier band, remove `fastAlertsSooner` param), `MainScreen.kt` (renames, drop `onFastAlertsSoonerChange`), `ThreatLevel.kt` (wiring only).
+4. Rewrite `ZonesTest.kt` for `timeTier`/`timeZone`/`reachKm`/`etaMinutes`/`zoneCircleKm`; add `etaMinutes` tests to `PredictionTest.kt` if needed; update `ARCHITECTURE.md` + `CHANGELOG.md`; run `assembleDebug` + `testDebugUnitTest`.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/Zones.kt` — rewritten core (timeTier, reachKm, zoneCircleKm, AVIATION override)
+- `app/src/main/java/ua/ukrainedrones/Threat.kt` — FAST_THREAT_TYPES removed; `advisory` field exists
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt` — minute keys (defaults 20/60), sooner key removed
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt` — partially edited; biggest remaining work (buildUiState ~lines 300+, zonesFlow ~99, seedFlow ~241)
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt` — pending time-tier rewrite (combine ~167, zoneThreats ~251, alertTier ~321, coalescing 271–280)
+- `app/src/main/java/ua/ukrainedrones/Strings.kt` — pending: fastAlertsSooner* at UA 263-264 / EN 425-426; hints 272-274/504-506; guide strings; add minUnit
+- `app/src/main/java/ua/ukrainedrones/ZonesSheet.kt`, `MapView.kt`, `SettingsScreen.kt`, `ThreatPopupCard.kt`, `MainScreen.kt`, `ThreatLevel.kt`, `FeatureGuide.kt` — pending UI/string wiring
+- `app/src/test/java/ua/ukrainedrones/ZonesTest.kt` (must rewrite — tests deleted radialZone/effectiveZone), `PredictionTest.kt`, `TestThreats.kt` (`threat()` builder)
+- `ARCHITECTURE.md`, `CHANGELOG.md` — pending docs updates
+## 16/08/2026, 13:05:49
+
+Continuing AlertService edits: the zones combine, AlertConfig combine, State construction, zoneThreats, alertTier, and buildReason
+## 16/08/2026, 13:05:57
+
+Now the buildReason call site — it needs circle km from minutes
+## 16/08/2026, 13:06:18
+
+Now the zoneThreats function — rewrite for time tiers
+## 16/08/2026, 13:06:22
+
+Now the alertTier function — remove effective
+## 16/08/2026, 13:06:25
+
+Now check for remaining references to removed symbols in AlertService
+
+
+## 16/08/2026, 13:06:28
+
+Now the UI files. Let me look at the relevant Strings.kt sections
+
+
+## 16/08/2026, 13:06:38
+
+Let me read the Strings.kt declarations and ThreatPopupCard, then ZonesSheet
+
+
+## 16/08/2026, 13:06:46
+
+Let me look at the MainScreen call sites and the threatBand/SettingsScreen context
+## 16/08/2026, 13:06:54
+
+Now let me update MainScreen. First the callbacks and SettingsScreen call
+
+
+## 16/08/2026, 13:07:21
+
+Now let me look at the MapScreen function signature in MainScreen.kt and Zones
+## 16/08/2026, 13:07:24
+
+Now let me look at MapView and ZonesSheet
+
+
+## 16/08/2026, 13:07:39
+
+Now I'll update ZonesSheet to use minutes
+
+
+## 16/08/2026, 13:07:52
+
+Now SettingsScreen. Let me look at the relevant sections
+
+
+## 16/08/2026, 13:08:52
+
+Now the ThreatPopupCard band logic. Let me check the PreviewProximity definition in SettingsScreen first, and the ThreatPopupCard SummaryPills and its p.redMin/yellowMin
+## 16/08/2026, 13:09:11
+
+Now ThreatPopupCard. The band logic uses the new time tier. Let me update signature and band
+## 16/08/2026, 13:09:29
+
+Let me check how the band/zone text is rendered in the popup card
+## 16/08/2026, 13:09:36
+
+Now MapView - update circles to use derived km fields
+## 16/08/2026, 13:10:54
+
+## Objective
+- Add an independent backup source for oblast air-raid alerts (alerts.com.ua) that activates when the primary NEPTUN feed is down or silent, and make the state clearly visible (header pill + system-status popup).
+- Add a TEMP test toggle that **simulates NEPTUN being offline** — the user's latest requirement: flipping it must make NEPTUN look red/offline everywhere (not just dim it or switch the effective source to amber "backup").
+
+## Important Details
+- alerts.in.ua rejected (ToS forbids hardcoded token / requires proxy); alerts.com.ua chosen (keyless, `GET https://alerts.com.ua/api/states`).
+- Mirror rule: `MainViewModel` and `AlertService` derive the same zone/focus/alert logic from shared `NeptunState`; backup only feeds `oblastAlerts` (union), never overrides a healthy NEPTUN.
+- New semantic model (the "go" cleanup):
+  - `neptunDown = forceOffline || !connected` — drives ALL "offline" display (real or simulated).
+  - `backupActive = neptunDown || now - lastAlertAt > BACKUP_FALLBACK_MS` (60s quiet).
+  - Header pill priority: **red "offline" + timer when `neptunDown`** → **amber "backup" when `backupActive && !neptunDown`** (NEPTUN alive but quiet/backup-driven) → green "online".
+  - Popup: NEPTUN row shows red/offline when `neptunDown`; each source shows its own health dot; the "Active"/"Активне" label marks the effective source (`!backupActive` for NEPTUN, `backupActive` for backup); **"Currently on: X" line removed** (redundant).
+- `offlineElapsedSec` now honors `neptunDown`: returns computed seconds when `offlineSince` set, else `0L` when `forceOffline`, else null.
+- Backup health: `backupUp` = active && lastOkAt within `BACKUP_HEALTHY_MS` (90s); backup row amber when `backupSeen` but stale.
+- Force-offline pref key `temp_force_offline`, restored on service start (`AlertService.onCreate`).
+- `connEffectiveFormat` string is now dead code (3 references in `Strings.kt`) — pending removal.
+
+## Work State
+### Completed
+- Backup source end-to-end: `AlertsUaClient.kt` (20s polling, `parseStates()` → `OblastAlert`), `Threat.kt` (`AlertSource` NEPTUN/BACKUP/BOTH + `mergeAlerts`), `NeptunState` fields + `backupActive`/`oblastAlerts`/`alertSourceFor`/`backupOfflineElapsedSec`, `setForceOffline`, `AlertService` source tags + restore-on-start, `ZonePrefs.forceOffline`/`setForceOffline`.
+- UI: header pill + system-status popup (`ConnectionStatus` in `MainScreen.kt`), `MapScreen` gained `onForceOfflineChange`; MainScreen call site wired `onForceOfflineChange = viewModel::setForceOffline`; removed unused `val vm = viewModel`.
+- `MainViewModel.UiState`: added `neptunDown` (populated from `neptun.neptunDown`), alongside `connected`, `forceOffline`, `backupActive`.
+- `NeptunClient.kt`: added `neptunDown` getter; `backupActive = neptunDown || quiet`; `offlineElapsedSec` rewritten to use `neptunDown`.
+- `MainScreen.kt` refactor: `ConnectionStatus` signature now takes `neptunDown` (removed now-unused `connected`); pill reordered (red offline first); popup NEPTUN row uses `neptunDown`; "Currently on" line + `effectiveName` removed.
+- `AlertsUaTest.kt`: added tests `forceOffline marks NEPTUN down and starts its offline timer`, `neptunDown is true when disconnected`, `connected without force marks NEPTUN up`.
+- Docs partially updated earlier: CHANGELOG "Status" bullet (3-state pill + temp toggle), ARCHITECTURE.md invariant (`temp_force_offline`, restore-on-start).
+- `:app:assembleDebug` + `:app:testDebugUnitTest` were green **before** the `neptunDown` refactor.
+
+### Active
+- Removing dead `connEffectiveFormat` string from `Strings.kt` (interface field line 76, UA value line 304, EN value line 533) — context read, edit not yet applied.
+
+### Blocked
+- None. Build/tests NOT yet re-run after the `neptunDown` refactor — unverified.
+
+## Next Move
+1. Remove `connEffectiveFormat` from `Strings.kt` (3 spots: interface field + UA + EN values).
+2. Run `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` and confirm green after the refactor.
+3. Update `ARCHITECTURE.md` + `CHANGELOG.md` for the new semantics: test toggle simulates NEPTUN offline → NEPTUN row/header show red "offline" (not amber "backup"); amber "backup" only when NEPTUN alive but backup driving.
+
+## Relevant Files
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\NeptunClient.kt`: `NeptunState` with `neptunDown`, `offlineElapsedSec`, `backupActive`, `setForceOffline`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainScreen.kt`: header pill + system-status popup logic (just refactored).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainViewModel.kt`: `UiState.neptunDown` + `setForceOffline()`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Strings.kt`: `connEffectiveFormat` removal pending (lines 76, 304, 533).
+- `D:\Desktop\drones\app\src\test\java\ua\ukrainedrones\AlertsUaTest.kt`: new `neptunDown`/forceOffline tests.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\AlertsUaClient.kt`, `ZonePrefs.kt`, `AlertService.kt`, `Threat.kt`: backup source plumbing.
+- `D:\Desktop\drones\ARCHITECTURE.md`, `D:\Desktop\drones\CHANGELOG.md`: need a final wording pass for `neptunDown` semantics.
+## 16/08/2026, 13:11:01
+
+Now check MainViewModel for remaining stale references and the UiState comment lines 327-329. Also MainScreen MapScreen signature. Let me grep MainViewModel for leftover
+## 16/08/2026, 13:11:07
+
+Now update Strings.kt. First remove the fastAlertsSooner declarations and add minUnit
+## 16/08/2026, 13:11:10
+
+Now let me look at the declarations around kmUnit to add minUnit, and check where kmUnit is declared
+## 16/08/2026, 13:11:22
+
+Now the UA string values. Update the UA block: remove fastAlertsSooner values, add minUnit, update hints/zoneExplain
+
+
+## 16/08/2026, 13:11:42
+
+Now the UA guide strings for zones/editZones/fast. Let me read the UA
+## 16/08/2026, 13:12:10
+
+Now the EN strings. Remove fastAlertsSooner EN, add minUnit, update hints/zone
+## 16/08/2026, 13:12:18
+
+Confirmed — `ConnectionStatus.kt` it is. Final plan:
+
+## Plan
+
+### 1. `Strings.kt:612` — remove "for "
+`offlineUiFormat` EN: `"Offline for %1\$s"` → `"Offline %1\$s"`. Header pill timer reads "Offline 0 m".
+
+### 2. Popup: drop per-source Online/Offline text
+- Delete `neptunStatus` / `backupStatus` computations.
+- Remove `status = …` args from both `SourceStatusRow` calls.
+- `SourceStatusRow`: drop `status: String` param, its `Text(...)`, and `statusColor`/`statusWeight` locals. Rows keep dot + name + "Active" pill; legend rows stay.
+
+### 3. New file `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`
+Move `ConnectionStatus` (pill + popup, they share `showInfo`/`dotColor`) and `SourceStatusRow` out of `MainScreen.kt`. Both `private` → `internal`. Imports: `Intent`, `Uri`, `ClickableText`, `CircleShape`, `RoundedCornerShape`, `buildAnnotatedString`/`SpanStyle`/`withStyle`/`TextDecoration`, `alpha`, `LocalContext`, `background`/`clickable`, `dp`, `FontWeight`, `Color`, `layout.*`/`material3.*`/`runtime.*`.
+
+### 4. Trim `MainScreen.kt`
+Remove the two moved functions + now-unused imports: `android.net.Uri`, `ClickableText`, `SpanStyle`, `buildAnnotatedString`, `withStyle`, `TextDecoration`. Keep `Intent`, `CircleShape`, `RoundedCornerShape`, `LocalContext`, `alpha`. Call site unchanged.
+
+### 5. Docs
+- `ARCHITECTURE.md`: add `ConnectionStatus.kt` to module map.
+- `CHANGELOG.md`: status bullet — popup no longer shows per-source Online/Offline text; timer reads "Offline X m".
+
+### 6. Verify
+`.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` — must pass.
+
+Ready to execute when you switch out of plan mode.
+## 16/08/2026, 13:12:34
+
+Now the EN kmUnit value and guide strings
+## 16/08/2026, 13:13:16
+
+Now update the stale comments in MainViewModel and check the whole file compiles clean
+## 16/08/2026, 13:13:25
+
+Now let me verify the Zones.kt API and check the tests. Let me read Zones.kt and Zones
+## 16/08/2026, 13:13:35
+
+
+
+
+## 16/08/2026, 13:13:50
+
+Now rewrite ZonesTest for the new time-tier
+## 16/08/2026, 13:13:54
+
+Let me check remaining references across the codebase and
+## 16/08/2026, 13:14:02
+
+All source references are clean (remaining `redKm` in `scoreOf` are intentional — the derived circle km). Now update the todos, then docs and build
+
+
+## 16/08/2026, 13:14:06
+
+Now let me update ARCHITECTURE.md. Let me find the key-invariants and
+## 16/08/2026, 13:14:11
+
+
+
+
+## 16/08/2026, 13:14:55
+
+Now update AGENTS.md mirror-rule and the CHANGELOG
+
+
+## 16/08/2026, 13:15:17
+
+## Objective
+- Keep stale/expired threats visible on the map but dimmed (marker alpha 0.25f, still tappable) instead of hiding them; keep the footer strip/gauge/alerts truthful by excluding stale threats from those counts; truly remove a threat only when the server sends `resolved`/a remove frame, or after a ~30 min hard cap past the staleness window; show a stale indicator ("Last seen <m:ss> ago" / «Востаннє <m:ss> тому») in the threat popup for stale/expired threats.
+
+## Important Details
+- Threat status values: `"active" | "stale" | "resolved"` — `Threat.kt:157` (`val status: String`), parsed with default `"active"` at `Threat.kt:229`.
+- `MainViewModel.kt:312` is the filter to change in `buildUiState`: `if (t.status == "resolved" || t.status == "stale" || isExpired(t, now)) continue`. Stale/expired must stay in `mapThreats` flagged `isStale`, but be excluded from `threatsInner`/`threatsOuter`/`threatScores`/`cityCounts` and from alerts.
+- `AlertService.kt:226` already skips `resolved`/`stale`/`isExpired`/`areaOnly` for alerts — likely no change needed there.
+- `Prediction.kt:44` `staleAfterMs(type)` per-type windows: SHAHED/FPV_LOITERING 300s, RECON 300s, CRUISE_MISSILE 180s, KAB 180s, BALLISTIC 90s, AVIATION 240s, UNKNOWN 240s; `isExpired(t, now)` defined ~`Prediction.kt:51-54`.
+- Hard cap: ~30 min past the per-type staleness window; NEPTUN documents no server death-timeout, so the cap is the backstop for ghost markers.
+- `MapView.kt:426`: marker alpha = 0.25f for stale, 1.0f for live; markers must remain tappable. The overlay rebuild key (`MapView.kt:221-230`) and `appendThreatKey` (`MapView.kt:~87-91`) must include the stale flag so alpha updates on state change.
+- Popup stale indicator: dimmed card + elapsed "Last seen <m:ss> ago" / «Востаннє <m:ss> тому»; elapsed formatting already exists in the footer (`ThreatPopupCard.kt:259-267`, `428-436`).
+- Add both EN + UA strings in `Strings.kt` `StringSet`: UA block ~206-401, EN block ~403-598.
+- Codebase: single-module `:app`, flat package `ua.ukrainedrones`, Kotlin 1.9.24, Compose (M3) + OSMdroid, NEPTUN WebSocket + REST ingress (`NeptunClient.kt` handles `snapshot`/`upsert`/remove frames).
+
+## Work State
+### Completed
+- Read `ARCHITECTURE.md`; confirmed module/package layout and NEPTUN ingress model.
+- Located all target files via glob: `MainViewModel.kt`, `MapView.kt`, `ThreatPopupCard.kt`, `Strings.kt`.
+- Confirmed `Threat.kt` status field + parsing; `Prediction.kt` staleness/expiry helpers.
+- Confirmed `AlertService.kt:226` already excludes stale/resolved/expired from alerts.
+- Confirmed `MainViewModel.kt:312` is the `buildUiState` filter that must change.
+- Confirmed `MapView.kt:426` marker-alpha site and rebuild-key sites (`221-230`, `~87-91`).
+- Confirmed `Strings.kt` structure: `StringSet` data class, UA ~206-401, EN ~403-598.
+
+### Active
+- Research still in progress: exact contents of `MainViewModel.kt` `buildUiState` (~280-340), `MapView.kt` marker sections (~80-100, ~215-235, ~410-435), `ThreatPopupCard.kt` footer sections (~250-275, ~420-440), and the `Strings.kt` elapsed formatter (`formatElapsedMss`).
+
+### Blocked
+- (none)
+
+## Next Move
+1. Read `MainViewModel.kt` ~280-340 to see exactly how `threatsInner`/`threatsOuter`/`threatScores`/`cityCounts` are derived from the filtered list.
+2. Read `MapView.kt` ~80-100, ~215-235, ~410-435 (`appendThreatKey`, rebuild key, marker creation/alpha).
+3. Read `ThreatPopupCard.kt` ~250-275 and ~420-440 (footer elapsed) and `Threat.kt` ~150-235 (data class fields) for the popup dimming + stale line.
+4. Read `Strings.kt` for the elapsed formatter and the full `StringSet` field list (UA ~206-401, EN ~403-598).
+5. Produce the implementation plan with exact edits (state flag, viewmodel filter split, hard-cap constant, alpha + rebuild key, popup stale UI, strings).
+
+## Relevant Files
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainViewModel.kt` — `buildUiState` filter at line 312; `UiState.mapThreats` must retain stale/expired flagged `isStale`, excluded from `threatsInner`/`threatsOuter`/`threatScores`/`cityCounts`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MapView.kt` — marker alpha at line 426 (0.25f stale / 1.0f live); rebuild key 221-230; `appendThreatKey` ~87-91.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ThreatPopupCard.kt` — footer elapsed at 259-267 and 428-436; add dimmed stale card + "Last seen" line.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Strings.kt` — add EN (~403-598) + UA (~206-401) strings: "Last seen <m:ss> ago" / «Востаннє <m:ss> тому».
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Prediction.kt` — `staleAfterMs` (line 44), `isExpired` (~51-54); basis for the ~30 min hard cap.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Threat.kt` — `status` field (line 157), parsing (line 229).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\AlertService.kt` — line 226 already excludes stale/resolved/expired from alerts.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\NeptunClient.kt` — WS stream `snapshot`/`upsert`/remove-frame handling (exact remove-frame location still to verify).
+## 16/08/2026, 13:15:20
+
+Let me check README for stale zone descriptions
+
+
+## 16/08/2026, 13:15:24
+
+Let me update the README's zone description section
+## 16/08/2026, 13:16:07
+
+Now let me build and run tests. First assembleDebug
+
+
+## 16/08/2026, 13:16:09
+
+Now I'll create the new `ConnectionStatus.kt` file with the extracted code plus the two UI fixes (no per-source status text, and the refactored `SourceStatusRow`).
+
+
+## 16/08/2026, 13:16:22
+
+
+
+
+## 16/08/2026, 13:16:27
+
+Now remove the two functions from `MainScreen.kt` and trim the
+## 16/08/2026, 13:16:31
+
+The Settings fast/slow grouping used the deleted set. Let me define it
+## 16/08/2026, 13:16:34
+
+Now remove the now-unused imports from `MainScreen.
+## 16/08/2026, 13:16:56
+
+Now the string fix in `Strings.kt
+## 16/08/2026, 13:17:08
+
+Fix the type name, then investigate ConnectionStatus.kt
+
+
+## 16/08/2026, 13:17:09
+
+Now let me verify the build and tests.
+
+
+## 16/08/2026, 13:17:18
+
+ConnectionStatus.kt is a new untracked file (not mine) missing the `Composable` import. Let me check if it's referenced and whether it's a leftover
+
+
+## 16/08/2026, 13:17:25
+
+ConnectionStatus.kt is a pre-existing leftover (untracked) missing the `Composable` import, blocking the build
+## 16/08/2026, 13:17:36
+
+Missing the `Composable` import. Let me add it
+## 16/08/2026, 13:18:03
+
+Build passes. Now the unit tests
+
+
+## 16/08/2026, 13:18:16
+
+My edit created a duplicate import. Fixing
+
+
+## 16/08/2026, 13:18:31
+
+
+
+
+## 16/08/2026, 13:19:02
+
+Both build and tests pass. Let me update the todos
+
+
+## 16/08/2026, 13:19:09
+
+The time-to-arrival zone model is fully implemented and verified: `assembleDebug` + `testDebugUnitTest` both pass.
+
+What changed:
+- **Zones.kt** — new single source of truth: `timeTier(t, distKm, speedKmh, TimeZones)` (ETA → INNER/OUTER), per-type `reachKm` caps, AVIATION→ballistic override, `zoneCircleKm(minutes)` for the map circles.
+- **MainViewModel + AlertService** (mirror rule) — both tier threats by time-to-arrival via `timeTier`, skip advisory, keep latch/coalescing.
+- **ZonePrefs** — `red_zone_min` (5–20, default 20) / `yellow_zone_min` (20–60, default 60); `fastAlertsSooner` removed everywhere.
+- **UI** — zone sliders in minutes, map circles now reference visuals (min × 3 km), popup band uses `timeTier`, "Fast objects alert sooner" row and strings removed; UA/EN guide + hints updated; added `minUnit`.
+- **Docs/tests** — ZonesTest rewritten for the new API; ARCHITECTURE/README/CHANGELOG/AGENTS updated.
+
+One note: I also fixed an unrelated pre-existing blocker — `ConnectionStatus.kt` (untracked leftover) was missing its `Composable` import, which broke the whole build.
+## 16/08/2026, 13:25:56
+
+Plan: always show the NEPTUN link in the ConnectionStatus dialog, regardless of status.
+
+In `ConnectionStatus.kt` (the dialog's link at lines 166–183), drop the `backupActive` branching:
+- `ConnectionStatus.kt:173` — always `s.attributionText` (NEPTUN) instead of switching to `attributionBackup`.
+- `ConnectionStatus.kt:180` — always open `https://neptun.in.ua/` instead of `alerts.com.ua` when backup is active.
+
+No other files or strings change. Ready to implement on your go.
+## 16/08/2026, 13:29:38
+
+Build and tests pass. Now update the docs. Let me find the ARCHITECTURE.md module map entry for
+## 16/08/2026, 13:29:48
+
+I'll add a row for `ConnectionStatus.kt` right after `MainScreen.kt` and trim the "connection pill" reference from the
+## 16/08/2026, 13:29:52
+
+Now update the CHANGELOG status bullets to reflect the removed popup status text and the "Offline X
+## 16/08/2026, 13:30:20
+
+Let me do a final consistency check to confirm no leftover references or imports in MainScreen.
+## 16/08/2026, 13:30:44
+
+The `ClickableText` import survived (order mismatch in my earlier edit). It's now unused in MainScreen — let me remove it.
+## 16/08/2026, 13:31:06
+
+Build and tests pass. Let me verify no other orphaned imports remain in MainScreen
+## 16/08/2026, 13:31:31
+
+All done. Summary of changes:
+
+**1. `Strings.kt:612`** — `offlineUiFormat` EN: `"Offline for %1$s"` → `"Offline %1$s"` (header pill now reads "Offline 0 m").
+
+**2. Popup** — removed per-source "Online/Offline" text from both rows; `SourceStatusRow` dropped its `status` param, `Text`, and the `statusColor`/`statusWeight` locals. Rows now show dot + name + "Active" pill; legend rows kept.
+
+**3. New file `ConnectionStatus.kt`** — `ConnectionStatus` (pill + System status dialog, sharing `showInfo`/`dotColor`) and `SourceStatusRow` moved out of `MainScreen.kt`, visibility `private` → `internal`, with their own imports.
+
+**4. `MainScreen.kt`** — the two functions removed; unused imports trimmed (`Uri`, `ClickableText`, `SpanStyle`, `buildAnnotatedString`, `withStyle`, `TextDecoration`); `Intent`/`CircleShape`/`RoundedCornerShape`/`LocalContext`/`alpha`/`semantics` kept (still used).
+
+**5. Docs** — `ARCHITECTURE.md`: added `ConnectionStatus.kt` row to the module map; `CHANGELOG.md`: status bullet updated (popup shows dots + "Active", no per-source text).
+
+Verified: `:app:testDebugUnitTest` + `:app:assembleDebug` — BUILD SUCCESSFUL.
+## 16/08/2026, 13:32:08
+
+
+
+
+## 16/08/2026, 13:32:11
+
+Let me read the specific sections I need to edit
+## 16/08/2026, 13:32:11
+
+I can't view the PNG (this model doesn't support image input), but I'll treat it as the NEPTUN logo. Here's the plan:
+
+**1. Add the drawable** — copy `D:\Desktop\drones\neptun.png` → `app\src\main\res\drawable-nodpi\neptun.png` (nodpi avoids density-based scaling of the logo).
+
+**2. `ConnectionStatus.kt` dialog** — replace the underlined text link (lines 166–183) with a tappable logo image:
+- `Image(painterResource(R.drawable.neptun), ...)` inside a `clickable` modifier, height ~36–40.dp, that always opens `https://neptun.in.ua/` regardless of `backupActive` (satisfies the earlier "URL only to neptun, regardless of status").
+- New imports: `Image`, `painterResource`, `height`.
+- Remove now-dead imports: `ClickableText`, `SpanStyle`, `buildAnnotatedString`, `TextDecoration`, `withStyle`.
+
+**3. Strings** — `attributionText`/`attributionBackup` become unused but left in place (harmless, per minimal-patch convention).
+
+One note: since I can't see the logo, if it's a dark-on-transparent mark it may blend into the dark dialog — I'll render it as-is; tell me if you'd like a light chip behind it. Ready on your go.
+## 16/08/2026, 13:32:27
+
+Now let me add the staleness helpers to Prediction.kt
+## 16/08/2026, 13:32:50
+
+Now MainViewModel.kt. Let me view the rest of buildUiState and UiState mapThreats usage
+
+
+## 16/08/2026, 13:33:56
+
+Now editing MapView.kt — appendThreatKey stale flag and
+## 16/08/2026, 13:34:16
+
+MapView done. Now ThreatPopupCard.kt
+
+
+## 16/08/2026, 13:34:55
+
+Let me check `formatElapsedMss` and the `Threat.updatedAtMillis` handling
+## 16/08/2026, 13:35:24
+
+Done. `neptun.png` copied to `res/drawable-nodpi/`, and the ConnectionStatus dialog now shows the tappable orange NEPTUN logo (40dp) that always opens `https://neptun.in.ua/` regardless of status. Build passes; CHANGELOG updated.
+## 16/08/2026, 13:35:28
+
+Now I'll add the hoisted timer + stale flag and dim the card in ThreatPopup
+## 16/08/2026, 13:35:48
+
+Now replace the two duplicated footer timer blocks with the hoisted `
+## 16/08/2026, 13:36:06
+
+I need to verify the state of the file after that edit — let me re-read the MEDIUM footer section.
+
+
+## 16/08/2026, 13:36:36
+
+The edit created a duplicate. Let me fix the MEDIUM
+## 16/08/2026, 13:36:50
+
+Now the LARGE footer still has its own timer. Let me re-read the whole popup area to verify the current
+## 16/08/2026, 13:36:53
+
+MEDIUM footer is fixed. Now the LARGE footer timer
+## 16/08/2026, 13:37:10
+
+Now Strings.kt. Let me find the end of StringSet class and the UA/
+## 16/08/2026, 13:37:19
+
+Now add `lastSeenAgoFormat` to the String
+## 16/08/2026, 13:37:22
+
+Now find the end of UA block and start/end of EN block to add values
+## 16/08/2026, 13:37:30
+
+Add UA value (after guideUpdateD3, line 
+## 16/08/2026, 13:37:36
+
+Now find the end of the EN block
+
+
+## 16/08/2026, 13:37:55
+
+I used unescaped `$` in Kotlin strings — that triggers string interpolation. Fix both
+## 16/08/2026, 13:38:18
+
+Let me verify the ThreatPopupCard edits are consistent now
+## 16/08/2026, 13:38:25
+
+Let me verify the LARGE footer indentation is
+## 16/08/2026, 13:38:40
+
+Now let me update the outdated `staleAfterMs` doc comment in Prediction.kt to reflect the new behavior
+## 16/08/2026, 13:38:44
+
+Now let me check for existing Prediction tests to add coverage for the new helpers
+## 16/08/2026, 13:39:01
+
+Now add tests for `isStale` and `isGhost`
+## 16/08/2026, 13:39:14
+
+Now let me update the todos and run the build + tests
+
+
+## 16/08/2026, 13:39:36
+
+Build passes. Now run the
+## 16/08/2026, 13:39:46
+
+Build and tests pass. Let me update the CHANGELOG per the workflow
+
+
+## 16/08/2026, 13:39:59
+
+Let me check if ARCHITECTURE.md documents the old "dropped from map" stal
+## 16/08/2026, 13:40:03
+
+ARCHITECTURE.md documents the expiry invariant. Let me read and update it
+
+
+## 16/08/2026, 13:40:41
+
+Let me restore the dead-reckoning sentence I dropped
+
+
+## 16/08/2026, 13:40:58
+
+Done. Build + unit tests pass. Changes:
+
+- **Prediction.kt** — added `STALE_GHOST_CAP_MS` (30 min), `Threat.isStale(now)`, `Threat.isGhost(now)`; updated `staleAfterMs` doc.
+- **MainViewModel.kt** — `buildUiState` no longer drops stale/expired threats; they stay in `mapThreats` (dimmed) but are excluded from strip/tiers/gauge/cityCounts, and only `resolved`/`areaOnly`/`isGhost` are truly removed.
+- **MapView.kt** — `appendThreatKey` includes the stale flag (rebuild fires on live→stale); marker alpha 0.25f stale / 1.0f live, still tappable.
+- **ThreatPopupCard.kt** — hoisted the 1s clock, dimmed the card + grey border when stale, footer shows "Last seen m:ss ago" / «Востаннє m:ss тому» in amber.
+- **Strings.kt** — `lastSeenAgoFormat` added to EN/UA.
+- **Tests** — new `isStale`/`isGhost` cases in PredictionTest.kt.
+- **CHANGELOG.md + ARCHITECTURE.md** — updated the expiry invariant.
+
+Alerts unchanged (AlertService still excludes stale/expired), so no mirror-rule changes were needed. Note: `hasActiveAlert()` keys off `mapThreats`, so update dialogs stay suppressed while stale ghosts are on screen — left as-is per plan default.
+## 16/08/2026, 13:43:52
+
+
+
+
+## 16/08/2026, 13:46:38
+
+Now the threat popup card. First the MEDIUM branch
+## 16/08/2026, 13:46:48
+
+
+
+
+## 16/08/2026, 13:46:57
+
+The file has changed since I first read it (new `stale`/`elapsedText`/`AlertsOffBell(size)` code). Let me re-read the current full
+## 16/08/2026, 13:47:22
+
+The codebase has changed since my initial reads (zone logic now `timeTier`/`TimeZones`, new `stale`/`lastSeenAgoFormat`). Let me re-verify current state of the files I need to edit before proceeding
+## 16/08/2026, 13:47:31
+
+The codebase has moved to time-based zones (`redMin`/`yellowMin`) since my first read. I need to re-read the current versions of the files I'm editing
+
+
+## 16/08/2026, 13:47:35
+
+
+
+
+## 16/08/2026, 13:48:30
+
+## Objective
+- Implement a batch of UI/UX tweaks to the Ukraine Drones Android app (map header tap, threat popup layout/size control, footer text, zones panel expansion, Settings collapse).
+
+## Important Details
+- User-confirmed decisions: medium card = fixed 3 rows, skull on bottom (NOT adaptive); reliability bar in the full/LARGE card, text pill stays in MEDIUM; Sources pill stays as-is (no tap dialog); Fast/Slow default **expanded**; slim threat panel **needs** Fast/Slow headers; reliability coloring is "more sure = greener" (HIGH=green, MEDIUM=amber, LOW=red, UNKNOWN=gray).
+- Remove the rotated course arrow (`KeyboardArrowUp`) after region text in LARGE and MEDIUM headers.
+- **Codebase evolved since initial reads**: zones are now time-based (`redMin`/`yellowMin` minutes, `TimeZones`/`timeTier`) not km; new `stale`/`lastSeenAgoFormat` feature; `AlertsOffBell(size)` now takes a param; `ThreatPopupCard` no longer takes `fastAlertsSooner`. Must re-read files before editing; line numbers in the plan are stale.
+- Pills must stay on one line and never wrap/scroll → cap pill fontScale via `CompositionLocalProvider(LocalDensity provides LocalDensity.current.copy(fontScale = min(..., 1.25f)))`.
+- Zones panel: upward drag past ~80dp expands to reveal slim threat panel; downward drag past 80dp closes (or collapses if expanded).
+- Popup size control: three stacked lines (thin/thick/thicker) at bottom-right below card, tap cycles SMALL→MEDIUM→LARGE, persisted via `viewModel.setThreatCardSize`, oversized transparent touch target (≥40dp).
+- New `fitUkraineTick` on header tap → `mapView.zoomToBoundingBox(UA_VIEW_LIMITS, true)`; old `recenterTick` removed.
+- "First Steps" = first-launch "A few tips" dialog (language picker) — embed the slim threat-toggles panel there.
+
+## Work State
+### Completed
+- `Strings.kt`: added `reliabilityLabel` (EN "Reliability", UA «Достовірність») to `StringSet` + both locales; changed `noThreatsMessage` EN → "No relevant threats", UA → «Немає актуальних загроз»; updated `guideStripD2` EN/UA to quote the new wording. (All edits applied successfully.)
+- Plan v2 approved by user; clarification answers captured (Sources pill skip, 3-row fixed layout, reliability colors, expanded default, slim panel headers).
+
+### Active
+- `ThreatPopupCard.kt` MEDIUM-branch rework is the current edit target; **first edit attempt failed** ("Could not find oldString") because the file changed since initial read. Full current file re-read (670 lines, uses `timeTier`, `TimeZones`, `stale`, `elapsedText`, `s.lastSeenAgoFormat`).
+
+### Blocked
+- None hard-blocked, but current full content of `MainScreen.kt`, `SettingsScreen.kt`, `MapView.kt`, `ZonesSheet.kt` is not yet re-read (reads were truncated); must re-read before editing them to avoid further failed edits.
+
+## Next Move
+1. Re-read the exact current `ThreatPopupCard.kt` MEDIUM branch (and LARGE footer/header) and apply: 3-row layout (header / single-line capped pills / skull+expanded bar), remove course arrow, LARGE reliability → 3-segment `ReliabilityBar` (reuse `UncertaintyEmpty`/`AdvisoryAmber`/`DistUserRed`/`DistUserGreen` colors).
+2. `MapView.kt`: add `fitUkraineTick` param + `lastFitUkraineTick`, call `zoomToBoundingBox(UA_VIEW_LIMITS, true)`, drop `recenterTick`.
+3. Create `ThreatTogglePanel.kt`: move `ToggleChip`/`IconToggle`/`fastAndSlowGroups` from `SettingsScreen.kt` to `internal`, add `SlimThreatToggles` (Fast/Slow headers with master toggles + compact per-type icon/label/Map/Alerts rows).
+4. `SettingsScreen.kt`: Fast/Slow collapse state (default expanded) with caret, headers stay visible; use shared toggles.
+5. `MainScreen.kt`: title tap → `fitUkraineTick++`; wire `onThreatCardSizeChange` + size indicator into popup; zones panel upward-expand revealing `SlimThreatToggles`; embed `SlimThreatToggles` in the First Steps ("A few tips") dialog; add needed params (`hiddenTypes`, `silencedTypes`, toggle callbacks, toggle-all callbacks, `onThreatCardSizeChange`).
+6. Update `CHANGELOG.md` (Unreleased) and `ARCHITECTURE.md` (new file); verify with `.\gradlew.bat :app:assembleDebug`.
+
+## Relevant Files
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Strings.kt`: string edits done; `reliabilityLabel`, `noThreatsMessage`, `guideStripD2`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ThreatPopupCard.kt`: current edit target; MEDIUM 3-row layout, LARGE reliability bar, course arrow removal, `HorizontalLevelBar(expanded)`, `SummaryPills(singleLine)`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MapView.kt`: add `fitUkraineTick` (currently has `recenterTick`/`zoomZone`/`zoomTick`/`fitZonesTick`; `UA_VIEW_LIMITS` is private in file).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainScreen.kt`: header tap (line ~354 `recenterTick++`), popup overlay (line ~491 area), zones panel, LanguageChooseDialog ("First Steps"); needs `SlimThreatToggles` + size-control wiring.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\SettingsScreen.kt`: Fast/Slow collapse; `ToggleChip`/`IconToggle`/`fastAndSlowGroups` to extract to shared file.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ThreatTogglePanel.kt`: new shared file (not yet created).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ZonesSheet.kt`: zones panel now uses `redMin`/`yellowMin`; expansion state lives in `MainScreen.kt`.
+- `D:\Desktop\drones\CHANGELOG.md`, `D:\Desktop\drones\ARCHITECTURE.md`: doc updates pending.
+## 16/08/2026, 13:48:41
+
+Continuing. I'll re-read the three files I still need exact content for (edits require exact matches), then apply the MEDIUM-branch rework first
+## 16/08/2026, 13:50:14
+
+Now let me check the reliability-related strings in Strings.kt before rewriting the cards
+
+
+## 16/08/2026, 13:51:43
+
+Adding short reliability segment labels to Strings.kt (needed for the LARGE 3-se
+## 16/08/2026, 13:52:17
+
+Now the ThreatPopupCard.kt edits. First, imports cleanup:
+## 16/08/2026, 13:52:38
+
+Now the MEDIUM card rework (fixed 3 rows):
+## 16/08/2026, 13:52:46
+
+Now remove the course arrow from the LARGE header:
+## 16/08/2026, 13:52:50
+
+Now swap the LARGE reliability pill for the 3-segment bar:
+## 16/08/2026, 13:52:57
+
+Now refactor `HorizontalLevelBar` to accept a width modifier:
+## 16/08/2026, 13:53:12
+
+Now update `SummaryPills` to support a non-wrapping single-line mode with capped font scale:
+## 16/08/2026, 13:53:22
+
+Now add the `ReliabilityBar
+## 16/08/2026, 13:53:31
+
+
+
+
+## 16/08/2026, 13:53:39
+
+ThreatPopupCard.kt is done. Now MapView.kt — replace `recenterTick` with `fitUkraineTick`:
+
+
+## 16/08/2026, 13:53:51
+
+Now let me read SettingsScreen.kt to extract the shared to
+## 16/08/2026, 13:54:43
+
+SettingsScreen is clear. Now I'll create the shared `ThreatTogglePanel.kt` with the moved toggles + the new `SlimThreatToggles
+## 16/08/2026, 13:56:30
+
+Now update SettingsScreen.kt. First add the collapse state:
+
+
+## 16/08/2026, 13:56:52
+
+Now remove the moved private definitions from SettingsScreen.kt:
+
+
+## 16/08/2026, 13:56:58
+
+Now let me read MainScreen.kt to plan the remaining wiring
+## 16/08/2026, 13:58:05
+
+Let me check the `ThreatCardSize` enum definition before wiring the size
+## 16/08/2026, 13:58:16
+
+Now the MainScreen.kt edits. First, thread the new callbacks into the
+## 16/08/2026, 13:58:36
+
+Now the `LanguageChooseDialog` call (add the slim toggles params
+## 16/08/2026, 13:58:56
+
+Now update the `LanguageChooseDialog` definition to include the slim panel:
+
+
+## 16/08/2026, 13:59:04
+
+Now the MapScreen signature (add the new call
+## 16/08/2026, 13:59:29
+
+Now the popup — add the size control below the card:
+
+
+## 16/08/2026, 13:59:42
+
+Now the zones-sheet expansion. Add the state variable
+## 16/08/2026, 14:00:56
+
+Now add the slim toggles panel below `ZonesEditContent` in
+## 16/08/2026, 14:01:01
+
+Now add the missing `verticalScroll` import and the size-control compos
+## 16/08/2026, 14:01:14
+
+Let me verify the strings I referenced
+## 16/08/2026, 14:01:18
+
+All strings exist. Now update CHANGELOG.md and ARCH
+## 16/08/2026, 14:01:25
+
+
+
+
+## 16/08/2026, 14:01:43
+
+
+
+
+## 16/08/2026, 14:01:47
+
+Now update ARCHITECTURE.md's module map for
+## 16/08/2026, 14:02:11
+
+Now let me build to verify all changes compile
+## 16/08/2026, 14:13:34
+
+Five compile errors to fix. First the semantics alias in MainScreen (the file aliases `contentDescription
+## 16/08/2026, 14:13:41
+
+
+
+
+## 16/08/2026, 14:14:20
+
+Now fix the SummaryPills density override and the shared-lambda issue
+## 16/08/2026, 14:15:20
+
+`PillTrio` receives a nullable `proximity` — use safe calls
+## 16/08/2026, 14:16:10
+
+Build succeeds. Let me run the unit tests as a safety check since Strings.kt changed
+
+
+## 16/08/2026, 14:16:41
+
+Done — all changes build and unit tests pass.
+
+**ThreatPopupCard.kt** — MEDIUM is now a fixed 3 rows (header / single-line capped-font pills / skull + expanded bar + reliability/age); LARGE reliability is a 3-segment bar (High=green, Average=amber, Low=red, gray=unknown); course arrows removed from both headers.
+
+**MapView.kt / MainScreen.kt** — header tap now zooms to fit all of Ukraine (`fitUkraineTick`).
+
+**MainScreen.kt** — popup gained a thin/thick/thicker size control (bottom-right, tap cycles SMALL→MEDIUM→LARGE, persisted); zones sheet drags up to reveal `SlimThreatToggles` and down to collapse/close; first-launch "A few tips" dialog now embeds the same slim toggles (scrollable).
+
+**ThreatTogglePanel.kt** (new) — shared Fast/Slow grouping, `ToggleChip`/`IconToggle`, and `SlimThreatToggles`.
+
+**SettingsScreen.kt** — Fast/Slow groups are collapsible (default expanded); headers with master toggles stay visible.
+
+**Strings.kt** — added reliability segment labels + `reliabilityLabel`; **CHANGELOG.md** and **ARCHITECTURE.md** updated.
+
+Two notes:
+- The "medium keeps text pill" requirement is implemented as the reliability text pill inline on the bottom row (skull + bar + pill + age). If you'd rather the pill sit elsewhere, easy to move.
+- One deviation from plan: the reliability pill/age sit beside the expanded bar on the bottom row rather than below it, to keep the layout strictly 3 rows.
+## 16/08/2026, 14:22:45
+
+This is a big multi-part task. Let me set up a todo list and explore the relevant files.
+
+
+## 16/08/2026, 14:23:23
+
+Now let me explore the remaining areas with targeted searches
+## 16/08/2026, 14:23:30
+
+
+
+
+## 16/08/2026, 14:24:30
+
+Let me look at the prediction/threatcard logic and the other UI
+## 16/08/2026, 14:24:52
+
+
+
+
+## 16/08/2026, 14:24:58
+
+
+
+
+## 16/08/2026, 14:25:24
+
+Now let me look at MainScreen header/threatcard, SettingsScreen pin picker, and the pop
+## 16/08/2026, 14:25:46
+
+
+
+
+## 16/08/2026, 14:26:04
+
+One clarification before I final
+## 16/08/2026, 14:26:15
+
+Now let me read AlertService and Translate to understand the notification translation
+## 16/08/2026, 14:27:55
+
+Let me check `appendThreatKey` and the map marker refresh
+## 16/08/2026, 14:29:11
+
+Plan for the reliability bar rework (LARGE card only):
+
+**`ThreatPopupCard.kt` — rewrite `ReliabilityBar` (lines 653-692)** as a single-line Precision-style row:
+- `Row(verticalAlignment = CenterVertically)`:
+  - small `Reliability` label (kept, per your choice) — `bodySmall`, gray, like `UncertaintyBar`'s `uncertaintyLabel`
+  - `Spacer(8.dp)`
+  - 3 fixed segments, ordered **LOW (left) → MEDIUM → HIGH (right)**
+- Fill mirrors Precision's progressive style: `LOW`=1 filled, `MEDIUM`=2, `HIGH`=3, `UNKNOWN`=0; empty = `UncertaintyEmpty` gray.
+- Fill color by level ("more sure = greener"): HIGH=`DistUserGreen`, MEDIUM=`DistUserAmber`, LOW=`ReliabilityRed`, UNKNOWN=gray.
+- Segment size: `22dp × 6dp`, 2dp gaps → 3 segments total ≈ 70dp, matching the current block's footprint ("same total width"). No per-segment words, no `weight(1f)` columns.
+
+**`Strings.kt`** — remove the now-unused `reliabilitySegHigh`/`reliabilitySegMedium`/`reliabilitySegLow` (StringSet + UA + EN). `reliabilityLabel` stays.
+
+**Verify** — `.\gradlew.bat :app:assembleDebug` and `:app:testDebugUnitTest`.
+
+Sound good? (Segment width 22dp is a starting point — easy to tune if you want it wider/narrower.)
+## 16/08/2026, 14:30:13
+
+Let me check remaining details: "typical" speed references, neutralized wording, and zone
+## 16/08/2026, 14:31:42
+
+Now remove the unused segment strings from Strings.kt:
+
+
+## 16/08/2026, 14:32:32
+
+Done. Let me update the CHANGELOG entry to match the final design
+## 16/08/2026, 14:32:35
+
+Reliability bar reworked. The LARGE card now shows a single-line `Reliability` label + 3 segments (LOW → HIGH left→right, progressive fill, colored by level), matching the Precision bar's look. Unused segment strings removed; build and unit tests pass.
+## 16/08/2026, 14:32:54
+
+Let me check the backup tests that will be affected by the `back
+## 16/08/2026, 14:33:26
+
+I've explored everything needed. Before finalizing the plan, a few design decisions need your input.
+
+
+## 16/08/2026, 14:36:13
+
+All decisions confirmed. Here's the complete plan.
+
+## Plan — 11 fixes for Ukraine Drones
+
+### 1. Header: red trident invisible on red header — `MainScreen.kt`
+`UkraineEmblem` (MainScreen.kt:644) tints the trident `AlertRed` whenever `focusOblastAlertActive`; when `activeZone == INNER` the whole header is filled red, so red-on-red is invisible.
+- Add a `contrast: Boolean` param: when the header is filled with a zone color (`activeZone != null`, MainScreen.kt:362), tint the trident `Color.White` instead of red; keep the red tint + glow for the dark-surface (official-only) case.
+
+### 2. Connection status: URL next to Neptun logo — `ConnectionStatus.kt`
+The NEPTUN image (ConnectionStatus.kt:164) is clickable but has no text.
+- Render a `Row` of logo + `neptun.in.ua` text, whole row `clickable` → opens the URL (as today).
+
+### 3. Remove city "(x)" threat counts — `Cities.kt`, `MainViewModel.kt`, `MapView.kt`
+Counts are `cityCounts` (MainViewModel.kt:337-349, 437), drawn by `CityLabelOverlay` (Cities.kt:214), consumed in MapView.kt:228/378. They're misleading (only count exact `locality` matches, not near-city threats).
+- Delete `UiState.cityCounts`, its computation, the overlay param, and the draw logic. Keep the red-oblast city-label highlighting (`activeRegionTokens`) — that's a separate feature you didn't complain about.
+
+### 4. Neutralized card + fade — `MainViewModel.kt`, `MainScreen.kt`, `ThreatPopupCard.kt`, `Strings.kt`
+`refreshedSelected` (MainViewModel.kt:378) goes null the moment the threat leaves the stream → popup vanishes instantly.
+- Add `UiState.neutralizedThreat: Threat?`: when `selected != null && refreshedSelected == null`, set it to the last known `selected` (user dismissal clears selection, so it won't trigger).
+- Add `neutralized: Boolean = false` to `ThreatPopupCard`; when true, render only the icon + type title + a `neutralizedLabel` text ("Neutralized" / UA "Нейтралізовано"), no pills/skull/region.
+- In `MainScreen.kt`, when `uiState.neutralizedThreat != null`, show the card and drive `alpha` 1→0 over 2s with easing that holds near-full opacity for ~1.6s then fades over the last 0.4s (custom `Easing { t -> if (t < 0.8f) 1f else 1f - (t - 0.8f)/0.2f }`); on completion call `onDismissPopup()`.
+
+### 5. "Backup" shown while NEPTUN is online — `NeptunClient.kt`
+`backupActive` (NeptunClient.kt:63-64) flips true whenever the *alerts* feed is quiet >60s, even while threats/heartbeats stream. Per your choice: base liveness on any frame.
+- Add `lastFrameAt: Long` to `NeptunState`; stamp it on every `onMessage` and in `onOpen` (so a reconnect instantly clears "backup").
+- `backupActive = neptunDown || (lastFrameAt > 0 && now - lastFrameAt > BACKUP_FALLBACK_MS)`. Drop `lastAlertAt`. Update `AlertsUaTest` (lastAlertAt→lastFrameAt).
+
+### 6. Pin-city dropdown: drop the red dots — `SettingsScreen.kt`
+`PinCityRow` (SettingsScreen.kt:794-807) marks alerting cities with a red square.
+- Remove the dot from menu items (plain `Text(label(city))`), drop the now-unused `redCities` param; keep `UiState.redCities` (still used by `hasActiveAlert`, MainViewModel.kt:584). Update `pinCityDesc` + `guidePinD3` in both languages to stop saying cities "are marked red".
+
+### 7. Popup speed only when measured — `ThreatPopupCard.kt`
+`PillTrio` (ThreatPopupCard.kt:543) shows `speedKmh` regardless of source (incl. nominal TYPICAL).
+- Show the speed pill only when `proximity.speedSource == SpeedSource.RECORDED`.
+
+### 8. Notifications: post raw, translate in background — `AlertService.kt`
+Zone-alert bodies (`threatBody`, AlertService.kt:421) and unrecognized official reasons stay Ukrainian for EN users.
+- In `postAlert`, after posting, if `lang == EN` launch a coroutine: `Translator.translate(body)` → re-post the **same** `NOTIF_ALERT` id with the translated body (same-id updates don't re-sound, matching the existing "wait-for-reason" pattern at AlertService.kt:367-383). Guard with a generation counter incremented on every post/all-clear so a late translation never resurrects a cleared/changed alert.
+
+### 9. "coarse" → "approximate" — `Strings.kt`
+- `zoneExplain` EN (line 512): "Threat positions are coarse" → "Threat positions are approximate".
+- `zoneExplain` UA (line 276): "Координати загроз грубі" → "Координати загроз приблизні".
+- (The "груба оцінка / rough estimate" phrases elsewhere are a different wording — leaving them.)
+
+### 10. Reword "Zones follow your GPS" — `Strings.kt`, `AlertService.kt`
+- `notifStatusZones`: EN "Threat alarm is following your GPS"; UA "Тривога слідкує за твоїм GPS".
+- `notifStatusPinned`: → "Threat alarm is pinned to %1$s" / "Тривога прикріплена до %1$s"; format with `state.focusBannerCity` at AlertService.kt:313.
+
+### 11. Threats not moving — `Prediction.kt`
+Root cause: `predictPosition` (Prediction.kt:123-125) requires `t.flying` = velocity-bearing + velocity-speed + confirmedAt + active. Most threats lack velocity, so markers sit static.
+- Relax the gate (per your choice): dead-reckon when a **real** heading exists (`bearingDeg ?: heading`) + `confirmedAtMillis` + `status == "active"`; speed = the passed estimate (server → measured → nominal). No pseudo-course gliding. Shared function, so MainViewModel and AlertService tiering stay consistent.
+- Add `PredictionTest` cases: heading-only threat glides; stale still returns null.
+
+### Housekeeping
+- Update `ARCHITECTURE.md`: Cities.kt line (drop "threat counts"), NeptunClient description (liveness-based `backupActive`), Prediction invariant (dead-reckons heading tracks).
+- Append a `CHANGELOG.md` [Unreleased] entry covering the user-visible changes.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`
+- `.\gradlew.bat :app:testDebugUnitTest` (PredictionTest + AlertsUaTest updated)
+
+Ready to implement when you switch out of plan mode.
+## 16/08/2026, 14:37:30
+
+More requests layered on. Let me explore the zones sheet, toggle panel, and settings structure before scoping everything
+## 16/08/2026, 14:37:38
+
+
+
+
+## 16/08/2026, 14:39:35
+
+Good question — let me scope honestly. I've now mapped everything (including the new items). Quick read:
+
+- **Phase 1 — the original 11 fixes:** mostly small. Trident, URL, city-count removal, neutralized fade, backup liveness, dropdown dots, speed pill, coarse/rewording are all small; notification translation and dead-reckoning are medium. ≈ one solid session.
+- **Phase 2 — toggles/settings (A, C, B):** remember collapse state (trivial, `ZonePrefs` + `SettingsScreen`), decouple Map/Alerts (medium — touches `MainViewModel`, `ThreatTogglePanel`, `ThreatSettingsCard`, plus the ARCHITECTURE "coupling" invariant), zones panel → group-only + always-visible bottom (medium UI restructure). ≈ one session.
+- **Phase 3 — zones km/time rework (D):** this is the big one. It redesigns the **core tiering model** (`Zones.kt`) that both `MainViewModel` *and* `AlertService` mirror, changes what's drawn on the map (slow = km circle, fast = no circle), and reworks the panel. Safety-critical + tests. **I'd strongly recommend this as its own session** with the design pinned down first.
+
+So: **all four batches in one session is too much; Phases 1+2 together is comfortable; D deserves its own session.**
+
+Before I finalize the full plan, I need three design decisions (D + B are ambiguous, and D changes alert behavior in a safety app):
+## 16/08/2026, 14:42:11
+
+Two more targeted checks before I finalize — whether Settings also has zone sliders, and how `timeTier`/`reachKm` are consumed
+## 16/08/2026, 14:42:16
+
+
+
+
+## 16/08/2026, 14:44:07
+
+Everything's scoped now. Here's the honest answer and the full plan.
+
+## "Too much for one session?" — Yes, as one batch
+
+I'd split it into **two sessions**:
+
+- **Session 1 (this one):** the original 11 fixes + toggle/settings UX (persist collapse, decouple Map/Alerts).
+- **Session 2 (separate):** the zones km/time rework **+** the always-visible panel — because both reshape the same bottom panel, doing them together avoids touching it twice.
+
+If you'd rather cram it all into one long session, that's doable but riskier (the km/time change is safety-critical and big).
+
+---
+
+## Session 1 plan
+
+### Phase 1 — the 11 fixes (unchanged from before)
+1. Trident visible on red header (`MainScreen.kt` — white tint when header is zone-filled).
+2. Neptun logo + `neptun.in.ua` clickable row (`ConnectionStatus.kt`).
+3. Remove city "(x)" counts (`Cities.kt`, `MainViewModel.kt`, `MapView.kt`).
+4. Neutralized threat card + 2s fade (last 0.4s) (`MainViewModel.kt` + `MainScreen.kt` + `ThreatPopupCard.kt` + new `neutralizedLabel` string).
+5. Backup liveness based on any frame + clear on reconnect (`NeptunClient.kt` + `AlertsUaTest`).
+6. Pin-city dropdown without red dots (`SettingsScreen.kt`).
+7. Popup speed only when `SpeedSource.RECORDED` (`ThreatPopupCard.kt`).
+8. Notifications post raw → background translate → same-id silent update (`AlertService.kt`, gen-counter guard).
+9. "coarse"→"approximate" + UA `приблизні` (`Strings.kt`).
+10. "Threat alarm is following your GPS" / "pinned to %1$s" (`Strings.kt` + `AlertService.kt:313`).
+11. Dead-reckon threats with a real heading (`Prediction.kt` + `PredictionTest`).
+
+### Phase 2 — toggles/settings
+**A. Remember fast/slow collapse** — two `ZonePrefs` booleans (`fastGroupCollapsed`/`slowGroupCollapsed`), wired through `PrefsSnapshot` → `SettingsScreen` (replaces the local `remember` at SettingsScreen.kt:112).
+
+**C. Decouple Map/Alerts toggles** — the "map off ⇒ alerts off" coupling (MainViewModel.kt:505, 520-522) and the disabled Alerts chips (`enabled = onMap` at ThreatTogglePanel.kt:229, SettingsScreen.kt:682, group rows at 317/165):
+- Turning **alerts on** auto-enables the map for those types (single + group).
+- Turning **map off** no longer silences alerts.
+- Alerts toggles always enabled.
+- Update the ARCHITECTURE "Threat type gating" invariant.
+
+---
+
+## Session 2 plan (B + D)
+
+**B. Panel restructure** (per your choices):
+- Per-type rows removed from the map screen (individual toggles live in Settings only). `SlimThreatToggles` leaves `MainScreen`; the zones panel gets just the ⚡/🐢 group Map/Alerts master rows.
+- The zones panel is **always expanded** at the bottom — no slide-up, no drag-to-expand (`showZonesSheet`/`zonesExpanded` removed). The "edit zones" button becomes redundant and is removed from `ZoneButtons` (red/yellow pills stay for zoom).
+
+**D. Zones km/time rework** (decisions locked in):
+- **Slow group** (Shahed, FPV, recon, unknown): **two km circles** — red (urgent, siren) at `slowRedKm`, yellow (warning, chime) at `slowYellowKm`. Tier = distance-based.
+- **Fast group** (ballistic, cruise, KAB, aviation): **red/yellow time sliders, no map circle**. Tier = ETA-based (red min → INNER/siren, yellow min → OUTER/chime).
+- `Zones.kt`: new `ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)` + a `zoneTier(t, distKm, speedKmh, params)` that branches by group; drop `TimeZones`/`timeZone`/`zoneCircleKm`/`ZONE_CIRCLE_REF_KMH`; keep `reachKm` + the AVIATION→ballistic override. `FastThreatTypes` moves here (shared with the UI grouping).
+- **Mirror rule:** `MainViewModel` and `AlertService` both call `zoneTier` (shared source) — the two-alert-path invariant holds. `ThreatProximity` carries `ZoneParams` for the popup band.
+- `MapView`: circles now draw `slowRedKm`/`slowYellowKm` (the literal slow zone); no time-reference circle.
+- **Panel layout** (always visible): Slow section (red/yellow km sliders) + Fast section (red/yellow min sliders) + one Fast/Slow group-toggle row; shared red/yellow tier bells as today; the `zoneExplain` blob replaced with short per-section captions.
+- `ZonePrefs`: four new int keys (slow/red-km, slow/yellow-km, fast/red-min, fast/yellow-min); old `red_zone_min`/`yellow_zone_min` retired. Defaults + slider ranges confirmed during implementation.
+- Strings/feature-guide text, `ZonesTest` rewrite, `ThreatLevelModel` scoring input update, `ARCHITECTURE.md` (module map + invariants).
+
+---
+
+Want me to proceed with **Session 1** (Phases 1 + 2) once you switch out of plan mode, and defer B+D to a follow-up session? Or adjust the split?
+## 16/08/2026, 14:45:35
+
+Two good catches. Let me enumerate every "rough"/"груб" user-facing instance so item 9 is complete
+## 16/08/2026, 14:46:17
+
+Both answers:
+
+**6. The pin-city control is already a native Material3 dropdown** — `PinCityRow` uses the built-in `ExposedDropdownMenuBox` + `OutlinedTextField` + `DropdownMenuItem` (SettingsScreen.kt:772-816), not a hand-rolled one. The only non-standard thing was the red alert dots inside the rows. So "make it a normal dropdown" = just strip those dots → plain `DropdownMenuItem(label)` per city.
+
+If you meant the **OS-level `android.widget.Spinner`** instead, that's possible via an `AndroidView` wrapper, but it needs a custom dark-theme `ArrayAdapter` and index→City mapping, and it can clash with the Material look. My recommendation: **keep the Material3 dropdown** (it's the native Compose choice, already dark-themed, zero extra work). Only worth switching to `Spinner` if you specifically dislike the Material3 styling.
+
+**9. "Rough estimate" → "approximate" everywhere.** Full list of user-facing instances to change (plus the already-planned `zoneExplain`):
+
+- EN `disclaimerBody` (Strings.kt:519): "rough estimate" → "approximate estimate"; "rough guide" → "approximate guide"
+- EN `cardSkullNote` (579): "rough estimate" → "approximate estimate"
+- EN `guideCardReadD1` (687): "rough threat level" → "approximate threat level"
+- EN CRUISE `detailsEn` (Threat.kt:76): "Positions can be rough" → "Positions can be approximate"
+- UA `disclaimerBody` (286): "груба оцінка" → "приблизна оцінка"
+- UA `cardSkullNote` (346): "груба оцінка" → "приблизна оцінка"
+- UA `guideCardReadD1` (454): "груба оцінка рівня загрози" → "приблизна оцінка рівня загрози"
+- (ThreatLevel.kt:9 is a code comment — left as-is.)
+
+Everything else in the Session 1 / Session 2 split stands. Shall I proceed with Session 1 (Phases 1 + 2) once you exit plan mode, keeping the Material3 dropdown?
+## 16/08/2026, 14:49:50
+
+Here are three self-contained plans. Each is written so a brand-new session can execute it from just that block — all decisions from this conversation are baked in.
+
+---
+
+# SESSION 1 — Core logic & data fixes
+
+**Scope:** dead-reckoning, backup liveness, city-count removal, speed pill, notification translation, wording. Self-contained, medium risk.
+
+### 1. Remove city "(x)" threat counts
+- `MainViewModel.kt`: delete `cityCounts` from `UiState` (line 54); delete the `cityCounts` computation block (lines 337–349, incl. the `t.locality?.takeIf { it in Cities.cityOblast }...` block); delete `cityCounts = cityCounts` (line 437).
+- `Cities.kt`: remove `cityCounts` param from `CityLabelOverlay` (line 177) and the count-draw logic (lines 214–215); label = `name(c)` only. **Keep** the red-oblast highlight (`activeRegionTokens`).
+- `MapView.kt`: remove the `for ((c, n) in uiState.cityCounts)` line from `overlayKey` (line 228) and drop the `uiState.cityCounts` arg at line 378.
+
+### 2. Backup pill — base on any data liveness
+- `NeptunClient.kt`:
+  - Add `lastFrameAt: Long = 0` to `NeptunState`; remove `lastAlertAt` (line 33).
+  - `backupActive` (lines 63–64): `neptunDown || (lastFrameAt > 0 && System.currentTimeMillis() - lastFrameAt > NeptunClient.BACKUP_FALLBACK_MS)`.
+  - Stamp `lastFrameAt = now` in `_state.value.copy(...)` inside `onOpen` (line 290) and `onMessage` (line 295); remove `lastAlertAt = ...` from the `"alerts"` frame handler (line 391).
+- `AlertsUaTest.kt`: replace every `lastAlertAt = System.currentTimeMillis()` with `lastFrameAt = System.currentTimeMillis()` (lines 51, 82, 113, 124, 133). Add: connected + `lastFrameAt = now - 70_000` → `backupActive` true; reconnected (`lastFrameAt` fresh) → false.
+
+### 3. Popup speed only when actually measured
+- `ThreatPopupCard.kt` `PillTrio` (line 543): show the speed pill only when `proximity.speedSource == SpeedSource.RECORDED` (skip TYPICAL/nominal).
+
+### 4. Notifications: post raw, translate in background
+- `AlertService.kt`:
+  - Add an `alertEpoch: Int` counter, incremented in `postAlert`, `postAllClear`, and `cancelAlert`.
+  - Extract the builder in `postAlert` (lines 526–534) into `buildAlertNotification(zone, title, body, sirenOverride)`.
+  - Add `lang: AppLanguage` param to `postAlert`; call sites pass `state.lang` (lines 343, 359, 375).
+  - After `safeNotify`, when `lang == EN`: capture `val gen = alertEpoch`, `scope.launch { val translated = Translator.translate(body) ?: return@launch; if (gen != alertEpoch) return@launch; safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, translated, sirenOverride)) }`. (Same-id re-post doesn't re-sound — same assumption as the existing wait-for-reason path, lines 367–383.)
+
+### 5. Wording — "coarse"/"rough" → "approximate"
+- `Strings.kt`:
+  - `zoneExplain` UA (276): `Координати загроз грубі` → `Координати загроз приблизні`
+  - `zoneExplain` EN (512): `Threat positions are coarse` → `Threat positions are approximate`
+  - `disclaimerBody` UA (286): `груба оцінка` → `приблизна оцінка`
+  - `disclaimerBody` EN (519): `rough estimate` → `approximate estimate`; `rough guide` → `approximate guide`
+  - `cardSkullNote` UA (346): `груба оцінка` → `приблизна оцінка`
+  - `cardSkullNote` EN (579): `rough estimate` → `approximate estimate`
+  - `guideCardReadD1` UA (454): `груба оцінка рівня загрози` → `приблизна оцінка рівня загрози`
+  - `guideCardReadD1` EN (687): `rough threat level` → `approximate threat level`
+- `Threat.kt` CRUISE `detailsEn` (76): `Positions can be rough` → `Positions can be approximate`.
+- (`ThreatLevel.kt:9` is a code comment — leave.)
+
+### 6. Reword "Zones follow your GPS"
+- `Strings.kt`: `notifStatusZones` UA (296) `Тривога слідкує за твоїм GPS`; EN (532) `Threat alarm is following your GPS`. `notifStatusPinned` UA (382) `Тривога прикріплена до %1$s`; EN (618) `Threat alarm is pinned to %1$s`.
+- `AlertService.kt` line 313: `s.notifStatusPinned` → `String.format(s.notifStatusPinned, state.focusBannerCity)`.
+
+### 7. Threats actually move on the map (dead-reckoning)
+- `Prediction.kt` `predictPosition` (lines 123–136): replace the `if (!t.flying) return null` gate with:
+  - `if (t.status != "active") return null`
+  - `val heading = t.bearingDeg ?: t.heading ?: return null` (then use `heading` for the projection; keep `confirmedAtMillis` anchor, horizon, ghost-cap).
+  - Speed stays the passed estimate (server → measured → nominal).
+- `PredictionTest.kt`: existing null-cases still hold (stale→null via status gate; no-heading→null). Add: a threat with only top-level `heading` + `confirmedAtMillis` + active glides along `heading`; a `heading = null` active threat returns null.
+
+### Docs & verify (all sessions)
+- Append one `CHANGELOG.md` `[Unreleased]` entry summarizing the user-visible changes for this session.
+- Update `ARCHITECTURE.md` where this session changes documented behavior (NeptunClient `backupActive` liveness; Prediction invariant now "dead-reckons tracks with a real heading").
+- `.\gradlew.bat :app:assembleDebug`; `.\gradlew.bat :app:testDebugUnitTest`.
+
+---
+
+# SESSION 2 — UI polish & toggle model
+
+**Scope:** trident, Neptun URL, neutralized card, pin dropdown, persist collapse, decouple Map/Alerts. Self-contained, mostly Compose UI.
+
+### 1. Trident visible on red header
+- `MainScreen.kt` `UkraineEmblem` (644–666): add `contrast: Boolean = false`; when `contrast`, `colorFilter = ColorFilter.tint(Color.White)` (ignores `active`); else existing logic. Call site (386–389): pass `contrast = activeZone != null`.
+
+### 2. Neptun logo + URL, clickable row
+- `ConnectionStatus.kt` (164–177): replace the `Image` with a `Row(verticalAlignment = CenterVertically)` of `Image` (same painter, height 40.dp) + `Spacer(6.dp)` + `Text("neptun.in.ua", bodySmall, white/onSurfaceVariant)`, whole row `clickable` → existing `startActivity(Intent(ACTION_VIEW, Uri.parse("https://neptun.in.ua/")))`.
+
+### 3. Neutralized card + fade
+- `Strings.kt`: add `neutralizedLabel` → UA `Нейтралізовано`, EN `Neutralized`.
+- `MainViewModel.kt`: add `UiState.neutralizedThreat: Threat? = null`; in `buildUiState` after `refreshedSelected` (line 378): `neutralizedThreat = if (selected != null && refreshedSelected == null) selected else null`; set in the returned `UiState`.
+- `ThreatPopupCard.kt`: add `neutralized: Boolean = false`. When true, render only a compact `Surface`: `Icon(iconResFor(type))` + `Text(typeLabel)` + `Text(s.neutralizedLabel)` — no pills/skull/region/close; non-interactive.
+- `MainScreen.kt` popup block (525–558): if `uiState.selectedThreat == null && uiState.neutralizedThreat != null`, show the neutralized card wrapped in `graphicsLayer { alpha = fade.value }` with `Animatable(1f)` → `animateTo(0f, tween(2000, easing = { t -> if (t < 0.8f) 1f else 1f - (t - 0.8f) / 0.2f }))`, then `onDismissPopup()`. Hide `ThreatCardSizeControl` during this state.
+
+### 4. Pin-city dropdown → plain rows
+- `SettingsScreen.kt` `PinCityRow` (756–817): delete the red-dot `Box` block (797–805); item = `Text(label(city))` only. Remove the `redCities` param from `PinCityRow`, from `SettingsScreen` (line 74), and the pass-through at line 229–235 (and MainScreen.kt:120). **Keep** `UiState.redCities` (still used by `hasActiveAlert`, MainViewModel.kt:584).
+- Wording: `pinCityDesc` UA (375) drop `Червоним позначені області з офіційною тривогою.`; EN (611) drop `Cities with an official oblast alert are marked red.`; `guidePinD3` UA (452) drop the red-marked sentence; EN (688) drop `Cities with an official alert are marked red in the list.`
+
+### 5. Remember fast/slow collapse state
+- `ZonePrefs.kt`: add `fastGroupCollapsedKey`/`slowGroupCollapsedKey` booleans + `fastGroupCollapsed()`/`slowGroupCollapsed()` flows + setters.
+- `MainViewModel.kt`: thread both into `PrefsSnapshot` → `UiState` (`fastGroupCollapsed`, `slowGroupCollapsed`); add `setFastGroupCollapsed(Boolean)`/`setSlowGroupCollapsed(Boolean)`.
+- `SettingsScreen.kt`: replace the local `collapsedGroups` (line 112) with the two params; header click (lines 285–288) calls the callback; `groupCollapsed` (line 279) reads the param.
+
+### 6. Decouple Map/Alerts toggles (alerts always pressable, auto-enable map)
+- `MainViewModel.kt`:
+  - `setThreatMapVisible` (502–508): delete `if (!visible) prefs.setThreatAlertsEnabled(type, false)`.
+  - `setGroupThreatMapVisible` (517–525): delete the force-disable loop.
+  - `setThreatAlertsEnabled` (510–515): when `enabled`, also `prefs.setThreatMapVisible(type, true)`.
+  - `setGroupThreatAlertsEnabled` (527–532): when `enabled`, also set map visible for every type.
+- `ThreatTogglePanel.kt`: alerts toggle `enabled = onMap` → `enabled = true` (SlimTypeRow line 229); group alerts `enabled = groupMapOn` → `enabled = true` (SlimThreatToggles line 165).
+- `SettingsScreen.kt`: `ThreatSettingsCard` alerts `enabled = onMap` → `true` (line 682); group-header alerts `enabled = groupMapOn` → `true` (line 317).
+- `ARCHITECTURE.md`: rewrite the "Threat type gating" invariant (map-off no longer silences alerts; alerts-on auto-enables map).
+
+### Docs & verify
+- `CHANGELOG.md` `[Unreleased]` entry; `ARCHITECTURE.md` updates.
+- `.\gradlew.bat :app:assembleDebug`; `.\gradlew.bat :app:testDebugUnitTest`.
+
+---
+
+# SESSION 3 — Zones km/time rework + always-visible panel
+
+**Scope:** the big one — per-group tiering (slow=km, fast=min) + permanent bottom panel. **Safety-critical: both `MainViewModel` and `AlertService` must be updated together.** All design decisions are locked in below.
+
+### Domain — `Zones.kt`
+- Add `val FastThreatTypes = setOf(BALLISTIC, CRUISE_MISSILE, AVIATION, KAB)` here (single source); `ThreatTogglePanel.kt` references it instead of defining it (line 25). Slow = all others (incl. UNKNOWN — matches current UI grouping).
+- Replace `TimeZones` (line 11) with:
+  ```kotlin
+  data class ZoneParams(val slowRedKm: Int, val slowYellowKm: Int, val fastRedMin: Int, val fastYellowMin: Int)
+  ```
+- New `fun zoneTier(t, distKm, speedKmh, params): ThreatZone?`:
+  - `if (distKm > reachKm(t.type)) return null`
+  - Fast group: `speed = if (t.type == AVIATION) BALLISTIC_SPEED_KMH else speedKmh`; `eta = etaMinutes(distKm, speed)`; `eta != null && eta <= fastRedMin → INNER`; `<= fastYellowMin → OUTER`; else null.
+  - Slow group: `distKm <= slowRedKm → INNER`; `<= slowYellowKm → OUTER`; else null.
+- Delete `timeZone`, `zoneCircleKm`, `ZONE_CIRCLE_REF_KMH`. Keep `etaMinutes`, `reachKm`, `BALLISTIC_SPEED_KMH`.
+
+### Prefs — `ZonePrefs.kt`
+- Replace `redZoneMin`/`yellowZoneMin` (lines 26–27, 44–56) with four int keys + flows + setters. Proposed defaults/ranges (confirm during impl): slowRedKm 60 (5–100), slowYellowKm 180 (20–300), fastRedMin 10 (2–20), fastYellowMin 30 (5–60). Keep `redArmed`/`yellowArmed` (shared tier bells). Old `red_zone_min`/`yellow_zone_min` keys retired (stop reading).
+
+### `MainViewModel.kt`
+- `zonesFlow` (100–102) → combine the 4 prefs into `ZoneParams`. `PrefsSnapshot` ints → 4 fields.
+- `UiState`: replace `redZoneMin`/`yellowZoneMin`/`redCircleKm`/`yellowCircleKm` (40–43) with `slowRedKm`, `slowYellowKm`, `fastRedMin`, `fastYellowMin` (drawn circles = slow km). `buildUiState` (298–300): `params = ZoneParams(...)`; tiering at 363 → `zoneTier(t, distKm, speedKmh, params)`; return fields (427–428).
+- `ThreatProximity` (73–81): replace `redMin`/`yellowMin` with `params: ZoneParams`; `proximity` build (401–409) passes it.
+
+### `AlertService.kt`
+- radii combine (line 165) → 4 prefs → `ZoneParams`; thread through `MonitorEvent.State`.
+- `zoneThreats` (250–263): `zoneTier(t, distKm, speedKmh, params)`.
+- `buildReason` (195, 459–461): `ThreatLevelModel.scoreOf`'s redKm/yellowKm args → per-threat group values (`if (type in FastThreatTypes) fastRedMin to fastYellowMin else slowRedKm to slowYellowKm`); verify `ThreatLevelModel.scoreOf` signature still compiles.
+
+### Map — `MapView.kt`
+- Circles (383–405): draw red at `uiState.slowRedKm`, yellow at `uiState.slowYellowKm` (literal slow zone; no time-reference circle). Update `overlayKey` (223). Drop the "reference speed" comment.
+
+### Popup band — `ThreatPopupCard.kt`
+- Lines 119–121: `timeTier(threat, dist, speed, TimeZones(p.redMin, p.yellowMin))` → `zoneTier(threat, dist, speed, p.params)`.
+
+### UI — always-visible bottom panel (B)
+- `MainScreen.kt`: delete `showZonesSheet`/`zonesExpanded`/`openZonesPanel`/`fitZonesTick` (330–346) and the `if (showZonesSheet)` block (562–639). `ZoneButtons`: remove the edit-zones button (743–…); keep red/yellow zoom pills. Render a permanent `ZonesPanel` above the threat strip (or below map — decide during impl; map keeps `weight(1f)`).
+- `ZonesSheet.kt`: rewrite `ZonesEditContent` → `ZonesPanel`:
+  - **Slow** section: red-km slider + yellow-km slider (bells), unit `km`.
+  - **Fast** section: red-min slider + yellow-min slider (bells), unit `min`.
+  - One Fast/Slow **group-toggle** row: `⚡ [Map][Alerts]   🐢 [Map][Alerts]` (group-only — no per-type rows here; `SlimThreatToggles` stays only for the first-run dialog).
+  - Replace the `zoneExplain` blob with short captions ("Slow — distance km" / "Fast — time to arrival"). `ZoneRow` gains a `unit: String` param.
+- New group-only toggle composable in `ThreatTogglePanel.kt` (reuse group-row logic from `SlimThreatToggles`, no type rows).
+
+### Strings / guide
+- Update/remove `zoneExplain`, `redZoneHint`, `yellowZoneHint`, `guideZones*`, `guideEditZones*`, `guideFollow*` to match the km/min model (EN + UA). Add section captions.
+
+### Tests
+- `ZonesTest.kt`: rewrite — slow km tiering (INNER/OUTER/null), fast min tiering, reach caps, AVIATION override, null-speed fast → null. Drop `zoneCircleKm` tests.
+- Confirm `ThreatLevelTest.kt` compiles after `scoreOf` arg change.
+
+### Docs & verify
+- `CHANGELOG.md` `[Unreleased]` entry; `ARCHITECTURE.md` module map + "Zone tiering" invariant (per-group `zoneTier`, slow circles only).
+- `.\gradlew.bat :app:assembleDebug`; `.\gradlew.bat :app:testDebugUnitTest`.
+
+---
+
+**Session 1 + 2 are safe to run in parallel-ish order; Session 3 is independent of both and can go last.** Each block ends with the same verify step so every new session self-checks. Want me to adjust any split, or is this good to hand off?
+## 16/08/2026, 14:51:06
+
+
+
+
+## 16/08/2026, 14:51:12
+
+
+
+
+## 16/08/2026, 14:51:17
+
+
+
+
+## 16/08/2026, 14:51:21
+
+
+
+
+## 16/08/2026, 14:51:24
+
+
+
+
+## 16/08/2026, 14:51:35
+
+I'll read the key files to build the plan. Starting with ARCHITECTURE.md and the domain files.
+
+
+## 16/08/2026, 14:51:38
+
+
+
+
+## 16/08/2026, 14:51:40
+
+Reading the domain and UI files that need changes
+## 16/08/2026, 14:51:42
+
+
+
+
+## 16/08/2026, 14:51:44
+
+Now the two mirrored
+## 16/08/2026, 14:51:44
+
+## Objective
+- Fix 11 UI/UX issues in the Ukraine Drones Android app (D:\Desktop\drones), then handle 4 additional requests (A: persist fast/slow collapse; B: zones panel group-only + always visible; C: decouple Map/Alerts toggles; D: zones km/time rework).
+- Agent is in plan mode; a phased plan was presented and the user must confirm the session split before implementation begins.
+
+## Important Details
+- App: single-module Android, Kotlin, Jetpack Compose + OSMdroid. Code in `app/src/main/java/ua/ukrainedrones/` (flat package), tests in `app/src/test/java/ua/ukrainedrones/`. Read `ARCHITECTURE.md` first and keep it current; update `CHANGELOG.md`.
+- Build/verify: `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+- **Mirror invariant (safety-critical):** tiering logic must stay identical in `MainViewModel` and `AlertService` — implement via shared functions in `Zones.kt`/`Prediction.kt`, never duplicate.
+- **Backup decision (user-confirmed):** `backupActive` should be based on any-frame liveness (`lastFrameAt`), not the alerts frame (`lastAlertAt`), with timers reset on reconnect.
+- **Dead-reckoning decision (user-confirmed):** glide when any real heading exists (`bearingDeg ?: heading`) + `confirmedAtMillis` + status active; speed = estimate (server → measured → nominal); never glide with pseudo-course `fallbackCourse`.
+- **Slow zone decision (user-confirmed):** two km tiers — red (INNER/siren) + yellow (OUTER/chime).
+- **Fast zone decision (user-confirmed):** red/yellow time sliders, NO map circle, two-tier model preserved.
+- **Panel decision (user-confirmed):** whole zones panel always expanded at bottom, no pull-up/drag.
+- **UA reword (user-confirmed):** "Тривога слідкує за твоїм GPS" (тривога = anxiety/alarm).
+- Group definitions: fast = BALLISTIC, CRUISE_MISSILE, AVIATION, KAB; slow = all others incl. UNKNOWN.
+- Current coupling invariant "map off ⇒ alerts off" (MainViewModel.kt:505, 520-522; `enabled = onMap` gates) must be removed — ARCHITECTURE.md invariant update required.
+- Same-id notification re-post does not re-sound (existing "wait-for-reason" pattern at AlertService.kt:367-383 relies on it); background translation re-post must be guarded by a generation counter so it never resurrects a cleared/changed alert.
+- Leave "груба оцінка / rough estimate" phrases (disclaimerBody, cardSkullNote, guideCardReadD1) unchanged — only "coarse"/"грубі" in `zoneExplain` is replaced.
+- `zoneExplain` blob text is to be removed/replaced with short per-section captions in the panel rework.
+- New slider defaults (slowRedKm/slowYellowKm/fastRedMin/fastYellowMin) and ranges to be confirmed during implementation; old `red_zone_min`/`yellow_zone_min` prefs keys retired.
+
+## Work State
+### Completed
+- Explored codebase and mapped every issue to files/lines; read ARCHITECTURE.md, Strings.kt, ConnectionStatus.kt, Cities.kt, NeptunClient.kt, MainViewModel.kt, Prediction.kt, MapView.kt, Threat.kt, ThreatPopupCard.kt, AlertService.kt, Translate.kt, Zones.kt, ZonesSheet.kt, ThreatTogglePanel.kt, SettingsScreen.kt, ZonePrefs.kt, tests (PredictionTest, AlertsUaTest, ZonesTest).
+- Root causes identified: backupActive flips on quiet alerts feed while connected (NeptunClient.kt:63-64); predictPosition requires real velocity so most threats never move (Prediction.kt:123-125); city counts only match exact `locality` names (MainViewModel.kt:337-349); map-off force-silences alerts (MainViewModel.kt:505, 520-522); group alerts chip disabled via `enabled = onMap` (SettingsScreen.kt:317, 682; ThreatTogglePanel.kt:229).
+- All clarifying questions answered (see Important Details).
+- Full two-session plan presented to user.
+
+### Active
+- (none) — plan mode; no code changes made yet. Todo list: "Explore codebase for all 11 issues" (in_progress), "Present plan to user" (pending).
+
+### Blocked
+- Awaiting user response to final question: "proceed with Session 1 (Phases 1 + 2) once you switch out of plan mode, and defer B+D to a follow-up session? Or adjust the split?" — user must also switch out of plan mode before edits.
+
+## Next Move
+1. Wait for user to confirm session split and switch out of plan mode (no action until then).
+2. If Session 1 approved: implement Phase 1 (11 fixes) + Phase 2 (A: persist collapse; C: decouple Map/Alerts), then run `assembleDebug` + `testDebugUnitTest`; update ARCHITECTURE.md/CHANGELOG.md.
+3. If Session 2 approved: implement B (panel restructure) + D (zones km/time rework) per locked decisions.
+
+## Relevant Files
+- `ARCHITECTURE.md`: must be updated for coupling change, backup liveness, prediction relaxation, city-count removal, panel/zones rework.
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: trident (UkraineEmblem ~line 644, tint white when activeZone != null), threat popup + neutralized fade (~lines 525-560), zones sheet integration (showZonesSheet/zonesExpanded), ZoneButtons edit button.
+- `ConnectionStatus.kt`: add URL text next to NEPTUN logo, whole row clickable.
+- `Cities.kt`: CityLabelOverlay draws "(x)" counts (line 214) — remove.
+- `MainViewModel.kt`: UiState.cityCounts (54, 337-349, 437), refreshedSelected (378) → neutralizedThreat, backupActive pass-through (417), setThreatMapVisible/SetGroupThreatMapVisible decoupling, hasActiveAlert (584), PrefsSnapshot for new prefs.
+- `MapView.kt`: overlayKey + cityCounts (228, 378), circle drawing (~383-405, zoneCircleKm), marker smoothing loop using predictPosition.
+- `NeptunClient.kt`: NeptunState.backupActive (63-64), add lastFrameAt, stamp in onMessage/onOpen, drop lastAlertAt.
+- `Prediction.kt`: relax predictPosition gate (123-125), ThreatSpeedTracker, SpeedSource enum (RECORDED/TYPICAL).
+- `ThreatPopupCard.kt`: PillTrio speed pill (only show when RECORDED), add neutralized param, existing background region-translation pattern (lines 90-96).
+- `AlertService.kt`: postAlert + threatBody (421), wait-for-reason re-post pattern (367-383), notifStatusZones/Pinned formatting (135, 313), background translation with gen counter.
+- `SettingsScreen.kt`: collapsedGroups (112), group headers (276-328), ThreatSettingsCard (605, 674-683), PinCityRow red dots (754-807).
+- `ThreatTogglePanel.kt`: FastThreatTypes (25-30) — move to Zones.kt for shared tiering; SlimTypeRow/group alerts `enabled` gates.
+- `Zones.kt`: replace TimeZones/timeZone/zoneCircleKm/ZONE_CIRCLE_REF_KMH with ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin) + zoneTier branching by group; keep reachKm, BALLISTIC_SPEED_KMH.
+- `ZonesSheet.kt`: ZonesEditContent — reorganize into always-visible panel (Slow km sliders, Fast min sliders, group toggles, no blob).
+- `ZonePrefs.kt`: add fastGroupCollapsed/slowGroupCollapsed + 4 zone int keys; retire red_zone_min/yellow_zone_min.
+- `Strings.kt`: zoneExplain "coarse"→"approximate" (276, 512), notifStatusZones/Pinned reword (296, 532, 382, 618), new neutralizedLabel, panel captions.
+- `Translate.kt`: Translator object (googleapis gtx endpoint) for notification background translation.
+- Tests: `PredictionTest.kt` (add heading-only glide case), `AlertsUaTest.kt` (lastAlertAt → lastFrameAt), `ZonesTest.kt` (rewrite for zoneTier).
+## 16/08/2026, 14:51:49
+
+Now the UI files and supporting files
+
+
+## 16/08/2026, 14:52:01
+
+
+
+
+## 16/08/2026, 14:52:03
+
+
+
+
+## 16/08/2026, 14:52:06
+
+
+
+
+## 16/08/2026, 14:52:09
+
+Now the strings, feature guide, settings, and tests
+## 16/08/2026, 14:52:15
+
+
+
+
+## 16/08/2026, 14:52:16
+
+
+
+
+## 16/08/2026, 14:52:17
+
+The plans are complete and self-contained — each is ready to paste into a fresh session, with all decisions locked in. The only items I deliberately left open in Session 3 are trivial and pre-filled with proposed values, so a new session won't stall:
+
+- ZoneParams defaults/ranges (proposed: slowRedKm 60, slowYellowKm 180, fastRedMin 10, fastYellowMin 30)
+- Panel placement (above threat strip vs. below map)
+
+If you're happy with those proposals, there's nothing left to plan here — exit plan mode and either run Session 1 in this session or paste the blocks into fresh sessions. Want me to tighten those two loose ends now, or ship as-is?
+## 16/08/2026, 14:53:48
+
+
+
+
+## 16/08/2026, 14:54:34
+
+Plan ready. I've read all the referenced files and verified line numbers. Here's the implementation plan:
+
+## 1. Remove city "(x)" threat counts
+- **MainViewModel.kt**: delete `cityCounts` field (L54); delete `val cityCounts = mutableMapOf...` (L337) and the `t.locality?.takeIf...` block (L347–349) — **keep** `speedTracker.record` (L350) inside the `if (!stale)` block; delete `cityCounts = cityCounts,` (L437).
+- **Cities.kt**: drop `cityCounts` ctor param (L177) and lines 214–215 → `canvas.drawText(name(c), ...)`. Keep red-oblast highlight.
+- **MapView.kt**: drop the `for ((c, n) in uiState.cityCounts)` line (L228) and the `uiState.cityCounts` arg (L378).
+
+## 2. Backup pill — any-data liveness
+- **NeptunClient.kt**: rename `lastAlertAt` → add `lastFrameAt: Long = 0` to `NeptunState` (L33). `backupActive` (L64): `neptunDown || (lastFrameAt > 0 && System.currentTimeMillis() - lastFrameAt > BACKUP_FALLBACK_MS)`. Stamp `lastFrameAt` in `onOpen`'s `_state.value.copy(...)` (L290) and add a copy in `onMessage` (L295). Remove `lastAlertAt = ...` from the "alerts" handler (L391). Note: private var `lastFrameAt` (L102) stays — different scope, no clash.
+- **AlertsUaTest.kt**: replace **all 6** `lastAlertAt = System.currentTimeMillis()` (L51, 82, 113, 124, 133, **and 151** — you listed 5 but L151 also uses it and won't compile otherwise). Add: connected + `lastFrameAt = now - 70_000` → `backupActive` true; connected + fresh `lastFrameAt` → false.
+
+## 3. Speed pill only when measured
+- **ThreatPopupCard.kt** L543: gate on `proximity.speedSource == SpeedSource.RECORDED` (same package, no import needed).
+
+## 4. Post raw, translate in background
+- **AlertService.kt**: add `private var alertEpoch = 0`; increment in `postAlert`, `postAllClear` (L569), `cancelAlert` (L538). Extract L526–534 builder → `buildAlertNotification(zone, title, body, sirenOverride)`. Add `lang: AppLanguage` to `postAlert`; pass `state.lang` at call sites L343/359/375. After `safeNotify`, if `lang == EN`: capture `gen = alertEpoch`, `scope.launch { val t = Translator.translate(body) ?: return@launch; if (gen != alertEpoch) return@launch; safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, t, sirenOverride)) }`.
+
+## 5. Wording "coarse/rough" → "approximate"
+- **Strings.kt**: zoneExplain UA L273 `грубі → приблизні`; zoneExplain EN L506 `coarse → approximate`; disclaimerBody UA L286 / EN L519 `груба оцінка → приблизна оцінка` / `rough estimate → approximate estimate`, `rough guide → approximate guide`; cardSkullNote UA L346 / EN L579; guideCardReadD1 UA L454 / EN L687. **Threat.kt** L76 CRUISE `Positions can be rough → approximate`. (ThreatLevel.kt:9 left.)
+
+## 6. Reword "Zones follow your GPS"
+- **Strings.kt**: notifStatusZones UA L293 / EN L526; notifStatusPinned UA L376 / EN L609 → `Тривога прикріплена до %1\$s` / `Threat alarm is pinned to %1\$s`. **AlertService.kt** L313: `String.format(s.notifStatusPinned, state.focusBannerCity)`.
+
+## 7. Dead-reckoning
+- **Prediction.kt** `predictPosition` (L123–136): `if (t.status != "active") return null`; `val heading = t.bearingDeg ?: t.heading ?: return null`; project with `heading`; keep confirmedAtMillis anchor, horizon, ghost cap. Update the function's doc comment. (`t.flying` is only used here, so no other call sites affected.)
+- **PredictionTest.kt**: existing null-cases hold (L79 no-heading→null, L82 stale→null). Add: `heading`-only + active + confirmedAtMillis glides along heading; active with `heading = null` returns null.
+
+## Docs & verify
+- **CHANGELOG.md**: one `[Unreleased]` entry summarizing user-visible changes.
+- **ARCHITECTURE.md**: update "Backup never overrides a healthy NEPTUN" invariant (silence measured by `lastFrameAt`, any-frame); update the position-prediction flow + prediction invariant note (dead-recks any active track with a real heading).
+- Run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`; fix any failures.
+
+One flag: the AlertsUaTest instructions omit L151's `lastAlertAt` (would fail to compile) — I'll include it. Everything else matches your spec. Ready to implement on your go.
+## 16/08/2026, 14:55:19
+
+
+
+
+## 16/08/2026, 14:57:21
+
+Starting with item 1 — city count
+## 16/08/2026, 14:57:27
+
+
+
+
+## 16/08/2026, 14:57:35
+
+Now Cities.kt — remove the `cityCounts` param and
+## 16/08/2026, 14:57:44
+
+
+
+
+## 16/08/2026, 14:57:50
+
+Now MapView.kt — remove the overlayKey line and the c
+## 16/08/2026, 14:57:58
+
+Item 1 done. Now item 2 — NeptunClient backup
+## 16/08/2026, 14:58:07
+
+I have a full picture now. Two design decisions in the scope are flagged for confirmation before I finalize the plan.
+
+
+## 16/08/2026, 14:58:23
+
+Now the test file — replace all `lastAlertAt` (all 6, including L
+## 16/08/2026, 14:59:24
+
+Item 2 done. Item 3 — speed pill gate
+## 16/08/2026, 14:59:28
+
+Item 3 done. Item 4 — Alert
+## 16/08/2026, 14:59:36
+
+Now update the three `postAlert` call sites to pass `state.lang`:
+
+
+## 16/08/2026, 14:59:53
+
+Now the `postAlert` rewrite (extract builder, increment epoch, background
+## 16/08/2026, 14:59:57
+
+Now increment `alertEpoch` in `postAllClear` and `cancelAlert`
+## 16/08/2026, 15:00:15
+
+Item 4 done. Item 5 — wording edits in
+## 16/08/2026, 15:01:05
+
+Item 5 done. Item 6 — reword zones/GPS st
+## 16/08/2026, 15:01:30
+
+Item 6 done. Item 7 — dead-reckonin
+## 16/08/2026, 15:01:37
+
+
+
+
+## 16/08/2026, 15:01:51
+
+Item 7 done. Now docs — CHANGELOG and ARCHITECT
+
+
+## 16/08/2026, 15:02:03
+
+
+
+
+## 16/08/2026, 15:02:23
+
+Let me verify no leftover references and check remaining
+
+
+## 16/08/2026, 15:02:37
+
+All edits done. Now build and
+## 16/08/2026, 15:03:03
+
+Build passes (only pre-existing warnings). Now unit
+
+
+## 16/08/2026, 15:03:21
+
+All 7 scope items implemented, CHANGELOG + ARCHITECTURE updated, and both `:app:assembleDebug` and `:app:testDebugUnitTest` pass.
+
+Summary of changes:
+- **City counts removed**: `cityCounts` gone from `UiState`/`CityLabelOverlay`/`MapView`; labels are just names (red on oblast alert).
+- **Backup liveness**: `NeptunState.lastAlertAt` → `lastFrameAt`; `backupActive` now fires when the stream is silent (any frame) >60s; stamped in `onOpen`/`onMessage`; test file updated (all 6 `lastAlertAt` sites — L151 included, plus 2 new tests).
+- **Speed pill**: shows only when `speedSource == RECORDED`.
+- **Notifications**: `alertEpoch` counter; `buildAlertNotification` extracted; `postAlert` takes `lang`, posts raw then re-posts translated in background when EN.
+- **Wording**: "coarse"/"rough" → "approximate" in Strings + Threat.kt; zones-status strings reworded; `notifStatusPinned` formatted with the city at AlertService:313.
+- **Dead-reckoning**: `predictPosition` gates on `status == "active"` + `bearingDeg ?: heading`; new PredictionTest cases added.

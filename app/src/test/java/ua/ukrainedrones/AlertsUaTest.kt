@@ -48,7 +48,7 @@ class AlertsUaTest {
 
     @Test
     fun `backup not active while NEPTUN connected`() {
-        val st = NeptunState(connected = true, lastAlertAt = System.currentTimeMillis())
+        val st = NeptunState(connected = true, lastFrameAt = System.currentTimeMillis())
         assertFalse(st.backupActive)
         assertEquals(st.neptunAlerts, st.oblastAlerts)
     }
@@ -79,7 +79,7 @@ class AlertsUaTest {
     fun `source is NEPTUN and backup inactive while connected`() {
         val st = NeptunState(
             connected = true,
-            lastAlertAt = System.currentTimeMillis(),
+            lastFrameAt = System.currentTimeMillis(),
             neptunAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null)),
             backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
         )
@@ -110,7 +110,7 @@ class AlertsUaTest {
     fun `forceOffline activates backup even while NEPTUN connected`() {
         val st = NeptunState(
             connected = true,
-            lastAlertAt = System.currentTimeMillis(),
+            lastFrameAt = System.currentTimeMillis(),
             forceOffline = true,
             backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
         )
@@ -121,7 +121,7 @@ class AlertsUaTest {
 
     @Test
     fun `forceOffline false keeps backup inactive while connected`() {
-        val st = NeptunState(connected = true, lastAlertAt = System.currentTimeMillis(), forceOffline = false)
+        val st = NeptunState(connected = true, lastFrameAt = System.currentTimeMillis(), forceOffline = false)
         assertFalse(st.backupActive)
     }
 
@@ -130,7 +130,7 @@ class AlertsUaTest {
         val st = NeptunState(
             connected = true,
             offlineSince = System.currentTimeMillis() - 120_000L,
-            lastAlertAt = System.currentTimeMillis(),
+            lastFrameAt = System.currentTimeMillis(),
             forceOffline = true
         )
         assertTrue(st.neptunDown)
@@ -148,7 +148,19 @@ class AlertsUaTest {
 
     @Test
     fun `connected without force marks NEPTUN up`() {
-        val st = NeptunState(connected = true, lastAlertAt = System.currentTimeMillis())
+        val st = NeptunState(connected = true, lastFrameAt = System.currentTimeMillis())
         assertFalse(st.neptunDown)
+    }
+
+    @Test
+    fun `backup active when connected but the stream has been silent`() {
+        val st = NeptunState(connected = true, lastFrameAt = System.currentTimeMillis() - 70_000)
+        assertTrue(st.backupActive)
+    }
+
+    @Test
+    fun `backup inactive again once a fresh frame arrives`() {
+        val st = NeptunState(connected = true, lastFrameAt = System.currentTimeMillis())
+        assertFalse(st.backupActive)
     }
 }

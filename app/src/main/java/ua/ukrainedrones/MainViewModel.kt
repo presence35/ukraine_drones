@@ -33,15 +33,16 @@ data class UiState(
     val backupOfflineElapsedSec: Long? = null,   // seconds since backup last succeeded, null while up
     val backupError: String? = null,             // last backup error message, if any
     val offlineElapsedSec: Long? = null,          // seconds since the stream dropped, null while connected
-    val threatsInner: List<Threat> = emptyList(), // within the red zone radius
-    val threatsOuter: List<Threat> = emptyList(), // in the yellow ring, beyond red
+    val threatsInner: List<Threat> = emptyList(), // reaching within the red time tier
+    val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
     val userLocation: LatLng? = null,
-    val redZoneKm: Int = 5,
-    val yellowZoneKm: Int = 20,
+    val redZoneMin: Int = 20,
+    val yellowZoneMin: Int = 60,
+    val redCircleKm: Double = 60.0,   // drawn red circle = redZoneMin at Shahed reference speed
+    val yellowCircleKm: Double = 180.0, // drawn yellow circle = yellowZoneMin at Shahed reference speed
     val redArmed: Boolean = true,
     val yellowArmed: Boolean = true,
-    val fastAlertsSooner: Boolean = true,
     val officialAlertsEnabled: Boolean = true,
     val sirenOverride: Boolean = false,
     val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
@@ -50,7 +51,6 @@ data class UiState(
     val focusOblastAlertActive: Boolean = false,  // official alert on the focus point's oblast
     val focusBannerCity: String = "",             // localized city name for the alert banner
     val activeRegionTokens: Set<String> = emptySet(), // oblast stems under official alert
-    val cityCounts: Map<String, Int> = emptyMap(),    // nameUa -> active threats in that city
     val language: AppLanguage = AppLanguage.EN,
     val followMe: Boolean = true,
     val pinnedCity: City? = null,
@@ -73,9 +73,8 @@ data class ThreatProximity(
     val predicted: LatLng,
     val distToUserKm: Double?,   // null when GPS unavailable
     val etaToUserMin: Double?,   // null when GPS unavailable or no speed
-    val etaToYellowEdgeMin: Double?, // time to cross the yellow circle boundary
-    val redKm: Int,
-    val yellowKm: Int,
+    val redMin: Int,
+    val yellowMin: Int,
     val speedSource: SpeedSource,
     val speedKmh: Double?        // the displayed speed value (measured or nominal)
 )
@@ -97,7 +96,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val nowFlow = MutableStateFlow(System.currentTimeMillis())
     private var isChecking = false
 
-    private val zonesFlow = combine(prefs.redZoneKm(), prefs.yellowZoneKm()) { red, yellow ->
+    private val zonesFlow = combine(prefs.redZoneMin(), prefs.yellowZoneMin()) { red, yellow ->
         red to yellow
     }
 
@@ -134,7 +133,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val disclaimerCollapsed: Boolean,
         val redArmed: Boolean,
         val yellowArmed: Boolean,
-        val fastAlertsSooner: Boolean,
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
@@ -147,8 +145,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Live inputs that change every frame/second: stream, GPS, selection, time. */
     private data class LiveSnapshot(
         val neptun: NeptunState,
-        val redKm: Int,
-        val yellowKm: Int,
+        val redMin: Int,
+        val yellowMin: Int,
         val userLocation: LatLng?,
         val selected: Threat?,
         val now: Long
@@ -163,7 +161,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private data class AlertConfig(
         val redArmed: Boolean,
         val yellowArmed: Boolean,
-        val fastAlertsSooner: Boolean,
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
@@ -192,13 +189,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         combine(
             prefs.redZoneArmed(),
             prefs.yellowZoneArmed(),
-            prefs.fastAlertsSooner(),
             prefs.officialAlertsEnabled(),
             prefs.sirenOverride(),
             prefs.followMe(),
             prefs.showMapScale()
         ) { flags: Array<Boolean> ->
-            AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6])
+            AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5])
         },
         combine(
             prefs.pinnedCity(),
@@ -213,7 +209,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             disclaimerCollapsed = a.disclaimer,
             redArmed = b.redArmed,
             yellowArmed = b.yellowArmed,
-            fastAlertsSooner = b.fastAlertsSooner,
             officialAlertsEnabled = b.officialAlertsEnabled,
             sirenOverride = b.sirenOverride,
             followMe = b.followMe,
@@ -239,8 +234,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val seedFlow: Flow<Unit> = flow {
         prefs.language().first()
-        prefs.redZoneKm().first()
-        prefs.yellowZoneKm().first()
+        prefs.redZoneMin().first()
+        prefs.yellowZoneMin().first()
         prefs.followMe().first()
         prefs.pinnedCity().first()
         prefs.languageChosen().first()
@@ -255,8 +250,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     ) { _, live, prefs, updateUi ->
         buildUiState(
             neptun = live.neptun,
-            redKm = live.redKm,
-            yellowKm = live.yellowKm,
+            redMin = live.redMin,
+            yellowMin = live.yellowMin,
             mapEnabledTypes = prefs.mapEnabled,
             alertedTypes = prefs.alertEnabled,
             language = prefs.language,
@@ -266,8 +261,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Cities.ALL.firstOrNull { it.nameUa == name }
             },
             selected = live.selected,
-            now = live.now,
-            fastAlertsSooner = prefs.fastAlertsSooner
+            now = live.now
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
@@ -275,7 +269,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             disclaimerCollapsed = prefs.disclaimerCollapsed,
             redArmed = prefs.redArmed,
             yellowArmed = prefs.yellowArmed,
-            fastAlertsSooner = prefs.fastAlertsSooner,
             officialAlertsEnabled = prefs.officialAlertsEnabled,
             sirenOverride = prefs.sirenOverride,
             languageChosen = prefs.languageChosen,
@@ -290,8 +283,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun buildUiState(
         neptun: NeptunState,
-        redKm: Int,
-        yellowKm: Int,
+        redMin: Int,
+        yellowMin: Int,
         mapEnabledTypes: Set<ThreatType>,
         alertedTypes: Set<ThreatType>,
         language: AppLanguage,
@@ -299,10 +292,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         followMe: Boolean,
         pinnedCity: City?,
         selected: Threat?,
-        now: Long,
-        fastAlertsSooner: Boolean
+        now: Long
     ): UiState {
-        val zones = RadialZones(redKm, yellowKm)
+        val zones = TimeZones(redMin, yellowMin)
+        val redCircleKm = zoneCircleKm(redMin)
+        val yellowCircleKm = zoneCircleKm(yellowMin)
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
         val focusLocation = if (followMe) userLocation
         else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: userLocation
@@ -329,38 +323,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // Red zone tier: threats within redKm of the user (raw or predicted position).
+        // Red zone tier: threats that could reach the focus within redMin minutes.
         val inInner = mutableListOf<Threat>()
-        // Yellow ring tier: threats beyond redKm but within yellowKm.
+        // Yellow ring tier: threats that could reach the focus within yellowMin minutes.
         val inOuter = mutableListOf<Threat>()
         // All active threats across the whole country, shown while any air-raid alert is
         // active — lets the user pan to other regions during alerts.
         val mapThreats = mutableListOf<Threat>()
         // Per-threat scores feeding the experimental overall threat-level gauge.
         val threatScores = mutableListOf<Double>()
-        // Active threats whose locality names a curated city — shown next to the city label.
-        val cityCounts = mutableMapOf<String, Int>()
 
         for (t in neptun.threats.values) {
-            if (t.status == "resolved" || t.status == "stale" || isExpired(t, now)) continue
+            // Truly gone: resolved by the server (or a remove frame), area-only, or a ghost
+            // past the hard cap. Everything else — including stale/expired threats — stays on
+            // the map, just dimmed.
+            if (t.status == "resolved" || t.areaOnly || t.isGhost(now)) continue
             if (t.type !in mapEnabledTypes) continue
-            t.locality?.takeIf { it in Cities.cityOblast }?.let {
-                cityCounts[it] = (cityCounts[it] ?: 0) + 1
+            val stale = t.isStale(now)
+            if (!stale) {
+                speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
             }
-            speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
             val predicted = speedTracker.estimate(t.id, t)
                 ?.let { predictPosition(t, it, now) } ?: GeoPoint(t.lat, t.lon)
             if (neptun.oblastAlerts.isNotEmpty()) mapThreats.add(t)
-            if (focusLocation == null) continue
+            // Stale threats stay on the map but never feed counts, tiers, or the gauge.
+            if (stale || focusLocation == null) continue
+            // Advisory = NEPTUN observation, never an alert — shown on the map only.
+            if (t.advisory) continue
             val distKm = distanceMeters(
                 focusLocation.lat, focusLocation.lon, predicted.latitude, predicted.longitude
             ) / 1000.0
-            if (distKm <= yellowKm) {
-                val speed = speedTracker.estimate(t.id, t)
-                val eta = if (speed != null && speed > 0.0) distKm / (speed * 3.6) * 60.0 else null
-                threatScores.add(ThreatLevelModel.scoreOf(t, distKm, eta, redKm, yellowKm, now))
+            val speedKmh = speedTracker.estimate(t.id, t)?.times(3.6)
+            val tier = timeTier(t, distKm, speedKmh, zones)
+            if (tier != null) {
+                val eta = etaMinutes(distKm, speedKmh)
+                threatScores.add(
+                    ThreatLevelModel.scoreOf(t, distKm, eta, redCircleKm.toInt(), yellowCircleKm.toInt(), now)
+                )
             }
-            when (radialZone(distKm, zones)?.let { effectiveZone(t, it, fastAlertsSooner) }) {
+            when (tier) {
                 ThreatZone.INNER -> inInner.add(t)
                 ThreatZone.OUTER -> inOuter.add(t)
                 null -> {}
@@ -395,8 +396,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     predicted = predicted,
                     distToUserKm = distUser,
                     etaToUserMin = etaUser,
-                    redKm = redKm,
-                    yellowKm = yellowKm,
+                    redMin = redMin,
+                    yellowMin = yellowMin,
                     speedSource = speedPair?.second ?: SpeedSource.TYPICAL,
                     speedKmh = speedPair?.first?.let { it * 3.6 }
                 )
@@ -417,15 +418,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             threatsOuter = inOuter,
             mapThreats = mapThreats,
             userLocation = userLocation,
-            redZoneKm = redKm,
-            yellowZoneKm = yellowKm,
+            redZoneMin = redMin,
+            yellowZoneMin = yellowMin,
+            redCircleKm = redCircleKm,
+            yellowCircleKm = yellowCircleKm,
             hiddenTypes = ThreatType.values().toSet() - mapEnabledTypes,
             silencedTypes = ThreatType.values().toSet() - alertedTypes,
             activeZone = activeZone,
             focusOblastAlertActive = focusOblastAlertActive,
             focusBannerCity = focusBannerCity,
             activeRegionTokens = activeRegionTokens,
-            cityCounts = cityCounts,
             language = language,
             followMe = followMe,
             pinnedCity = pinnedCity,
@@ -437,12 +439,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    fun setRedZoneKm(km: Int) {
-        viewModelScope.launch { prefs.setRedZoneKm(km) }
+    fun setRedZoneMin(min: Int) {
+        viewModelScope.launch { prefs.setRedZoneMin(min) }
     }
 
-    fun setYellowZoneKm(km: Int) {
-        viewModelScope.launch { prefs.setYellowZoneKm(km) }
+    fun setYellowZoneMin(min: Int) {
+        viewModelScope.launch { prefs.setYellowZoneMin(min) }
     }
 
     fun setRedArmed(armed: Boolean) {
@@ -459,10 +461,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.setRedZoneArmed(armed)
             prefs.setYellowZoneArmed(armed)
         }
-    }
-
-    fun setFastAlertsSooner(sooner: Boolean) {
-        viewModelScope.launch { prefs.setFastAlertsSooner(sooner) }
     }
 
     fun setOfficialAlertsEnabled(enabled: Boolean) {

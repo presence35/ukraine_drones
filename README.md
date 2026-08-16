@@ -25,8 +25,9 @@ To replace a capture, run the app (e.g. in an emulator) and use
 
 - **Live threat stream** from `wss://neptun.in.ua/api/v1/stream` (with REST merge when the
   stream goes quiet), drawn over a dark OpenStreetMap-style base. No Google account or key.
-- **Two alert rings around your location** — a Red zone (urgent, full siren) and a Yellow
-  zone (warning, two-tone chime). Radii are adjustable (red 1–5 km, yellow 6–20 km).
+- **Two alert tiers by time-to-arrival** — a Red tier (urgent, full siren) for threats that
+  could reach you within the red time, and a Yellow tier (warning, two-tone chime) for those
+  within the yellow time. Thresholds are adjustable in minutes (red 5–20, yellow 20–60).
 - **Official oblast air-raid alerts** on their own — the trident glow in the header turns
   red while a government signal is active. Controlled independently in Settings.
 - **Eight threat types** with vector icons, plain-language descriptions and reference
@@ -49,21 +50,24 @@ To replace a capture, run the app (e.g. in an emulator) and use
 
 Three independent alert sources, each with its own toggle:
 
-1. **Red zone** — inner ring (1–5 km). Entering it triggers the urgent air-raid siren.
-2. **Yellow zone** — outer ring (6–20 km). Entering it triggers a two-tone warning chime.
+1. **Red tier** — a threat that could reach you within the red time (default 20 min) triggers
+   the urgent air-raid siren.
+2. **Yellow tier** — a threat that could reach you within the yellow time (default 60 min)
+   triggers a two-tone warning chime.
 3. **Official oblast alert** — follows the government signal on its own; never mixed with
    the zone alerts.
 
-Zone rings follow your last location fix — or, when you pin the map to a city in Settings
+Zone tiers follow your last location fix — or, when you pin the map to a city in Settings
 (**Map centre**, 26 major cities), they centre on that city instead. "Follow me" keeps the
 camera and zones on your GPS; pinning to a city switches it off and marks the city with a
-map pin. Radii are dragged in the **Edit zones** sheet (sliders update the circles live);
-each zone has its own bell + switch, and when both are muted a small "All alerts are off"
-pill appears on the map.
+map pin. Time thresholds are dragged in the **Edit zones** sheet (sliders update the map
+circles live); each zone has its own bell + switch, and when both are muted a small "All
+alerts are off" pill appears on the map.
 
-The **"Fast objects alert sooner"** setting (on by default) fires the siren the moment a
-ballistic/cruise missile, guided bomb, or MiG-31K crosses any zone edge — for those types
-the travel-time difference between the rings is only seconds.
+Tiers are measured as time-to-arrival, so every object type is handled the same way — a fast
+ballistic/cruise missile simply crosses a threshold sooner (and from farther out) than a
+Shahed. The red/yellow circles on the map are a reference visual: how far a Shahed (180 km/h)
+flies in that time.
 
 Sirens respect your phone's sound mode by default — they ring at notification volume and
 only vibrate on vibrate/silent. The **"Sirens always sound"** setting (off by default, in

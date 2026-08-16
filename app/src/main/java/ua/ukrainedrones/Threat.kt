@@ -10,18 +10,6 @@ data class TrailPoint(
     val tMillis: Long?
 )
 
-/**
- * Threat types whose approach timing makes the red/yellow tier distinction pointless —
- * crossing even the yellow boundary is seconds away. With "fast objects alert sooner" on,
- * they fire the urgent siren at any zone entry instead of waiting for the red circle.
- */
-val FAST_THREAT_TYPES: Set<ThreatType> = setOf(
-    ThreatType.BALLISTIC,
-    ThreatType.CRUISE_MISSILE,
-    ThreatType.AVIATION,
-    ThreatType.KAB
-)
-
 enum class ThreatType(val apiKey: String) {
     SHAHED("shahed"),          // БпЛА — ударні (Shahed-type)
     FPV_LOITERING("fpv"),      // БпЛА — FPV / баражувальні (Lancet, Molniya)
@@ -85,7 +73,7 @@ object ThreatTypeCatalog {
             descriptionUa = "Крилаті ракети повітряного, морського та наземного базування.",
             descriptionEn = "Air-, sea-, and ground-launched cruise missiles.",
             detailsUa = "Калібр, Х-101/555, Іскандер-К — основа дальніх ударів. Летять низько (часто <100 м), огинаючи рельєф, ~850 км/год. Дальність 1000–2500+ км, БЧ 400–500 кг. Час польоту 30–90 хв — зазвичай є справжнє попередження. У залпі бувають порожні імітатори. Координати можуть бути приблизними — дій за офіційною сиреною.",
-            detailsEn = "Kalibr, Kh-101/555, Iskander-K — the backbone of long-range strikes. They fly low (often <100 m), terrain-hugging to hide from radar, at ~850 km/h. Range 1,000–2,500+ km, warhead 400–500 kg. Flight time 30–90 min, so real warning is usual. Salvoes can include empty decoys. Positions can be rough — always follow the official siren."
+            detailsEn = "Kalibr, Kh-101/555, Iskander-K — the backbone of long-range strikes. They fly low (often <100 m), terrain-hugging to hide from radar, at ~850 km/h. Range 1,000–2,500+ km, warhead 400–500 kg. Flight time 30–90 min, so real warning is usual. Salvoes can include empty decoys. Positions can be approximate — always follow the official siren."
         ),
         ThreatType.BALLISTIC to ThreatTypeInfo(
             labelUa = "Балістика",
@@ -196,6 +184,7 @@ data class Threat(
             val lat = o.optDouble("lat", Double.NaN)
             val lon = o.optDouble("lon", Double.NaN)
             if (lat.isNaN() || lon.isNaN()) return null
+            if (o.optString("id").isBlank()) return null
 
             fun optNullable(key: String): String? =
                 o.optString(key, "").takeIf { it.isNotBlank() }
@@ -302,17 +291,24 @@ fun OblastAlert.inOblast(token: String): Boolean =
 enum class AlertSource { NEPTUN, BACKUP, BOTH }
 
 /**
- * Merge two oblast-alert lists into one, de-duplicated by oblast name. NEPTUN entries win on
- * tie; the backup only adds oblasts NEPTUN didn't already list.
+ * Merge two oblast-alert lists into one, de-duplicated by whether they refer to the same
+ * oblast. Uses the same startsWith/stem-tolerant comparison as [inOblast] rather than exact
+ * string equality, since the two sources format oblast names independently (NEPTUN's
+ * `oblast` field vs. alerts.com.ua's `name` reused as `oblast`) and are not guaranteed to
+ * match verbatim. NEPTUN entries win on tie; the backup only adds oblasts NEPTUN didn't
+ * already list.
  */
 fun mergeAlerts(primary: List<OblastAlert>, backup: List<OblastAlert>): List<OblastAlert> {
-    val seen = HashSet<String>()
     val out = ArrayList<OblastAlert>(primary.size + backup.size)
-    for (a in primary) {
-        if (seen.add(a.oblast)) out.add(a)
-    }
-    for (a in backup) {
-        if (seen.add(a.oblast)) out.add(a)
+    out.addAll(primary)
+    for (b in backup) {
+        val alreadyCovered = primary.any { p ->
+            p.oblast.startsWith(b.oblast, ignoreCase = true) ||
+                b.oblast.startsWith(p.oblast, ignoreCase = true) ||
+                p.name.startsWith(b.name, ignoreCase = true) ||
+                b.name.startsWith(p.name, ignoreCase = true)
+        }
+        if (!alreadyCovered) out.add(b)
     }
     return out
 }
