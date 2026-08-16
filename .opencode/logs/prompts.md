@@ -14860,3 +14860,25 @@ can we scrape other telegram channels and pupt data like Neptun does? Seems comp
 ## 16/08/2026, 21:52:25
 
 git push
+## 16/08/2026, 21:53:39
+
+go
+## 16/08/2026, 21:55:12
+
+if translating a city to EN, only return the transliteration, not an actual translation.  Some other words might need this gate too.
+## 16/08/2026, 22:04:25
+
+it does'nt work well.  it works on random spots on the map, not on threats, and the explsosion just appears, it doesnt' actually animate.
+## 16/08/2026, 22:08:52
+
+we only need small and big threat cards, remove middle.  Make sure the threat icon is the same size as the big.
+small should add Relability, under the skull (you'll prob have to vertically centre them better, and shirin Relaibility lines)
+## 16/08/2026, 22:09:42
+
+?
+## 16/08/2026, 22:10:37
+
+why each card is so wide and has empty space on right? It should show 2 other items, they're not there.  also the border around the imags is too cloe
+## 16/08/2026, 22:16:07
+
+go

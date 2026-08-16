@@ -32,7 +32,6 @@ data class UiState(
     val backupSeen: Boolean = false,             // backup source has polled successfully at least once
     val backupOfflineElapsedSec: Long? = null,   // seconds since backup last succeeded, null while up
     val backupError: String? = null,             // last backup error message, if any
-    val offlineElapsedSec: Long? = null,          // seconds since the stream dropped, null while connected
     val threatsInner: List<Threat> = emptyList(), // reaching within the red time tier
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
@@ -465,7 +464,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             backupSeen = neptun.backupLastOkAt > 0,
             backupOfflineElapsedSec = neptun.backupOfflineElapsedSec,
             backupError = neptun.backupError,
-            offlineElapsedSec = neptun.offlineElapsedSec,
             threatsInner = inInner,
             threatsOuter = inOuter,
             mapThreats = mapThreats,

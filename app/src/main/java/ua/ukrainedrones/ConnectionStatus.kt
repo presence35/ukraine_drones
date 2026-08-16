@@ -17,13 +17,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,10 +39,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 internal fun ConnectionStatus(
@@ -45,20 +56,19 @@ internal fun ConnectionStatus(
     backupUp: Boolean,
     backupSeen: Boolean,
     backupOfflineElapsedSec: Long?,
-    offlineElapsedSec: Long?,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
     s: Strings.StringSet,
     modifier: Modifier = Modifier
 ) {
+    val online = !neptunDown && !backupActive
     val dotColor = when {
         neptunDown -> Color(0xFFE57373) // red — NEPTUN offline (real or simulated)
         backupActive -> Color(0xFFF9A825) // amber — NEPTUN alive but on the backup source
         else -> Color(0xFF4CAF50)
     }
     val label = when {
-        neptunDown -> offlineElapsedSec?.let { String.format(s.offlineUiFormat, String.format(s.offlineDurMinFormat, it / 60)) }
-            ?: s.connOffline
+        neptunDown -> s.connOffline
         backupActive -> s.connBackup
         else -> s.connOnline
     }
@@ -71,16 +81,26 @@ internal fun ConnectionStatus(
             .clickable { showInfo = true },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(dotColor)
-        )
+        if (online) {
+            // Online: the small NEPTUN emblem replaces the green dot.
+            Image(
+                painter = painterResource(R.drawable.neptun),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(width = 10.dp, height = 10.dp)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dotColor)
+            )
+        }
         Spacer(Modifier.width(6.dp))
         Text(
             text = label,
-            color = Color.White,
+            color = if (online) Color(0xFF4CAF50) else Color.White,
             style = MaterialTheme.typography.labelMedium
         )
     }
@@ -161,6 +181,7 @@ internal fun ConnectionStatus(
                         Spacer(Modifier.width(8.dp))
                         Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
+                    ConnectionLogSection(s)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.clickable {
@@ -213,6 +234,102 @@ internal fun SourceStatusRow(color: Color, name: String, active: Boolean, active
                 style = MaterialTheme.typography.labelSmall,
                 color = accent,
                 fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+/**
+ * Collapsible last-10-statuses log. Row 0 is the live in-progress episode (running duration,
+ * ticking once a second while expanded); the completed entries follow, newest first.
+ */
+@Composable
+private fun ConnectionLogSection(s: Strings.StringSet) {
+    var expanded by remember { mutableStateOf(false) }
+    val entries by ConnectionLog.entries.collectAsState()
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(expanded) {
+        while (expanded) {
+            delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                s.connLogTitle,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            val live = ConnectionLog.currentEpisode(now)
+            val rows = (live?.let { listOf(it) } ?: emptyList()) + entries.reversed()
+            if (rows.isEmpty()) {
+                Text(
+                    s.connLogEmpty,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                rows.take(10).forEach { entry ->
+                    ConnectionLogRow(entry, s)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet) {
+    val time = remember(entry.atMillis) {
+        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.atMillis))
+    }
+    val color = when (entry.status) {
+        ConnStatus.ONLINE -> Color(0xFF4CAF50)
+        ConnStatus.OFFLINE -> Color(0xFFE57373)
+        ConnStatus.BACKUP -> Color(0xFFF9A825)
+    }
+    val label = when (entry.status) {
+        ConnStatus.ONLINE -> s.connOnline
+        ConnStatus.OFFLINE -> s.connOffline
+        ConnStatus.BACKUP -> s.connBackup
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            time,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.weight(1f))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.SemiBold)
+        if (entry.durationSec != null) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                String.format(s.connLogDurFormat, entry.durationSec / 60, entry.durationSec % 60),
+                style = MaterialTheme.typography.labelMedium,
+                color = color
             )
         }
     }

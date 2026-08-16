@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -64,6 +65,7 @@ private val UkraineBlue = Color(0xFF005BBB)
 @Composable
 fun SettingsScreen(
     lang: AppLanguage,
+    scrollToThreatsTick: Int,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     officialAlertsEnabled: Boolean,
@@ -129,6 +131,13 @@ fun SettingsScreen(
         onDisclaimerCollapse(!disclaimerExpanded)
     }
 
+    val listState = rememberLazyListState()
+    // The Threats section header is a fixed item index in this LazyColumn; scroll to it when
+    // the zones-sheet gear asks (ZonesSheet → Settings, landing on Threats).
+    LaunchedEffect(scrollToThreatsTick) {
+        if (scrollToThreatsTick > 0) listState.animateScrollToItem(7)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -142,6 +151,7 @@ fun SettingsScreen(
         }
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()

@@ -100,6 +100,12 @@ object NeptunClient {
     /** How long the backup source may go without a successful poll before it counts as down. */
     const val BACKUP_HEALTHY_MS = 90_000L
 
+    /**
+     * Shared "off" grace window: the offline notification and the connection-status log both
+     * ignore drops shorter than this, so random hiccups never alert or pollute the log.
+     */
+    const val OFFLINE_GRACE_MS = 30_000L
+
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // keep socket open indefinitely
         .pingInterval(20, TimeUnit.SECONDS)
@@ -135,6 +141,7 @@ object NeptunClient {
         manuallyStopped = false
         connect()
         startKeepAliveTasks()
+        startConnectionLog()
         startBackupCollector()
         AlertsUaClient.start()
     }
@@ -286,6 +293,24 @@ object NeptunClient {
                     lastFrameAt = System.currentTimeMillis()
                     socket.close(1001, "watchdog stale")
                 }
+            }
+        }
+    }
+
+    /** Feed the connection-status log: a coarse 5s tick that reports the current source state. */
+    private fun startConnectionLog() {
+        scope.launch {
+            while (true) {
+                delay(5_000)
+                if (manuallyStopped) return@launch
+                val st = _state.value
+                val now = System.currentTimeMillis()
+                val status = when {
+                    st.neptunDown -> ConnStatus.OFFLINE
+                    now - st.lastFrameAt > BACKUP_FALLBACK_MS -> ConnStatus.BACKUP
+                    else -> ConnStatus.ONLINE
+                }
+                ConnectionLog.observe(status, now)
             }
         }
     }

@@ -48,6 +48,9 @@ class ZonePrefs(private val context: Context) {
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
     private val fastGroupCollapsedKey = booleanPreferencesKey("fast_group_collapsed")
     private val slowGroupCollapsedKey = booleanPreferencesKey("slow_group_collapsed")
+    private val connLogKey = stringPreferencesKey("conn_log")
+    private val connLogPendingSinceKey = longPreferencesKey("conn_log_pending_since")
+    private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 5–100, default 60. */
     fun slowRedKm(): Flow<Int> =
@@ -275,6 +278,30 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setSlowGroupCollapsed(collapsed: Boolean) {
         context.dataStore.edit { it[slowGroupCollapsedKey] = collapsed }
+    }
+
+    /** Serialized connection-status log ("at|status|dur" lines), for the System-status popup. */
+    fun connLog(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[connLogKey] ?: "" }
+
+    suspend fun setConnLog(serialized: String) {
+        context.dataStore.edit { it[connLogKey] = serialized }
+    }
+
+    /** Epoch millis when the current off/backup episode started (0 = none), across restarts. */
+    fun connLogPendingSince(): Flow<Long> =
+        context.dataStore.data.map { prefs -> prefs[connLogPendingSinceKey] ?: 0L }
+
+    suspend fun setConnLogPendingSince(ts: Long) {
+        context.dataStore.edit { it[connLogPendingSinceKey] = ts }
+    }
+
+    /** Name of the status currently in progress ("OFFLINE"/"BACKUP"), or empty when none. */
+    fun connLogPendingStatus(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[connLogPendingStatusKey] ?: "" }
+
+    suspend fun setConnLogPendingStatus(status: String) {
+        context.dataStore.edit { it[connLogPendingStatusKey] = status }
     }
 }
 

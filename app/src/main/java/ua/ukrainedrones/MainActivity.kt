@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         cleanLegacyOsmdroidCache()
+        ConnectionLog.attach(applicationContext)
         AlertService.start(this)
         requestLocationAndNotifications()
         setContent {

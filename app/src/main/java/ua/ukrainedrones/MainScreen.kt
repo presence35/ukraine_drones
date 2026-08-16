@@ -69,6 +69,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var settingsHintRemaining by remember { mutableStateOf(0) }
     var guideFeatureId by remember { mutableStateOf<String?>(null) }
     var guideFromSettings by remember { mutableStateOf(false) }
+    var scrollToThreatsTick by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
         settingsHintRemaining = prefs.settingsHintRemaining().first()
     }
@@ -79,19 +80,25 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         if (activity != null) activity.finishAffinity()
     }
 
+    val openSettings: () -> Unit = {
+        if (settingsHintRemaining > 0) {
+            settingsHintRemaining--
+            scope.launch { prefs.setSettingsHintRemaining(settingsHintRemaining) }
+        }
+        screen = Screen.SETTINGS
+        viewModel.autoCheckForUpdates(allowPopup = false)
+    }
+
     // The map stays composed under the Settings overlay so its camera and tiles are never
     // destroyed — returning from Settings used to reset the world into a low-zoom grid.
     Box(modifier = Modifier.fillMaxSize()) {
         MapScreen(
             uiState = uiState,
             settingsOpen = screen == Screen.SETTINGS,
-            onOpenSettings = {
-                if (settingsHintRemaining > 0) {
-                    settingsHintRemaining--
-                    scope.launch { prefs.setSettingsHintRemaining(settingsHintRemaining) }
-                }
-                screen = Screen.SETTINGS
-                viewModel.autoCheckForUpdates(allowPopup = false)
+            onOpenSettings = openSettings,
+            onOpenThreatSettings = {
+                openSettings()
+                scrollToThreatsTick++
             },
             onThreatTapped = { viewModel.selectThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
@@ -114,6 +121,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             BackHandler { screen = Screen.MAP }
             SettingsScreen(
                 lang = uiState.language,
+                scrollToThreatsTick = scrollToThreatsTick,
                 hiddenTypes = uiState.hiddenTypes,
                 silencedTypes = uiState.silencedTypes,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
@@ -326,6 +334,7 @@ private fun MapScreen(
     uiState: UiState,
     settingsOpen: Boolean,
     onOpenSettings: () -> Unit,
+    onOpenThreatSettings: () -> Unit,
     onThreatTapped: (Threat) -> Unit,
     onDismissPopup: () -> Unit,
     onMapTapped: () -> Unit,
@@ -359,6 +368,11 @@ private fun MapScreen(
     val openSettings: () -> Unit = {
         showZonesSheet = false
         onOpenSettings()
+    }
+
+    val openThreatSettings: () -> Unit = {
+        showZonesSheet = false
+        onOpenThreatSettings()
     }
 
     // Back closes the popup first, then exits — fixes "back stuck on home page".
@@ -427,7 +441,6 @@ private fun MapScreen(
                     backupUp = uiState.backupUp,
                     backupSeen = uiState.backupSeen,
                     backupOfflineElapsedSec = uiState.backupOfflineElapsedSec,
-                    offlineElapsedSec = uiState.offlineElapsedSec,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
                     s = s,
@@ -657,7 +670,7 @@ private fun MapScreen(
                                     .background(Color(0xFF555555))
                             )
                         }
-                        ZonesPanel(
+                                                ZonesPanel(
                             slowRedKm = uiState.slowRedKm,
                             slowYellowKm = uiState.slowYellowKm,
                             fastRedMin = uiState.fastRedMin,
@@ -675,6 +688,7 @@ private fun MapScreen(
                             onYellowArmedChange = onYellowArmedChange,
                             onThreatMapToggleAll = onThreatMapToggleAll,
                             onThreatAlertToggleAll = onThreatAlertToggleAll,
+                            onOpenThreatSettings = openThreatSettings,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }

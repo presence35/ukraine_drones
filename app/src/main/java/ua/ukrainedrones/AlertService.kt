@@ -48,7 +48,6 @@ class AlertService : Service() {
         private const val NOTIF_ALLCLEAR = 3
         private const val NOTIF_OFFLINE = 4
         private const val CENTRE_ALERT_GRACE_MS = 60_000L
-        private const val OFFLINE_GRACE_MS = 30_000L
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, AlertService::class.java))
@@ -112,6 +111,7 @@ class AlertService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
+        ConnectionLog.attach(applicationContext)
         NeptunClient.start()
         scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
         LocationTracker.start(this)
@@ -293,7 +293,7 @@ class AlertService : Service() {
             val alertNow = state.focusOblastAlertActive
             offlineAlertJob = scope.launch {
                 if (!alertNow) {
-                    delay(OFFLINE_GRACE_MS)
+                    delay(NeptunClient.OFFLINE_GRACE_MS)
                     // During the grace an official alert may have fired — alert immediately then.
                 }
                 if (!offlineNotifShown && !NeptunClient.state.value.connected) {
@@ -314,7 +314,7 @@ class AlertService : Service() {
         notifyMonitor(
             title = if (offline != null) s.offlineStatusTitle else s.notifOngoingTitle,
             text = if (offline != null) {
-                String.format(s.offlineBodyFormat, String.format(s.offlineDurMinFormat, offline / 60))
+                s.offlineBodyFormat
             } else if (state.focusPinned) String.format(s.notifStatusPinned, state.focusBannerCity) else s.notifStatusZones,
             retryLabel = if (offline != null) s.offlineRetryAction else null
         )
@@ -580,11 +580,7 @@ class AlertService : Service() {
     /** One-shot "connection dropped" alert on the silent offline channel. */
     private fun postOfflineAlert(lang: AppLanguage) {
         val s = Strings.get(lang)
-        val elapsed = NeptunClient.state.value.offlineElapsedSec ?: 0L
-        val body = String.format(
-            s.offlineBodyFormat,
-            String.format(s.offlineDurMinFormat, elapsed / 60)
-        )
+        val body = s.offlineBodyFormat
         val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
             .setSmallIcon(R.drawable.ic_launcher_drone)
             .setContentTitle(s.offlineStatusTitle)

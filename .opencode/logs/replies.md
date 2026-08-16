@@ -37907,3 +37907,306 @@ To strip for release: remove `debugEmitRemoved`, the `longPressHelper` body, and
 ## 16/08/2026, 21:52:21
 
 Let me look at what `t.me/delta_odesa` actually posts — that decides everything
+## 16/08/2026, 21:52:40
+
+```
+git add .
+git commit -m "Add 5s threat death animation with map long-press test trigger"
+```
+## 16/08/2026, 21:52:48
+
+Assessed — here's the feasibility verdict.
+
+**What `t.me/s/delta_odesa` actually posts (verified live):**
+
+- **Text-only, no coordinates.** Real posts: «новый шахед на косе», «ланжерон-порт-портовая гавань-пересыпь», «усатово», «Южный-Григорьевка», «светлое», «куяльницкий лиман», «реактив с ачм курсом на грибовку-затоку», plus «пропал(упал/сбит)» and «отбой» as lifecycle markers.
+- Russian language, named Odesa-region landmarks (no lat/lon anywhere).
+- Public preview page renders full server HTML — message text, timestamps, view counts — so it's scrapeable with **zero auth** via `https://t.me/s/delta_odesa`.
+
+**Verdict: scrapeable, but it can't become map threat markers.** The feed NEPTUN gives us is structured coordinates; this channel is situational text with no coordinates. Forcing it into `Threat` objects would be fake data. Its real value is *contextual text*.
+
+**Best realistic uses, ranked:**
+
+1. **Live channel ticker** — a small "Дельта: останні повідомлення" card/row: recent posts filtered to the focus city, fresh from `t.me/s` HTML. Pure informational, zero risk to the zone/alert logic.
+2. **Richer alert reasons** — feed channel posts mentioning Odesa into the official-alert notification reason (the pipeline at `AlertService.kt` already has a reason slot; today it uses NEPTUN's message). Dela's posts are timelier/more specific.
+3. **Curated landmark → approx position** — map «коса», «усатово», «Григорьевка» etc. to approximate coordinates so posts draw as rough markers. Extra effort, rough accuracy.
+
+**Costs/risks:**
+- New `DeltaClient` mirroring the `AlertsUaClient.kt` poll pattern (20–60s, health tracking, feeds into `NeptunClient.state` → automatically seen by both `MainViewModel` + `AlertService`, no mirror-rule break).
+- Russian text → needs UA/EN pass-through/translation (same approach as the existing course translator).
+- Fragile: HTML structure changes, rate limiting, channel could go private. Polling adds battery.
+
+No code touched (plan mode). Want me to draft an implementation plan for option 1 (ticker) and/or 2 (alert reasons)?
+## 16/08/2026, 21:55:29
+
+
+
+
+## 16/08/2026, 21:55:45
+
+
+
+
+## 16/08/2026, 21:56:01
+
+
+
+
+## 16/08/2026, 21:56:42
+
+Now the `ConnectionLog.kt` singleton
+## 16/08/2026, 21:56:54
+
+I left a placeholder — fixing persist to use the captured context
+
+
+## 16/08/2026, 21:57:21
+
+
+
+
+## 16/08/2026, 21:57:42
+
+Now `NeptunClient.kt` — shared grace const + watchdog
+
+
+## 16/08/2026, 21:58:02
+
+I've audited all the EN translation paths. Here's the situation and my proposed plan.
+
+## Translation paths today
+
+| Site | What it does | Problem |
+|---|---|---|
+| `ThreatPopupCard.kt:95` | `regionText` (locality·district·region) → **Google Translate** | Google can semantically translate a proper noun: Золоте→"Gold", Жовті Води→"Yellow Waters", Біла Церква→"White Church", Харків→"Kharkov" (Russian form) |
+| `ThreatPopupCard.kt:356` | course line → Google when it still contains Cyrillic | Same issue for the place name inside the course sentence |
+| `AlertService.kt:565` | full notification body → Google | Place names inside the free text get translated |
+| `Threat.kt:341` + `MapView.kt:448` | `Cities.uaToEn[...] ?: raw` | Already "gated" (dict, no Google) — but unknown places fall back to **raw Ukrainian Cyrillic**, not EN transliteration |
+
+## Proposed plan
+
+1. **New `Transliteration.kt`** — pure `transliterate(ua: String)` implementing official Ukrainian romanization (КМУ №55: Київ→Kyiv, Харків→Kharkiv, Ї/Ю/Я, г→h, х→kh, etc.) plus a small suffix map (область→Oblast, район→district, громада→hromada, село→village…).
+2. **Gate in `Translator.translate`** — before calling Google, extract proper-noun tokens (city names from `Cities.uaToEn` + names it can detect), swap them for placeholders, translate the remainder, then restore transliterations. Covers popup region line, course line, and notification body in one place.
+3. **Call-site upgrade** — region line (`ThreatPopupCard.kt:95`) is *always* a proper-noun string, so transliterate it directly (no Google needed). `translateCourseAssessment` + `MapView` fall back to transliteration instead of raw Cyrillic for unknown places.
+4. **Tests** in `ThreatTest.kt`/new `TransliterationTest.kt` — e.g. "Золоте"→"Zolote" (not "Gold"), "Біла Церква"→"Bila Tserkva", "Жовті Води"→"Zhovti Vody".
+
+A couple of decisions before I final
+## 16/08/2026, 21:59:12
+
+Now add the connection-log watchdog after `startKeepAlive
+## 16/08/2026, 21:59:37
+
+Now `AlertService.kt`
+
+
+## 16/08/2026, 22:00:37
+
+Now `MainActivity.kt`
+
+
+## 16/08/2026, 22:01:26
+
+Now the UA block (around line 379-387
+## 16/08/2026, 22:02:36
+
+Good pushback — let me dig into what NEPTUN text actually contains before answering, since that determines whether we need Google at
+## 16/08/2026, 22:02:37
+
+Now `ConnectionStatus.kt` — the pill and the collapsible log. First the imports and header
+## 16/08/2026, 22:02:49
+
+
+
+
+## 16/08/2026, 22:03:07
+
+Now insert the log section into the dialog before the attribution rows
+
+
+## 16/08/2026, 22:03:23
+
+
+
+
+## 16/08/2026, 22:04:11
+
+Now `MainViewModel.kt` — drop `offlineElapsedSec` from UiState
+## 16/08/2026, 22:04:44
+
+Now `MainScreen.kt` — remove the offlineElapsedSec pass and wire the zones
+## 16/08/2026, 22:04:53
+
+Both points answered by the code audit — this changes the plan significantly.
+
+## "How will you know it's a city?" — You never have to detect one
+
+Every place-name-bearing string in the app is *known to be a place name by context*, not by detection:
+
+- `threat.region/district/locality` — structured NEPTUN fields, definitionally place names.
+- `explanationShort` — the place is the **regex-captured group** in `translateCourseAssessment` (`^Курс на (.+)$` → group 1 is the target). The template already defines it.
+- Nothing else from NEPTUN reaches the EN UI. `threat.title` isn't displayed anywhere (grep found zero display sites); the notification body is `threatBody` = localized catalog label + `where` (a place field).
+
+So the "city" gate isn't detection — it's *"this string is a place name, transliterate it, never send it to a translator."*
+
+## "How much live translating do we need?" — None. Drop Google entirely
+
+The full universe of NEPTUN text that reaches the UI:
+
+1. **`explanationShort`** — closed set of 9 sentence templates (`COURSE_PATTERNS`) + a known military vocabulary already hard-codable: БпЛА→UAV, Шахед→Shahed, Ракета→missile, КАБ→bomb, група→group, курсом на→heading toward, зі сторони→from the direction of, у напрямку→toward, над→over.
+2. **Place names** (from structured fields or template captures) — proper nouns. An English speaker won't "know" the place either way, so transliteration is strictly better than translation, and a semantic translation (Золоте→"Gold", Біла Церква→"White Church") is actively wrong.
+3. Everything else is already localized from our own catalog (`ThreatTypeCatalog` UA/EN labels) and `Strings`.
+
+The vocabulary that "makes or breaks" understanding — UAV, ballistic, missile, group, heading toward — is already hard-coded in `ThreatTypeCatalog` + `COURSE_PATTERNS`. Google adds nothing except the risk of a wrong proper-noun translation and a slow background re-post of an already-localized notification.
+
+## Recommended plan
+
+1. **New `Transliteration.kt`** — `transliterate(ua: String)` per official КМУ №55 romanization (Київ→Kyiv, Харків→Kharkiv, Золоте→Zolote, Ї/Ю/Я, г→h, х→kh…), plus a tiny suffix map (область→Oblast, район→raion, громада→hromada). This *is* the gate: place names only ever get transliterated.
+2. **Drop the 3 Google calls** — region line (`ThreatPopupCard.kt:95`) → transliterate directly; course line (`:356`) → remove the Cyrillic re-translate; notification body re-post (`AlertService.kt:565`) → remove (body is already EN). **Delete `Translate.kt`** (OkHttp + network gone; faster, no rate limits, no wrong translations).
+3. **`translateCourseAssessment` fallback** — unmatched sentence patterns get the whole text transliterated instead of left in Cyrillic (EN user sees readable Latin, still never a wrong translation). Unknown places: dict → transliterate.
+4. **Tests** — `TransliterationTest.kt` (Золоте→Zolote, Жовті Води→Zhovti Vody, Біла Церква→Bila Tserkva, Херсон→Kherson…) + `ThreatTest.kt` updates.
+5. Update `ARCHITECTURE.md` (new module, removed `Translate.kt`); build + unit tests per AGENTS.md.
+
+One decision left:
+
+
+## 16/08/2026, 22:05:12
+
+
+
+
+## 16/08/2026, 22:05:46
+
+Now the `MapScreen` signature + ZonesSheet wiring in `
+## 16/08/2026, 22:06:34
+
+Now `ZonesSheet.kt`
+
+
+
+
+## 16/08/2026, 22:07:00
+
+Now `
+## 16/08/2026, 22:07:25
+
+Let me re-read the exact code that was written to diagnose both symptoms
+## 16/08/2026, 22:08:27
+
+The SettingsScreen body differs from what I read during planning — let me check current
+## 16/08/2026, 22:09:03
+
+The repo moved since planning (new disclaimer/read-count params landed). Let me verify my edits are consistent with the current files
+## 16/08/2026, 22:09:26
+
+
+
+
+## 16/08/2026, 22:09:26
+
+
+
+
+## 16/08/2026, 22:09:47
+
+Index 7 confirmed. Adding the scroll wiring
+## 16/08/2026, 22:10:25
+
+Let me verify the AlertService offline function and check for any lingering
+## 16/08/2026, 22:10:36
+
+Now build
+
+
+## 16/08/2026, 22:11:37
+
+Let me look at the current icon-set picker code and how it renders
+## 16/08/2026, 22:11:49
+
+
+
+
+## 16/08/2026, 22:12:03
+
+Let me verify the osmdroid API behavior that likely explains both
+## 16/08/2026, 22:12:25
+
+I've mapped the code. Before finalizing the plan, two design details are ambiguous — worth confirming since they change the layout
+## 16/08/2026, 22:12:32
+
+Build passes. Now the docs
+
+
+## 16/08/2026, 22:12:50
+
+
+
+
+## 16/08/2026, 22:13:09
+
+Let me look at the icon-set tiles and the surrounding settings layout more carefully, plus the map strip
+## 16/08/2026, 22:13:16
+
+
+
+
+## 16/08/2026, 22:13:37
+
+
+
+
+## 16/08/2026, 22:14:25
+
+Plan confirmed. Here's the final implementation plan.
+
+## Final plan: drop Google, transliterate place names
+
+**1. New `app/src/main/java/ua/ukrainedrones/Transliteration.kt`**
+- `transliterate(ua: String): String` — official КМУ №55 romanization (А→A, Є→Ye, Ї→Yi, Й→Y, Х→Kh, Ц→Ts, Ч→Ch, Ш→Sh, Щ→Shch, Ю→Yu, Я→Ya, Г→H, Ґ→G; апостроф/ь dropped). Case-preserving, handles Cyrillic tokens within mixed text.
+- Suffix map applied on top: область→Oblast, район→raion, громада→hromada, село→village, смт→town, річка→river.
+- This is the gate: place names are transliterated, never semantically translated.
+
+**2. `Threat.kt` — `translateCourseAssessment` (line 334)**
+- Place lookup stays dict-first (`Cities.uaToEn`), fallback becomes `transliterate(place)` instead of raw Cyrillic.
+- Unmatched sentence patterns return `transliterate(text)` instead of raw text, so EN users always get readable Latin.
+
+**3. `ThreatPopupCard.kt`**
+- Region line (91–98): drop `Translator.translate`, render `transliterate(regionText)` directly for EN; remove the `LaunchedEffect`/`regionEn` state.
+- Course line (351–358): drop the Cyrillic Google re-translate; `courseBase` from `translateCourseAssessment` is already EN.
+
+**4. `AlertService.kt` (559–569)**
+- Remove the background Google re-post of the notification body — the body is already localized EN (`threatBody` / `translateCourseAssessment`). Notification posts instantly.
+
+**5. Delete `Translate.kt`** (OkHttp Google client + cache gone; `okhttp` stays — `NeptunClient` still needs it).
+
+**6. Tests**
+- New `TransliterationTest.kt`: Золоте→Zolote, Жовті Води→Zhovti Vody, Біла Церква→Bila Tserkva, Херсон→Kherson, Київська область→Kyivska Oblast, mixed text.
+- Update `ThreatTest.kt`: "translateCourseAssessment leaves unknown text raw" now asserts transliterated output.
+
+**7. Docs**
+- Update `ARCHITECTURE.md` module map (add `Transliteration.kt`, remove `Translate.kt`) + note the transliteration gate as an invariant.
+- Append a `CHANGELOG.md` `[Unreleased]` entry (EN now uses transliteration + hard-coded vocab; no live Google translation).
+
+**8. Verify**: `.\gradlew.bat :app:assembleDebug` and `:app:testDebugUnitTest`.
+
+No mirror-rule impact (no `zoneTier`/`ZoneParams`/`predictPosition` changes). Ready to implement on your go.
+## 16/08/2026, 22:14:29
+
+Let me check the shahed.webp dimensions and how it renders in an `Icon` slot (this may explain the wide
+## 16/08/2026, 22:14:45
+
+Found it. `Marker.onLongPress` returns `hitTest(...)` — long-presses on markers are **consumed by the marker** and never reach `MapEventsOverlay`. Let me confirm the projection semantics
+## 16/08/2026, 22:15:22
+
+Let me check how the photo tiles render and whether both tiles actually appear side
+## 16/08/2026, 22:15:31
+
+Let me run the unit tests to be safe since state/alert wiring changed
+## 16/08/2026, 22:16:11
+
+
+
+
+## 16/08/2026, 22:16:22
+
+Let me look at the tile layout padding and how the whole Additional settings section is laid out
+

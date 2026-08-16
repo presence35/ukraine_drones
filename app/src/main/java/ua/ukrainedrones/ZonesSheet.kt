@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
@@ -40,15 +41,33 @@ fun ZonesPanel(
     onYellowArmedChange: (Boolean) -> Unit,
     onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
+    onOpenThreatSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val s = Strings.get(lang)
     Column(modifier = modifier) {
-        Text(
-            s.zonesLabel,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                s.zonesLabel,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(
+                onClick = onOpenThreatSettings,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_settings_ua),
+                    contentDescription = s.settingsButton,
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(6.dp))
         SectionCaption(s.slowSectionLabel)
         ZoneRow(

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- System status: a new collapsible connection log shows the last 10 status changes — time, online/offline/backup, and how long each drop lasted. Drops under 30 seconds are ignored so random hiccups don't pollute the log, and the log survives app restarts. The currently-open episode shows a live running duration.
+- Header: the connection pill now shows the NEPTUN emblem with a green "Online" label while the feed is healthy.
+- Header + notifications: the misleading "Offline 0m" counter is gone — offline just says offline; the connection log gives the real duration.
+- Zones panel: a gear in the top-right opens Settings directly on the Threats section.
+
 - Map: when a threat is resolved or removed by the server, a playful 5-second "neutralized" animation plays at its last position — a quick ping, a 3-2-1 countdown, then a small explosion. (Long-pressing a threat marker or empty map fires it on demand — a temporary dev/testing aid.)
 - Settings → top card: now the "Disclaimers" section with a full list of caveats (approximate numbers, unofficial rating, coarse location, no safety guarantee). It auto-expands on the first 3 Settings opens, then remembers the state you leave it in.
 - Threat popup: the "Neutralized" fade now also triggers when the selected threat goes stale past the ghost cap, and the card carries a caption that it's just a visual flourish — the threat is no longer around for whatever reason.
