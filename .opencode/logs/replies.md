@@ -39163,3 +39163,596 @@ Both are referenced only through `IconCatalog` / `R.drawable.*`, so resource nam
 
 Let me verify the exact current files to plan the moves
 
+
+## 16/08/2026, 23:09:41
+
+The photo pack is only `threat_photo_*.png` (7 files). The `threat_*.webp` reference photos and `neptun*.png`/`ic_launcher_drone.png` are separate assets that must **stay** in `drawable-nodpi`. Let me check the docs references
+
+
+## 16/08/2026, 23:10:08
+
+Let me verify all references to the moving files before finalizing the plan
+## 16/08/2026, 23:10:25
+
+I have all the info needed. Here's the plan.
+
+## Plan — Icon packs into separate folders
+
+**Constraint:** Android resource folders can't nest inside `res/drawable/`, so we use extra `res.srcDirs`. Resource **names stay identical** — every `R.drawable.*` reference keeps working, zero code changes.
+
+### Files to move
+
+**Classic pack** → `app/src/main/iconpacks/classic/drawable/` (9 files):
+- `ic_threat_{shahed,fpv,cruise,ballistic,kab,aviation,recon,unknown}.xml`
+- `shahed.webp`
+
+**Photo pack** → `app/src/main/iconpacks/photo/drawable-nodpi/` (7 files):
+- `threat_photo_{shahed,fpv,cruise,ballistic,kab,aviation,recon}.png`
+
+**Leave in place** (not icon-pack assets):
+- `drawable-nodpi/` keeps: `threat_{unknown,shahed,ballistic}.webp` (Settings reference photos, via `ThreatImages.kt`), `neptun*.png`, `ic_launcher_drone.png`
+- `drawable/` keeps all UI icons: `ic_scale`, `ic_language`, `ic_skull`, `ic_zoom_in`, `ic_trident`, `ic_launcher_foreground_trident`, etc.
+
+### `app/build.gradle.kts`
+Add a `sourceSets` block inside `android { }` (line ~20) registering the two extra res dirs, keeping the default `src/main/res`:
+
+```kotlin
+sourceSets {
+    getByName("main") {
+        res.srcDirs("src/main/res", "src/main/iconpacks/classic", "src/main/iconpacks/photo")
+    }
+}
+```
+
+### Docs
+- `IconCatalog.kt:20` KDoc: `drawable-nodpi/threat_photo_*.png` → `iconpacks/photo/drawable-nodpi/threat_photo_*.png`.
+- `ARCHITECTURE.md:59` (IconCatalog row): update the "photos live in `drawable-nodpi/threat_photo_*.png`" note to the new path. CHANGELOG: not user-visible — no entry.
+
+### Verify
+`.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest` — confirms resource merging still resolves every name.
+
+No code changes to IconCatalog, MapView, ThreatIcon, or any caller. Ready to execute on your go.
+## 16/08/2026, 23:11:41
+
+Files moved. Now register the source dirs in build.gradle.kts
+
+
+## 16/08/2026, 23:12:52
+
+Done. Build + tests pass.
+
+- Classic pack (9 files) → `app/src/main/iconpacks/classic/drawable/`
+- Photo pack (7 files) → `app/src/main/iconpacks/photo/drawable-nodpi/`
+- `build.gradle.kts` registers both via `res.srcDirs`; `ThreatImages.kt` reference photos (`threat_*.webp`) and UI icons stayed put.
+- IconCatalog KDoc + ARCHITECTURE.md paths updated. No code changes needed — all `R.drawable` names resolve unchanged.
+## 16/08/2026, 23:18:11
+
+Let me re-read the current picker code and the header block in the Additional settings
+
+
+## 16/08/2026, 23:18:49
+
+Let me check all scroll usages and the `iconSetDesc` references in the
+## 16/08/2026, 23:19:17
+
+I have all the context. Here's the plan.
+
+## Plan
+
+### 1. Horizontal single-row scroll in both icon cards (`IconSetTile`, SettingsScreen.kt:1006)
+- Replace the vertical 3-per-row grid (lines 1029-1052) with a **single `Row` of all 7 icons** that scrolls **horizontally within the card**:
+  - `Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = spacedBy(8.dp))`
+  - Remove `.chunked(3)` / inner `Row` loop — just `photoTypes().forEach`.
+- **Icon size 30dp → 38dp** (25% bigger).
+- Drop the fixed `height(104.dp)` vertical panel; the row wraps to the icon height.
+- Add `import androidx.compose.foundation.horizontalScroll`.
+
+### 2. Borders on all 4 cards (kill the "floating" look)
+- `IconSetTile` (line 1014): always draw a border — `1.dp outlineVariant` when unselected, keep the `2.dp primary` when selected.
+- `ComingSoonTile` (line 1066): add the same `1.dp outlineVariant` border.
+- Keep the coming-soon cards' height aligned with the (now shorter) icon cards: give them the same structure — a `38.dp` empty slot where icons would be, `6.dp` spacer, then the label — instead of the fixed `150.dp`.
+
+### 3. Remove the "Threat icons" subtitle
+- SettingsScreen.kt:428-433: delete the `iconSetDesc` `Text` + its `Spacer`; keep `iconSetTitle`.
+- Strings.kt: remove the now-unused `iconSetDesc` (interface line 163 + UA line 401 + EN line 639).
+
+### 4. Verify
+- `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`
+
+Ready to execute on your go.
+## 16/08/2026, 23:20:00
+
+Got it — the temp long-press currently removes the marker instantly, but you want the icon to stay through the 3-2-1 and only vanish **when the explosion starts** (t≈3.5s), while the real path keeps its "gone forever at 5s" behavior.
+
+## Plan
+
+### 1. `ThreatDeathAnimation.kt` — per-death icon-hiding timing
+- `ActiveDeath` gains `hideAtBoom: Boolean`; `spawn(geo, icon, rotationDeg, alpha, hideAtBoom = false)`.
+- In `draw()`, the lingering icon's alpha:
+  - `hideAtBoom && t >= 0.70f` → **0** (temp: icon disappears exactly when the explosion starts)
+  - `t >= 0.70f` (real, default) → current fade through the burst → gone at the 5s prune (unchanged "hidden forever at completion")
+  - else → full alpha (visible through the countdown)
+
+### 2. `MapView.kt` — temp long-press passes the icon into the overlay
+- Keep removing the real marker from `mapView.overlays` + `markerRefs` (prevents the normal pipeline double-drawing it), but now spawn with the marker's own icon/rotation/alpha and `hideAtBoom = true`:
+  ```
+  deathFx.spawn(nearest.position, icon = nearest.icon, rotationDeg = nearest.rotation,
+                alpha = nearest.alpha, hideAtBoom = true)
+  ```
+- So the icon renders in the overlay through the 3-2-1 countdown, then the explosion consumes it; the real threat re-draws on the next overlay rebuild.
+
+Real-path collector untouched (icon lingers the full 5s, hidden forever at completion).
+
+### 3. Verify
+- `.\gradlew.bat :app:assembleDebug`.
+
+Ready to implement on "go".
+## 16/08/2026, 23:20:41
+
+The `verticalScroll` import becomes unused after this change — let me check and remove it
+## 16/08/2026, 23:20:51
+
+## Objective
+- Add a 5s "neutralized" animation (ping → 3-2-1 countdown → explosion) on the map when a threat is resolved/removed, plus a temp long-press test trigger.
+- Latest requirement: after the temp code is removed, the real threat's marker must stay visible for the full 5s animation and only be hidden forever when the animation completes (no instant vanishing).
+
+## Important Details
+- osmdroid 6.1.18 confirmed by decompiling jars in `C:\Users\Bodi\.gradle\caches\transforms-4\...\osmdroid-android-6.1.18-runtime.jar`.
+- Confirmed bug 1: `Marker.onLongPress()` returns `hitTest(...)` → long-press on a marker is consumed; only a top-most `MapEventsOverlay` (added last, `singleTapConfirmedHelper` returns `false`, `longPressHelper` returns `true`) catches long-presses first.
+- Confirmed bug 2: `Projection.toPixels()` returns map-canvas coords for osmdroid's pre-translated canvas, NOT viewport pixels — must draw inside an osmdroid `Overlay.draw()` (pattern: `CityLabelOverlay`, Cities.kt:198), never as a Compose viewport offset.
+- Real markers render at dead-reckoned predicted positions (`predictPosition`); animation must anchor to marker position, fallback to raw fix.
+- `Marker.onLongPress` behavior means the top overlay is the only way to get "long-hold on a threat".
+- Delayed-hiding decision: do NOT delay removal in `NeptunClient` (Option A rejected) — `status=="resolved"` is filtered instantly in both `MainViewModel.buildUiState` and `AlertService` (mirror rule). UI-only approach: `ThreatDeathOverlay` draws the lingering marker icon for 5s, then prunes.
+- Current `ThreatRemoved(id, lat, lon, type)` has no course/icon info; icon fallback needs `threatIcon(context, type, iconSet)` at collect time in MapView.
+- Build command: `.\gradlew.bat :app:assembleDebug --console=plain -q` — currently passes.
+
+## Work State
+### Completed
+- `NeptunClient.kt`: added `ThreatRemoved` data class + `removedThreats: SharedFlow<ThreatRemoved>` (`MutableSharedFlow(extraBufferCapacity=16)`, `tryEmit`), emitted in `upsert` (status `resolved`) and `remove` frames; temp `debugEmitRemoved` removed.
+- `ThreatDeathAnimation.kt`: rewritten as `ThreatDeathOverlay : Overlay` (not Compose). `DEATH_DURATION_MS = 5000L`; `ActiveDeath(geo, start)`; `spawn(geo)` capped at 6; `draw()` prunes `now - start > 5000`, phases: t<0.10 ping ring, 0.10–0.70 digit 3/2/1 in dark pill above point, t≥0.70 explosion (radial gradient + flash + shockwave + 8 sparks). Sizes in dp×density.
+- `MapView.kt`: reverted Box/Compose overlay to plain `AndroidView`; added `val deathFx = remember { ThreatDeathOverlay() }`; re-adds `deathFx` to `mapView.overlays` at end of rebuild branch; added top `MapEventsOverlay` long-press handler (hit-test ≤48dp, spawns at nearest marker position or press geo); added collector `LaunchedEffect` on `NeptunClient.removedThreats` (skip `hiddenTypesState`, anchor `markerRefs.value[r.id]?.position ?: GeoPoint(r.lat, r.lon)`); added ticker `LaunchedEffect` (`while(true) { if (deathFx.isActive && !pausedState) mapViewRef.value?.invalidate(); delay(16) }`); bottom overlay long-press reduced to `true`; imports cleaned (removed Box/key/mutableStateListOf).
+- Docs: `ARCHITECTURE.md` + `CHANGELOG.md` updated (CHANGELOG "Settings → top card" line was accidentally deleted then restored).
+- `assembleDebug` passes.
+
+### Active
+- Plan mode — two pending user requests not yet implemented:
+  1. Temp long-press should also hide the marker icon immediately (marker removed; threat redraws on next overlay rebuild).
+  2. Real path: marker must linger during 5s animation, then be hidden forever — requires adding icon rendering to `ThreatDeathOverlay` (draw marker icon during 5s, fade during explosion, prune at 5s) and passing icon/rotation/alpha from the collector.
+- Assistant was mid-reasoning on this design; plan not yet presented to user.
+
+### Blocked
+- (none)
+
+## Next Move
+1. Present the combined plan to the user covering both pending requests (temp long-press hides icon immediately; real path draws the lingering marker icon via `ThreatDeathOverlay` and hides it exactly at 5s), then implement on "go".
+2. Implement: in `ThreatDeathAnimation.kt`, extend `ActiveDeath` with `icon: Drawable?`, `rotationDeg: Float`, `alpha: Float`; `spawn(geo, icon = null, rotationDeg = 0f, alpha = 1f)`; in `draw()` render the icon (translate+rotate around center, fade alpha during explosion) and keep prune at `> DEATH_DURATION_MS`.
+3. In `MapView.kt` real-path collector: pass `marker?.icon`, `marker?.rotation`, `marker?.alpha`; fallback `threatIcon(context, r.type, uiState.iconSet)`, rotation 0, alpha 1 when marker already gone.
+4. In `MapView.kt` temp long-press handler: when a marker is hit, `mapView.overlays.remove(nearest)` + `markerRefs.value.entries.removeAll { it.value === nearest }` + `mapView.invalidate()`, then `deathFx.spawn(geo, icon = null)`.
+5. Rebuild `.\gradlew.bat :app:assembleDebug --console=plain -q`.
+6. Note for tomorrow's temp-code removal: delete the top `MapEventsOverlay` long-press block in `MapView.kt` and the now-unused `Point`/`sqrt` imports; keep `removedThreats`, `ThreatDeathOverlay`, collector, ticker, `hiddenTypesState` filter.
+
+## Relevant Files
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ThreatDeathAnimation.kt`: `ThreatDeathOverlay` — needs icon-lingering support for the delayed-hide requirement.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MapView.kt`: top `MapEventsOverlay` temp long-press trigger (marker hide), real-path collector (icon/rotation/alpha capture), ticker, `deathFx` re-add after `overlays.clear()`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\NeptunClient.kt`: `ThreatRemoved` + `removedThreats` flow (source of real removal events; no `debugEmitRemoved`).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Cities.kt`: `CityLabelOverlay` (line ~198) is the correct `toPixels`-on-canvas template.
+- `D:\Desktop\drones\ARCHITECTURE.md`, `D:\Desktop\drones\CHANGELOG.md`: already updated; revisit after final changes.
+## 16/08/2026, 23:20:59
+
+Plan's ready and awaiting your "go" — no open questions. The three steps are small and self-contained (`ThreatDeathAnimation.kt` gets `hideAtBoom`, `MapView.kt` temp spawn passes the marker's icon, then `assembleDebug`).
+## 16/08/2026, 23:21:32
+
+Now rewrite `IconSetTile` — single horizontal row, 38dp, border always:
+
+
+## 16/08/2026, 23:21:47
+
+Now update `ComingSoonTile` with border + aligned structure, and pass the
+## 16/08/2026, 23:22:14
+
+Now remove the subtitle block and add the army/comic strings. First the subtitle
+
+
+## 16/08/2026, 23:22:25
+
+Now the strings. Replace `iconSetDesc` with `iconSetArmyLabel`/`iconSetComicLabel`. Let me view the interface and both locale
+## 16/08/2026, 23:22:29
+
+I'll explore the relevant files to understand the notification → map flow.
+
+
+## 16/08/2026, 23:22:41
+
+Now let me look at the map and view model to understand camera/selection state.
+
+
+## 16/08/2026, 23:22:53
+
+Now let me look at the ViewModel and Threat
+## 16/08/2026, 23:23:56
+
+Now update CHANGELOG entry and build
+
+
+## 16/08/2026, 23:24:34
+
+An unrelated error in `ThreatDeathAnimation.kt` — let me check git status
+
+
+## 16/08/2026, 23:24:38
+
+Now the temp long-press handler in `Map
+## 16/08/2026, 23:24:50
+
+`ThreatDeathAnimation.kt` is modified in the working tree (not by me). Let me look at
+## 16/08/2026, 23:25:16
+
+The working tree has a half-applied change to `ThreatDeathAnimation.kt` (not mine). Let me find the callers of
+## 16/08/2026, 23:25:27
+
+Done, builds clean.
+
+Temp long-press now keeps the threat's icon rendering through the 3-2-1 countdown (via the overlay) and drops it exactly when the explosion starts at t≈3.5s (`hideAtBoom`). The real server-removal path is unchanged — icon lingers the full 5s and is hidden forever at completion.
+## 16/08/2026, 23:25:37
+
+Let me check the CHANGELOG for the Unreleased section and confirm the `RevealRequest` plan's integration
+## 16/08/2026, 23:26:01
+
+I have a complete picture. Here's the plan.
+
+## Plan: Notification tap → pan map to the threat
+
+### How it works today
+- Notifications (`AlertService.kt:610`) all use `openAppIntent()` — a plain intent with no extras. Tapping just brings `MainActivity` forward.
+- The map camera in `MapView.kt` only follows the focus point (GPS / pinned city), fits zones, or fits Ukraine. No way to pan to an arbitrary threat.
+
+### Design
+On a zone-threat alert (or an official alert that carries a threat id), the notification's content intent gets extras: `threat_id`, `threat_lat`, `threat_lon`. Tapping it opens the app and:
+1. Selects that threat (the detail popup shows).
+2. Pans the camera to a viewport where **focus (GPS/city) sits near the top, the threat near the bottom, with extra space**, and the zoom is proportional to the gap between them (close → zoomed in, far → zoomed out).
+
+Carrying lat/lon directly in the intent (rather than resolving by id in the map) makes it robust to the WS-connect race on cold start. North-up tiles mean the "top" placement is geographic: if the threat is south of you, GPS lands at top as requested; if it's north, the layout mirrors (both still visible, spaced) — can't be avoided without rotating the map.
+
+### Changes
+
+**1. `AlertService.kt`**
+- Add `EXTRA_REVEAL_ID/LAT/LON` consts.
+- `openAppIntent(revealThreat: Threat? = null)` — attach the 3 extras when non-null.
+- `postAlert(zone, title, body, sirenOverride, revealThreat: Threat? = null)` and `buildAlertNotification(..., revealThreat)` — pass through to the intent.
+- Zone alert call (`handleState`, ~line 348): pass `t = all[id]`.
+- Official alert calls (both initial + reason-refresh): pass `state.officialReasonThreatId?.let { all[it] }`.
+
+**2. `MainActivity.kt`**
+- `by viewModels<MainViewModel>()`; `handleReveal(intent)` reads extras and calls `viewModel.revealThreat(id, lat, lon)`.
+- Call it from `onCreate` (cold start) and override `onNewIntent` (warm, since `launchMode="singleTask"` + the flags in `openAppIntent`).
+
+**3. `MainViewModel.kt`**
+- New `data class RevealRequest(tick, id, lat, lon)` in `UiState` (`revealRequest`).
+- `private val revealFlow` + `revealTick`; `fun revealThreat(id, lat, lon)` increments the tick, best-effort sets `selectedThreatFlow` from `NeptunClient.state`, and emits the request. Wired into the `liveSnapshot` combine → `buildUiState` → `UiState`. No zone/focus/prediction logic touched, so the **mirror rule is unaffected**.
+
+**4. `MapView.kt`** — new `revealRequest` param + `lastRevealTick` remember
+- When tick changes and focus exists: build a `BoundingBox` from focus + threat using screen fractions (focus `ft≈0.28` from top, threat `fb≈0.72`), `spanLat = max(|dLat|/0.44, minSpan)`, mirrored for lon, then `zoomToBoundingBox(..., animated=true)`. Min spans (~0.10° lat / 0.16° lon) cap over-zoom on very close threats; far threats naturally zoom out.
+- If focus is null (no GPS yet, not pinned): center on the threat with a fixed span.
+
+**5. `MainScreen.kt`** — pass `uiState.revealRequest` into `NeptunMapView`.
+
+**6. `CHANGELOG.md`** — add an `## [Unreleased]` bullet.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug` (domain logic untouched, so no unit-test run needed).
+
+Want me to proceed with implementation?
+## 16/08/2026, 23:26:05
+
+Let me get the full error and check for duplicate definitions
+## 16/08/2026, 23:26:23
+
+The compile now passes (incremental state was stale). Let me run the full build+test again
+
+
+## 16/08/2026, 23:26:51
+
+Done. Build + tests pass.
+
+- Icons 25% bigger (38dp), all 7 in a single row that scrolls **horizontally within each card**.
+- All 4 cards now have borders (1dp outline unselected, 2dp primary selected); coming-soon cards no longer look floating.
+- "Threat icons" subtitle removed (title kept).
+- Bottom cards labeled **Army** / **Comic** (UA: Армія / Комікс); removed the now-unused "Coming soon" string.
+## 16/08/2026, 23:28:49
+
+I'll investigate the alert logic to understand why this notification keeps firing. Let me start by reading the architecture doc and searching for the notification code
+## 16/08/2026, 23:29:57
+
+Let me look at the MainViewModel's zone logic and the threat-level/reason pieces to compare against
+## 16/08/2026, 23:30:39
+
+You're right — I made it a full-width row instead of placing it in the right column. Plan:
+
+## Plan: move "R" reliability into the right-side column
+
+**`ThreatPopupCard.kt` — SMALL branch (172–218):**
+- Drop the full-width top row (`"R"` + `ReliabilityBar`).
+- Back to a single main `Row`: type icon `32dp` + `Spacer(12)` + `Column(weight 1f)` (type + `SummaryPills(singleLine = true)`) + `Spacer(10)` + right-side column.
+- Right column becomes a stacked `Column`:
+  - top: `"R"` label + compact segments (`ReliabilityBar(compact = true)`)
+  - `Spacer(4)`
+  - below: skull `26dp` + level bar `56dp`
+  - everything `CenterVertically` against the left content, right column right-aligned.
+
+**Docs:** `ARCHITECTURE.md:70` + `CHANGELOG.md` — reword the Small-card description from "top row" to "right-side column".
+
+One design choice: the horizontal level bar next to the skull is what makes the right column ~88dp wide (the reason pills originally wrapped). Keep it, or drop it so the right side is just skull + R (narrower, more room for pills)?
+
+- **Keep the level bar** (skull + bar + R stacked) — Recommended, matches the earlier "skull [bar] / R" sketch
+- **Drop the level bar** (skull on top, R underneath, narrower column)
+## 16/08/2026, 23:30:54
+
+Now let me examine the prediction/speed logic to understand what could cause a UAV to repeatedly cross the zone boundary
+
+
+## 16/08/2026, 23:31:16
+
+Good. Here's the addition to the plan, then one quick design question.
+
+## "NEW" indicator (callout badge)
+
+When the reveal fires, a small callout hovers at the threat's position — the same style as the pinned-city pin, but green:
+
+- A small **"NEW" label** (`НОВЕ` in UA) in bold green text on a dark rounded pill with a green border — text goes through `Strings` per the UA/EN convention (new `newBadgeLabel` field in `StringSet`, both language instances).
+- A **short green leader line** from the pill down to the threat marker, with the line's tip anchored on the threat position (one baked bitmap, `anchor = CENTER_BOTTOM` — same trick as `pinBitmap` in `MapView.kt`).
+- In `NeptunMapView`: `remember` a `BadgeState(position, activeUntilMs)`; set it on reveal; re-add it during each overlay rebuild while active; and in the existing 1s smoothing loop, move the badge marker to follow the live threat marker (so it tracks a moving drone/missile) or hold the raw fix if the threat resolved. Expiry removes it on the next rebuild.
+
+This is purely additive to `MapView.kt` + `Strings.kt` — no zone/focus/alert logic, so the mirror rule is untouched.
+
+One choice for you:
+
+
+## 16/08/2026, 23:31:43
+
+
+
+
+## 16/08/2026, 23:32:41
+
+Got it — single row, R stacked above the skull+bar on the right. Plan:
+
+## Plan: R on top of skull, single row
+
+**`ThreatPopupCard.kt` — SMALL branch (172–218):**
+- Remove the full-width top row.
+- One `Row` (`CenterVertically`), padded `14/10`:
+  - threat logo `32dp` · `Spacer(12)` · `Column(weight 1f)` (threat title, then `SummaryPills(singleLine = true)`) · `Spacer(10)`
+  - right column `Column(CenterHorizontally)`:
+    - top: `"R"` label + `ReliabilityBar(compact = true)` segments
+    - `Spacer(4)`
+    - below: `LevelSkullIcon(fontAware(26.dp))` + `Spacer(6)` + `HorizontalLevelBar(fontAware(56.dp))`
+
+Pills stay single-line (a `Row`, never wraps).
+
+**Docs:** reword `ARCHITECTURE.md:70` and the `CHANGELOG.md` entry to "R bar above the skull in the right column".
+
+Verify with `.\gradlew.bat :app:assembleDebug`.
+## 16/08/2026, 23:32:42
+
+Final plan:
+
+## Notification tap → pan to threat + green "NEW" badge
+
+**1. `AlertService.kt`** — alert notification intents carry `EXTRA_REVEAL_ID/LAT/LON`. `openAppIntent(revealThreat: Threat?)` attaches them; `postAlert`/`buildAlertNotification` pass the triggering threat through (zone alert: `all[id]`; official alert: `state.officialReasonThreatId` resolved). Other notifications (monitor/offline/all-clear) keep the plain intent.
+
+**2. `MainActivity.kt`** — `by viewModels<MainViewModel>()`; `handleReveal(intent)` reads extras → `viewModel.revealThreat(id, lat, lon)`. Called from `onCreate` (cold start) and `onNewIntent` (warm, `launchMode="singleTask"`).
+
+**3. `MainViewModel.kt`** — `RevealRequest(tick, id, lat, lon)` in `UiState` via a `revealFlow` wired into `liveSnapshot`/`buildUiState`. `revealThreat()` bumps the tick, best-effort selects the threat (popup), emits the request. No zone/focus/prediction changes → mirror rule untouched.
+
+**4. `MapView.kt`** — new `revealRequest` param + `lastRevealTick`:
+- On reveal: fit a bbox with focus at ~top (f≈0.28), threat at ~bottom (f≈0.72), `span = max(|dLat|/0.44, minSpan)` mirrored for lon → **zoom scales with distance**, extra space between points. Min spans (~0.10°/0.16°) cap over-zoom; no focus → center on threat at a fixed span.
+- "NEW" badge: `BadgeState(position, activeUntilMs=now+8s)`; bake a bitmap (dark pill + green "NEW"/«НОВЕ» + green leader line, tip bottom-center, anchored `CENTER_BOTTOM` on the threat). Re-add on overlay rebuilds while active; the 1s smoothing loop moves it to track the live threat marker; expires after 8s.
+
+**5. `Strings.kt`** — `newBadgeLabel` in `StringSet` (EN "NEW" / UA «НОВЕ»).
+
+**6. `MainScreen.kt`** — pass `uiState.revealRequest` to `NeptunMapView`.
+
+**7. `CHANGELOG.md`** — `## [Unreleased]` bullet.
+
+**Verify:** `.\gradlew.bat :app:assembleDebug`.
+
+Ready to implement when you switch out of plan mode.
+## 16/08/2026, 23:32:52
+
+Let me check the existing tests for course translation and sanitization to align the fix
+
+
+## 16/08/2026, 23:33:21
+
+
+
+
+## 16/08/2026, 23:33:32
+
+I've found the root cause. Here's the analysis and plan.
+
+## What the notification actually is
+
+That message is the body of the **official oblast air-raid alert** (title would be something like "Odesa: alert"), not a zone alert. It only fires while your oblast is under an official alarm — independent of your yellow/red circles. The body is the "reason line": the best-scoring threat in your oblast, via `buildReason` (AlertService.kt:440). Here it's a UAV swarm loitering over the Black Sea: NEPTUN's `explanationShort` ≈ `"Рій БпЛА барражує над морем. Підтверджень: 6"`, which `translateCourseAssessment` fails to pattern-match and falls back to glossary + transliteration (Threat.kt:366) → `"Rii UAV barazhuiut … over morem. : 6"`.
+
+## Why it repeats every few minutes
+
+Two compounding defects:
+
+1. **`sanitizeCourse` leaves a dangling count** (Threat.kt:244). It strips a *leading* "Підтверджень: N" but the replacement leaves the trailing `": N"` intact, so `": 6"` survives into the body. NEPTUN refreshes that count as more sources confirm the swarm (6 → 7 → 8…), so `explanationShort` changes every few minutes.
+
+2. **The wait-for-reason re-post guard compares the raw string** (AlertService.kt:372). During an active official alert it re-posts the *same* notification id whenever `state.officialReason != currentReason` — so every count tick changes the string and **re-triggers the siren**. The comment even says this guard exists to avoid re-triggering; the string comparison is just too sensitive.
+
+## Plan
+
+1. **Fix `sanitizeCourse`** (Threat.kt:244): strip trailing count fragments too (e.g. `": 6"`, `"6"`, `"6 джерелами"` at the end), so count-only updates produce a stable string and the `": 6"` artifact disappears (this also cleans the same text shown in the threat popup, since both paths share `translateCourseAssessment`).
+2. **Harden the re-post guard** (AlertService.kt:372): re-post only when the *winning threat id changes* (`currentReasonThreatId != state.officialReasonThreatId`, including fallback→specific), not when the same threat's text jitters. Same threat keeps ringing only once; genuinely new reasons still update the body.
+3. **Tests** (ThreatTest.kt): add cases for `sanitizeCourse` with a trailing count (bare, `": N"`, `"N джерелами"`) to lock in the stable string; keep the existing tests green.
+4. **Verify**: `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`.
+
+No mirror-rule changes needed (`sanitizeCourse`/`translateCourseAssessment` are shared by both alert paths, and `Zones.kt`/prediction are untouched). ARCHITECTURE.md needs no update.
+
+Want me to proceed with this fix?
+## 16/08/2026, 23:34:25
+
+Done. Small card is now a single row: logo · title + single-line pills on the left, and "R" + segments stacked above skull + level bar on the right. Build passes.
+## 16/08/2026, 23:34:39
+
+
+
+
+## 16/08/2026, 23:36:03
+
+Now the `uiState` combine call and `buildUiState`
+## 16/08/2026, 23:36:38
+
+Now add the `revealThreat` function next to `selectThreat
+## 16/08/2026, 23:36:49
+
+
+
+
+## 16/08/2026, 23:37:09
+
+Now update the zone-alert and official-alert `postAlert` calls to carry the reveal threat
+
+
+## 16/08/2026, 23:37:44
+
+Now update `postAlert`, `buildAlertNotification`, and `openAppIntent` to thread the
+## 16/08/2026, 23:38:24
+
+Now the map. First the `NeptunMapView` signature and constants/helpers
+
+
+## 16/08/2026, 23:38:43
+
+Now add the remembered states next to the other tick states
+
+
+## 16/08/2026, 23:38:52
+
+Now the reveal camera logic in the update block, after the `fitZonesTick` block
+
+
+## 16/08/2026, 23:39:14
+
+Now add the `placeRing` helper inside the update lambda and call it from
+## 16/08/2026, 23:39:32
+
+Now call `placeRing()` in the overlay rebuild, after the threat markers
+## 16/08/2026, 23:39:43
+
+Now the ring tracking/expiry in the 
+## 16/08/2026, 23:39:54
+
+Now `MainScreen.kt`
+
+
+## 16/08/2026, 23:39:57
+
+Let me re-read the current `IconSetTile` to plan the indicator precisely
+
+
+## 16/08/2026, 23:40:04
+
+Now the CHANGELOG
+## 16/08/2026, 23:40:24
+
+The 7 icons at 38dp + 8dp gaps ≈ 322dp, but each card is only ~half-width (~160dp), so ~3.5 icons show — plenty of hidden content, worth an affordance. Here's how I'd add one.
+
+## Plan — H-scroll affordance on the icon cards
+
+**Approach: dynamic edge fades (scrims)** — the standard "more content" indicator.
+
+- Wrap the scrolling `Row` in a `Box` and add:
+  - A **right-edge fade** (gradient from transparent → card background) that shows only while `scrollState.value < maxValue` (more content to the right).
+  - A **left-edge fade** that shows only while `scrollState.value > 0` (you've scrolled; can go back).
+- Implementation:
+  - `val scrollState = rememberScrollState()` hoisted out of `horizontalScroll`.
+  - Track position with `LaunchedEffect(scrollState) { snapshotFlow { scrollState.value to scrollState.maxValue }.collect { ... } }` into a `remember { mutableStateOf(...) }` (or just derive visibility from `scrollState.value > 0` and `< maxValue` inside composition — `ScrollState` is a State, so reading it recomposes).
+  - Fade = `Box(Modifier.matchParentSize().background(Brush.horizontalGradient(colors = listOf(transparent, cardBg))))`, clipped to the row height, aligned to the right/left edge.
+- Rounded-corner awareness: fade sits inside the Card's content padding, so it won't square off the corners.
+
+**Side note:** the card background color for the scrim comes from `MaterialTheme.colorScheme.surfaceContainer*` (whatever `Card` uses in this dark theme) — I'll match it so the fade blends seamlessly.
+
+## Alternative options (pick one or none)
+1. **Edge fade scrims** (recommended, above) — subtle, self-dismissing, standard.
+2. **Chevron arrow** pinned to the right edge — bolder but stays visible even at end.
+3. **Dots indicator** under the row (like a carousel) — explicit but adds clutter and needs a separate bar.
+4. **Nothing / partial-icon peek** — just let the last icon be visibly cut off (requires clipping; least code, weakest signal).
+
+I'd go with **option 1**. Want me to proceed with the edge fades, or do you prefer another?
+## 16/08/2026, 23:40:42
+
+
+
+
+## 16/08/2026, 23:40:48
+
+Two fixes needed: an `Intent` import and the 6-flow `combine` needs the var
+## 16/08/2026, 23:41:18
+
+
+
+
+## 16/08/2026, 23:42:01
+
+Build succeeded. Let me check that shadowing warning at MapView.kt:434
+
+
+## 16/08/2026, 23:42:11
+
+
+
+
+## 16/08/2026, 23:42:19
+
+Let me check the theme's color scheme to match the scrim color, and the current bottom-tile code
+## 16/08/2026, 23:42:42
+
+Here's the current state of relevant logic:
+
+- **"Sirens always sound"** = `sirenOverride` (`ZonePrefs.kt:36`) — routes alerts to `alarm`-stream channels that bypass DND/silent (`AlertService.kt:538`). Night mode forcing this off makes alerts follow the phone's ringer mode.
+- **Zones** = `ZoneParams` (slow km / fast min) + `redArmed`/`yellowArmed` (`Zones.kt:20`, `AlertService.kt:328`). Both `AlertService` and `MainViewModel` read the same prefs and reimplement tiering (mirror rule).
+- Settings sections are plain `SectionHeader` cards in a `LazyColumn` (`SettingsScreen.kt:288`), sliders/armed bells live in `ZonesSheet.kt:69`.
+
+## Night mode feature set (their 3 + what else)
+
+**Their 3:**
+1. On/off hours — start/end time pickers (must support overnight windows, e.g. 22:00→07:00).
+2. Sound override — force `sirenOverride` OFF during the window, so Android DND/ringer controls the phone.
+3. Custom night zones — separate `ZoneParams` (4 sliders) + red/yellow armed bells, "use night zones" toggle, default = fall back to day values.
+
+**What else I'd add:**
+4. **Official-alert policy** — a real oblast air-raid signal should arguably still wake you. Options: *follow phone* (default, consistent with #2) or *always ring at night* (bypass DND).
+5. **All-clear chime at night** — waking you to say "it's over" is the worst part. Default: post it **silently** (reuse the silent `CHANNEL_OFFLINE`) or mute entirely.
+6. **Live status line** in the section — "Night mode active 23:00–07:00 · night zones on · official alerts sound". Maybe a moon glyph in the header when active.
+7. *(Optional)* **Vibrate-at-night** mode, mute the offline-notification vibration at night.
+
+## Implementation plan
+
+- **`ZonePrefs.kt`**: `nightEnabled`, `nightStartMin`/`nightEndMin` (minute-of-day), `nightUseCustomZones`, `night{SlowRedKm,SlowYellowKm,FastRedMin,FastYellowMin}`, `nightRedArmed`/`nightYellowArmed`, `nightOfficialAlertsSound`, `nightAllClearMuted`.
+- **New shared helper** (mirror rule — both `AlertService` and `MainViewModel` consume it, e.g. `NightMode.kt`): `NightConfig` + pure `isNightActive(config, nowMillis)` (overnight-aware) + `effectiveConfig(day, night, active)` returning the effective `ZoneParams`/armed flags/`sirenOverride`.
+- **`AlertService.kt`**: compute `effective` per tick from `now`, feed `zoneThreats`, armed gating, `postAlert`, `postAllClear` (silent at night when muted), `buildAlertNotification`.
+- **`MainViewModel.kt`**: effective params feed the map circles + zone tiers; day values stay in the ZonesSheet.
+- **`SettingsScreen.kt`**: new "Night mode" `SectionHeader` + card (toggle, two time pickers, night-zones sliders/bells, official/all-clear toggles, status line). UA/EN strings via `Strings.kt`.
+- **`CHANGELOG.md`**: entry under Unreleased. Build/test: `:app:assembleDebug` + `:app:testDebugUnitTest` (add `NightModeTest`).
+
+Two scope questions before I final
+## 16/08/2026, 23:42:53
+
+Build succeeds (remaining warnings are pre-existing deprecations). Done.
+
+**What changed:**
+- **`AlertService.kt`** — alert notification intents now carry the triggering threat's id/lat/lon (`EXTRA_REVEAL_ID/LAT/LON`) on the content intent; monitor/offline/all-clear notifications keep the plain open-app intent.
+- **`MainActivity.kt`** — `handleReveal` reads those extras (from `onCreate` cold start and `onNewIntent` warm, `singleTask` mode) and calls `viewModel.revealThreat(id, lat, lon)`.
+- **`MainViewModel.kt`** — new `RevealRequest(tick, id, lat, lon)` flows through `UiState`; `revealThreat()` also best-effort selects the threat so the detail popup opens. No zone/focus/prediction changes, so the mirror rule is untouched.
+- **`MapView.kt`** — on a new reveal tick the camera frames **focus (GPS/pinned city) at ~28% from top, threat at ~72%, with space between**; span = gap/0.44 (floored), so **zoom scales with distance**. Plus a **green ring** (transparent centre, soft green glow) around the threat that tracks the live marker and auto-fades after 8s.
+- **`MainScreen.kt`** passes `uiState.revealRequest`; **`CHANGELOG.md`** got an `[Unreleased]` bullet.
+
+If the focus isn't yet known (no GPS, not pinned), it centers on the threat alone at a fixed span instead.
+## 16/08/2026, 23:43:03
+
+Cards use the derived `surfaceContainer` tone. Now implement the fades and the "Coming soon" placeholder
+

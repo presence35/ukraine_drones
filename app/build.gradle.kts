@@ -73,6 +73,12 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        getByName("main") {
+            res.srcDirs("src/main/res", "src/main/iconpacks/classic", "src/main/iconpacks/photo")
+        }
+    }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }

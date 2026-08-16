@@ -59,6 +59,7 @@ data class UiState(
     val selectedThreatInfo: ThreatProximity? = null,
     val neutralizedThreat: Threat? = null,   // selected threat just resolved — fades out
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
+    val revealRequest: RevealRequest? = null,      // notification tap: pan the camera onto a threat
     val disclaimerCollapsed: Boolean = false,
     val disclaimerReadCount: Int = 0,
     val update: UpdateState = UpdateState.Idle,
@@ -70,6 +71,14 @@ data class UiState(
     val showMapScale: Boolean = true,
     val fastGroupCollapsed: Boolean = false,
     val slowGroupCollapsed: Boolean = false
+)
+
+/** One-shot request from a notification tap to bring the camera onto a threat. */
+data class RevealRequest(
+    val tick: Int,
+    val id: String?,
+    val lat: Double,
+    val lon: Double
 )
 
 /** Distance/ETA facts for the threat popup, computed from the predicted position. */
@@ -93,6 +102,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val updateManager = UpdateManager(app.applicationContext)
 
     private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
+    private val revealFlow = MutableStateFlow<RevealRequest?>(null)
+    private var revealTick = 0
     private val updateStateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
     private val installPermissionFlow = MutableStateFlow(false)
     private val latestVersionFlow = MutableStateFlow<String?>(null)
@@ -168,7 +179,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val fastYellowMin: Int,
         val userLocation: LatLng?,
         val selected: Threat?,
-        val now: Long
+        val now: Long,
+        val reveal: RevealRequest?
     )
 
     private data class UpdateUi(
@@ -193,12 +205,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         zonesFlow,
         LocationTracker.location,
         selectedThreatFlow,
-        nowFlow
-    ) { neptun, radii, location, selected, now ->
+        nowFlow,
+        revealFlow
+    ) { values: Array<Any?> ->
+        val neptun = values[0] as NeptunState
+        val radii = values[1] as ZoneParams
+        val location = values[2] as LatLng?
+        val selected = values[3] as Threat?
+        val now = values[4] as Long
+        val reveal = values[5] as RevealRequest?
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, selected, now
+            location, selected, now, reveal
         )
     }
 
@@ -300,7 +319,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Cities.ALL.firstOrNull { it.nameUa == name }
             },
             selected = live.selected,
-            now = live.now
+            now = live.now,
+            reveal = live.reveal
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
@@ -337,7 +357,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         followMe: Boolean,
         pinnedCity: City?,
         selected: Threat?,
-        now: Long
+        now: Long,
+        reveal: RevealRequest?
     ): UiState {
         val params = ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
@@ -486,7 +507,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             selectedThreat = if (selectedGone) null else refreshedSelected,
             selectedThreatInfo = proximity,
             neutralizedThreat = neutralizedThreat,
-            threatLevel = ThreatLevelModel.overall(threatScores)
+            threatLevel = ThreatLevelModel.overall(threatScores),
+            revealRequest = reveal
         )
     }
 
@@ -639,6 +661,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectThreat(threat: Threat?) {
         selectedThreatFlow.value = threat
+    }
+
+    /**
+     * A notification tap carrying the triggering threat's id/position: select it so the
+     * popup opens, then ask the map to pan the camera onto it. Best-effort selection — on a
+     * cold start the stream may not have the threat yet, and the pan still works from the
+     * coordinates carried in the intent.
+     */
+    fun revealThreat(id: String?, lat: Double, lon: Double) {
+        revealTick++
+        if (id != null) {
+            selectedThreatFlow.value = NeptunClient.state.value.threats[id]
+        }
+        revealFlow.value = RevealRequest(revealTick, id, lat, lon)
     }
 
     /** Auto-check at most once per day. [allowPopup] pops the dialog on start when no alert is active. */

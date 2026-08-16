@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.Dp
 /**
  * Single source of truth for which drawable represents a threat type in which icon set.
  * The classic set is the monochrome vector set; the photo set is the bundled direction-
- * oriented photos (see `drawable-nodpi/threat_photo_*.png`).
+ * oriented photos (see `iconpacks/photo/drawable-nodpi/threat_photo_*.png`).
  */
 object IconCatalog {
 

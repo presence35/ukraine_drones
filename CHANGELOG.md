@@ -2,13 +2,15 @@
 
 ## [Unreleased]
 
+- Notifications: tapping a threat alert opens the app on that threat — the map pans so your GPS/pinned city sits near the top and the threat near the bottom (zoom matches how far away it is), and a green ring highlights the new threat for a few seconds.
+
 - Map: zooming in now shows smaller towns across all regions (~300 more minor city labels, ~3–15 per oblast) in addition to the major cities, so you get a sense of distance/scale everywhere — not just around Odesa. Minor towns are map-context only: follow-me attribution and the banner city still resolve to major cities, and the pin picker is unchanged.
 
 - Zones panel: the Fast/Slow group Map & Alerts toggles are gone from the bottom of the "Edit zones" sheet (they stay in Settings and the first-run dialog). Slider bands are now Slow red 2–20 km / yellow 21–50 km and Fast red 2–5 min / yellow 6–20 min, with fresh-install defaults at the top of each band (20/50/5/20).
 
-- Threat popup: the "Middle" card size is gone — only Small and Large remain. The Small card's threat icon and skull now match the Large card's sizes, gained a compact "R" reliability row on top, and its distance/ETA/speed pills stay on one line.
+- Threat popup: the "Middle" card size is gone — only Small and Large remain. The Small card's threat icon and skull now match the Large card's sizes, shows a compact "R" reliability bar stacked above the skull, and its distance/ETA/speed pills stay on one line.
 - Photo threat icons are now the default for everyone (users who prefer the classic vectors can switch back in Settings → Additional).
-- Settings → Additional: the "Threat icons" picker is now a 2x2 grid — the Classic and Photos cards each show all seven icons in a small scrollable panel, with two "coming soon" placeholder cards below. The Additional section opens expanded so the scale/icon toggles are visible, and the "Show scale" row now shows a ruler icon instead of the gear.
+- Settings → Additional: the "Threat icons" picker is a 2x2 grid — the Classic and Photos cards each show all seven icons 25% bigger in a row that scrolls horizontally within the card, with two bordered placeholder cards below (Army, Comic). All four cards have borders. The Additional section opens expanded so the scale/icon toggles are visible, and the "Show scale" row now shows a ruler icon instead of the gear.
 - System status: a new collapsible connection log shows the last 10 status changes — time, online/offline/backup, and how long each drop lasted. Drops under 30 seconds are ignored so random hiccups don't pollute the log, and the log survives app restarts. The currently-open episode shows a live running duration.
 - Header: the connection pill now shows the NEPTUN emblem with a green "Online" label while the feed is healthy.
 - Header: the NEPTUN emblem in the connection pill is now color-coded — green while online, red when offline, amber when on the backup source.

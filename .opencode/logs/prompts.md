@@ -14970,3 +14970,63 @@ go
 ## 16/08/2026, 23:05:14
 
 ?
+## 16/08/2026, 23:11:04
+
+go
+## 16/08/2026, 23:17:48
+
+i think you should make the icons 25% bigger, and all on one row, each card scrolls horizontal w ithin itself.
+the 2 "coming soon" cards look to be floating cos there's no border on any of the 4 cards.
+the "threat icons" subtitle can be removed.
+## 16/08/2026, 23:18:30
+
+nope,  as soon as the tap is done the threat is hidden.  It shoudl'nt hide until after the explosion starts, obviously
+## 16/08/2026, 23:19:58
+
+go
+the comming soon 1 is "army", and 2 is "comic"
+## 16/08/2026, 23:20:52
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 16/08/2026, 23:22:13
+
+possible by tapping on an android notif about a new threat it opens the map and pans to that location?  the zoom level on the map should reflect how far away the threat is from the GPS/city.  it should show both on the screen, gps near the top, new threat near the bottom, add extra space tho.
+## 16/08/2026, 23:22:27
+
+go
+## 16/08/2026, 23:24:01
+
+go
+## 16/08/2026, 23:28:43
+
+i keep getting the same "Rii UAV barazhuiut threat over morem. : 6" eveyr few minutes.  Ther'es nothing in my yellow or red zone.  
+## 16/08/2026, 23:29:39
+
+the "R" is on the top left, instead of on the right.  waste of a top row
+## 16/08/2026, 23:30:30
+
+also add a "new" indcator idk what.  a small green line that points to "new" text, or checkmark, or??
+## 16/08/2026, 23:32:07
+
+pills shouldn't wrap tho, there's plenty of space even if all are 3 digits.  just do this:
+
+[threat   [threat title]                        "R" [bars]
+logo]     [pill1] [pill2] [pill3]               [skull] [line]
+## 16/08/2026, 23:33:07
+
+go
+## 16/08/2026, 23:33:37
+
+make it a green circle around the threat, rather than "new" text
+## 16/08/2026, 23:39:32
+
+need a way to indicate you can H scroll
+## 16/08/2026, 23:40:39
+
+Night mode config in settings, its own section.
+allows turning off "alwasy play sound", and making custom zone settings, and on/off hours.
+what else?
+## 16/08/2026, 23:41:45
+
+1 go
+and put "coming soon" in the bototm 2 cards where the icons would go.  no scroll ofc.

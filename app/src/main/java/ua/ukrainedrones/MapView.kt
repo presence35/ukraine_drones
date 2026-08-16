@@ -193,6 +193,41 @@ private fun circlePoints(center: GeoPoint, radiusMeters: Double, segments: Int =
     }
 }
 
+/** Green ring highlighting the threat a notification just revealed (transparent centre). */
+private fun newRingBitmap(context: Context): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val r = 20f * density
+    val glowR = r * 1.4f
+    val size = (glowR * 2).toInt().coerceAtLeast(2)
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val cx = size / 2f
+    val cy = size / 2f
+    canvas.drawCircle(cx, cy, glowR, Paint().apply {
+        shader = RadialGradient(
+            cx, cy, glowR,
+            intArrayOf(Color.argb(80, 76, 175, 80), Color.argb(0, 76, 175, 80)),
+            floatArrayOf(0.55f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    })
+    canvas.drawCircle(cx, cy, r, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeWidth = 3f * density
+        color = Color.rgb(76, 175, 80)
+    })
+    return bmp
+}
+
+/** A revealed threat that is still highlighted with the green ring. */
+private data class NewRingState(val id: String?, val position: LatLng, val activeUntilMs: Long)
+
+private const val NEW_RING_MS = 8_000L
+/** Floor for the reveal frame's lat/lon span — stops over-zoom on a very close threat. */
+private const val REVEAL_MIN_SPAN_LAT = 0.10
+private const val REVEAL_MIN_SPAN_LON = 0.16
+
 @Composable
 fun NeptunMapView(
     uiState: UiState,
@@ -205,6 +240,7 @@ fun NeptunMapView(
     zoomZone: ThreatZone? = null,
     zoomTick: Int = 0,
     fitZonesTick: Int = 0,
+    revealRequest: RevealRequest? = null,
     paused: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -229,6 +265,9 @@ fun NeptunMapView(
     val lastFollow = remember { mutableStateOf<LatLng?>(null) }
     val lastZoomTick = remember { mutableStateOf(-1) }
     val lastFitZonesTick = remember { mutableStateOf(-1) }
+    val lastRevealTick = remember { mutableStateOf(-1) }
+    val newRingState = remember { mutableStateOf<NewRingState?>(null) }
+    val newRingMarker = remember { mutableStateOf<Marker?>(null) }
     val didDefaultFit = remember { mutableStateOf(false) }
     val lastPinnedCity = remember { mutableStateOf<String?>(null) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
@@ -277,6 +316,36 @@ fun NeptunMapView(
         },
         update = { mapView ->
             mapViewRef.value = mapView
+
+            // Green ring marking the threat a notification just revealed — follows the live
+            // marker (or holds the raw fix), and disappears once its 8s window is up.
+            fun placeRing() {
+                val ring = newRingState.value ?: return
+                val now = System.currentTimeMillis()
+                if (now >= ring.activeUntilMs) {
+                    newRingMarker.value?.let { mapView.overlays.remove(it) }
+                    newRingMarker.value = null
+                    return
+                }
+                val target = ring.id?.let { id ->
+                    uiState.mapThreats.firstOrNull { it.id == id }
+                }?.let { t ->
+                    speedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
+                } ?: GeoPoint(ring.position.lat, ring.position.lon)
+                val existing = newRingMarker.value
+                if (existing == null || existing !in mapView.overlays) {
+                    val m = Marker(mapView).apply {
+                        position = target
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        icon = BitmapDrawable(context.resources, newRingBitmap(context))
+                        setInfoWindow(null)
+                    }
+                    mapView.overlays.add(m)
+                    newRingMarker.value = m
+                } else {
+                    existing.position = target
+                }
+            }
             // Floor the zoom-out so you can't zoom past "Ukraine fills the screen".
             if (mapView.width > 0 && mapView.height > 0) {
                 val floorZoom =
@@ -349,6 +418,49 @@ fun NeptunMapView(
                     BoundingBox(zone.latNorth, zone.lonEast, zone.latSouth - southPad, zone.lonWest),
                     true
                 )
+            }
+
+            // Notification tap: pan + zoom so the focus point (GPS/city) sits near the top
+            // and the revealed threat near the bottom, with space between. The span scales
+            // with the gap, so the zoom reflects how far the threat is. Also mark it with
+            // the green ring.
+            val reveal = revealRequest
+            if (reveal != null && reveal.tick != lastRevealTick.value) {
+                lastRevealTick.value = reveal.tick
+                val threat = LatLng(reveal.lat, reveal.lon)
+                newRingState.value = NewRingState(
+                    reveal.id, threat, System.currentTimeMillis() + NEW_RING_MS
+                )
+                val revealFocus = uiState.focusLocation
+                if (revealFocus == null) {
+                    // No focus yet (no GPS, not pinned) — centre on the threat alone.
+                    val span = 0.5
+                    mapView.zoomToBoundingBox(
+                        BoundingBox(
+                            threat.lat + span, threat.lon + span,
+                            threat.lat - span, threat.lon - span
+                        ),
+                        true
+                    )
+                } else {
+                    val ft = 0.28f  // focus vertical fraction from the top
+                    val fb = 0.72f  // threat vertical fraction from the top
+                    val g = fb - ft
+                    val gapLat = Math.abs(revealFocus.lat - threat.lat)
+                    val spanLat = Math.max(gapLat / g, REVEAL_MIN_SPAN_LAT)
+                    val north = Math.max(revealFocus.lat, threat.lat) + ft * spanLat
+                    val south = Math.min(revealFocus.lat, threat.lat) - (1 - fb) * spanLat
+                    val lonMid = (revealFocus.lon + threat.lon) / 2
+                    val gapLon = Math.abs(revealFocus.lon - threat.lon)
+                    val spanLon = Math.max(gapLon / g, REVEAL_MIN_SPAN_LON)
+                    mapView.zoomToBoundingBox(
+                        BoundingBox(
+                            north, lonMid + spanLon / 2, south, lonMid - spanLon / 2
+                        ),
+                        true
+                    )
+                }
+                placeRing()
             }
 
             if (overlayKey == lastOverlayKey.value) {
@@ -445,6 +557,9 @@ fun NeptunMapView(
                     markerRefs.value[t.id] = marker
                 }
 
+                // Reveal ring above the threat icons (added only while its 8s window is live).
+                placeRing()
+
                 // GPS dot — a plain marker driven by LocationTracker's coarse fix. No separate
                 // location provider here (that was the battery-heavy blue accuracy circle).
                 // Only shown while following; when pinned to a city your real position (possibly
@@ -501,13 +616,22 @@ fun NeptunMapView(
                                 }
                             }
                             if (nearest != null) {
-                                // Hide the icon right away (the threat will re-draw on the
-                                // next overlay rebuild) so the death plays on empty ground.
+                                // Unhook the real marker so the normal pipeline stops drawing
+                                // it; the overlay now renders its icon through the countdown and
+                                // drops it when the explosion starts.
                                 mapView.overlays.remove(nearest)
                                 markerRefs.value.entries.removeAll { it.value === nearest }
                                 mapView.invalidate()
+                                deathFx.spawn(
+                                    nearest.position ?: GeoPoint(p.latitude, p.longitude),
+                                    icon = nearest.icon,
+                                    rotationDeg = nearest.rotation,
+                                    alpha = nearest.alpha,
+                                    hideAtBoom = true
+                                )
+                            } else {
+                                deathFx.spawn(GeoPoint(p.latitude, p.longitude))
                             }
-                            deathFx.spawn(nearest?.position ?: GeoPoint(p.latitude, p.longitude))
                             return true
                         }
                     })
@@ -575,6 +699,28 @@ fun NeptunMapView(
                 ) {
                     marker.position = predicted
                     dirty = true
+                }
+            }
+            if (dirty) mapView.invalidate()
+            // Reveal ring: glide onto its threat marker, or fade out once the 8s window ends.
+            newRingMarker.value?.let { rm ->
+                val ring = newRingState.value ?: return@let
+                if (now >= ring.activeUntilMs) {
+                    mapView.overlays.remove(rm)
+                    newRingMarker.value = null
+                    dirty = true
+                } else {
+                    val t = ring.id?.let { id -> uiState.mapThreats.firstOrNull { it.id == id } }
+                    val target = t?.let { tt ->
+                        speedTracker.estimate(tt.id, tt)?.let { predictPosition(tt, it, now) }
+                    } ?: GeoPoint(ring.position.lat, ring.position.lon)
+                    val cur = rm.position
+                    if (cur == null ||
+                        distanceMeters(cur.latitude, cur.longitude, target.latitude, target.longitude) > 1.0
+                    ) {
+                        rm.position = target
+                        dirty = true
+                    }
                 }
             }
             if (dirty) mapView.invalidate()

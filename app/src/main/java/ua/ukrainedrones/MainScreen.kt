@@ -463,6 +463,7 @@ private fun MapScreen(
                         zoomZone = zoomZone,
                         zoomTick = zoomTick,
                         fitZonesTick = fitZonesTick,
+                        revealRequest = uiState.revealRequest,
                         paused = settingsOpen,
                         modifier = Modifier.fillMaxSize()
                     )

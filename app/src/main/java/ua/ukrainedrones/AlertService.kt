@@ -36,6 +36,9 @@ class AlertService : Service() {
     companion object {
         const val ACTION_STOP = "ua.ukrainedrones.STOP"
         const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
+        const val EXTRA_REVEAL_ID = "reveal_threat_id"
+        const val EXTRA_REVEAL_LAT = "reveal_threat_lat"
+        const val EXTRA_REVEAL_LON = "reveal_threat_lon"
         private const val CHANNEL_MONITOR = "monitor"
         private const val CHANNEL_ALERTS = "alerts_siren2"
         private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer2"
@@ -345,7 +348,7 @@ class AlertService : Service() {
             val (id, zone) = newEntries.first()
             val t = all[id]
             val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
-            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride)
+            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride, revealThreat = t)
             posted = true
             knownZones = knownZones + (id to zone)
         }
@@ -365,7 +368,8 @@ class AlertService : Service() {
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
-                state.sirenOverride
+                state.sirenOverride,
+                revealThreat = state.officialReasonThreatId?.let { all[it] }
             )
             currentReason = state.officialReason
             currentReasonThreatId = state.officialReasonThreatId
@@ -381,7 +385,8 @@ class AlertService : Service() {
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
-                state.sirenOverride
+                state.sirenOverride,
+                revealThreat = state.officialReasonThreatId?.let { all[it] }
             )
             currentReason = state.officialReason
             currentReasonThreatId = state.officialReasonThreatId
@@ -524,7 +529,8 @@ class AlertService : Service() {
         zone: ThreatZone?,
         title: String,
         body: String,
-        sirenOverride: Boolean
+        sirenOverride: Boolean,
+        revealThreat: Threat?
     ): NotificationCompat.Builder {
         // Without the override, sirens follow the phone's ringer/vibrate mode via the
         // notification stream; with it, they ring on the alarm stream even in vibrate/silent.
@@ -542,17 +548,21 @@ class AlertService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setContentIntent(openAppIntent())
+            .setContentIntent(openAppIntent(revealThreat))
     }
 
     private fun postAlert(
         zone: ThreatZone?,
         title: String,
         body: String,
-        sirenOverride: Boolean
+        sirenOverride: Boolean,
+        revealThreat: Threat? = null
     ) {
         alertEpoch++
-        safeNotify(NOTIF_ALERT, buildAlertNotification(zone, title, body, sirenOverride).build())
+        safeNotify(
+            NOTIF_ALERT,
+            buildAlertNotification(zone, title, body, sirenOverride, revealThreat).build()
+        )
     }
 
     private fun cancelAlert() {
@@ -607,7 +617,7 @@ class AlertService : Service() {
         }
     }
 
-    private fun openAppIntent(): PendingIntent {
+    private fun openAppIntent(revealThreat: Threat? = null): PendingIntent {
         // singleTask + these flags make notification taps bring the existing activity forward
         // instead of stacking a second MainActivity on the back stack (which made Exit/back
         // appear to need multiple presses).
@@ -615,6 +625,11 @@ class AlertService : Service() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (revealThreat != null) {
+                putExtra(EXTRA_REVEAL_ID, revealThreat.id)
+                putExtra(EXTRA_REVEAL_LAT, revealThreat.lat)
+                putExtra(EXTRA_REVEAL_LON, revealThreat.lon)
+            }
         }
         return PendingIntent.getActivity(
             this, 0, intent,

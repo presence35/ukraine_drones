@@ -10,10 +10,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -424,12 +424,6 @@ fun SettingsScreen(
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        s.iconSetDesc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(Modifier.height(10.dp))
                                     IconSetSelector(
@@ -992,11 +986,11 @@ private fun IconSetSelector(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ComingSoonTile(
-                label = s.iconSetComingSoonLabel,
+                label = s.iconSetArmyLabel,
                 modifier = Modifier.weight(1f)
             )
             ComingSoonTile(
-                label = s.iconSetComingSoonLabel,
+                label = s.iconSetComicLabel,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -1016,9 +1010,11 @@ private fun IconSetTile(
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
-        border = if (selected) {
-            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        } else null
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
         Column(
             modifier = Modifier
@@ -1026,28 +1022,57 @@ private fun IconSetTile(
                 .padding(vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // All 7 photo-backed threat types in a fixed-height scrollable grid; the photo
-            // set letterboxes each into its square slot, so the panel reads as a clean row.
-            val sampleTypes = IconCatalog.photoTypes()
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(104.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                sampleTypes.chunked(3).forEach { rowTypes ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rowTypes.forEach { type ->
-                            ThreatIcon(
-                                type = type,
-                                set = set,
-                                size = 30.dp,
-                                contentDescription = label
-                            )
-                        }
+            // All 7 photo-backed threat types in a single row that scrolls horizontally
+            // within the card; the photo set letterboxes each into its square slot.
+            val scrollState = rememberScrollState()
+            val cardBg = MaterialTheme.colorScheme.surfaceContainer
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconCatalog.photoTypes().forEach { type ->
+                        ThreatIcon(
+                            type = type,
+                            set = set,
+                            size = 38.dp,
+                            contentDescription = label
+                        )
                     }
+                }
+                // Edge scrims hint that the row scrolls horizontally: a fade on the right
+                // while more icons are hidden, and one on the left once you've scrolled.
+                if (scrollState.value > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(20.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(cardBg, Color.Transparent),
+                                    startX = 0f,
+                                    endX = 20.dp.toPx()
+                                )
+                            )
+                    )
+                }
+                if (scrollState.value < scrollState.maxValue) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(20.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color.Transparent, cardBg),
+                                    startX = 0f,
+                                    endX = 20.dp.toPx()
+                                )
+                            )
+                    )
                 }
             }
             Spacer(Modifier.height(6.dp))
@@ -1066,16 +1091,18 @@ private fun IconSetTile(
 private fun ComingSoonTile(label: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.clip(RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(150.dp)
                 .padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Empty slot sized like the real cards' icon row so the grid lines up.
+            Spacer(Modifier.height(38.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 label,
                 style = MaterialTheme.typography.labelMedium,

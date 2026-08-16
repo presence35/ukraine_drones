@@ -1,11 +1,13 @@
 package ua.ukrainedrones
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -38,6 +40,8 @@ private val AppDarkColors = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
 
+    private val viewModel: MainViewModel by viewModels()
+
     private companion object {
         const val REQUEST_LOCATION = 1
         const val REQUEST_NOTIFICATIONS = 2
@@ -64,6 +68,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        handleReveal(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleReveal(intent)
+    }
+
+    /**
+     * A notification tap can carry the threat that triggered it. Select it and ask the map
+     * to pan onto it so both the focus point (GPS/city) and the threat are on screen.
+     */
+    private fun handleReveal(intent: Intent?) {
+        val id = intent?.getStringExtra(AlertService.EXTRA_REVEAL_ID) ?: return
+        val lat = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LAT, Double.NaN)
+        val lon = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LON, Double.NaN)
+        if (lat.isNaN() || lon.isNaN()) return
+        viewModel.revealThreat(id, lat, lon)
     }
 
     /**

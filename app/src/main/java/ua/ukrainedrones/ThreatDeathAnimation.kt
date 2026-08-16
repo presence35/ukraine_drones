@@ -20,14 +20,17 @@ private const val DEATH_DURATION_MS = 5000L
 /**
  * A dying threat. For real server removals [icon] is the marker's own drawable, so the icon
  * keeps rendering here for the full [DEATH_DURATION_MS] and is hidden forever the moment the
- * animation completes. Temp test triggers pass [icon] = null (the marker was already removed).
+ * animation completes. Temp test triggers pass [icon] = the same marker drawable but with
+ * [hideAtBoom] = true, so the icon vanishes when the explosion starts instead (the threat
+ * re-draws on the next overlay rebuild).
  */
 private class ActiveDeath(
     val geo: GeoPoint,
     val start: Long,
     val icon: Drawable?,
     val rotationDeg: Float,
-    val alpha: Float
+    val alpha: Float,
+    val hideAtBoom: Boolean
 )
 
 /**
@@ -43,9 +46,15 @@ class ThreatDeathOverlay : Overlay() {
 
     val isActive: Boolean get() = deaths.isNotEmpty()
 
-    fun spawn(geo: GeoPoint, icon: Drawable? = null, rotationDeg: Float = 0f, alpha: Float = 1f) {
+    fun spawn(
+        geo: GeoPoint,
+        icon: Drawable? = null,
+        rotationDeg: Float = 0f,
+        alpha: Float = 1f,
+        hideAtBoom: Boolean = false
+    ) {
         if (deaths.size >= 6) return
-        deaths.add(ActiveDeath(geo, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha))
+        deaths.add(ActiveDeath(geo, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, hideAtBoom))
     }
 
     private val textPaint = Paint().apply {
@@ -82,12 +91,17 @@ class ThreatDeathOverlay : Overlay() {
             val y = reuse.y.toFloat()
             val t = ((now - d.start).toFloat() / DEATH_DURATION_MS).coerceIn(0f, 1f)
 
-            // The threat's own icon lingers here through the whole 5s and is only hidden the
-            // moment the animation ends (the prune above drops this death from the list).
+            // The threat's own icon lingers here through the countdown. Temp test triggers
+            // (hideAtBoom) drop it the instant the explosion starts; real removals keep it
+            // until the prune above ends the animation (hidden forever at 5s).
             d.icon?.let { icon ->
                 val w = icon.intrinsicWidth.coerceAtLeast(1) / 2f
                 val h = icon.intrinsicHeight.coerceAtLeast(1) / 2f
-                val fade = if (t >= 0.70f) 1f - ((t - 0.70f) / 0.30f).coerceIn(0f, 1f) else 1f
+                val fade = when {
+                    d.hideAtBoom && t >= 0.70f -> 0f
+                    t >= 0.70f -> 1f - ((t - 0.70f) / 0.30f).coerceIn(0f, 1f)
+                    else -> 1f
+                }
                 icon.alpha = (d.alpha * fade * 255).toInt()
                 canvas.save()
                 canvas.translate(x, y)

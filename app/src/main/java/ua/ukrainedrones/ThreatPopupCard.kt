@@ -167,56 +167,59 @@ fun ThreatPopupCard(
         tonalElevation = 8.dp
     ) {
         when (cardSize) {
-            // One glanceable line: threat icon + type + distance/ETA, skull next to its bar
-            // with the reliability indicator tucked beneath.
+            // One glanceable line: threat icon + type + distance/ETA, with the "R"
+            // reliability bar stacked above the skull and its level bar on the right.
             ThreatCardSize.SMALL -> {
-                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "R",
-                            fontWeight = FontWeight.Medium,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF9E9E9E)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        ReliabilityBar(
-                            reliability = threat.reliability,
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ThreatIcon(
+                        type = threat.type,
+                        set = iconSet,
+                        size = 32.dp,
+                        contentDescription = typeLabel
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                typeLabel,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color.White
+                            )
+                            if (alertsOff) {
+                                    Spacer(Modifier.width(6.dp))
+                                    AlertsOffBell(size = fontAware(14.dp))
+                                }
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        SummaryPills(
+                            proximity = proximity,
+                            pinnedCity = pinnedCity,
                             s = s,
-                            compact = true
+                            lang = lang,
+                            singleLine = true
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ThreatIcon(
-                            type = threat.type,
-                            set = iconSet,
-                            size = 32.dp,
-                            contentDescription = typeLabel
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    typeLabel,
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = Color.White
-                                )
-                                if (alertsOff) {
-                                        Spacer(Modifier.width(6.dp))
-                                        AlertsOffBell(size = fontAware(14.dp))
-                                    }
-                            }
-                            Spacer(Modifier.height(2.dp))
-                            SummaryPills(
-                                proximity = proximity,
-                                pinnedCity = pinnedCity,
+                    Spacer(Modifier.width(10.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "R",
+                                fontWeight = FontWeight.Medium,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF9E9E9E)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            ReliabilityBar(
+                                reliability = threat.reliability,
                                 s = s,
-                                lang = lang,
-                                singleLine = true
+                                compact = true
                             )
                         }
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             LevelSkullIcon(level = threatLevel, size = fontAware(26.dp))
                             Spacer(Modifier.width(6.dp))
