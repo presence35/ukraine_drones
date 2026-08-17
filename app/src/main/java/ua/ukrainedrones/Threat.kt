@@ -16,7 +16,7 @@ enum class ThreatType(val apiKey: String) {
     CRUISE_MISSILE("cruise"),  // Крилаті ракети
     BALLISTIC("ballistic"),    // Балістика
     KAB("kab"),                 // Керовані авіабомби
-    AVIATION("aviation"),      // Авіація / МіГ-31К
+    AVIATION("aviation"),      // МіГ-31К
     RECON("recon"),            // Розвідка
     UNKNOWN("unknown");        // Невідомі
 
@@ -92,8 +92,8 @@ object ThreatTypeCatalog {
             detailsEn = "Guided glide bombs (FAB-250…1500 + UMPK) are dropped from dozens of km away and glide 40–70 km, mostly at the frontline. Warhead hundreds of kg — that's why impacts are so destructive. ~900 km/h, but they can't reach deep rear areas. KAB alerts matter mainly for border/frontline regions."
         ),
         ThreatType.AVIATION to ThreatTypeInfo(
-            labelUa = "Авіація / МіГ-31К",
-            labelEn = "Aviation / MiG-31K",
+            labelUa = "МіГ-31К",
+            labelEn = "MiG-31K",
             descriptionUa = "Зліт носіїв «Кинджал» — загроза для всієї території країни.",
             descriptionEn = "Takeoff of \"Kinzhal\" carrier aircraft — threat to the entire country.",
             detailsUa = "МіГ-31К/І несе гіперзвуковий Кинджал, тож тривога про зліт — на всю країну: запуск можливий майже з будь-якої точки, до будь-якого міста долітає за хвилини. Літак летить високо й швидко; небезпека — ракета після пуску. Стався до зльоту МіГ-31К серйозно навіть без пуску — це надійний ранній сигнал.",

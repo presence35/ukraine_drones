@@ -168,8 +168,7 @@ fun ThreatPopupCard(
         tonalElevation = 8.dp
     ) {
         when (cardSize) {
-            // One glanceable line: threat icon + type + distance/ETA, with the reliability
-            // and skull bars together on a bottom row.
+            // Three rows: icon + title, pills, then the reliability and skull bars.
             ThreatCardSize.SMALL -> {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.Top) {
@@ -193,16 +192,16 @@ fun ThreatPopupCard(
                                         AlertsOffBell(size = fontAware(14.dp))
                                     }
                             }
-                            Spacer(Modifier.height(2.dp))
-                            SummaryPills(
-                                proximity = proximity,
-                                pinnedCity = pinnedCity,
-                                s = s,
-                                lang = lang,
-                                singleLine = true
-                            )
                         }
                     }
+                    Spacer(Modifier.height(4.dp))
+                    SummaryPills(
+                        proximity = proximity,
+                        pinnedCity = pinnedCity,
+                        s = s,
+                        lang = lang,
+                        singleLine = true
+                    )
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(

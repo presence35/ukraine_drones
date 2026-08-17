@@ -15460,3 +15460,12 @@ git push
 ## 17/08/2026, 16:06:03
 
 ?
+## 17/08/2026, 16:06:50
+
+and, the animation needs to check if the threat is still there, there could be 3 bullets sent and the 1st one already destroyed it.  i guess just send the bullet off the screen and remove that object from memory, rather than exploding where the threat USED to be.
+## 17/08/2026, 16:07:12
+
+go
+## 17/08/2026, 16:09:45
+
+git push

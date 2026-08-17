@@ -49,7 +49,8 @@
 
 - Zones panel: the Fast/Slow group Map & Alerts toggles are gone from the bottom of the "Edit zones" sheet (they stay in Settings and the first-run dialog). Slider bands are now Slow red 2–20 km / yellow 21–50 km and Fast red 2–5 min / yellow 6–20 min, with fresh-install defaults at the top of each band (20/50/5/20).
 
-- Threat popup: the "Middle" card size is gone — only Small and Large remain. Both cards share a larger threat icon (40dp) and a stable header (no jumping when you switch), and the Small card puts a compact "R" (UA "Д") reliability bar together with the skull bar on a bottom row while its distance/ETA/speed pills stay on one line.
+- Threat popup: the "Middle" card size is gone — only Small and Large remain. Both cards share a larger threat icon (40dp) and a stable header (no jumping when you switch), and the Small card is a tidy 3 rows — icon + title, the distance/ETA/speed pills, then the "R" (UA "Д") reliability bar with the skull bar.
+- Threats: the aviation threat type is now just "MiG-31K" (UA "МіГ-31К") — the redundant "Aviation" prefix is gone.
 - Photo threat icons are now the default for everyone (users who prefer the classic vectors can switch back in Settings → Additional).
 - Settings → Additional: the "Threat icons" picker is a 2x2 grid — the Classic and Photos cards each show all seven icons 25% bigger in a row that scrolls horizontally within the card, with two bordered placeholder cards below (Army, Comic). All four cards have borders. The Additional section opens expanded so the scale/icon toggles are visible, and the "Show scale" row now shows a ruler icon instead of the gear.
 - System status: a new collapsible connection log shows the last 10 status changes — time, online/offline/backup, and how long each drop lasted. Drops under 30 seconds are ignored so random hiccups don't pollute the log, and the log survives app restarts. The currently-open episode shows a live running duration.

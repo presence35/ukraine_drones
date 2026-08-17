@@ -42814,3 +42814,50 @@ Off = no bullet, no explosion, no vibration, card stays frozen until dismissed. 
 git add .
 git commit -m "Vibration previews, compact 4-pack icon picker, faster Ukraine-colored death bullet, card crossfade"
 ```
+## 17/08/2026, 16:06:22
+
+
+
+
+## 17/08/2026, 16:06:57
+
+## Plan
+
+**1. Small card → 3 rows** (`ThreatPopupCard.kt`, SMALL branch, currently lines 173–226)
+
+Move the pills out of the title column onto their own row:
+```
+Column(padding 14.dp) {
+  Row(Top):   ThreatIcon(40.dp) · Spacer(12) · title (titleMedium, wraps in remaining width, + alerts-off bell)
+  Spacer(4.dp)
+  SummaryPills(singleLine = true)          ← full-width row 2
+  Spacer(8.dp)
+  Row(CenterVertically): "R"/"Д" + segments · Spacer(16) · skull(22) + level bar(50)   ← row 3
+}
+```
+Net result: **row 1** icon + title, **row 2** pills alone, **row 3** R bar + skull bar — matching your sketch, and the title no longer shares width with the pills.
+
+**2. Rename the aviation type** (`Threat.kt:95-96`)
+- `labelUa = "Авіація / МіГ-31К"` → `"МіГ-31К"`
+- `labelEn = "Aviation / MiG-31K"` → `"MiG-31K"`
+- Also tidy the enum comment at `Threat.kt:19`. Everything else (icons, descriptions, zones) uses the internal `AVIATION` key, not the display label, so no other changes needed.
+
+**3. Docs** — tweak `ARCHITECTURE.md:72` and the `CHANGELOG.md` entry to mention the 3-row Small card; add the MiG-31K rename line.
+
+Verify with `.\gradlew.bat :app:assembleDebug`.
+## 17/08/2026, 16:08:11
+
+Now the rename in Threat.kt:
+
+
+## 17/08/2026, 16:08:20
+
+Let me re-read the death overlay to ground the dud-b
+## 17/08/2026, 16:08:51
+
+
+
+
+## 17/08/2026, 16:09:36
+
+Done. Small card is now 3 rows (icon + title, pills alone, then R + skull bars), and the aviation type is renamed to "MiG-31K" / "МіГ-31К" (`Threat.kt:95-96`). Build passes.
