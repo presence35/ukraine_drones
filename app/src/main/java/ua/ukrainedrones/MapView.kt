@@ -20,8 +20,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import org.osmdroid.config.Configuration
@@ -278,10 +280,12 @@ fun NeptunMapView(
     val markerRefs = remember { mutableStateOf<MutableMap<String, Marker>>(mutableMapOf()) }
     val speedTracker = remember { ThreatSpeedTracker() }
     val pausedState by rememberUpdatedState(paused)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
     val iconSetState by rememberUpdatedState(uiState.iconSet)
     val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
     val focusLocationState by rememberUpdatedState(uiState.focusLocation)
+    val deathAnimationEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)
     val deathFx = remember { ThreatDeathOverlay() }
 
     AndroidView(
@@ -640,25 +644,32 @@ fun NeptunMapView(
                                 if (pressedId != null && pressedId == selectedThreatIdState) {
                                     onTempNeutralize(pressedId)
                                 }
-                                val origin = focusLocationState ?: LocationTracker.location.value
-                                val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
-                                keepThreatOnScreen(mapView, target)
-                                deathFx.spawn(
-                                    target,
-                                    origin = origin?.let { GeoPoint(it.lat, it.lon) },
-                                    icon = nearest.icon,
-                                    rotationDeg = nearest.rotation,
-                                    alpha = nearest.alpha,
-                                    hideAtBoom = true
-                                )
-                            } else {
-                                val origin = focusLocationState ?: LocationTracker.location.value
-                                deathFx.spawn(
-                                    GeoPoint(p.latitude, p.longitude),
-                                    origin = origin?.let { GeoPoint(it.lat, it.lon) }
-                                )
+                                if (deathAnimationEnabledState) {
+                                    val origin = focusLocationState ?: LocationTracker.location.value
+                                    val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
+                                    if (deathFx.isActiveFor(pressedId)) {
+                                        // Already being struck — a follow-up projectile just
+                                        // flies off-screen instead of exploding twice.
+                                        deathFx.spawnDud(
+                                            pressedId, target,
+                                            origin = origin?.let { GeoPoint(it.lat, it.lon) }
+                                        )
+                                    } else {
+                                        keepThreatOnScreen(mapView, target)
+                                        deathFx.spawn(
+                                            id = pressedId,
+                                            geo = target,
+                                            origin = origin?.let { GeoPoint(it.lat, it.lon) },
+                                            icon = nearest.icon,
+                                            rotationDeg = nearest.rotation,
+                                            alpha = nearest.alpha,
+                                            hideAtBoom = true
+                                        )
+                                    }
+                                }
+                                return true
                             }
-                            return true
+                            return false
                         }
                     })
                 )
@@ -675,37 +686,61 @@ fun NeptunMapView(
     )
 
         // Death animations: real resolved/remove frames. The threat's own marker icon keeps
-        // rendering in the overlay through the full 5s and is hidden forever only when the
-        // animation completes; without a live marker, fall back to the raw fix + a fresh icon.
+        // rendering in the overlay through the full flight and fades out across the explosion;
+        // without a live marker, fall back to the raw fix + a fresh icon.
         LaunchedEffect(Unit) {
             NeptunClient.removedThreats.collect { r ->
-                if (r.type !in hiddenTypesState) {
-                    val marker = markerRefs.value[r.id]
-                    val anchor = marker?.position ?: GeoPoint(r.lat, r.lon)
+                // Skip resolutions that arrived while the map wasn't visible (Settings open or
+                // app backgrounded): no stale half-consumed animations on return, and no
+                // "bullet to nowhere" duds from threats that appeared and resolved unseen.
+                if (pausedState || lifecycle.currentState < Lifecycle.State.STARTED) return@collect
+                if (r.type in hiddenTypesState || !deathAnimationEnabledState) return@collect
+                val marker = markerRefs.value[r.id]
+                val origin = (focusLocationState ?: LocationTracker.location.value)
+                    ?.let { GeoPoint(it.lat, it.lon) }
+                if (marker == null || deathFx.isActiveFor(r.id)) {
+                    // Already destroyed — a prior bullet landed (the server re-sent the
+                    // resolution), so don't explode where the threat used to be: a follow-up
+                    // projectile just streaks across and off-screen, then is dropped.
+                    deathFx.spawnDud(r.id, GeoPoint(r.lat, r.lon), origin)
+                } else {
+                    // Unhook the real marker right away — the overlay draws its own copy of the
+                    // icon, so keeping the shared marker would render the same drawable twice
+                    // (its bounds/alpha are mutated per frame, and the marker's own draw fights
+                    // back, making the icon flip or change direction mid-flight).
+                    mapViewRef.value?.overlays?.remove(marker)
+                    markerRefs.value.entries.removeAll { it.value === marker }
+                    val anchor = marker.position ?: GeoPoint(r.lat, r.lon)
                     val base = IconCatalog.baseDeg(r.type, iconSetState)
-                    val rotation = marker?.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
-                    val icon = marker?.icon ?: threatIcon(context, r.type, iconSetState)
-                    val origin = focusLocationState ?: LocationTracker.location.value
+                    val rotation = marker.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
+                    // A fresh copy, not the marker's shared drawable.
+                    val icon = threatIcon(context, r.type, iconSetState)
                     // If the resolved threat is off-screen, glide it into view so the strike
                     // is actually seen (never fights the user's own panning — one-time pan).
                     mapViewRef.value?.let { keepThreatOnScreen(it, anchor) }
+                    mapViewRef.value?.invalidate()
                     deathFx.spawn(
-                        anchor,
-                        origin = origin?.let { GeoPoint(it.lat, it.lon) },
+                        id = r.id,
+                        geo = anchor,
+                        origin = origin,
                         icon = icon,
                         rotationDeg = rotation,
-                        alpha = marker?.alpha ?: 1f
+                        alpha = marker.alpha ?: 1f
                     )
                 }
             }
         }
 
-        // Redraw the map at ~60fps while a death animation is playing so the overlay
-        // animates; idle otherwise (no battery cost).
+        // Redraw the map at ~60fps while a death animation is playing and the map is visible,
+        // so the overlay animates; otherwise idle at a slow tick (no battery cost).
         LaunchedEffect(Unit) {
             while (true) {
-                if (deathFx.isActive && !pausedState) mapViewRef.value?.invalidate()
-                delay(16)
+                if (deathFx.isActive && !pausedState && lifecycle.currentState >= Lifecycle.State.STARTED) {
+                    mapViewRef.value?.invalidate()
+                    delay(16)
+                } else {
+                    delay(1000)
+                }
             }
         }
 

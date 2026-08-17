@@ -62,6 +62,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val UkraineBlue = Color(0xFF005BBB)
@@ -100,11 +102,13 @@ fun SettingsScreen(
     threatCardSize: ThreatCardSize,
     iconSet: ThreatIconSet,
     showMapScale: Boolean,
+    deathAnimationEnabled: Boolean,
     fastGroupCollapsed: Boolean,
     slowGroupCollapsed: Boolean,
     versionName: String,
     isChecking: Boolean,
     latestVersion: String?,
+    alertActive: Boolean,
     onBack: () -> Unit,
     onLanguageChange: (AppLanguage) -> Unit,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
@@ -136,6 +140,7 @@ fun SettingsScreen(
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
+    onDeathAnimationChange: (Boolean) -> Unit,
     onFastGroupCollapse: (Boolean) -> Unit,
     onSlowGroupCollapse: (Boolean) -> Unit,
     onExit: () -> Unit,
@@ -157,6 +162,26 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var expandedType by remember { mutableStateOf<ThreatType?>(null) }
+    // One-time explainers: shown when an advanced toggle is flipped for the first time.
+    val explainerPrefs = remember { ZonePrefs(appContext) }
+    val scope = rememberCoroutineScope()
+    val explainerList = remember(s) { explainers(s) }
+    var seenExplainers by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var activeExplainer by remember { mutableStateOf<Explainer?>(null) }
+    LaunchedEffect(Unit) {
+        seenExplainers = explainerList.map { it.id }
+            .filter { explainerPrefs.explainerSeen(it).first() }
+            .toSet()
+    }
+    val showExplainer: (String) -> Unit = { id ->
+        explainerList.firstOrNull { it.id == id }?.let { exp ->
+            if (exp.id !in seenExplainers) {
+                seenExplainers = seenExplainers + exp.id
+                scope.launch { explainerPrefs.setExplainerSeen(exp.id, true) }
+                activeExplainer = exp
+            }
+        }
+    }
     // Fast/Slow groups' collapsed state is persisted (ZonePrefs), so it survives restarts.
     // The "Additional settings" section starts expanded so the scale/icon toggles are visible.
     var additionalExpanded by remember { mutableStateOf(true) }
@@ -278,7 +303,7 @@ fun SettingsScreen(
                             title = s.followMeTitle,
                             description = s.followMeDesc,
                             checked = followMe,
-                            onCheckedChange = onFollowMeChange
+                            onCheckedChange = { v -> showExplainer("followMe"); onFollowMeChange(v) }
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         PinCityRow(
@@ -298,7 +323,7 @@ fun SettingsScreen(
                         ThreatCardSizeSelector(
                             lang = lang,
                             selected = threatCardSize,
-                            onChange = onThreatCardSizeChange
+                            onChange = { v -> showExplainer("cardSize"); onThreatCardSizeChange(v) }
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Spacer(Modifier.height(10.dp))
@@ -391,8 +416,8 @@ fun SettingsScreen(
                             onExpandChange = { expandedType = if (expandedType == type) null else type },
                             hiddenTypes = hiddenTypes,
                             silencedTypes = silencedTypes,
-                            onThreatMapToggle = onThreatMapToggle,
-                            onThreatAlertToggle = onThreatAlertToggle
+                            onThreatMapToggle = { t, v -> showExplainer("threatToggles"); onThreatMapToggle(t, v) },
+                            onThreatAlertToggle = { t, v -> showExplainer("threatToggles"); onThreatAlertToggle(t, v) }
                         )
                     }
                 }
@@ -417,7 +442,7 @@ fun SettingsScreen(
                         fastYellowArmed = nightFastYellowArmed,
                         zoneSirenOverride = nightZoneSirenOverride,
                         officialSirenOverride = nightOfficialSirenOverride,
-                        onEnabledChange = onNightEnabledChange,
+                        onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
                         onStartChange = onNightStartChange,
                         onEndChange = onNightEndChange,
                         onUseCustomZonesChange = onNightUseCustomZonesChange,
@@ -443,7 +468,7 @@ fun SettingsScreen(
                             title = s.officialAlertsTitle,
                             description = s.officialAlertsDesc,
                             checked = officialAlertsEnabled,
-                            onCheckedChange = onOfficialAlertsChange,
+                            onCheckedChange = { v -> showExplainer("officialAlerts"); onOfficialAlertsChange(v) },
                             icon = painterResource(R.drawable.ic_trident),
                             note = s.officialAlertsRedTridentNote
                         )
@@ -452,7 +477,7 @@ fun SettingsScreen(
                             title = s.sirenOverrideTitle,
                             description = s.sirenOverrideDesc,
                             checked = sirenOverride,
-                            onCheckedChange = onSirenOverrideChange,
+                            onCheckedChange = { v -> showExplainer("sirenOverride"); onSirenOverrideChange(v) },
                             icon = painterResource(R.drawable.ic_volume_up),
                             iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -515,6 +540,15 @@ fun SettingsScreen(
                         }
                         AnimatedVisibility(visible = additionalExpanded) {
                             Column {
+                                AlertToggleRow(
+                                    title = s.deathAnimationTitle,
+                                    description = s.deathAnimationDesc,
+                                    checked = deathAnimationEnabled,
+                                    onCheckedChange = onDeathAnimationChange,
+                                    icon = painterResource(R.drawable.ic_skull),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 AlertToggleRow(
                                     title = s.showMapScaleTitle,
                                     description = s.showMapScaleDesc,
@@ -585,23 +619,25 @@ fun SettingsScreen(
                                     }
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                OutlinedButton(
-                                    onClick = onRelaunchSetup,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(Modifier.width(10.dp))
-                                    Text(s.relaunchSetupTitle, fontWeight = FontWeight.SemiBold)
-                                }
                             }
                         }
                     }
+                }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = onRelaunchSetup,
+                    enabled = !alertActive,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(s.relaunchSetupTitle, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -635,6 +671,7 @@ fun SettingsScreen(
                 } else if (latestVersion != null) {
                     Button(
                         onClick = onCheckUpdate,
+                        enabled = !alertActive,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
@@ -651,6 +688,7 @@ fun SettingsScreen(
                 } else {
                     OutlinedButton(
                         onClick = onCheckUpdate,
+                        enabled = !alertActive,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
@@ -689,6 +727,10 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    activeExplainer?.let { exp ->
+        FeatureExplainerDialog(explainer = exp, s = s, onDismiss = { activeExplainer = null })
     }
 
     }

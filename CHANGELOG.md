@@ -2,11 +2,20 @@
 
 ## [Unreleased]
 
+- First-run setup is now a full-screen 4-step wizard: language + tips → icon pack → "What matters to you?" threat grid (tap a type to enable/disable its map markers and alerts together, all on by default) → a preview of the core features with a single Start button. A live alert force-closes the wizard without saving anything — it returns once the alert clears.
+- Settings: "Repeat first setup" moved next to the feature guide button and reworded to «Повторити початкове налаштування» / "Replay first launch"; both it and "Check for updates" are disabled while an alert is active.
+- Settings: advanced toggles (threat types, official alerts, siren override, follow me, card size, night mode) now show a one-time explainer — a visual example plus a real-life scenario — the first time they're flipped ("Got it" dismisses it forever).
+
+- Threat strip: tapping a footer threat type pans the camera onto the nearest threat of that type (no popup), and the cells are bigger — a larger icon with the live count to its right (the pulsing underline bar is gone).
+- Map: fixed a bug where a threat could glide forward along its course while its marker icon faced a wrong or pseudo-random direction (marker movement and icon facing now resolve the course identically).
 - First-run setup is now a guided 4-step walkthrough: language → icon pack → tips + Fast/Slow alert groups (no more per-type toggles) → a quick tour of the core features. Settings → Additional has a "Repeat first setup" button to walk through it again (nothing else is reset).
 - First-run icon-pack step + Settings → Additional: the icon picker is now four stacked full-width rows (Classic, Photos, Army, Comic), each fitting all seven icons side by side — no titles, no scrolling.
 - Settings → Alerts: the vibration strength sliders now give a live preview — a short pulse at the chosen strength while you drag.
 - Threat card: when a selected threat resolves, the popup now crossfades into the compact "Neutralizing…/Neutralized" card instead of vanishing instantly, and the card fades out across the explosion.
 - Death animation: the projectile flight is now 1.5s (impact comes earlier), and the bullet is painted in Ukraine colors (gold head, blue chevron).
+- Death animation: real NEPTUN resolutions no longer leave the live marker on the map during the flight — the overlay renders its own copy of the icon, so the icon can't flip or change direction mid-flight.
+- Death animation: threats that resolve while the map isn't visible (Settings open or the app backgrounded) no longer fire stale or "bullet to nowhere" animations on return.
+- Settings → Additional: new "Neutralizing animation" toggle — turn off the projectile/explosion flourish entirely (the resolved card no longer flips to "Neutralized" and stays put until you close it). When on, the map vibrates briefly the moment the projectile detonates. If the server re-sends a resolution for an already-destroyed threat, the follow-up projectile just flies off-screen instead of exploding where the threat used to be.
 
 - First run: the onboarding sequence is now ordered — language picker, then the "keep alerts running" battery prompt, and only after both the system location/notification dialogs appear (permission dialogs no longer jump the queue). Existing users get the battery prompt once too (skipped automatically when already exempt).
 - Settings → Alerts: new "Vibration" section — independent Fast (missiles) and Slow (drones) strength sliders (Off/Soft/Medium/Strong/Urgent). Android has no per-notification vibration amplitude, so strength is expressed as a pulse pattern; official alerts without a known reason threat always ring with the strongest pattern.

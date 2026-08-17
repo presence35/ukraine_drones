@@ -166,12 +166,13 @@ data class Threat(
         get() = bearingDeg != null && speedKmh != null && confirmedAtMillis != null && status == "active"
 
     /**
-     * Direction to display, mirroring NEPTUN's `predict().heading`: the velocity bearing while
-     * the track is live, otherwise the reported heading, otherwise NEPTUN's deterministic A(id)
-     * pseudo-course (what their own map shows when no course is known). 0 = north.
+     * Direction to display, mirroring `predictPosition`'s heading resolution (the velocity
+     * bearing when present, else the reported heading, else NEPTUN's deterministic A(id)
+     * pseudo-course — what their own map shows when no course is known). 0 = north. Kept in
+     * lockstep with `predictPosition` so a marker that glides along its bearing always faces it.
      */
     val courseDeg: Double
-        get() = if (flying) bearingDeg!! else heading ?: fallbackCourse(id)
+        get() = bearingDeg ?: heading ?: fallbackCourse(id)
     companion object {
         /** NEPTUN's deterministic pseudo-course when no real course is reported (their SDK `A(id)`). */
         fun fallbackCourse(id: String): Double {

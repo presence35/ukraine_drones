@@ -42861,3 +42861,1477 @@ Let me re-read the death overlay to ground the dud-b
 ## 17/08/2026, 16:09:36
 
 Done. Small card is now 3 rows (icon + title, pills alone, then R + skull bars), and the aviation type is renamed to "MiG-31K" / "МіГ-31К" (`Threat.kt:95-96`). Build passes.
+## 17/08/2026, 16:10:08
+
+The dud handling fits cleanly into the existing overlay. Here's the full plan (previous toggle/vibration work **plus** the miss-bullet logic):
+
+## Plan
+
+### A. `ThreatDeathAnimation.kt` — support a "dud" (miss) projectile
+- `ActiveDeath` gains `id: String?` and `dud: Boolean`.
+- `spawn(...)` gains `id: String? = null` (real → `r.id`, temp → `pressedId`).
+- New `fun spawnDud(id: String?, geo: GeoPoint, origin: GeoPoint?)` — no icon, `dud = true`; **returns early if `origin == null`** (no bullet possible → never enters memory).
+- New `fun isActiveFor(id: String?): Boolean = id != null && deaths.any { it.id == id }`.
+- `draw()`:
+  - Prune adds `|| (it.dud && now - it.start > DEATH_EXPLOSION_START_MS)` — duds are removed from memory at boom time (no explosion, no lingering).
+  - Duds skip the ping (`!d.dud`) and the explosion (`!d.dud`); icon is null so it's already skipped.
+  - Flight: for duds the endpoint is extended past the old threat position by the viewport diagonal (recomputed per-frame, so pan/zoom-safe): `tx = x + (dx/dist)*diag`, `ty = y + (dy/dist)*diag`; bullet and rotation use `tx,ty` instead of `x,y`. Result: the follow-up bullet streaks across the screen and exits — it never detonates where the threat *used* to be.
+
+### B. `MapView.kt` — decide real vs. dud at spawn
+- Real collector (~682): hoist `origin`; **if `markerRefs.value[r.id] == null || deathFx.isActiveFor(r.id)`** → the threat is already destroyed → `deathFx.spawnDud(r.id, GeoPoint(r.lat, r.lon), origin)` and skip `keepThreatOnScreen`. Otherwise the normal spawn (now passing `id = r.id`).
+  - This covers all three bullets: the 1st resolves normally (marker present, no active death); the 2nd/3rd duplicates hit `marker == null` and/or `isActiveFor` → duds. Even if all three arrive in the same batch, `isActiveFor` flips true after the first spawn.
+- Temp long-press (~646): add the same guard — if `pressedId != null && deathFx.isActiveFor(pressedId)`, spawn a dud instead of a second full death (still unhooks the marker + fires `onTempNeutralize` as before).
+
+### C. Toggle (from previous plan — unchanged)
+- `ZonePrefs.kt`: `deathAnimationEnabled` pref (default `true`) + getter/setter.
+- `MainViewModel.kt`: `UiState.deathAnimationEnabled`, threaded via `AlertConfig`/flags-combine/`PrefsSnapshot`/`buildUiState`, setter; card gating → when off: `neutralizedThreat` never set and `selectedThreat` holds the frozen snapshot until the user taps X.
+- `Strings.kt` (UA+EN) + `SettingsScreen.kt` row (icon `ic_skull`) + `MainScreen.kt` wiring.
+- `MainScreen.kt` explosion vibration: after `delay(DEATH_EXPLOSION_START_MS)` in the two-phase card effect → `vibrator?.vibrate(VibrationEffect.createWaveform(vibrationPattern(1), -1))`.
+- `MapView.kt`: gate real collector + temp path on `deathAnimationEnabledState` (`rememberUpdatedState`).
+
+### D. Docs
+- `CHANGELOG.md`: toggle bullet + dud behavior.
+- `ARCHITECTURE.md`: `ThreatDeathAnimation` (dud/isActiveFor) + `MapView` (dud branch).
+
+### E. Verify
+- `.\gradlew.bat :app:assembleDebug`
+
+Ready on "go".
+## 17/08/2026, 16:10:23
+
+```
+git add .
+git commit -m "Two card sizes, R bar in small, rename MiG-31K"
+```
+## 17/08/2026, 16:11:17
+
+Now the overlay. First the `ActiveDeath` class + `spawn`/`spawnDud`/`
+## 17/08/2026, 16:11:41
+
+Now the draw logic: prune, ping/explosion guards, and the extended
+## 17/08/2026, 16:12:23
+
+Overlay done. Now the
+## 17/08/2026, 16:12:42
+
+Now `MainViewModel.kt` — UiState field, AlertConfig, flags combine, snapshot, copy, setter,
+## 17/08/2026, 16:13:27
+
+Now the flags-combine (add the pref + `flags[10]`):
+
+
+## 17/08/2026, 16:13:36
+
+Now the `PrefsSnapshot` mapping
+## 17/08/2026, 16:13:46
+
+Now the `buildUiState` copy + card gating. Let me check the copy and the `selectedGone` block context to place `anim
+## 17/08/2026, 16:15:08
+
+Now the card gating in `buildUiState`:
+## 17/08/2026, 16:15:34
+
+Now the setter:
+## 17/08/2026, 16:15:44
+
+Now `Strings.kt`. Let me locate the `Misc` class and UA/EN blocks:
+## 17/08/2026, 16:16:57
+
+Now `SettingsScreen.kt` — params and the toggle
+## 17/08/2026, 16:17:35
+
+Now `MapView.kt` — the updated-state flag, collector gate + dud, temp-path gate + dud:
+## 17/08/2026, 16:18:07
+
+Now the temp long-press path. Let me re-read the current state after my earlier edits:
+## 17/08/2026, 16:18:30
+
+The empty-ground `else` branch is still present — that contradicts the earlier "no long-press on non-threat" requirement, so I'll fold its removal in now too:
+## 17/08/2026, 16:18:41
+
+Now `MainScreen.kt` — wiring and the explosion vibration. First the params:
+## 17/08/2026, 16:18:57
+
+Now the vibration in the two-phase card effect. Let me check imports and add it:
+## 17/08/2026, 16:19:33
+
+Now the docs. Let me read the relevant sections:
+## 17/08/2026, 16:19:55
+
+Now the ARCHITECTURE rows. Let me find the ThreatDeathAnimation and MapView rows:
+## 17/08/2026, 16:20:35
+
+Let me confirm how osmdroid's Marker draws its icon (to pin down the shared-drawable interaction):
+## 17/08/2026, 16:21:26
+
+Now build:
+## 17/08/2026, 16:22:12
+
+Found it. Two confirmed things in the code produce this:
+
+**1. The live marker stays on the map during the whole flight.** For real resolutions, the map rebuild is explicitly skipped while the death animation plays (`MapView.kt:475-479` — `else if (deathFx.isActive)` defers the clear+rebuild until it finishes). So the original `Marker` keeps being drawn by osmdroid for the full animation.
+
+**2. The death overlay draws the *same* `Drawable` instance as that live marker.** The spawn passes `icon = marker.icon` (`MapView.kt:696`), and the overlay then mutates it every frame — `icon.setBounds(-w,-h,w,h)` (a mirrored rect!) and `icon.alpha = fade` (`ThreatDeathAnimation.kt:104-118`). Meanwhile osmdroid's `Marker.drawAt` also calls `setAlpha`/`setBounds` on that exact same shared drawable and renders it rotated by `marker.rotation` each frame (confirmed by disassembling `osmdroid-android-6.1.18.aar`).
+
+So each frame draws **two copies of one shared drawable with two different rotations and competing bounds/alpha writes**. Whenever the marker's rotation and the overlay's captured `rotationDeg` diverge (or the mirrored bounds leak between draws), the icon visibly flips/swivels — the "threat changes direction while the bullet is in motion."
+
+## Proposed fix (small, safe)
+
+In the real-resolution branch (`MapView.kt:692-714`):
+1. **Remove the marker immediately at spawn**, exactly like the TEMP long-press path already does (`MapView.kt:638-639`): `mapView.overlays.remove(marker)` + drop it from `markerRefs`. Now there's only one copy of the icon on screen.
+2. **Hand the overlay its own icon copy** — rasterize `marker.icon` into a fresh `BitmapDrawable` (reuse the pattern in `threatIcon()`/`MapView.kt:98-108`) so the overlay's per-frame `setBounds`/`alpha` mutations can never affect any live marker again.
+
+The deferred rebuild (`:475`) can stay — it just continues delaying the next full rebuild until the animation ends, which is already the current behavior.
+
+Want me to make this change?
+## 17/08/2026, 16:22:22
+
+Two fixes: `PrefsSnapshot` needs the field, and the card branch is in a separate composable without `context` — use `LocalContext.current` there.
+## 17/08/2026, 22:14:48
+
+
+
+
+## 17/08/2026, 22:14:52
+
+Good catches — both are real and they interact with the fix I proposed. Let me verify the two paths and `spawnD
+## 17/08/2026, 22:16:21
+
+
+
+
+## 17/08/2026, 22:16:24
+
+
+
+
+## 17/08/2026, 22:16:32
+
+
+
+
+## 17/08/2026, 22:17:17
+
+Analysis complete. Here's my plan.
+
+## Root cause of the "faces wrong direction" bug
+
+`predictPosition` (marker **movement**) resolves course as `bearingDeg ?: heading` (Prediction.kt:126), but `courseDeg` (marker **facing**) only uses `bearingDeg` when `flying` is true — `bearingDeg != null && speedKmh != null && confirmedAtMillis != null && status == "active"` (Threat.kt:166-174). So when a threat has a velocity bearing but is missing `speedKmh`/`confirmedAt`/active status, the marker **glides forward** along the bearing while the icon **faces** `heading ?: fallbackCourse(id)` — i.e. a wrong or pseudo-random angle. That's why it "sometimes works, sometimes not". Rotation is consumed at MapView.kt:559, MapView.kt:749 (map), MapView.kt:702 (death-animation bullet).
+
+Fix: `courseDeg = bearingDeg ?: heading ?: fallbackCourse(id)` in Threat.kt — identical to `predictPosition`'s resolution. One-line change fixes all three consumers; `courseDeg` isn't used by `AlertService` (no mirror needed). Existing `courseDeg` test (ThreatTest.kt:149) still passes.
+
+## Footer strip (MainScreen.kt:703-743, 1142-1180)
+
+Rework `ThreatStatusCell` from a column (icon / count below / underline) into a row: **bigger icon (~28dp) with the count to its right** (bold, larger), underline pulse stays under the icon. Add per-cell padding + bigger `spacedBy` so 7 cells fit comfortably; the existing `horizontalScroll` remains as fallback for narrow screens.
+
+## Footer tap → pan to the threat
+
+Reuse the existing notification-tap reveal machinery:
+- Add a `revealThreat(t: Threat)` overload in `MainViewModel` that dead-reckons the threat's predicted position via the existing `speedTracker` (so the pan targets where the marker actually is, not the raw fix), then calls the existing `revealThreat(id, lat, lon)` (MainViewModel.kt:982).
+- In the strip loop, pick a representative threat per shown type (nearest to `focusLocation` from `threatsInner` + `threatsOuter`, else first) and wire a `clickable` on `ThreatStatusCell`.
+- MapView already handles the `revealRequest` tick (pan+zoom to keep focus and threat on screen) — no MapView change needed.
+
+One decision before I implement
+## 17/08/2026, 22:18:01
+
+Let me investigate the relevant pieces before finalizing a
+## 17/08/2026, 22:18:53
+
+Both observations are correct, and they change the fix. Here's the full picture.
+
+## Q1 — User-activated vs. NEPTUN: yes, the redraw logic differs
+
+| | User-activated (long-press) | NEPTUN resolution |
+|---|---|---|
+| Marker | Removed **immediately** (`MapView.kt:638-639`) | **Left on the map** — rebuild deferred while `deathFx.isActive` (`MapView.kt:475-479`) → this is the shared-drawable "changes direction" bug |
+| Icon | `hideAtBoom = true` — drops at the explosion | `hideAtBoom = false` — fades across the whole animation |
+| After the flight | Threat is **still live** (no NEPTUN "done" msg) → the deferred rebuild re-creates the marker at the threat's *current* dead-reckoned position | Threat is truly gone → never redrawn |
+| Icon source | `nearest.icon` — but safe, since the marker is already removed so nothing else draws it | `marker.icon` — the **live marker's shared drawable**, mutated per-frame by the overlay while the marker draws it too (`ThreatDeathAnimation.kt:104-118`) |
+
+So my earlier fix applies **only to the NEPTUN branch**; the user path already handles it.
+
+## Q2 — "Super fast bullet to nowhere" after returning
+
+Root cause: the `removedThreats.collect` (`MapView.kt:689`) runs even when the map isn't visible — `pausedState` only means "Settings open," and the collector has no foreground/background gate at all. `NeptunClient._removedThreats` is a `MutableSharedFlow` with `extraBufferCapacity = 16` and the collector stays subscribed while the app is backgrounded (the composition isn't disposed), so:
+
+- Threats that resolve while you're away **spawn deaths in the background**, using real `SystemClock.elapsedRealtime()` start times.
+- On return, a death still within its 5s window draws from the **middle/end of its timeline** → "super fast" bullet. If the threat appeared+resolved between map ticks its marker never existed (`marker == null`) → `spawnDud` (`MapView.kt:691`) → a projectile that streaks through with **no target and no explosion** → "to nowhere." Same artifact when you close Settings over a live resolution.
+
+## Plan
+
+1. **NEPTUN branch** (`MapView.kt:692-714`): remove the marker immediately (`mapView.overlays.remove(marker)` + drop from `markerRefs`, same as the user path) and pass `icon = threatIcon(context, r.type, iconSetState)` — a **fresh drawable** — instead of `marker.icon`. Kills the shared-drawable double-draw (the direction flip) and leaves only one copy on screen. `hideAtBoom=false` stays (threat is gone; icon fades across the explosion).
+2. **Gate the collector on the map actually being visible** (`MapView.kt:689`): skip emissions when `pausedState` (Settings open) **or** the activity lifecycle is below `STARTED` (backgrounded). No deaths spawn while hidden → no stale tail-ends, no "bullets to nowhere" on return, and background resolutions are simply not animated (it's a flourish; the selected-threat "neutralized" card is driven by `MainViewModel`, unaffected).
+3. **Optional** (battery): the `while(true){ ... delay(16) }` invalidate loop (`MapView.kt:721-726`) ticks forever even backgrounded/idle — gate its `delay` on visibility too.
+4. Build `:app:assembleDebug`, add a CHANGELOG line.
+
+User path stays as-is (kept feature). Want me to proceed, including the optional battery gate?
+## 17/08/2026, 22:19:09
+
+Let me check the MainScreen header and the MapView ring source.
+
+
+## 17/08/2026, 22:20:44
+
+## Objective
+- Implement the second batch of UX feedback on the Ukraine Drones Android app: move the "editing day zones" note to the bottom of the alertzones panel, make sliders again affect the map rings (which currently show night values while the panel edits day), fix the missing "All alerts are off" warning, make every Settings section collapsible, add a moon/sun indicator to the alertzones panel and the main header (only when night mode is toggled on), and fix the turtle-emoji vertical alignment.
+
+## Important Details
+- First batch (4 independent bells, slow/fast icons, settings scroll fix, night-mode inversion, feature-guide night card) is **implemented, built, and tested green**. The second batch is **not yet planned or implemented** — the assistant was mid-investigation when the conversation ended.
+- Key decisions already made (first batch): 4 logical bells (slowRed/slowYellow/fastRed/fastYellow) × day+night = **8 prefs keys**, forward-looking only (no old-key migration, beta); night mode keeps its own bells; night mode is **ON by default** (`nightEnabled ?: true`), reframed as "night = critical"; mute warning + "Stop Monitoring & Exit" note added.
+- Root cause of feedback items 2/3/5: the alertzones panel edits **day** zones/bells, but the map rings + tiering use **effective** (night-aware) values (`nightActive && nightUseCustomZones`). During the night window, day sliders appear dead and day-bell muting doesn't trigger the "All alerts are off" warning.
+- User's stated design direction: "The map should respond to what time of day it is"; alertzones panel should indicate active mode with a moon/sun emoji; header moon/sun icon only when night mode toggled on (moon = night window active, sun = day window), nothing when toggled off.
+- User statement to respect: "the night mode on toggle should not activate night mode if it's outside the chosen hours" — i.e., the toggle only enables the schedule; `isNightActive` already enforces the window.
+- Open design questions to resolve with the user (not yet asked): (a) should the alertzones panel edit the **active** mode (sliders always move rings) vs. keep editing day with just an indicator; (b) should the `nightUseCustomZones` gate be removed for two clean day/night modes.
+- Turtle-emoji misalignment likely caused by `Modifier.size(18.dp)` on the emoji `Text` in `SectionCaption` (clips/offsets the glyph); fix by removing the fixed size and relying on `Row(verticalAlignment = CenterVertically)` with natural sizing.
+- No `ic_sun` drawable exists yet (`ic_moon.xml` does); a new sun vector will be needed for header/panel indicators.
+- `nightActive` and `nightEnabled` are already exposed on `UiState`.
+
+## Work State
+### Completed
+- **ZonePrefs.kt**: replaced `redArmedKey`/`yellowArmedKey`/`nightRedArmedKey`/`nightYellowArmedKey` with 8 keys (`slow_red_armed`, `slow_yellow_armed`, `fast_red_armed`, `fast_yellow_armed`, `night_*` versions), all default `true`; flows/setters (`slowRedZoneArmed()`, `setSlowRedZoneArmed()`, …); `nightEnabled` default flipped to `true`.
+- **NightMode.kt**: added `data class ZoneArmed(slowRed, slowYellow, fastRed, fastYellow)`; `NightZones` now holds 4 armed bells; `effectiveArmed(day: ZoneArmed, night: NightZones, useNightZones, nightActive): ZoneArmed`.
+- **MainViewModel.kt**: `UiState`/`PrefsSnapshot`/`NightZonesPrefs`/`AlertConfig` carry the 4 (+ `active*`, `night*`); combine reads 8 armed flows; setters `setSlowRedArmed`/`setSlowYellowArmed`/`setFastRedArmed`/`setFastYellowArmed` (+ night); `setAlertsArmed` sets all 4 (dead code); seedFlow primes all 8.
+- **AlertService.kt** (mirror): 4 armed in `MonitorEvent.State`/`AlertConfig`; `alertTier(id, spatial)` now picks bell by `FastThreatTypes.contains(all[id]?.type)`.
+- **ZonesSheet.kt**: `ZonesPanel` takes 4 armed values + 4 change callbacks; `SectionCaption(text, leading: String?, leadingDesc: String?)` added; 🐢 (U+1F422) on Slow caption, ⚡ (U+26A1) on Fast caption; imports for `sp`/`semantics`/`contentDescription` added.
+- **SettingsScreen.kt**: `NightModeCard` takes 4 armed + callbacks; captions get the emoji; mute warning (`s.nightMuteWarning`) + exit note (`s.nightMuteExitNote`) shown when any night bell off; `listState` is now a parameter (`LazyListState`), `onThreatsScrollHandled` callback resets the tick after `animateScrollToItem(7)`.
+- **MainScreen.kt**: `settingsListState` hoisted via `rememberLazyListState()`; `onThreatsScrollHandled = { scrollToThreatsTick = 0 }`; `ZoneButtons` pills = `activeSlowRedArmed || activeFastRedArmed` (and yellow analog); `alertsOff` = none of 4 active.
+- **Strings.kt**: `nightModeDesc` reframed (UA/EN); added `nightMuteWarning`, `nightMuteExitNote`, `guideNightTitle/Summary/D1..D3` (UA/EN).
+- **FeatureGuide.kt**: `night` entry added after "fast" under `guideCategoryZones`.
+- **FeatureDiagrams.kt**: `GuideDiagram.NIGHT` + `drawNight()` (moon crescent + mini sliders + bell).
+- **NightModeTest.kt**: updated to 4-bell `NightZones`/`ZoneArmed`/`effectiveArmed` asserts.
+- **CHANGELOG.md**: new `[Unreleased]` bullets (4 bells, icons, settings scroll, night on-by-default/inversion, guide night card); old night-mode entry reframed (removed "sleep through everything").
+- **ARCHITECTURE.md**: `NightMode.kt` row + Zone-tiering invariant updated to document per-group×tier bells.
+- **Build verified**: `.\gradlew.bat :app:assembleDebug` — BUILD SUCCESSFUL (only pre-existing warnings); `.\gradlew.bat :app:testDebugUnitTest` — BUILD SUCCESSFUL.
+
+### Active
+- Investigation for the second feedback batch (in plan mode): read `SettingsScreen.kt` LazyColumn structure (items at line 190+: collapsible disclaimer card, then language/map-centre/threat toggles/night mode/photos/card size/additional/updates/exit); globbed for a sun drawable — only `ic_launcher_foreground_trident.xml` exists (no `ic_sun`). No plan for the new batch has been presented to the user yet.
+
+### Blocked
+- (none)
+
+## Next Move
+1. Present a plan for the second batch to the user, including two design questions: (a) alertzones panel edits the **active** mode (sliders always move rings; moon/sun shows which) vs. keeps editing day with indicator only; (b) remove the `nightUseCustomZones` gate so night settings always apply during the window when night mode is on (two clean modes) vs. keep the checkbox.
+2. If confirmed, implement: move `nightNote` to the bottom of `ZonesPanel`; add moon/sun to the alertzones panel header + main header (MainScreen line ~462 gear area, conditional on `uiState.nightEnabled`); create a new `ic_sun.xml` drawable; fix `SectionCaption` emoji alignment (remove `.size(18.dp)`); make Settings sections collapsible.
+3. Re-run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/ZonesSheet.kt`: `ZonesPanel` (nightNote position, 4 bells, SectionCaption emoji alignment).
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: header gear (~line 462, moon/sun icon location), `ZoneButtons`/`alertsOff` logic, `settingsListState` hoisting.
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: NightModeCard, section collapsibility, `listState` param + `onThreatsScrollHandled`.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt` / `AlertService.kt`: effective (night-aware) armed/zone resolution — the "map responds to time of day" behavior.
+- `app/src/main/java/ua/ukrainedrones/NightMode.kt`: `ZoneArmed`, `NightZones`, `effectiveArmed`/`effectiveZoneParams` (`useNightZones` gate is the design question).
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: 8 armed keys + `nightEnabled` default `true`.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: `nightMuteWarning`/`nightMuteExitNote`, `nightModeDesc`, `guideNight*` (UA/EN).
+- `app/src/main/res/drawable/ic_moon.xml`: exists; **no** `ic_sun.xml` yet (needs creation).
+- `app/src/main/java/ua/ukrainedrones/FeatureGuide.kt` + `FeatureDiagrams.kt`: night guide entry + `drawNight()` (done).
+- `app/src/test/java/ua/ukrainedrones/NightModeTest.kt`: 4-bell tests (updated, passing).
+## 17/08/2026, 22:23:07
+
+Got it — pan-only, and no pulse underline. Final plan:
+
+## 1. Footer tap → pan to threat (MainScreen.kt, MainViewModel.kt)
+- `MainViewModel.revealThreat(id, lat, lon, select: Boolean = true)` — existing notification path keeps `select = true`; add `select = false` branch so the camera pans without opening the popup.
+- New `MainViewModel.panToThreat(t: Threat)`: dead-reckon the predicted position via the existing `speedTracker` (targets where the marker actually is), then `revealThreat(t.id, lat, lon, select = false)`.
+- In the strip loop (MainScreen.kt:728), pick the representative threat per shown type (nearest to `focusLocation` from `threatsInner` + `threatsOuter`, else first) and wire `onClick` into the cell. MapView already handles the reveal tick — no MapView change.
+
+## 2. Footer cell layout (MainScreen.kt:1142)
+Replace the column (icon / count-below / pulsing underline) with a simple row: **icon (~26–28dp) + bold count to its right**, per-cell tap padding, larger `spacedBy` so 7 cells fit; `horizontalScroll` stays as fallback. The pulsing underline bar is **removed** (along with the `lineAlpha` infinite-transition).
+
+## 3. Facing bug (Threat.kt:174)
+Change `courseDeg` to `bearingDeg ?: heading ?: fallbackCourse(id)` — matching `predictPosition`'s heading resolution (Prediction.kt:126) exactly, so a marker that glides along its velocity bearing always faces that bearing even when `speedKmh`/`confirmedAt`/status are missing. Fixes MapView.kt:559, :749, :702. Not used by `AlertService` (no mirror). Add a ThreatTest for the non-flying-with-bearing case; existing test still passes.
+
+## Verify
+- `.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`
+- Append a `CHANGELOG.md` `[Unreleased]` entry.
+
+Ready to implement on your go.
+## 17/08/2026, 22:24:22
+
+
+
+
+## 17/08/2026, 22:24:38
+
+I have the full picture now. Here's my plan for the second feedback batch.
+
+## Plan
+
+### 1. Alert-zones panel: edit the ACTIVE mode (fixes sliders + bells + "alerts off" warning)
+- In `MainScreen.kt` (ZonesPanel call, ~line 870) compute `editingNight = uiState.nightActive && uiState.nightUseCustomZones`.
+- Bind the panel to `if (editingNight) night* else day*` values, and route each change callback to the night/day setter accordingly. Result: sliders always move the rings, bells always reflect what the map tiering uses, and the "alarm bells are all off" warning (`MainScreen.kt:678`) triggers for the active set.
+- `ZonesSheet.kt`: add a moon/sun emoji indicator in the title row (🌙 `\uD83C\uDF19` when editing night, ☀️ `\u2600\uFE0F` when day); **move the note to the bottom** of the panel; reframe it to "night zones active (window)" — needs new UA/EN string (drop `nightDayZonesNote`).
+
+### 2. Header moon/sun indicator (feedback #7)
+- `MainScreen.kt` topBar (~line 636, next to gear): when `uiState.nightEnabled` show 🌙 (`ic_moon`) if `uiState.nightActive`, else ☀️ — never shown when night mode is off.
+- Create `app/src/main/res/drawable/ic_sun.xml` (no sun vector exists). `nightActive` is already window-aware (`NightMode.kt:39`), so the toggle already can't activate night outside hours.
+
+### 3. Every Settings section collapsible
+- Merge each `SectionHeader` item + its content item into one `CollapsibleSectionCard` (icon + title + arrow + `AnimatedVisibility`), same pattern as the existing Disclaimers/Additional cards. Sections: Language, Map centre, Card size, Threats, Night mode, Alerts.
+- This keeps LazyColumn indices stable; the Threats scroll target moves from index 7 → 4 (`SettingsScreen.kt:181`). Collapse state via `remember` (resets on reopen, like `additionalExpanded`).
+
+### 4. Turtle-emoji alignment
+- `ZonesSheet.kt` `SectionCaption` (`:154`): the `Modifier.size(18.dp)` on the emoji Text clips it (glyph pinned to top). Wrap in a `Box(Modifier.size(18.dp), Center)`; add `\uFE0F` to ⚡ for emoji presentation. Same fix for the group icons in `SettingsScreen.kt:347`.
+
+### 5. Strings + verify
+- New UA/EN strings (night-editing note, header indicator descriptions).
+- `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`.
+
+One design question before I start
+## 17/08/2026, 22:27:35
+
+Got it. Updated plan with your answers:
+
+## Final plan
+
+### 1. Zones panel edits the active mode + night cue (no text-reading at 3am)
+- `MainScreen.kt` (~line 870): compute `editingNight = uiState.nightActive && uiState.nightUseCustomZones`. Bind panel sliders/bells to night values + night setters when true, else day. Sliders always move the map rings; the "all bells off" warning reflects the active set.
+- **Glanceable night indicator** instead of relying on text:
+  - Moon/sun badge chip (🌙 indigo circle / ☀️ dark circle) in the panel title row — big and immediate.
+  - The panel `Surface` (`MainScreen.kt:831`) gets a subtle **indigo border** while editing night, neutral gray border when day.
+  - Short bottom label only (e.g. "night zones") — keep the moon/border as the primary cue.
+- Remove the old `nightDayZonesNote` top text; add a brief UA/EN bottom string.
+
+### 2. Slow/Fast groups get subtle bordered boxes
+- `ZonesSheet.kt`: wrap each group (caption + 2 `ZoneRow`s) in a `Box` with a 1dp rounded subtle border + padding, separated by spacing — no more scattered look.
+
+### 3. Turtle/lightning alignment
+- `SectionCaption` (`ZonesSheet.kt:154`): remove `.size(18.dp)` on the emoji Text, center it in a `Box(size(18.dp))`; add `\uFE0F` to ⚡. Same fix for the group icons in `SettingsScreen.kt:347`.
+
+### 4. Header moon/sun indicator
+- `MainScreen.kt` topBar next to gear: 🌙 (`ic_moon`) when `nightEnabled && nightActive`, ☀️ when `nightEnabled` but daytime, nothing when night mode off. New `ic_sun.xml` vector needed. (`nightActive` is already window-aware, so the toggle never activates night outside hours.)
+
+### 5. All Settings sections collapsible
+- Merge each section (Language, Map centre, Card size, Threats, Night mode, Alerts) into one `CollapsibleSectionCard` — icon + title + arrow + `AnimatedVisibility` body, matching the existing Disclaimers/Additional pattern. Index-stable; Threats scroll target moves from item 7 → 4 (`SettingsScreen.kt:181`).
+
+### 6. Verify
+- New UA/EN strings; run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+
+Ready to implement when you switch me out of plan mode.
+## 17/08/2026, 22:29:09
+
+
+
+
+## 17/08/2026, 22:29:25
+
+
+
+
+## 17/08/2026, 22:32:19
+
+
+
+
+## 17/08/2026, 22:33:09
+
+Now the MapScreen signature and Main
+## 17/08/2026, 22:33:24
+
+Updated plan with your changes:
+
+## Final plan
+
+### 1. Zones panel title = the mode indicator (no sun, no badge chips)
+- `ZonesSheet.kt` title row: **"Day zones"** when editing day; **"🌙 Night zones 🌙"** (moon flanking both sides) when `editingNight`. Replace `zonesLabel` with new UA/EN strings `dayZonesTitle` / `nightZonesTitle`; drop the old "editing day zones" note and `nightDayZonesNote` entirely.
+- `MainScreen.kt` still routes values/setters to night when `editingNight = nightActive && nightUseCustomZones`, so sliders/bells always affect the rings. Panel `Surface` gets a subtle indigo border while editing night as reinforcement.
+
+### 2. Lightning-emoji fix (Samsung half-bolt)
+- `\u26A1` without a variation selector renders as the monochrome text glyph (the "half bolt tip"). Change `fastAndSlowGroups` (`ThreatTogglePanel.kt:30`) to `"\u26A1\uFE0F"` and update the three `== "\u26A1"` comparisons (`SettingsScreen.kt:352`, `ThreatTogglePanel.kt:137`, `MainScreen.kt:423`) to match. Also fix `ZonesSheet.kt:113` caption.
+
+### 3. Turtle/lightning alignment in captions
+- `SectionCaption` (`ZonesSheet.kt:154`): remove `.size(18.dp)` on the emoji Text, center it in a `Box(size(18.dp))`. Same fix for the group-row icons in `SettingsScreen.kt` (now using the FE0F lightning).
+
+### 4. Slow/Fast bordered groups
+- `ZonesSheet.kt`: wrap each group (caption + 2 `ZoneRow`s) in a 1dp rounded subtle-border `Box` with padding; spacing between groups — no more scattered look.
+
+### 5. Header moon only when appropriate
+- `MainScreen.kt` topBar (next to gear): show `ic_moon` **only** when `nightEnabled && nightActive`; nothing otherwise (no sun, no drawable creation). New UA/EN contentDescription string.
+
+### 6. All Settings sections collapsible
+- Merge each section (Language, Map centre, Card size, Threats, Night mode, Alerts) into one `CollapsibleSectionCard` (icon + title + arrow + `AnimatedVisibility`), matching Disclaimers/Additional. Index-stable; Threats scroll target 7 → 4 (`SettingsScreen.kt:181`).
+
+### 7. Verify
+- New UA/EN strings; run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+
+Ready to implement once you exit plan mode.
+## 17/08/2026, 22:34:08
+
+
+
+
+## 17/08/2026, 22:35:13
+
+
+
+
+## 17/08/2026, 22:36:39
+
+
+
+
+## 17/08/2026, 22:37:09
+
+Adjusting the plan to fold in your two answers: **(a)** explainers for *all* advanced toggles (not just two), **(b)** both just-in-time on-toggle dialogs **and** a staged daily tip queue, plus **(c)** a real Help/Tips section that lists everything and restarts the tour.
+
+## Adjusted Plan
+
+### 1. Centralize the icon helper (unchanged)
+One top-level `fun threatIconRes(type: ThreatType): Int` in `Threat.kt` returning the current placeholders (`ic_threat_*`, `shahed`). Delete the 3 duplicates (`SettingsScreen:879`, `ThreatPopupCard:585`, `MainScreen:929`) and rewire call sites. AI vector drawables later replace only this one function → grid, Settings, popup, map all update.
+
+### 2. Full-screen 3-step wizard (unchanged)
+`WIZARD` screen in `MainScreen`; replace `LanguageChooseDialog` gate at `MainScreen.kt:184`.
+- **Step 1**: existing two-flag picker, live-switch.
+- **Step 2**: "What do you care about" / «Що для вас важливе» — 2-col `LazyVerticalGrid` of threat-type cards (`threatIconRes` + `ThreatTypeCatalog` short label), tap toggles via `setThreatEnabled`, defaults ON, Continue button.
+- **Step 3**: compressed preview rows reusing `guideFeatures(s)` copy + single primary Start button → `setLanguageChosen(true)` → MAP.
+- BackHandler walks 3→2→1; step-1 back exits via `skipLanguageChoose`.
+
+### 3. REPLAY in Settings (unchanged)
+"Replay first launch" / «Повторити початкове налаштування» near `SettingsScreen.kt:459-466` → `onReplayTour()` → new `MainViewModel.clearLanguageChosen()` → MAP so the wizard re-gates.
+
+### 4. `FeatureExplainer` content model (new shared hub)
+New `FeatureExplainer.kt`: `FeatureExplainer(id, title, summary, visualDesc/iconRef, irlScenario)`. One entry per **advanced** feature, teaching order: follow-me/pin, red/yellow zone alerts + radii, fast-objects-sooner, official alerts, threat card size, siren-always, threat-type toggles. This single source feeds all three surfaces below — no copy drift.
+
+### 5. Progressive education — three surfaces, one content source
+- **On-toggle explainer (just-in-time)**: in `SettingsScreen`, flipping any advanced toggle to its on/advanced state shows a one-time `AlertDialog` (visual example + IRL scenario + "Got it"). Persisted per-feature via `ZonePrefs.explainerSeen(id)`.
+- **Staged daily tip queue (slow discovery)**: new `ZonePrefs` state — a persisted queue of feature ids seeded after first-launch completes, plus `nextTipAt` timestamp. Once per day, on app open, pop the head and show a small dismissible in-app tip card under the header ("Got it" / "Learn more" → opens Help at that feature). Features already explained via a toggle are skipped (dedupe). Hidden while an alert is active; never a notification.
+- **Help/Tips section**: new `Screen.HELP` composable listing all `FeatureExplainer` entries (grouped, expandable like the guide) with "Restart first-launch tour" at the top (same REPLAY path) and a "Show tips again" reset (clears seen-flags/queue). Settings entry next to guide/replay.
+
+### 6. Strings + docs + verify
+- EN + UA strings for wizard, replay, explainers, tips, Help section in `Strings.kt`.
+- `CHANGELOG.md` [Unreleased] entries; `ARCHITECTURE.md` module map (`FeatureExplainer.kt`, Help screen, wizard, icon helper, tip queue in `ZonePrefs`).
+- `.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`.
+
+### Scope check
+This is a fairly large change (3 new surfaces + prefs + strings). Proposed build order so we can verify incrementally: **(1)** icon centralization → **(2)** wizard + replay → **(3)** on-toggle explainers → **(4)** daily tips → **(5)** Help screen → strings/docs along the way.
+
+One remaining choice before implementation: the daily tip delivery — I'm proposing an **in-app card under the header** (non-intrusive, no notification permission needed). Prefer that, or a **notification** from `AlertService` instead?
+## 17/08/2026, 22:37:19
+
+
+
+
+## 17/08/2026, 22:37:23
+
+No — the plan is purely additive. Nothing touches the documented invariants:
+
+- **Mirror rule** (MainViewModel ⇄ AlertService zone/focus/alert logic): the shelter feature is UI-only read of a static dataset; it doesn't change `zoneTier`, `ZoneParams`, `reachKm`, `focusAttribution`, `staleAfterMs`, or `predictPosition`, so the two alert paths stay in sync untouched.
+- **New prefs**: one additive `sheltersEnabled` key in `ZonePrefs` — same DataStore, no second store.
+- **New files** (`Shelters.kt` domain, `ShelterScreen.kt` UI) + **additive** `UiState`/`StringSet` fields only.
+
+The only ARCHITECTURE.md change is the module map (adding the two new files' one-line entries) — required by the keep-docs-current rule, but no invariant is rewritten.
+
+Want me to proceed with implementation on this basis?
+## 17/08/2026, 22:37:42
+
+Done. All three changes are in, build + tests pass.
+
+**Footer tap → pan** (`MainScreen.kt:730`, `MainViewModel.kt:997`) — tapping a footer cell pans the camera onto the nearest threat of that type (dead-reckoned position, matching where its marker sits), no popup. Reuses the existing reveal tick; a green ring marks the target for 8s.
+
+**Footer layout** (`MainScreen.kt:1151`) — cells are now a row: 28dp icon with a bold count to its right, comfortable tap padding + `spacedBy(8.dp)` so 7 fit; pulsing underline removed.
+
+**Facing bug** (`Threat.kt:174`) — `courseDeg` now resolves `bearingDeg ?: heading ?: fallbackCourse(id)`, identical to `predictPosition`. A marker that glides along its velocity bearing now always faces it, even without `speedKmh`/`confirmedAt`. Fixed map rotation (MapView.kt:559,749) and death-bullet direction (MapView.kt:702). Added two regression tests.
+
+`CHANGELOG.md` updated under `[Unreleased]`.
+## 17/08/2026, 22:39:02
+
+Answer to the first question:
+
+**Why 17.4 GB:** 14.8 GB (85%) is a single table — `event` (466k rows). It's an append-only event-sourcing log. Every `message.part.updated.1` (304k rows) and `message.updated.1` (121k rows) event stores a **full copy** of the message/part text — no deltas. Single rows reach 4 MB (large tool outputs, file reads, code). Combined with `message` (86k rows) + `part` (371k rows) you get the 17 GB. It only grows; deleting rows doesn't shrink the file without a `VACUUM`.
+
+Now the AGENTS.md question:
+
+
+## 17/08/2026, 22:40:46
+
+Build green
+## 17/08/2026, 22:40:56
+
+Done, `assembleDebug` passes. Summary:
+
+- **Toggle** (`Settings → Additional`): new "Neutralizing animation" switch (`ic_skull`), default on, backed by `death_animation_enabled` pref. When off: no map flourish, no vibration, and the card never flips to "Neutralized" nor auto-dismisses — `selectedThreat` keeps the frozen snapshot until you tap X (`MainViewModel.kt` gating).
+- **Vibration**: `MainScreen.kt` pulses `vibrationPattern(1)` exactly when the projectile detonates (at `DEATH_EXPLOSION_START_MS`).
+- **Dud bullets**: `ThreatDeathAnimation` now tracks `id` (`isActiveFor`); when a resolution arrives for an already-destroyed threat (marker gone or a strike already in flight), `MapView` spawns a `spawnDud` — no ping, no explosion, the projectile extends past the old position by the viewport diagonal, exits the screen, and is pruned from memory at boom time.
+- Also removed the empty-ground long-press spawn you flagged earlier — long-press now only works on a threat marker (`return false` otherwise).
+## 17/08/2026, 22:42:30
+
+Good requirement — a reusable alert-priority gate. Let me study how "active alert" state is represented so I can design it
+## 17/08/2026, 22:44:00
+
+The `UiState` already carries everything needed (`activeZone`, `focusOblastAlertActive`, `mapThreats`, `redCities`), and `MainViewModel.hasActiveAlert()` (`MainViewModel.kt:1014`) already defines a "something's happening" predicate used to suppress the update popup. I'll generalize that into one reusable gate.
+
+## Adjusted Plan — added alert-priority gate
+
+### New: `UiState.alertActive` — single source of truth
+- Add `val alertActive: Boolean = false` to `UiState`, computed **once** in `buildUiState` (near `MainViewModel.kt:696-713`):
+  `alertActive = mapThreats.isNotEmpty() || redCities.isNotEmpty()` (identical to today's `hasActiveAlert()` so behavior doesn't regress).
+- Replace `MainViewModel.hasActiveAlert()` body with `uiState.value.alertActive`. Every future surface just reads this one boolean — no duplicated `||` chains.
+
+### Alert-priority rules wired via the gate
+- **Wizard never blocks the map**: gate the first-launch wizard render on `!uiState.alertActive` (`MainScreen`). At launch during an alert → map shows directly, no wizard.
+- **Alarm mid-wizard → instant close**: `LaunchedEffect(uiState.alertActive)` — if it flips true while the wizard is up, immediately finish the tour (`viewModel.finishFirstLaunch()` → `setLanguageChosen(true)`) and drop to MAP. It can't come back unexpectedly; defaults all-ON make the skipped steps harmless.
+- **Tips gate**: the daily tip banner shows only when `!alertActive`. If an alert trips mid-tip, hide it and **don't consume/advance** the queue so it's not lost. Tips are never shown during an alarm.
+- **Settings buttons**: pass `alertActive` into `SettingsScreen`; disable **"Check for updates"** and **"Replay first launch"** (and the Help entry) with `enabled = !alertActive`. Update-popup gating switches to the same field.
+
+### Reuse story
+`UiState.alertActive` is the single predicate; gating patterns are just `if (!uiState.alertActive) { … }` for overlays and `enabled = !alertActive` for buttons. Future surfaces (Help tips, notification-tap reveals, other dialogs) reuse the same field — nothing else needs to re-derive it. (I'll note this in `ARCHITECTURE.md` under key invariants.)
+
+### Rest of the plan (unchanged from before, restated briefly)
+1. **Icons**: one `threatIconRes()` in `Threat.kt`; delete 3 duplicates; rewire call sites.
+2. **Wizard**: `WIZARD` screen in `MainScreen`; Step 1 flags (live-switch), Step 2 threat grid (`LazyVerticalGrid`, `threatIconRes` + `ThreatTypeCatalog` labels, `setThreatEnabled`, defaults ON), Step 3 preview rows from `guideFeatures(s)` + single Start → `setLanguageChosen(true)` → MAP; BackHandler walks back.
+3. **REPLAY**: Settings button near guide → `clearLanguageChosen()` → MAP (gate: disabled while alert).
+4. **`FeatureExplainer.kt`**: shared model (title, summary, visual example, IRL scenario) per advanced feature (follow/pin, red/yellow zones+radii, fast-objects-sooner, official alerts, card size, siren-always, threat toggles) — feeds all surfaces.
+5. **Education surfaces**: (a) on-toggle one-time explainer dialogs in Settings (persisted via `ZonePrefs.explainerSeen(id)`); (b) daily tip queue in `ZonePrefs` (`tipQueue`, `nextTipAt`) + in-app banner under header, gated on `!alertActive`, dedup vs explainers, "Learn more" → Help; (c) `Screen.HELP` listing all explainers + "Restart tour" + "Show tips again".
+6. **Strings** (EN+UA), **CHANGELOG**, **ARCHITECTURE.md**, then `assembleDebug` + `testDebugUnitTest`.
+
+Build order: icons → wizard+replay+gate → on-toggle explainers → daily tips → Help screen.
+
+Want me to proceed with this, or adjust the alert-gate behavior (e.g. wizard should *not* auto-complete when dismissed by an alarm, but return after the alert clears)?
+## 17/08/2026, 22:44:20
+
+Plan:
+
+1. **DB issue** (informed, no action needed unless you want cleanup) — root cause is the `event` event-sourcing table (14.8 GB, 466k rows, full-text snapshots per update). Fix options if you want to reclaim space: close opencode, back up the file, then delete old `event` rows and `VACUUM`; or keep a retention policy. I can detail this after plan mode.
+
+2. **Edit `C:\Users\Bodi\.config\opencode\AGENTS.md`** — append a short section at the end (after line 47) requiring: before starting an edit, end the response with a simple numbered list of the files to be edited, in edit order. Draft:
+
+```
+## Edit plan preview
+
+When you're about to edit multiple files, at the end of your response
+list them in edit order, one per line:
+
+1. `src/a.ts` — rename func
+2. `src/b.ts` — update caller
+```
+
+Wording/exact placement adjustable. Shall I proceed (after you exit plan mode)?
+## 17/08/2026, 22:47:01
+
+**What's VACUUM?** SQLite's command that rebuilds the whole `.db` file from scratch, keeping only live rows — the standard way to shrink a sqlite file after deleting data. The file is locked while it runs and needs ~equal free disk space.
+
+**Can we shrink it?** Yes, but `VACUUM` alone won't help — that 14.8 GB is *live* data, not free pages. You must first delete rows, then `VACUUM`. Safe sequence: quit opencode → copy a backup → run sqlite3:
+
+```
+DELETE FROM event WHERE created_at < <cutoff>;   -- needs a timestamp col; otherwise by id/seq
+VACUUM;
+```
+
+(Need to check how `event` rows map to time — I'd verify the schema for a timestamp before picking a cutoff.) I can also check opencode docs for a supported prune/cleanup command before we go the manual route.
+
+**Is there data you want?** The `event` table is the full append-only history of every update — it's what lets opencode reconstruct past session contents (every streaming token of every response, tool outputs, file reads). Deleting it doesn't break the app but you'll lose the ability to revisit old chats/history in the TUI. `session`/`message`/`part` (current state) also hold real content. So: keep it if you want old session history; prune aggressively if you don't.
+
+---
+
+**Plan** — two items:
+
+1. **AGENTS.md update** (`C:\Users\Bodi\.config\opencode\AGENTS.md`): append verbatim at the end (after line 47):
+```
+## Edit plan preview
+
+When you're about to edit files, at the end of your response
+list them in edit order, one per line:
+1. src/a.ts
+2. src/b.ts
+```
+
+2. **Optional DB shrink** (needs you to close opencode; I'll provide exact commands): decide a retention cutoff, back up, delete old rows, `VACUUM`.
+
+Want me to include the DB shrink in the plan, or leave it as instructions?
+## 17/08/2026, 22:49:19
+
+`uiState.alertActive` is derived purely in `buildUiState` from live threat/alert data (`mapThreats.isNotEmpty() || redCities.isNotEmpty()`), recomputed every 1s tick. `finishFirstLaunch()`/`setLanguageChosen(true)` never touches it — they're completely independent.
+
+You're right: on alarm, just force the wizard closed with **no persistence**. `languageChosen` stays false, so the wizard reappears after the alert clears and the user can finish whenever. The gate alone does the closing — no `finishFirstLaunch` needed. Dropping it.
+
+Let me read the remaining files I need before
+## 17/08/2026, 22:49:37
+
+
+
+
+## 17/08/2026, 22:50:03
+
+Yes — it's your full conversation log: every prompt **and** every reply, plus every streaming update of each reply (that's what bloats it — each update is a full-text snapshot). Let me check whether opencode has a built-in way to prune it before proposing manual SQL.
+
+
+## 17/08/2026, 22:50:08
+
+Now I'll start implementing. Let me check remaining string names and the ZonesSheet/structure I need.
+## 17/08/2026, 22:50:24
+
+The files have changed since my initial read (MainScreen is now 1306 lines, and there's already an `onRelaunchSetup`). Let me check git status and diff to see what's current.
+
+
+## 17/08/2026, 22:50:39
+
+
+
+
+## 17/08/2026, 22:50:46
+
+The codebase has evolved significantly since my plan — a 4-step setup and `relaunchSetup` already exist. Let me study the current state before adjusting.
+
+
+## 17/08/2026, 22:51:27
+
+The codebase has drifted a lot since my plan — there's now a 4-step `FirstRunSetupDialog` and `relaunchSetup()` already. Let me re-read the current state of the key files before adjusting.
+
+
+## 17/08/2026, 22:51:42
+
+Good news — I have what I need. Yes, it's your full conversation log (prompts **and** replies), and replies are ~99% of the bloat. Two key facts from the research:
+
+- opencode reads sessions from the `message`/`part` projection tables; the `event` table is a durable append-only log (that's the 14.8 GB). No built-in cleanup exists (open GitHub feature requests); community tools (`ocgc`, `opencode-db-clean`) purge **whole sessions**, not just replies — so a targeted SQL delete is the way to keep your prompts.
+- Sizes today: `event` 14.8 GB · `message` 1.37 GB (10,325 user / 75,958 assistant) · `part` 1.0 GB.
+
+Let me check free disk for the backup+VACUUM:
+
+
+## 17/08/2026, 22:51:46
+
+The codebase has evolved significantly — there's now a 4-step dialog-based setup, icon packs, `silencedTypes`, group toggles, and `relaunchSetup()`. I need to ground myself in the current reality before adjusting. Let me re-read the current key
+## 17/08/2026, 22:52:13
+
+Plan ready. Answers + proposed steps:
+
+**Your question:** Yes — `opencode.db` is your full conversation log (prompts + replies + every streaming update + tool outputs + file diffs). Replies are ~99% of it. You can safely drop them; prompts stay.
+
+## Plan
+
+**A. AGENTS.md** — append your exact text to the end of `C:\Users\Bodi\.config\opencode\AGENTS.md`.
+
+**B. Shrink the DB (keep prompts, delete replies)**
+
+1. Fully quit opencode (verify no process holds the file).
+2. Backup: copy `opencode.db` → `D:\` (17 GB, plenty of room; C: has only 20 GB free so don't back up on C:).
+3. `PRAGMA integrity_check;`
+4. Delete replies (run in this order — events/parts reference the messages):
+   - `DELETE FROM event WHERE json_extract(data,'$.info.role')='assistant' OR json_extract(data,'$.messageID') IN (SELECT id FROM message WHERE json_extract(data,'$.role')='assistant');`
+   - `DELETE FROM part WHERE message_id IN (SELECT id FROM message WHERE json_extract(data,'$.role')='assistant');`
+   - `DELETE FROM message WHERE json_extract(data,'$.role')='assistant';`
+5. `VACUUM;` (needs ~2 GB free — fine after step 4)
+6. Integrity check again.
+7. Restart opencode and verify: old sessions still show your prompts, replies gone.
+
+**Expected result:** ~17 GB → ~1.5 GB (user messages keep their embedded summary diffs; prompts preserved).
+
+**Caveats:** no official cleanup tool exists yet, so this is manual SQL; the event log will have per-session sequence gaps (harmless — the UI reads from the `message`/`part` projections). Keep the D: backup until you've verified sessions load correctly.
+
+Also note: an old backup `opencode.db.bak-before-newspop` (2.1 GB) already sits in that folder — could be cleaned up later too.
+
+Approve to proceed?
+## 17/08/2026, 22:52:18
+
+The codebase has drifted heavily from my plan (4-step dialog setup, icon packs, `silencedTypes`, `relaunchSetup` already exist; `iconResFor` is gone). Let me verify the current integration points before presenting an adjusted plan.
+## 17/08/2026, 22:53:19
+
+The codebase has evolved well beyond my original plan (a 4-step dialog setup, `relaunchSetup()`, `IconCatalog` centralizing icons, `hiddenTypes`/`silencedTypes`, night mode, connection status). Let me verify a few current integration points before presenting
+## 17/08/2026, 22:53:49
+
+The codebase has evolved substantially: icons are already centralized in `IconCatalog.kt` (`IconCatalog.res(type, set)`), the setup is now a 4-step `FirstRunSetupDialog`, `relaunchSetup()` already exists, and `hiddenTypes`/`silencedTypes` replaced `disabledTypes`. Let me confirm the wizard invocation structure and the `Screen` enum before presenting
+## 17/08/2026, 22:54:52
+
+Good question. Let me quantify what the "meat" actually costs before proposing the surgical version.
+## 17/08/2026, 22:55:27
+
+
+
+
+## 17/08/2026, 22:55:40
+
+The meat is tiny: assistant **final reply text** is only **23.7 MB** across 31,504 replies. The 719 MB is tool outputs, 99 MB is reasoning. Let me check what keeping the prompt events would cost:
+
+
+## 17/08/2026, 22:55:47
+
+
+
+
+## 17/08/2026, 22:55:54
+
+You're right — I've been patching together a picture while reading, and the codebase has clearly drifted far past the task description's line references. Let me do a thorough, systematic examination of the current state before planning
+## 17/08/2026, 22:56:09
+
+Now let me read the five files
+## 17/08/2026, 22:56:24
+
+MainScreen.kt and Strings.kt were truncated. Let me get the rest of Strings.kt and search MainScreen.kt for the onboarding pieces to confirm line numbers.
+## 17/08/2026, 22:57:17
+
+Now the edits. Imports first:
+## 17/08/2026, 22:57:18
+
+Here is the complete, current picture of `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\SettingsScreen.kt` (1553 lines, read in full).
+
+---
+
+## 1. `SettingsScreen` composable — signature & LazyColumn structure
+
+**Signature (lines 71–147):** 34 state params + 23 callbacks. State params: `lang`, `listState`, `onThreatsScrollHandled`, `scrollToThreatsTick`, `hiddenTypes`, `silencedTypes`, `officialAlertsEnabled`, `sirenOverride`, `fastVibrationLevel`, `slowVibrationLevel`, `nightEnabled`, `nightStartMin`, `nightEndMin`, `nightUseCustomZones`, the 4 night km/min values, 4 night "armed" booleans, `nightZoneSirenOverride`, `nightOfficialSirenOverride`, `disclaimerCollapsed`, `disclaimerReadCount`, `followMe`, `pinnedCity`, `threatCardSize`, `iconSet`, `showMapScale`, `deathAnimationEnabled`, `fastGroupCollapsed`, `slowGroupCollapsed`, `versionName`, `isChecking`, `latestVersion`. Callbacks: `onBack`, `onLanguageChange`, `onThreatMapToggle`, `onThreatAlertToggle`, `onThreatMapToggleAll`, `onThreatAlertToggleAll`, `onOfficialAlertsChange`, `onSirenOverrideChange`, `onFastVibrationChange`, `onSlowVibrationChange`, 13 night callbacks, `onFollowMeChange`, `onPinnedCityChange`, `onDisclaimerCollapse`, `onDisclaimerShown`, `onThreatCardSizeChange`, `onIconSetChange`, `onShowMapScaleChange`, `onDeathAnimationChange`, `onFastGroupCollapse`, `onSlowGroupCollapse`, `onExit`, `onCheckUpdate`, `onOpenGuide`, `onRelaunchSetup`.
+
+**List = single `LazyColumn` (198–702), `Arrangement.spacedBy(16.dp)`, horizontal padding 16.dp.** Items in display order:
+
+| # | Section | Lines |
+|---|---|---|
+| — | TopAppBar (title `s.settingsTitle`, back arrow `onBack`) | 187–196 |
+| 0 | **Disclaimer card** — `WarningTriangle` + `s.disclaimerTitle`, expandable (`disclaimerExpanded`, toggled via `onDisclaimerClick`), body `s.disclaimerBody`; auto-expands first 3 opens | 206–245 |
+| 1 | **Language** — `SectionHeader` (inverted: shows the *target* language label) + row of two `LanguageFlag`s (UA/EN) | 247–273 |
+| 2 | **Map centre** — `SectionHeader(s.mapCenterLabel, LocationOn)`; card with `AlertToggleRow` (followMe) + `PinCityRow` | 275–294 |
+| 3 | **Card size** — `SectionHeader(s.cardSizeLabel, ic_card_size)`; `ThreatCardSizeSelector` + skull note + approx note | 296–329 |
+| 4 | **Threats** — `SectionHeader(s.threatsLabel, Warning)`; then per-group (Fast ⚡ / Slow 🐢) a group-header row (two `IconToggle`s + collapse chevron) followed by per-type `ThreatSettingsCard`s | 331–401 |
+| 5 | **Night mode** — `SectionHeader(s.nightModeLabel, ic_moon)`; `NightModeCard` (time fields, sound overrides, custom zones with `ZoneRow`s) | 403–438 |
+| 6 | **Alerts** — `SectionHeader(s.alertsLabel, Notifications)`; card: official alerts row, siren override row, vibration title/desc + two `VibrationSliderRow`s (fast/slow) | 440–492 |
+| 7 | **Additional settings** (collapsible, starts expanded) — death animation toggle, show-map-scale toggle, `IconSetSelector`, battery status/button, relaunch-setup button | 494–617 |
+| 8 | **Guide button** (standalone `OutlinedButton`) | 619–626 |
+| — | HorizontalDivider | 628–630 |
+| 9 | **Update check** — 3-state button | 632–676 |
+| 10 | **Exit** (error-red `Button`) | 678–689 |
+| — | Footer `"${s.madeBy} · v$versionName"` | 691–701 |
+
+State/hooks at top: `batteryOptimized` (150, refreshed on `ON_RESUME` 152–160), `expandedType` (161), `additionalExpanded` (164), `disclaimerExpanded` (167), `LaunchedEffect` disclaimer count (168–170), scroll-to-threats `LaunchedEffect` that jumps `animateScrollToItem(7)` (179–184).
+
+## 2. Relaunch setup & guide buttons
+
+- **Relaunch setup** — lines **599–612**. An `OutlinedButton` (Refresh icon + `s.relaunchSetupTitle`) inside the **"Additional settings" card** (card 494–617), inside `AnimatedVisibility(visible = additionalExpanded)` (518). So it's hidden when Additional settings is collapsed. Always enabled; calls `onRelaunchSetup`.
+- **Guide button** — lines **619–626**. A standalone `OutlinedButton` (full width, `s.guideSettingsButton`) as its **own LazyColumn item** (not inside any card), directly below the Additional settings card. Always enabled; calls `onOpenGuide`.
+
+## 3. Threat toggles
+
+- Group split comes from `fastAndSlowGroups(lang)` (defined in ThreatTogglePanel.kt lines 25–33; Fast = `FastThreatTypes`, Slow = all others). Consumed at **SettingsScreen line 332**.
+- **Group header rows** (336–385): emoji (18.dp, semantics desc), group title, then two `IconToggle`s (Place = map `onThreatMapToggleAll`, Notifications = alerts `onThreatAlertToggleAll`, both `enabled = true`), then collapse chevron. Whole row clickable → `onFastGroupCollapse`/`onSlowGroupCollapse`. `groupMapOn = types.none { it in hiddenTypes }`, `groupAlertsOn = types.none { it in silencedTypes }`.
+- **Per-type rows** — `ThreatSettingsCard` (386–400), composable defined at **1056–1203**. Card with `ThreatIcon` (36.dp), label/description (title column clickable → expand), and a 96.dp-wide column of two **`ToggleChip`s** (Map/Place + Alerts/Notifications, both `enabled = true`, lines 1123–1136). Expanded body (1139–1200): details text, typical-speed pill, image (`ThreatImages.drawableRes` or `AsyncImage` via `imageRequest`), joke. `onMap = type !in hiddenTypes`, `onAlerts = type !in silencedTypes` (1073–1074).
+- **ThreatTogglePanel.kt** (257 lines) is NOT used inside SettingsScreen. It provides `fastAndSlowGroups` (25–33, used by Settings at 332), `ToggleChip` (37–74, used by `ThreatSettingsCard`), `IconToggle` (78–100, used in group headers), plus `SlimThreatToggles` (108–176) / `SlimTypeRow` / `SlimIconToggle` — these slim variants are used elsewhere (zones-panel expansion, first-launch tips dialog), not in Settings. All toggles hardcode `enabled = true`.
+
+## 4. `IconSetSelector` (1389–1426)
+
+`internal fun IconSetSelector(lang: AppLanguage, selected: ThreatIconSet, onChange: (ThreatIconSet) -> Unit, slot: Dp = IconTileSlot)`. Renders a `Column` of 4 stacked `IconSetTile`s (CLASSIC, PHOTO, ARMY, COMIC), each full-width, `selected` = border 2.dp primary, clicking calls `onChange(set)`. `IconSetTile` (1429–1467) shows one `ThreatIcon` per `IconCatalog.photoTypes()` type in a weighted `Box` row. Used at **line 546** inside Additional settings. Also `IconTileSlot = 36.dp` (1384).
+
+## 5. `LanguageFlag` (1519–1553)
+
+`internal fun LanguageFlag(emoji: String, active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, label: String? = null)`. Rounded box; when active → `UkraineBlue.copy(alpha = 0.25f)` background and the emoji is *dimmed* (`alpha 0.3f`, inverted semantics — the flag you'd switch *to* is colored). Used at 260–271.
+
+## 6. Every button & enabled/disabled conditions
+
+| Button | Lines | Enabled? |
+|---|---|---|
+| TopAppBar back `IconButton` | 191–193 | Always |
+| `LanguageFlag` (UA/EN) | 260–271 | Always (tap = `onLanguageChange`) |
+| `NightTimeField` (start/end, `OutlinedButton`) | 763–774 | Always; opens TimePicker dialog |
+| Battery "Allow" `Button` | 590–595 | Only when `!batteryOptimized` (else the green granted block shows) |
+| **Relaunch setup** `OutlinedButton` | 599–612 | Always (when Additional settings expanded) |
+| **Guide** `OutlinedButton` | 619–626 | Always |
+| **Update check** | 632–676 | 3 states: (a) `isChecking` → `Button` with `enabled = false` + spinner (633–645); (b) `latestVersion != null` → `Button` (download icon, `"${s.updateAvailableButton} · v$latestVersion"`, 646–661); (c) else → `OutlinedButton` Refresh icon (662–675). All three `onClick = onCheckUpdate`. |
+| **Exit** `Button` (error container) | 678–689 | Always |
+| Group header `IconToggle`s (map/alerts) | 362–375 | `enabled = true` |
+| Per-type `ToggleChip`s | 1123–1136 | `enabled = true` |
+| Disclaimer header row | 210–214 | Always (clickable) |
+
+## 7. `SectionHeader` (1469–1489)
+
+`private fun SectionHeader(text: String, icon: Painter)` — Row of 20.dp primary-tinted `Icon` + `Spacer(8.dp)` + `titleMedium` SemiBold `onSurfaceVariant` text, `padding(top = 8.dp)`. Note: takes a `Painter`, so callers wrap vector icons with `rememberVectorPainter(...)` (275, 331, 440) or `painterResource` (251, 296, 403).
+
+## 8. Dialog/toast/popup patterns in Settings
+
+- **Time-picker dialog**: `NightModeCard` uses a single `editing: String?` state ("start"/"end"/null, line 744) driving an `AlertDialog` with `rememberTimePickerState` + Material3 `TimePicker`, confirm = `s.okButton`, dismiss = `s.backButton` (876–900). This is the only `AlertDialog` in the file.
+- **Pin-city dropdown**: `PinCityRow` (1208–1255) uses `ExposedDropdownMenuBox` + `OutlinedTextField` (readOnly, `enabled = !followMe`, `menuAnchor()`) + `ExposedDropdownMenu` with a `DropdownMenuItem` per major city (remembered + sorted by lang). `expanded` state blocks opening while `followMe` is on (1225). Displays selected city label (1220).
+- **No Toasts, no Snackbars, no `Popup`/`Dialog` composables anywhere in SettingsScreen.** The only other popup-ish patterns are `AnimatedVisibility` collapses (disclaimer 232, additional settings 518, threat card 1139) and the `onDisclaimerShown()` side-effect via `LaunchedEffect` (168–170). If you add explainer popups, the file currently has no established pattern beyond these; the existing dialog state pattern (a nullable/String state + `AlertDialog`, as in NightModeCard) is the closest precedent, and `expandedType: ThreatType?` (161) is the existing single-expansion toggle-state pattern.
+
+One structural note for planning: the Threats section header is LazyColumn item index **7** — the scroll-to-threats `LaunchedEffect` hardcodes `animateScrollToItem(7)` (line 181). Adding new top-level items before it (or inside the threats list) would shift that index; `fastAndSlowGroups` list is `items(...)` (not a fixed index), so adding a new threat row type there won't break the index.
+## 17/08/2026, 22:58:10
+
+Here's the picture (from the `part` table — the canonical copy of every part):
+
+| Content | Size | Verdict for vibe analysis |
+|---|---|---|
+| Your prompts (`message` role=user) | 1.33 GB | **Keep** — this is your vibing skill |
+| Assistant final reply text | **23.7 MB** | **Keep** — the meat, nearly free |
+| Assistant reasoning | 99 MB | Optional — model's thinking, shows what it took from your prompts |
+| Tool outputs (95k, up to 4 MB each) | 719 MB | Drop — not your vibes |
+| Attachments / step markers / patches | 38 MB | Mostly drop |
+| `event` table (streaming snapshots of every reply, incl. your prompt events w/ diff bloat) | 14.8 GB | Delete — 100% redundant; prompts survive intact in `message` |
+
+Note: deleting assistant `message` rows would cascade-delete their text parts (FK), so I keep the assistant message metadata rows (only 30 MB) to hold the replies.
+
+**Result: ~17 GB → ~1.6 GB**, keeping every prompt + every final reply.
+
+Answering your question: replies *can* help — the final reply text shows what got through and how the model responded to your framing (cheap to keep). Tool outputs and streaming snapshots tell you nothing about your vibing.
+## 17/08/2026, 22:58:21
+
+All reads complete. Here is the full, current picture of the first-run/onboarding flow, built strictly from the files on disk.
+
+---
+
+# First-run / onboarding setup flow — current state
+
+**One naming note up front:** the flow exists in the code as `FirstRunSetupDialog` (a 4-step pager). The ARCHITECTURE.md entry still calls it `LanguageChooseDialog` — the docs are stale on that name; the actual code is below.
+
+---
+
+## 1. `MainScreen.kt` — the onboarding composables
+
+### Composition in `MainScreen` (`app/src/main/java/ua/ukrainedrones/MainScreen.kt`)
+
+- **L246-258** — comment + gating block: `if (!uiState.languageChosen) { FirstRunSetupDialog(...) }`. Args passed (L249-257):
+  - `current = uiState.language`
+  - `iconSet = uiState.iconSet`
+  - `silencedTypes = uiState.silencedTypes`
+  - `onChoose = { viewModel.setLanguage(it) }`
+  - `onIconSetChange = { viewModel.setThreatIconSet(it) }`
+  - `onGroupAlertToggle = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) }`
+  - `onLater = { viewModel.skipLanguageChoose() }`
+  - Note: the dialog never marks setup complete itself; completion happens through `skipLanguageChoose()` → `setLanguageChosen(true)`, which flips the gate.
+
+### `FirstRunSetupDialog` (L281-336)
+
+- Signature (L282-290): `(current: AppLanguage, iconSet: ThreatIconSet, silencedTypes: Set<ThreatType>, onChoose, onIconSetChange, onGroupAlertToggle, onLater)`.
+- **Step counter** L292: `var step by remember { mutableStateOf(0) }` — pure local `remember`, **not persisted**. Steps are 0-3 (4 total); the title row shows `${step + 1}/4` (L319).
+- **Step titles** (L293-298):
+  - 0 → `s.languageChooseTitle`
+  - 1 → `s.iconSetTitle`
+  - 2 → `s.onboardingTipsTitle`
+  - 3 (`else`) → `s.onboardingFeaturesTitle`
+- **Step bodies** (L327-332):
+  - 0 → `SetupLanguageStep(current, onChoose)`
+  - 1 → `SetupIconPackStep(current, iconSet, onIconSetChange)`
+  - 2 → `SetupAlertGroupsStep(s, current, silencedTypes, onGroupAlertToggle)`
+  - `else` (3) → `SetupFeaturesStep(s)`
+- **Buttons**:
+  - `onDismissRequest = onLater` (L300) — outside-tap / Back dismisses (→ `skipLanguageChoose`).
+  - **Dismiss (left) button** L301-304: if `step > 0` → `step--` labelled `s.backButton` ("Back"/«Назад»); on step 0 → `onLater` labelled `s.languageChooseLater` ("Later"/«Пізніше»).
+  - **Confirm (right) button** L305-311: `if (step < 3) step++ else onLater()`; label `s.nextButton` while `step < 3`, else `s.okButton` (so OK on step 3 also goes through `onLater` → completes setup).
+
+### `SetupLanguageStep` (L338-359)
+- Reads `current: AppLanguage`. Two `LanguageFlag`s — UA (L344-350) and EN (L351-357) — each invokes `onChoose(AppLanguage.UA / .EN)` on click. No other state.
+
+### `SetupIconPackStep` (L361-369)
+- Reads `lang`, `iconSet`; renders `IconSetSelector(lang, selected = iconSet, onChange = onIconSetChange, slot = 28.dp)`. No dialog-local state.
+
+### `SetupAlertGroupsStep` (L371-440)
+- Reads `s: Strings.StringSet`, `lang`, `silencedTypes: Set<ThreatType>`, `onGroupAlertToggle`.
+- Three `OnboardingTipRow`s (L379-393): `onboardingTipTap`, `onboardingTipSettings`, `onboardingTipSiren`, then a divider, then `s.threatsLabel` header (L397-402).
+- **Fast/Slow group toggles** (L404-438): iterates `fastAndSlowGroups(lang)` (from `ThreatTogglePanel.kt`). Per group: `groupAlertsOn = types.none { it in silencedTypes }` (L405); an `IconToggle` with contentDescription `s.threatAlertLabel`, `on = groupAlertsOn`, and `onClick = { onGroupAlertToggle(types, !groupAlertsOn) }` (L430-436). So the dialog writes **group alert state only** — no per-type map toggles here.
+
+### `SetupFeaturesStep` (L442-477)
+- Reads `s`. Filters `guideFeatures(s)` to ids `"live", "zones", "notif", "follow", "night"` (L444-446) and renders `FeatureDiagram` + title/summary rows. No callbacks — purely informational.
+
+### `BatteryOnboardingDialog` (L483-496)
+- Signature: `(s: Strings.StringSet, onAllow: () -> Unit, onLater: () -> Unit)`.
+- `confirmButton` → `onAllow`, labelled `s.batteryAllowButton` (L491); `dismissButton` → `onLater`, labelled `s.batteryLater` (L492); title `s.batteryTitle`, body `s.batteryBody` (L493-494).
+
+### How the battery prompt is gated in `MainScreen` (L260-278)
+- `val batteryExempt = remember { BatteryOptimization.isIgnoringBatteryOptimizations(context) }` (L263).
+- `LaunchedEffect(uiState.languageChosen, uiState.batteryOnboardShown, batteryExempt)` (L264-268): if already exempt, silently `viewModel.setBatteryOnboardShown(true)`.
+- Dialog shown (L269-278) when: `uiState.languageChosen && !uiState.batteryOnboardShown && !batteryExempt`. `onAllow` (L272-275) sets shown **and** calls `BatteryOptimization.requestExemption(context)`; `onLater` (L276) only sets shown. Both paths flip `batteryOnboardShown`, unblocking `MainActivity`'s deferred permission chain.
+
+---
+
+## 2. `MainViewModel.kt` — state and setters
+
+### `UiState` fields (`MainViewModel.kt`)
+- `languageChosen: Boolean = false` — **L91**.
+- `batteryOnboardShown: Boolean = false` — **L92**.
+- `hiddenTypes: Set<ThreatType> = emptySet()` — **L70** — "hidden from the map". Computed in `buildUiState` L702: `hiddenTypes = ThreatType.values().toSet() - mapEnabledTypes` (map-visibility-off types).
+- `silencedTypes: Set<ThreatType> = emptySet()` — **L71** — "alerts off (still on the map, dimmed)". Computed L703: `silencedTypes = ThreatType.values().toSet() - alertedTypes` (alert-off types).
+- Pref flow into these: `prefsSnapshot` combines `threatMapFlow(prefs)` / `threatAlertFlow(prefs)` (L297-298); `languageChosen`/`batteryOnboardShown` come from `PrefsQuad` combine (L323-331), threaded through `buildUiState(...).copy(languageChosen = ..., batteryOnboardShown = ...)` at **L525-526**.
+
+### Functions (exact signatures + pref writes)
+- `fun setLanguage(lang: AppLanguage)` — **L948-950** — `prefs.setLanguage(lang)`.
+- `fun skipLanguageChoose()` — **L952-955** — `prefs.setLanguageChosen(true)`. Doc: "Dismiss the first-run language picker without changing the language."
+- `fun relaunchSetup()` — **L957-964** — writes **both** `prefs.setLanguageChosen(false)` and `prefs.setBatteryOnboardShown(false)`. Doc: "Re-open the first-run setup… Only flips the onboarding-completed flags — no setting is reset." (Wired in MainScreen L199 and SettingsScreen via `relaunchSetupTitle`.)
+- `fun setBatteryOnboardShown(shown: Boolean)` — **L786-788** — `prefs.setBatteryOnboardShown(shown)`.
+- `fun setThreatMapVisible(type: ThreatType, visible: Boolean)` — **L867-872** — `prefs.setThreatMapVisible(type, visible)` then `maybeShowToggleHint(mapToast = true)`.
+- `fun setThreatAlertsEnabled(type: ThreatType, enabled: Boolean)` — **L874-880** — `prefs.setThreatAlertsEnabled(type, enabled)`; **if enabled also `prefs.setThreatMapVisible(type, true)`** (an armed alert is never hidden); then `maybeShowToggleHint(mapToast = false)`.
+- `fun setGroupThreatMapVisible(types: Set<ThreatType>, visible: Boolean)` — **L882-887** — `types.forEach { prefs.setThreatMapVisible(it, visible) }` + hint.
+- `fun setGroupThreatAlertsEnabled(types: Set<ThreatType>, enabled: Boolean)` — **L889-897** — `types.forEach { prefs.setThreatAlertsEnabled(it, enabled); if (enabled) prefs.setThreatMapVisible(it, true) }` + hint.
+
+### `hasActiveAlert()` — **L1013-1015** — exact body:
+```kotlin
+/** True when any threat or official alert is currently active — the update dialog stays hidden then. */
+private fun hasActiveAlert(): Boolean =
+    uiState.value.mapThreats.isNotEmpty() || uiState.value.redCities.isNotEmpty()
+```
+Used at L1031 to suppress the update popup during alerts.
+
+---
+
+## 3. `Strings.kt` — onboarding-related strings and structure
+
+### Structure
+- `object Strings` (L3); `fun get(lang): StringSet` (L4-7) → `UA` (L887-895) or `EN` (L1193-1201).
+- `data class StringSet` (L305-313) wraps 7 sub-tables in order: `onboarding, settings, status, updates, threat, misc, guide`. **Getters** L314-589 — a flat `val x get() = table.x` per field, ordered exactly as the sub-table fields appear (onboarding first: L314-329, then settings, status, updates, threat, misc, guide). Field order inside each `data class` matches the UA/EN constructor order.
+
+### Onboarding-related fields
+| Field | Data class (decl) | Getter | UA | EN |
+|---|---|---|---|---|
+| `languageChooseTitle` | Onboarding L16 | L320 | L598 | L904 |
+| `languageChooseLater` | Onboarding L17 | L321 | L599 | L905 |
+| `okButton` | Onboarding L18 | L322 | L600 | L906 |
+| `nextButton` | Onboarding L19 | L323 | L601 | L907 |
+| `onboardingTipsTitle` | Onboarding L20 | L324 | L602 | L908 |
+| `onboardingTipTap` | Onboarding L21 | L325 | L603 | L909 |
+| `onboardingTipSettings` | Onboarding L22 | L326 | L604 | L910 |
+| `onboardingTipSiren` | Onboarding L23 | L327 | L605 | L911 |
+| `onboardingFeaturesTitle` | Onboarding L24 | L328 | L606 | L912 |
+| `relaunchSetupTitle` | Onboarding L25 | L329 | L607 | L913 |
+| `threatsLabel` | Settings L61 | L362 | L643 | L949 |
+| `iconSetTitle` | Misc L210 | L499 | L792 | L1098 |
+| `batteryTitle` | Misc L188 | L477 | L770 | L1076 |
+| `batteryBody` | Misc L189 | L478 | L771 | L1077 |
+| `batteryAllowButton` | Misc L190 | L479 | L772 | L1078 |
+| `batteryLater` | Misc L191 | L480 | L773 | L1079 |
+| `batteryGranted` | Misc L192 | L481 | L774 | L1080 |
+| `backButton` | Onboarding L14 | L318 | L596 | L902 |
+
+### Block ranges
+- **UA**: `uaOnboarding()` L591-608, `uaSettings()` L610-657, `uaStatus()` L659-699, `uaUpdates()` L701-721, `uaThreat()` L723-762, `uaMisc()` L764-797, `uaGuide()` L799-885; `UA = StringSet(...)` L887-895.
+- **EN**: `enOnboarding()` L897-914, `enSettings()` L916-963, `enStatus()` L965-1005, `enUpdates()` L1007-1027, `enThreat()` L1029-1068, `enMisc()` L1070-1103, `enGuide()` L1105-1191; `EN = StringSet(...)` L1193-1201.
+
+---
+
+## 4. `ZonePrefs.kt` — onboarding-related prefs
+
+- DataStore name: `"zone_prefs"` (L15). Onboarding keys are declared in the key block:
+  - `languageChosenKey = booleanPreferencesKey("language_chosen")` — **L28**.
+  - `batteryOnboardShownKey = booleanPreferencesKey("battery_onboard_shown")` — **L58**.
+- `fun language(): Flow<AppLanguage>` — **L227-233** (defaults UA unless stored `"EN"`); `suspend fun setLanguage(lang)` — L235-239.
+- `fun languageChosen(): Flow<Boolean>` — **L242-243** — `prefs[languageChosenKey] ?: false`.
+- `suspend fun setLanguageChosen(chosen: Boolean)` — **L245-247**.
+- `fun threatMapVisible(type): Flow<Boolean>` — **L158-161** — key `"threat_map_${type.name}"`, default true.
+- `suspend fun setThreatMapVisible(type, visible)` — **L163-165**.
+- `fun threatAlertsEnabled(type): Flow<Boolean>` — **L168-171** — key `"threat_alert_${type.name}"`, default true.
+- `suspend fun setThreatAlertsEnabled(type, enabled)` — **L173-175**.
+- `fun batteryOnboardShown(): Flow<Boolean>` — **L362-363** — `prefs[batteryOnboardShownKey] ?: false`.
+- `suspend fun setBatteryOnboardShown(shown)` — **L365-367**.
+- Helpers (top-level, after the class):
+  - `fun threatMapFlow(prefs): Flow<Set<ThreatType>>` — **L506-511** — combines all `threatMapVisible` flows, emits the set of map-visible types.
+  - `fun threatAlertFlow(prefs): Flow<Set<ThreatType>>` — **L513-518** — combines all `threatAlertsEnabled` flows, emits the set of alert-enabled types.
+- Related one-shots also stored here: `settingsHintRemaining` (L45/250-255, default 10), `threatToggleHintRemaining` (L46/258-263, default 3), `disclaimerReadCount` (L40/186-191).
+
+---
+
+## 5. `MainActivity.kt` — deferred permission gating (L138-155)
+
+`deferPermissionRequests()` (**L143-155**), called from `onCreate` (L73):
+
+```kotlin
+private fun deferPermissionRequests() {
+    lifecycleScope.launch {
+        val prefs = ZonePrefs(applicationContext)
+        val langChosen = prefs.languageChosen().first()
+        val ready = if (langChosen && prefs.batteryOnboardShown().first()) {
+            true
+        } else {
+            combine(prefs.languageChosen(), prefs.batteryOnboardShown()) { l, b -> l && b }
+                .first { it }
+        }
+        if (ready) requestLocationAndNotifications()
+    }
+}
+```
+
+- Fast path: returning users (already `language_chosen && battery_onboard_shown`) get permissions immediately.
+- Slow path: fresh installs subscribe to the DataStore combine until **both** flags flip true (i.e. after the onboarding dialog completes and the battery prompt resolves — including the `batteryExempt` auto-flip in MainScreen L264-268), then `requestLocationAndNotifications()` (L122-136) runs the chained coarse-location → notification permission requests. The doc comment L138-142 states the intent: system dialogs never beat the first-run onboarding.
+
+---
+
+## Cross-cutting notes for planning
+
+- **`languageChosen` is the single master gate** for the entire setup pager (MainScreen L248). Completing or skipping step 3 (OK) and any step's Later/outside-tap both call `skipLanguageChoose()`.
+- **Step 2 mixes two things**: the "A few tips" title/composable is `SetupAlertGroupsStep`, which renders the 3 tip rows **plus** the Fast/Slow group alert toggles (driven by `silencedTypes`, writing via `setGroupThreatAlertsEnabled`). Step 1 (icon pack) writes `prefs.threatIconSet` live as the user taps.
+- **`relaunchSetup()` is the only way the setup can reappear** — it flips both flags back to false; it resets no user settings.
+- The dialog's step counter is ephemeral `remember` — a configuration change (rotation) resets it to step 0.
+## 17/08/2026, 22:58:32
+
+Now the NEPTUN collector + marker
+## 17/08/2026, 22:58:46
+
+Now let me examine the remaining pieces: the icon system (IconCatalog), the current wizard strings in Strings.kt in full, MainViewModel's UiState and existing "maybeShowToggleHint" pattern (which is the existing "on-toggle hint" mechanism), and how the FeatureGuide strings are organized. Let me read the key
+## 17/08/2026, 22:59:16
+
+Let me read the existing `maybeShowToggleHint` pattern (the current on-toggle hint mechanism) and the relevant strings, plus check what "alert hint"
+## 17/08/2026, 22:59:34
+
+Locked in. Final plan:
+
+## Plan
+
+**A. `C:\Users\Bodi\.config\opencode\AGENTS.md`** — append your exact "Edit plan preview" text at the end.
+
+**B. Shrink `opencode.db` (~17.4 GB → ~1.7 GB), keeping prompts + replies + reasoning**
+
+1. Quit opencode fully (no running sessions; verify the file isn't locked).
+2. Backup: `Copy-Item opencode.db D:\opencode.db.bak-<date>` (17 GB).
+3. `PRAGMA integrity_check;`
+4. Deletes (in order):
+   - `DELETE FROM event;` — **14.8 GB** reclaimed (streaming snapshots, 100% redundant; prompts already live in the `message` table)
+   - `DELETE FROM part WHERE json_extract(data,'$.type')='tool';` — **719 MB** (tool outputs)
+   - `DELETE FROM part WHERE json_extract(data,'$.type') IN ('step-start','step-finish','patch','compaction');` — ~16 MB (UI markers/diffs)
+   - **Kept:** all messages (prompts + assistant metadata), `text` parts (your 31,504 final replies, 23.7 MB), `reasoning` parts (99 MB), `file` attachments (10.5 MB), sessions/projects/indexes
+5. `PRAGMA auto_vacuum = INCREMENTAL;` (future deletes reclaim space automatically) then `VACUUM;`
+6. `PRAGMA integrity_check;` again.
+7. Restart opencode; spot-check a few old sessions — prompts and final replies should render; tool calls/step markers gone.
+
+**Safety:** full backup on D: kept until you confirm sessions load correctly.
+
+Optional extra: delete the stale `opencode.db.bak-before-newspop` (2.1 GB) once you're happy.
+
+Approve to execute?
+## 17/08/2026, 23:00:12
+
+`mapView` isn't the variable name — let me check
+## 17/08/2026, 23:00:17
+
+Let me dissect what's actually inside those 1.33 GB of "your prompts
+## 17/08/2026, 23:00:22
+
+I've now got a complete picture of the current state. The codebase has drifted substantially from the task description, so let me lay out the adjusted plan against what actually exists.
+
+## Current reality vs. the task description
+
+| Task said | Actually exists now |
+|---|---|
+| `iconResFor` duplicated at SettingsScreen:879 / ThreatPopupCard:590 | **Already centralized** — `IconCatalog.res(type, set)` + `ThreatIcon` composable (`IconCatalog.kt`) |
+| REPLAY button near guide (`SettingsScreen ~459-466`) | `relaunchSetup()` exists, but the button lives inside the "Additional settings" collapsed card (SettingsScreen **599-612**), not near the guide button (**619-626**) |
+| `threatEnabledFlow` / `setThreatEnabled` | Renamed → `threatMapFlow`/`threatAlertFlow` + `setThreatAlertsEnabled`/`setThreatMapVisible`; state = `hiddenTypes` (map) + `silencedTypes` (alerts) |
+| A plain first-launch language dialog to replace | Now a **4-step dialog** `FirstRunSetupDialog` (Language → Icon pack → Alert groups/tips → Feature tour) at MainScreen **281-336**, gated by `!languageChosen` |
+| Strings at "UA ~206-401, EN ~403-598" | Reorganized: sub-tables (`onboarding/settings/status/updates/threat/misc/guide`) |
+
+Also already present and reusable: a primitive `maybeShowToggleHint` toast (first 3 Map/Alerts toggles, MainViewModel **900-910**) — the seed of on-toggle education, but just a toast, no visual/IRL scenario.
+
+---
+
+## Adjusted plan
+
+### 1. Alert-priority gate (`UiState.alertActive`)
+- Add `val alertActive: Boolean` to `UiState`, derived once in `buildUiState` = `mapThreats.isNotEmpty() || redCities.isNotEmpty()` (identical to today's private `hasActiveAlert()`, MainViewModel **1013-1015**). Replace `hasActiveAlert()` with a read of `uiState.value.alertActive`.
+- This single field then drives: wizard visibility, tip banner visibility, and disabled Settings buttons — reusable everywhere later. Documented in ARCHITECTURE.md as an invariant.
+
+### 2. Replace the 4-step dialog with a **3-step full-screen wizard**
+New full-screen composable `FirstLaunchWizard` (scaffold, covers the map like SETTINGS does), shown when `!uiState.languageChosen && !uiState.alertActive`:
+- **Step 1 — Language**: reuse `LanguageFlag` (already `internal`), live-switch via `setLanguage`.
+- **Step 2 — "What do you care about" / «Що для вас важливе»**: a clean 2–3 column grid of threat types — `ThreatIcon` + short label from `ThreatTypeCatalog.INFO` (`labelUa/labelEn`), tap to toggle on/off, defaults all ON, synced live with Settings state. A single "I care about this" toggle per type = sets **both** map-visible + alerts-enabled (matches the wizard's intent). Continue button.
+- **Step 3 — Preview + Start**: compressed preview rows reusing `guideFeatures(s)` copy (alerts/zones/language/guide) — smaller/simpler than the current `SetupFeaturesStep`. **Single primary Start** button (`setLanguageChosen(true)` → MAP). Minimal buttons.
+- **Force-close on alarm, no save**: the `!alertActive` gate means an incoming alarm instantly removes the wizard from composition — **nothing persisted**, `languageChosen` stays false, so it reappears once the alert clears. No `finishFirstLaunch` on the alarm path. This is exactly your "just force close the modal without saving."
+- **Icon-pack step**: current 4-step has it; Settings already has `IconSetSelector` (line 546). **Decision needed** (below): drop from wizard or fold in.
+
+### 3. REPLAY in Settings
+- Move/add "Replay first launch" / «Повторити початкове налаштування» as its own `OutlinedButton` **right below the guide button** (619-626), wired to existing `onRelaunchSetup` → `relaunchSetup()` (already clears `languageChosen` + `batteryOnboardShown`). Remove the duplicate from inside the Additional-settings card.
+- **Disabled while `alertActive`** (along with Check-for-updates), per your rule.
+
+### 4. Progressive education — three surfaces, one content source
+- **New `FeatureExplainer.kt`**: model (`id, title, summary, visual-example, irl-scenario`) covering the advanced features (threat toggles, follow-me/pin, card size, official alerts, siren override, night mode, fast/slow vibration). One content hub feeds all three surfaces (no copy drift).
+- **On-toggle explainers (just-in-time)**: in Settings, first time an advanced toggle is flipped to its advanced state, show an explainer `AlertDialog` (visual + IRL scenario + "Got it"). Persist per-feature via new `ZonePrefs.explainerSeen(id)` flags. This replaces/extends the current `maybeShowToggleHint` toast.
+- **Staged daily tip queue**: new `ZonePrefs` state (persisted queue seeded after onboarding completes + `nextTipAt`); one small dismissible in-app tip card under the header per day, **gated on `!alertActive`** (if an alarm trips mid-tip, hide and don't consume/advance). "Learn more" → Help at that feature.
+- **Help/Tips section**: new `Screen.HELP` composable listing all explainers (grouped, expandable like the guide) + "Restart first-launch tour" + "Show tips again". Settings entry near guide/replay.
+
+### 5. Strings, CHANGELOG, ARCHITECTURE
+- New EN+UA strings in the sub-table structure (`onboarding` for wizard/replay, a new `help`/tips table or into `misc`).
+- `CHANGELOG.md` [Unreleased] entries; `ARCHITECTURE.md` module map + invariant for `alertActive`.
+
+### Build order (verify incrementally)
+1. `alertActive` gate + Settings disabled buttons
+2. 3-step full-screen wizard (replace dialog) + replay relocation
+3. `FeatureExplainer` + on-toggle dialogs
+4. Daily tip queue + Help screen
+5. Strings/docs, then `assembleDebug` + `testDebugUnitTest`
+
+---
+
+Two decisions before I finalize:
+
+1. **Icon-pack step** — the current wizard has 4 steps including icon-pack selection. Drop it from the new 3-step wizard (it stays available in Settings → icon set), or fold it into one of the 3 steps?
+2. **Scope now vs later** — the education part is large (explainers + daily tips + Help). Build all three in this pass, or land the wizard + alert-gate + on-toggle explainers first, then add daily tips + Help as a follow-up?
+## 17/08/2026, 23:00:53
+
+Mystery solved — **you didn't write 1 GB of prompts.** 99.9% of that 1,285 MB is `summary.diffs`: auto-generated file-change diffs that opencode embeds into user messages during session summarization/compaction. Your actual prompt text lives in the (tiny) `text` parts. Nothing you typed is in that 1.3 GB.
+
+## Final plan
+
+**A. `C:\Users\Bodi\.config\opencode\AGENTS.md`** — append your exact "Edit plan preview" text.
+
+**B. Shrink `opencode.db`: ~17.4 GB → ~0.2 GB**, keeping every prompt, final reply, and reasoning block.
+
+1. Quit opencode fully; verify file not locked.
+2. Backup: `Copy-Item opencode.db D:\opencode.db.bak-<date>`.
+3. `PRAGMA integrity_check;`
+4. Cleanup SQL (in order):
+   - `DELETE FROM event;` — **14.8 GB** (streaming snapshots, redundant)
+   - `DELETE FROM part WHERE json_extract(data,'$.type')='tool';` — **719 MB** (tool outputs)
+   - `DELETE FROM part WHERE json_extract(data,'$.type') IN ('step-start','step-finish','patch','compaction');` — ~16 MB
+   - `UPDATE message SET data = json_remove(data,'$.summary') WHERE json_extract(data,'$.role')='user';` — **~1.28 GB** of summary-diff junk
+   - **Kept:** all messages (prompts + assistant metadata), `text` parts (final replies, 24 MB), `reasoning` parts (99 MB), `file` attachments (10 MB), sessions/projects/indexes
+5. `PRAGMA auto_vacuum = INCREMENTAL;` then `VACUUM;`
+6. `PRAGMA integrity_check;`
+7. Restart opencode; spot-check sessions — prompts, replies, and reasoning should render.
+
+**Caveats:** stripping `summary` means resumed sessions lose their embedded old diffs (harmless — context is rebuilt from git). Event log goes empty; session display reads from `message`/`part`, so all good. Keep the D: backup until verified.
+
+Optional: also delete stale `opencode.db.bak-before-newspop` (2.1 GB).
+
+Approve to execute?
+## 17/08/2026, 23:01:15
+
+The collector is outside the `apply` scope — use `mapViewRef.value
+## 17/08/2026, 23:02:19
+
+BUILD SUCCESSFUL (warnings are pre
+## 17/08/2026, 23:02:33
+
+Done. BUILD SUCCESSFUL.
+
+- **NEPTUN path** (`MapView.kt:689-728`): the resolved marker is now unhooked immediately (`overlays.remove` + dropped from `markerRefs`), and the overlay gets a fresh `threatIcon(...)` copy instead of the marker's shared drawable — kills the mid-flight direction flip. `hideAtBoom=false` stays (icon fades across the explosion).
+- **Visibility gate**: the collector skips resolutions while Settings is open or the app is below `STARTED` — no more stale tail-end or "bullet to nowhere" duds on return.
+- **Battery**: the invalidate loop now ticks at 16ms only while an animation is active *and* the map is visible; otherwise it idles at 1s.
+- CHANGELOG updated.
+## 17/08/2026, 23:03:40
+
+You run them from a **standalone PowerShell** window after quitting opencode (I can't run them myself — I'm running *inside* opencode, which holds the DB open). Steps:
+
+1. **Quit opencode** (close the TUI/desktop completely).
+2. Open a regular PowerShell window.
+3. **Back up first** (the file must not be locked):
+   ```
+   Copy-Item "C:\Users\Bodi\.local\share\opencode\opencode.db" "D:\opencode.db.bak"
+   ```
+4. Run the cleanup (paste this block):
+   ```powershell
+   $db = "C:\Users\Bodi\.local\share\opencode\opencode.db"
+   $sq = "C:\Users\Bodi\AppData\Local\Android\Sdk\platform-tools\sqlite3.exe"
+   & $sq $db "PRAGMA integrity_check;"
+   & $sq $db "DELETE FROM event;"
+   & $sq $db "DELETE FROM part WHERE json_extract(data,'$.type')='tool';"
+   & $sq $db "DELETE FROM part WHERE json_extract(data,'$.type') IN ('step-start','step-finish','patch','compaction');"
+   & $sq $db "UPDATE message SET data=json_remove(data,'$.summary') WHERE json_extract(data,'$.role')='user';"
+   & $sq $db "PRAGMA auto_vacuum=INCREMENTAL; VACUUM;"
+   & $sq $db "PRAGMA integrity_check;"
+   ```
+5. Relaunch opencode and spot-check a few old sessions.
+
+Notes: `VACUUM` is its own step because it can't run inside a transaction — keeping each statement as a separate `& $sq` invocation handles that. It also needs ~1 GB free temp space on C:. If a statement errors, stop and restore from the backup.
+## 17/08/2026, 23:06:16
+
+
+
+
+## 17/08/2026, 23:06:33
+
+Now the cleanup script:
+
+
+## 17/08/2026, 23:08:49
+
+Done.
+
+- AGENTS.md — "Edit plan preview" section appended to the global file.
+- `D:\Desktop\cleanup-opencode-db.ps1` — ready. It backs up first, verifies integrity before/after, deletes the event log + tool outputs + step markers + summary diffs, enables `auto_vacuum`, runs `VACUUM`, and reports before/after size. Aborts on any failure.
+
+When ready: close opencode, then in a regular PowerShell:
+```
+powershell -ExecutionPolicy Bypass -File D:\Desktop\cleanup-opencode-db.ps1
+```
+Type `YES` when prompted, then come back and I'll help verify.
+
+Files edited:
+1. C:\Users\Bodi\.config\opencode\AGENTS.md
+2. D:\Desktop\cleanup-opencode-db.ps1
+## 17/08/2026, 23:27:03
+
+Cleanup verified — all good:
+
+- **17.4 GB → 228 MB**, integrity check `ok`
+- `event` log emptied (20 rows = new activity since restart)
+- `part` kept: text + reasoning + attachments (110,834 rows)
+- `message` intact (86,341) with summary-diffs stripped (the 1 remaining is this session's fresh message)
+
+Your prompts, replies, and reasoning are all preserved. Safe to delete the stale `opencode.db.bak-before-newspop` (2.1 GB) whenever, and the D:\ backup once you're confident.
+## 17/08/2026, 23:27:29
+
+The scope is set: this pass = 4-step full-screen wizard (keeping icon-pack step) + alert gate + replay relocation + on-toggle explainers. Daily tips + Help screen deferred. Let me set up todos and read the current
+## 17/08/2026, 23:27:34
+
+Now let me read the current files in full to ground my edits precisely
+## 17/08/2026, 23:27:40
+
+Let me find the actual
+## 17/08/2026, 23:27:45
+
+The path is `ua/ukrainedrones`. Let me read the key files in full now — MainScreen.kt (1306 lines) and MainViewModel.kt.
+
+
+## 17/08/2026, 23:27:50
+
+
+
+
+## 17/08/2026, 23:27:59
+
+Now let me read the full SettingsScreen.kt and the key parts of MainViewModel.kt, Strings.kt, ZonePrefs.kt, IconCatalog.kt, Threat.kt
+## 17/08/2026, 23:28:06
+
+Let me continue reading SettingsScreen.kt and the key files: MainViewModel, Strings, ZonePrefs, IconCatalog, Threat.
+
+
+## 17/08/2026, 23:28:13
+
+Now let me read MainViewModel.kt, ZonePrefs.kt, IconCatalog.kt, and the relevant Strings.
+## 17/08/2026, 23:28:27
+
+Files involved in the plan:
+
+**New:**
+- `app/src/main/java/ua/ukrainedrones/Shelters.kt` — domain: `Shelter` model + `ShelterIndex` (parse via org.json, Haversine nearest-by-distance, reusing `Prediction.distanceMeters`)
+- `app/src/main/java/ua/ukrainedrones/ShelterScreen.kt` — the nearest-shelters list UI (dark theme, rank by distance, "Open in maps" `geo:` intent)
+- `app/src/main/res/raw/shelters.json` — bundled Odesa dataset (offline fallback)
+- `app/src/test/java/ua/ukrainedrones/ShelterTest.kt` — parsing + ranking + distance tests
+
+**Modified:**
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt` — add `sheltersEnabled` DataStore pref
+- `app/src/main/java/ua/ukrainedrones/Strings.kt` — UA/EN strings (title, button, "Open in maps", empty state, etc.)
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt` — `UiState` fields (shelters enabled/button-visibility, loaded index); load bundled/refresh copy
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt` — nav state to the shelter screen + contextual "Go to shelter" button
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt` — shelter toggle row
+- `app/src/main/java/ua/ukrainedrones/MainActivity.kt` — route navigation to the new screen (same pattern as `Screen.SETTINGS`/`GUIDE`)
+- `app/src/main/java/ua/ukrainedrones/UpdateManager.kt` — optional `shelters.json` refresh via the existing update server
+- `CHANGELOG.md`, `ARCHITECTURE.md`
+
+Optional (only if walking-time / capacity shown): `Prediction.kt` untouched — it already provides `distanceMeters`.
+
+Proceed on this basis?
+## 17/08/2026, 23:28:33
+
+Now let me read the Strings.kt structure (onboarding section + relevant fields), the FeatureGuide.kt, and the ThreatTypeCatalog in Threat.
+## 17/08/2026, 23:28:48
+
+Now let me read the Strings.kt structure — the onboarding section and how the tables
+## 17/08/2026, 23:28:59
+
+Let me read the StringSet delegation area and the onboarding blocks in UA and EN
+## 17/08/2026, 23:29:09
+
+I have a comprehensive picture now. Let me check `fastAndSlowGroups`, the CHANGELOG, and
+## 17/08/2026, 23:31:07
+
+I now have a thorough picture of the current code. Let me check a couple more details — the `FeatureDiagram`/`GuideDiagram` and the `Guide` string table shape —
+## 17/08/2026, 23:31:42
+
+I now have a full picture of the current codebase. Let me check the remaining shared helpers (`fastAndSlowGroups`, `IconToggle`) and the `GuideDiagram` enum before implementing
+## 17/08/2026, 23:33:02
+
+I now have a complete picture of the current codebase. Let me verify the drawable names available for the explainer visual examples.
+
+
+## 17/08/2026, 23:34:16
+
+The picture is complete. The codebase already has: centralized icons (`IconCatalog`/`ThreatIcon`), a 4-step dialog setup, and `relaunchSetup()` (in the wrong place). Now I'll implement. Starting with `MainViewModel` — the `alertActive` gate + a combined `setThreatEnabled` for the wizard grid
+## 17/08/2026, 23:34:37
+
+Now update `hasActiveAlert()` to use the new field, and add a combined `setThreatEnabled` for the wizard grid (mirrors Settings' map+alerts together).
+
+
+## 17/08/2026, 23:36:08
+
+Now ZonePrefs — add the per-explainer "seen" flag for the on-toggle education
+## 17/08/2026, 23:40:23
+
+The current codebase already has centralized icons (`IconCatalog`), a 4-step dialog setup, and `relaunchSetup()`. I now have the complete picture. Let me start implementing, beginning with the `alertActive` gate in
+## 17/08/2026, 23:41:05
+
+## Objective
+- Replace the first-launch setup with a full-screen scaffold wizard (not a plain dialog): Language → Icon pack (kept per user decision) → "What do you care about" threat-type grid → Feature preview + single Start CTA.
+- Add alert-priority gating: `uiState.alertActive` as single source of truth; wizard force-closes on alarm without persisting; tips gated on `!alertActive`; Settings buttons (check version, replay wizard) disabled during alarm.
+- Relocate "Replay first launch" button next to the Feature-guide button; add on-toggle one-time explainers (visual example + IRL scenario) for advanced Settings toggles; add EN+UA strings.
+
+## Important Details
+- User decisions: (1) KEEP the icon-pack step → wizard is 4 steps, not 3; (2) scope = wizard + alert-gate + on-toggle explainers NOW; daily tips + Help/Tips section LATER.
+- Alarm mid-wizard: force-close WITHOUT saving — do NOT call `setLanguageChosen(true)` on the alarm path; `languageChosen` stays false so the wizard reappears after the alert clears. No `finishFirstLaunch()` needed.
+- `uiState.alertActive` is purely derived in `buildUiState` from `mapThreats.isNotEmpty() || redCities.isNotEmpty()`; independent of `languageChosen`/wizard state.
+- "Most urgent screen during threats is always the map"; tips hidden during alerts; if an alert trips mid-tip, hide and don't consume/advance the queue (queue itself deferred).
+- Explainers: for ALL advanced toggles, one-time per feature, persisted via new `ZonePrefs.explainerSeen(id)`; each has visual example + real-life scenario; "Got it" button.
+- Icon centralization is ALREADY DONE in the current codebase — `IconCatalog.res(type, set)` + `ThreatIcon` composable; the task's "duplicated iconResFor" is stale (no duplicates exist).
+- Codebase drifted: first-run flow is now a 4-step `FirstRunSetupDialog` (Language → Icon pack → Tips + Fast/Slow alert groups → Core features), gated by `!uiState.languageChosen`; `relaunchSetup()` already exists and clears `languageChosen`.
+- `relaunchSetupTitle` string currently reads "Повторити перший запуск" / "Repeat first setup" — task wants «Повторити початкове налаштування» / "Replay first launch".
+- Threat state model: `hiddenTypes` (map) + `silencedTypes` (alerts); a type is "on" iff `type !in hiddenTypes && type !in silencedTypes`; wizard grid toggles both together via new `setThreatEnabled`.
+- Strings.kt is sub-table based (`Onboarding/Settings/Status/Updates/Threat/Misc/Guide`); UA Onboarding ~591-608, EN ~897-914; StringSet exposes delegation getters.
+- Build commands: `.\gradlew.bat :app:assembleDebug` and `:app:testDebugUnitTest`; update `CHANGELOG.md` [Unreleased] and `ARCHITECTURE.md`.
+
+## Work State
+### Completed
+- MainViewModel.kt: added `alertActive: Boolean = false` to `UiState`.
+- MainViewModel.kt: `buildUiState` now returns `alertActive = mapThreats.isNotEmpty() || redCities.isNotEmpty()`.
+- MainViewModel.kt: `hasActiveAlert()` now returns `uiState.value.alertActive` (no duplicated predicate).
+- MainViewModel.kt: added `setThreatEnabled(type: ThreatType, enabled: Boolean)` — sets `setThreatMapVisible` + `setThreatAlertsEnabled` together (wizard grid).
+- ZonePrefs.kt: added `explainerSeen(id): Flow<Boolean>` / `setExplainerSeen(id, seen)` using keys `explainer_seen_<id>`.
+
+### Active
+- Full re-examination of current codebase complete: MainScreen.kt (1306 lines), SettingsScreen.kt (~1553 lines), MainViewModel.kt, ZonePrefs.kt, IconCatalog.kt, FeatureGuide.kt, FeatureDiagrams.kt, ThreatTogglePanel.kt, Strings.kt structure, Threat.kt, CHANGELOG.md.
+- Todo list in place; next item is replacing `FirstRunSetupDialog` with the full-screen wizard.
+
+### Blocked
+- None.
+
+## Next Move
+1. Replace `FirstRunSetupDialog` (MainScreen.kt ~281-336) with a full-screen `FirstLaunchWizard` scaffold: 4 steps (0 Language with flags + existing tips; 1 Icon pack via `SetupIconPackStep`; 2 "What do you care about" 2-col grid of `ThreatType.values()` — `ThreatIcon` + `ThreatTypeCatalog.INFO` label, tap toggles `setThreatEnabled`, defaults ON, Continue; 3 preview reusing `guideFeatures` ids notif/zones/lang/live + single Start CTA), gated by `if (!uiState.languageChosen && !uiState.alertActive)`, BackHandler walks steps, alarm auto-removes it with no persistence.
+2. Add wizard strings to Strings.kt (`wizardCareTitle`, `wizardCareSubtitle`, `wizardContinueButton`, `wizardStartButton`) + reword `relaunchSetupTitle`.
+3. SettingsScreen.kt: add `alertActive` param; disable replay + check-update buttons while `alertActive`; move replay button from Additional card (~599-612) to just below the guide button (~619-626); wire MainScreen to pass `alertActive`.
+4. Create `FeatureExplainer.kt` (model + catalog + one-time dialog) and wire on-toggle explainers into Settings toggles (threat map/alerts, official alerts, siren override, follow me, card size, night mode) using `ZonePrefs.explainerSeen`.
+5. Update CHANGELOG.md + ARCHITECTURE.md, then run `assembleDebug` + `testDebugUnitTest`.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: wizard gate (~246-258), `FirstRunSetupDialog` (~281-336), step composables (`SetupLanguageStep`, `SetupIconPackStep`, `SetupAlertGroupsStep`, `SetupFeaturesStep`, `OnboardingTipRow`), `Screen` enum {MAP, SETTINGS, GUIDE}.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: `UiState` (~26-101), `buildUiState`, `hasActiveAlert()`, new `setThreatEnabled`, `relaunchSetup()`, `skipLanguageChoose()`, `maybeShowToggleHint` (~900-910).
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: replay button (599-612), guide button (619-626), threat toggle section (~331+), alert toggles (official/siren/follow-me/card size/night mode).
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: `languageChosen`, `threatMapVisible`/`threatAlertsEnabled`, new `explainerSeen`/`setExplainerSeen`.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: `Onboarding` table (9-26), UA 591-608, EN 897-914, `Guide` table (~217+), StringSet delegation (~305+).
+- `app/src/main/java/ua/ukrainedrones/IconCatalog.kt`: `res(type, set)` + `ThreatIcon` — centralized icon helper (task item already satisfied).
+- `app/src/main/java/ua/ukrainedrones/FeatureGuide.kt`: `guideFeatures(s)` copy source for preview step.
+- `app/src/main/java/ua/ukrainedrones/FeatureDiagrams.kt`: `GuideDiagram` enum + `FeatureDiagram(kind, modifier)`.
+- `app/src/main/java/ua/ukrainedrones/Threat.kt`: `ThreatTypeCatalog.INFO` labels (labelUa/labelEn).
+- `app/src/main/java/ua/ukrainedrones/ThreatTogglePanel.kt`: `fastAndSlowGroups`, `ToggleChip`, `IconToggle`.
+- `CHANGELOG.md`, `ARCHITECTURE.md`: docs to update in [Unreleased] / module map.
+## 17/08/2026, 23:41:33
+
+Groundwork is in place. Let me read the remaining pieces I need before
+## 17/08/2026, 23:41:45
+
+
+
+
+## 17/08/2026, 23:41:56
+
+
+
+
+## 17/08/2026, 23:42:31
+
+Let me look at the SettingsScreen signature and the toggle/update-button locations, plus the check-update button
+## 17/08/2026, 23:42:42
+
+Now I have a full picture. Let me set up the work plan and inspect the Settings toggle locations for the explainers wiring
+## 17/08/2026, 23:43:26
+
+Let me verify the `iconSetTitle` string exists and check `NightModeCard`'s enabled toggle row
+## 17/08/2026, 23:44:05
+
+Now I'll implement. First, the wizard gate and replacement dialog in MainScreen.kt:
+
+
+## 17/08/2026, 23:44:21
+
+
+
+
+## 17/08/2026, 23:44:42
+
+
+
+
+## 17/08/2026, 23:44:46
+
+
+
+
+## 17/08/2026, 23:44:51
+
+
+
+
+## 17/08/2026, 23:44:56
+
+
+
+
+## 17/08/2026, 23:45:17
+
+Wizard done. Now the strings
+## 17/08/2026, 23:45:41
+
+SettingsScreen next — add `
+## 17/08/2026, 23:45:58
+
+Now disable the update-check buttons during
+## 17/08/2026, 23:46:10
+
+Now pass `alertActive` from
+## 17/08/2026, 23:46:57
+
+Steps 1-3 done. Now the explainers. Let me check FeatureDiagrams and the ThreatSettingsCard wiring points
+## 17/08/2026, 23:47:50
+
+Now create the FeatureExplainer with strings support
+
+
+## 17/08/2026, 23:47:59
+
+
+
+
+## 17/08/2026, 23:48:23
+
+Now add the `ExplainerStrings` sub-table to Strings.kt:
+
+
+## 17/08/2026, 23:48:30
+
+
+
+
+## 17/08/2026, 23:50:00
+
+Now wire explainers into SettingsScreen. Add the state machinery
+## 17/08/2026, 23:50:07
+
+
+
+
+## 17/08/2026, 23:50:24
+
+
+
+
+## 17/08/2026, 23:50:31
+
+Now wrap
+## 17/08/2026, 23:51:33
+
+
+
+
+## 17/08/2026, 23:51:50
+
+Now the docs. Let me check CHANGELOG and ARCHITECT
+## 17/08/2026, 23:52:53
+
+Let me verify `setThreatEnabled` exists and check the build. First the todo update, then build
+## 17/08/2026, 23:53:00
+
+Now build
+
+
+## 17/08/2026, 23:53:18
+
+Two issues: `values()` returns an Array (needs `.toList()` for `chunked`), and I over-removed imports. Let me check lines 1050/1086
+## 17/08/2026, 23:53:26
+
+`Icons.Default.Settings`/`Warning` still used — restore those two imports, and fix the `chunked` on enum
+## 17/08/2026, 23:54:18
+
+Build passes. Let me clean up the two name-shadowing warnings
+
+
+## 17/08/2026, 23:54:25
+
+
+
+
+## 17/08/2026, 23:54:52
+
+All steps complete. Both `assembleDebug` and `testDebugUnitTest` pass.
+
+**Done this session:**
+- **MainScreen.kt**: full-screen `FirstLaunchWizard` replaces the old dialog — steps: Language + tips → Icon pack → "What matters to you?" threat grid (2-col, `ThreatIcon` + catalog labels, tap toggles map+alerts together, defaults on) → feature preview + single Start. Gated on `!languageChosen && !alertActive`, so a live alert force-drops it without saving; it returns once the alert clears (MainScreen.kt:246-264).
+- **Strings.kt**: new `wizardCare*`/`wizardStartButton` strings + reworded `relaunchSetupTitle` («Повторити початкове налаштування» / "Replay first launch"); new `ExplainerStrings` sub-table (6 features × title/visual/scenario).
+- **SettingsScreen.kt**: added `alertActive` param; replay button moved next to the guide button, both replay and check-update disabled during an alert; on-toggle explainers wired into follow-me, card size, night mode, official alerts, siren override, and threat type toggles.
+- **FeatureExplainer.kt** (new): `Explainer` + `explainers(s)` catalog + `FeatureExplainerDialog` with a `FeatureDiagram` visual + real-life scenario, "Got it" marks it seen via `ZonePrefs.explainerSeen`.
+- **Docs**: CHANGELOG [Unreleased] + ARCHITECTURE module map updated.
+
+Note: per the scope decision, daily tips and the Help/tips section remain deferred to the follow-up.

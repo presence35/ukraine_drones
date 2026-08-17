@@ -22,7 +22,12 @@ object Strings {
         val onboardingTipSettings: String,
         val onboardingTipSiren: String,
         val onboardingFeaturesTitle: String,
-        val relaunchSetupTitle: String
+        val relaunchSetupTitle: String,
+        val wizardCareTitle: String,
+        val wizardCareSubtitle: String,
+        val wizardCareOn: String,
+        val wizardCareOff: String,
+        val wizardStartButton: String
     )
 
     data class Settings(
@@ -205,6 +210,8 @@ object Strings {
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
         val showMapScaleDesc: String,
+        val deathAnimationTitle: String,
+        val deathAnimationDesc: String,
         val iconSetTitle: String,
         val iconSetClassicLabel: String,
         val iconSetPhotoLabel: String,
@@ -300,6 +307,15 @@ object Strings {
         val neutralizingNote: String
     )
 
+    /** One-time explainer copy. [items] order: threatToggles, officialAlerts, sirenOverride,
+     *  followMe, cardSize, nightMode — each a (title, visual, scenario) triple. */
+    data class ExplainerStrings(
+        val visualLabel: String,
+        val scenarioLabel: String,
+        val gotIt: String,
+        val items: List<Triple<String, String, String>>
+    )
+
     data class StringSet(
         val onboarding: Onboarding,
         val settings: Settings,
@@ -307,7 +323,8 @@ object Strings {
         val updates: Updates,
         val threat: Threat,
         val misc: Misc,
-        val guide: Guide
+        val guide: Guide,
+        val explainers: ExplainerStrings
     ) {
         val appTitle: String get() = onboarding.appTitle
         val officialAlertBanner: String get() = onboarding.officialAlertBanner
@@ -325,6 +342,11 @@ object Strings {
         val onboardingTipSiren: String get() = onboarding.onboardingTipSiren
         val onboardingFeaturesTitle: String get() = onboarding.onboardingFeaturesTitle
         val relaunchSetupTitle: String get() = onboarding.relaunchSetupTitle
+        val wizardCareTitle: String get() = onboarding.wizardCareTitle
+        val wizardCareSubtitle: String get() = onboarding.wizardCareSubtitle
+        val wizardCareOn: String get() = onboarding.wizardCareOn
+        val wizardCareOff: String get() = onboarding.wizardCareOff
+        val wizardStartButton: String get() = onboarding.wizardStartButton
         val zonesLabel: String get() = settings.zonesLabel
         val redZoneLabel: String get() = settings.redZoneLabel
         val yellowZoneLabel: String get() = settings.yellowZoneLabel
@@ -492,6 +514,8 @@ object Strings {
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
         val showMapScaleDesc: String get() = misc.showMapScaleDesc
+        val deathAnimationTitle: String get() = misc.deathAnimationTitle
+        val deathAnimationDesc: String get() = misc.deathAnimationDesc
         val iconSetTitle: String get() = misc.iconSetTitle
         val iconSetClassicLabel: String get() = misc.iconSetClassicLabel
         val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
@@ -582,6 +606,9 @@ object Strings {
         val neutralizedNote: String get() = guide.neutralizedNote
         val neutralizingLabel: String get() = guide.neutralizingLabel
         val neutralizingNote: String get() = guide.neutralizingNote
+        val explainerVisualLabel: String get() = explainers.visualLabel
+        val explainerScenarioLabel: String get() = explainers.scenarioLabel
+        val explainerGotIt: String get() = explainers.gotIt
     }
 
     private fun uaOnboarding() = Onboarding(
@@ -600,7 +627,12 @@ object Strings {
         onboardingTipSettings = "У Налаштуваннях (шестерня) — зони тривог, мова та путівник по функціях.",
         onboardingTipSiren = "Сирена за замовчуванням слідує за режимом звуку телефона — увімкни «Сирена звучить завжди», щоб змінити.",
         onboardingFeaturesTitle = "Основні можливості",
-        relaunchSetupTitle = "Повторити перший запуск",
+        relaunchSetupTitle = "Повторити початкове налаштування",
+        wizardCareTitle = "Що для вас важливо?",
+        wizardCareSubtitle = "Оберіть типи загроз, про які сповіщати та показувати на мапі. Усе увімкнено за замовчуванням.",
+        wizardCareOn = "Сповіщати",
+        wizardCareOff = "Вимкнено",
+        wizardStartButton = "Почати",
     )
 
     private fun uaSettings() = Settings(
@@ -783,6 +815,8 @@ object Strings {
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
         showMapScaleDesc = "Масштабна шкала в нижньому правому куті карти.",
+        deathAnimationTitle = "Анімація знешкодження",
+        deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу знешкоджено.",
         iconSetTitle = "Іконки загроз",
         iconSetClassicLabel = "Класичні",
         iconSetPhotoLabel = "Фото",
@@ -878,6 +912,44 @@ object Strings {
         neutralizingNote = "Снаряд у дорозі — наша зброя вже ближче до цілі.",
     )
 
+    private fun uaExplainers() = ExplainerStrings(
+        visualLabel = "Як це працює",
+        scenarioLabel = "Приклад із життя",
+        gotIt = "Зрозуміло",
+        items = listOf(
+            Triple(
+                "Свої типи загроз",
+                "Кожен тип має окремі перемикачі «Мапа» та «Сповіщення» — на мапі й у сирені буде лише те, що ти обрав.",
+                "Вимкни нічний шум (розвідку чи FPV), але лиши ракети й БпЛА — критичні тривоги не проґавиш."
+            ),
+            Triple(
+                "Офіційні тривоги",
+                "Сповіщення обласних адміністрацій про повітряну тривогу, незалежне від даних про дрони.",
+                "Офіційна сирена — найнадійніший сигнал: дій за нею, навіть якщо координати дронів ще неточні."
+            ),
+            Triple(
+                "Сирена завжди",
+                "Сирена дзвонить навіть у беззвучному чи вібро-режимі телефону.",
+                "Увімкни, щоб почути тривогу в навушниках або коли звук телефону вимкнено."
+            ),
+            Triple(
+                "Слідувати за мною",
+                "Карта та зони тривог автоматично слідують за твоїм GPS-положенням.",
+                "Під час руху містом зони оновлюються навколо тебе — карту не треба рухати вручну."
+            ),
+            Triple(
+                "Розмір карток",
+                "Розмір карток загроз, що виїжджають знизу при натисканні на об'єкт.",
+                "Мала картка менше перекриває мапу — курс і точність залишаються на екрані."
+            ),
+            Triple(
+                "Нічний режим",
+                "Окрема конфігурація зон і сирен на нічні години.",
+                "Вночі можна дзвонити лише для критичних загроз — щоб не будити родину."
+            )
+        )
+    )
+
     private val UA = StringSet(
         uaOnboarding(),
         uaSettings(),
@@ -886,6 +958,7 @@ object Strings {
         uaThreat(),
         uaMisc(),
         uaGuide(),
+        uaExplainers(),
     )
 
     private fun enOnboarding() = Onboarding(
@@ -904,7 +977,12 @@ object Strings {
         onboardingTipSettings = "Settings (gear icon) holds alert zones, language and the feature guide.",
         onboardingTipSiren = "Sirens follow your phone's sound mode by default — turn on \"Sirens always sound\" to change it.",
         onboardingFeaturesTitle = "Core features",
-        relaunchSetupTitle = "Repeat first setup",
+        relaunchSetupTitle = "Replay first launch",
+        wizardCareTitle = "What matters to you?",
+        wizardCareSubtitle = "Choose the threat types you want alerts and map markers for. Everything is on by default.",
+        wizardCareOn = "Alert",
+        wizardCareOff = "Off",
+        wizardStartButton = "Start",
     )
 
     private fun enSettings() = Settings(
@@ -1087,6 +1165,8 @@ object Strings {
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
         showMapScaleDesc = "Scale bar in the map's bottom-right corner.",
+        deathAnimationTitle = "Neutralizing animation",
+        deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is neutralized.",
         iconSetTitle = "Threat icons",
         iconSetClassicLabel = "Classic",
         iconSetPhotoLabel = "Photos",
@@ -1182,6 +1262,44 @@ object Strings {
         neutralizingNote = "Projectile in flight — our strike is closing in on the target.",
     )
 
+    private fun enExplainers() = ExplainerStrings(
+        visualLabel = "How it works",
+        scenarioLabel = "In real life",
+        gotIt = "Got it",
+        items = listOf(
+            Triple(
+                "Your threat types",
+                "Each type has separate Map and Alerts switches — the map and siren only show what you picked.",
+                "Turn off the nightly noise (recon or FPV) but keep missiles and UAVs on — you won't miss critical alerts."
+            ),
+            Triple(
+                "Official alerts",
+                "Oblast-level air-raid warnings, independent of the drone feed.",
+                "An official siren is the most reliable signal — follow it even when drone positions are still vague."
+            ),
+            Triple(
+                "Sirens always sound",
+                "Sirens ring even on silent or vibrate.",
+                "Turn it on to hear an alert through headphones or when your phone is muted."
+            ),
+            Triple(
+                "Follow me",
+                "The map and alert zones automatically follow your GPS position.",
+                "Moving through the city, zones update around you — no need to pan the map manually."
+            ),
+            Triple(
+                "Card sizes",
+                "The size of threat cards that slide up when you tap an object.",
+                "A small card covers less of the map — course and precision stay on screen."
+            ),
+            Triple(
+                "Night mode",
+                "A separate set of zones and sirens for night hours.",
+                "At night you can ring only for critical threats — so you don't wake the family."
+            )
+        )
+    )
+
     private val EN = StringSet(
         enOnboarding(),
         enSettings(),
@@ -1190,6 +1308,7 @@ object Strings {
         enThreat(),
         enMisc(),
         enGuide(),
+        enExplainers(),
     )
 
 }

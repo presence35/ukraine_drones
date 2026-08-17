@@ -47,6 +47,7 @@ class ZonePrefs(private val context: Context) {
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
     private val threatIconSetKey = stringPreferencesKey("threat_icon_set")
     private val showMapScaleKey = booleanPreferencesKey("show_map_scale")
+    private val deathAnimationEnabledKey = booleanPreferencesKey("death_animation_enabled")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
     private val fastGroupCollapsedKey = booleanPreferencesKey("fast_group_collapsed")
     private val slowGroupCollapsedKey = booleanPreferencesKey("slow_group_collapsed")
@@ -173,6 +174,16 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[booleanPreferencesKey("threat_alert_${type.name}")] = enabled }
     }
 
+    /** Whether the advanced-feature explainer for [id] has been shown once. */
+    fun explainerSeen(id: String): Flow<Boolean> {
+        val key = booleanPreferencesKey("explainer_seen_$id")
+        return context.dataStore.data.map { prefs -> prefs[key] ?: false }
+    }
+
+    suspend fun setExplainerSeen(id: String, seen: Boolean) {
+        context.dataStore.edit { it[booleanPreferencesKey("explainer_seen_$id")] = seen }
+    }
+
     /** Whether the "follow official guidelines" disclaimer card is collapsed. */
     fun disclaimerCollapsed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[disclaimerCollapsedKey] ?: false }
@@ -291,6 +302,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setShowMapScale(show: Boolean) {
         context.dataStore.edit { it[showMapScaleKey] = show }
+    }
+
+    /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */
+    fun deathAnimationEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[deathAnimationEnabledKey] ?: true }
+
+    suspend fun setDeathAnimationEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[deathAnimationEnabledKey] = enabled }
     }
 
     /** Whether the pre-migration osmdroid tile caches have already been deleted. */

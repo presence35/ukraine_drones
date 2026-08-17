@@ -93,10 +93,12 @@ data class UiState(
     val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
     val iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     val showMapScale: Boolean = true,
+    val deathAnimationEnabled: Boolean = true,
     val fastGroupCollapsed: Boolean = false,
     val slowGroupCollapsed: Boolean = false,
     val fastVibrationLevel: Int = 3,
-    val slowVibrationLevel: Int = 3
+    val slowVibrationLevel: Int = 3,
+    val alertActive: Boolean = false        // any threat or official alert live right now
 )
 
 /** One-shot request from a notification tap to bring the camera onto a threat. */
@@ -226,6 +228,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet,
         val showMapScale: Boolean,
+        val deathAnimationEnabled: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
         val fastVibrationLevel: Int,
@@ -262,6 +265,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val sirenOverride: Boolean,
         val followMe: Boolean,
         val showMapScale: Boolean,
+        val deathAnimationEnabled: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean
     )
@@ -308,12 +312,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.sirenOverride(),
             prefs.followMe(),
             prefs.showMapScale(),
+            prefs.deathAnimationEnabled(),
             prefs.fastGroupCollapsed(),
             prefs.slowGroupCollapsed()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4],
-                flags[5], flags[6], flags[7], flags[8], flags[9]
+                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10]
             )
         },
         combine(
@@ -381,6 +386,7 @@ combine(
             cardSize = c.cardSize,
             iconSet = c.iconSet,
             showMapScale = b.showMapScale,
+            deathAnimationEnabled = b.deathAnimationEnabled,
             fastGroupCollapsed = b.fastGroupCollapsed,
             slowGroupCollapsed = b.slowGroupCollapsed,
             fastVibrationLevel = vib.first,
@@ -480,7 +486,8 @@ val uiState: StateFlow<UiState> = combine(
             selected = live.selected,
             now = live.now,
             reveal = live.reveal,
-            tempNeutralizedId = live.tempNeutralizedId
+            tempNeutralizedId = live.tempNeutralizedId,
+            deathAnimationEnabled = prefs.deathAnimationEnabled
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
@@ -521,6 +528,7 @@ val uiState: StateFlow<UiState> = combine(
             threatCardSize = prefs.cardSize,
             iconSet = prefs.iconSet,
             showMapScale = prefs.showMapScale,
+            deathAnimationEnabled = prefs.deathAnimationEnabled,
             fastGroupCollapsed = prefs.fastGroupCollapsed,
             slowGroupCollapsed = prefs.slowGroupCollapsed,
             fastVibrationLevel = prefs.fastVibrationLevel,
@@ -548,8 +556,10 @@ val uiState: StateFlow<UiState> = combine(
         selected: Threat?,
         now: Long,
         reveal: RevealRequest?,
-        tempNeutralizedId: String?
+        tempNeutralizedId: String?,
+        deathAnimationEnabled: Boolean
     ): UiState {
+        val animOn = deathAnimationEnabled
         val params = effectiveParams
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
         val focusLocation = if (followMe) userLocation
@@ -636,7 +646,10 @@ val uiState: StateFlow<UiState> = combine(
                 t.status == "resolved" || t.areaOnly || t.isGhost(now)
             } ?: true) || selected.id == tempNeutralizedId
             )
-        val neutralizedThreat = if (selectedGone) selected else null
+        // With the death animation disabled the card never flips to the "Neutralized" compact
+        // form nor auto-dismisses: it stays open on the last-known snapshot until the user
+        // closes it, so nothing animates anywhere.
+        val neutralizedThreat = if (selectedGone && animOn) selected else null
 
         val activeZone = when {
             inInner.isNotEmpty() -> ThreatZone.INNER
@@ -698,11 +711,12 @@ val uiState: StateFlow<UiState> = combine(
             pinnedCity = pinnedCity,
             focusLocation = focusLocation,
             redCities = redCities,
-            selectedThreat = if (selectedGone) null else refreshedSelected,
+            selectedThreat = if (selectedGone && animOn) null else refreshedSelected,
             selectedThreatInfo = proximity,
             neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores),
-            revealRequest = reveal
+            revealRequest = reveal,
+            alertActive = mapThreats.isNotEmpty() || redCities.isNotEmpty()
         )
     }
 
@@ -867,6 +881,14 @@ val uiState: StateFlow<UiState> = combine(
         }
     }
 
+    /** Wizard grid: one tap enables/disables a threat type for the map AND alerts together. */
+    fun setThreatEnabled(type: ThreatType, enabled: Boolean) {
+        viewModelScope.launch {
+            prefs.setThreatMapVisible(type, enabled)
+            prefs.setThreatAlertsEnabled(type, enabled)
+        }
+    }
+
     fun setGroupThreatMapVisible(types: Set<ThreatType>, visible: Boolean) {
         viewModelScope.launch {
             types.forEach { prefs.setThreatMapVisible(it, visible) }
@@ -929,6 +951,10 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setShowMapScale(show) }
     }
 
+    fun setDeathAnimationEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setDeathAnimationEnabled(enabled) }
+    }
+
     fun setLanguage(lang: AppLanguage) {
         viewModelScope.launch { prefs.setLanguage(lang) }
     }
@@ -961,15 +987,27 @@ val uiState: StateFlow<UiState> = combine(
      * A notification tap carrying the triggering threat's id/position: select it so the
      * popup opens, then ask the map to pan the camera onto it. Best-effort selection — on a
      * cold start the stream may not have the threat yet, and the pan still works from the
-     * coordinates carried in the intent.
+     * coordinates carried in the intent. With [select] false the camera pans without opening
+     * the popup (footer strip taps).
      */
-    fun revealThreat(id: String?, lat: Double, lon: Double) {
+    fun revealThreat(id: String?, lat: Double, lon: Double, select: Boolean = true) {
         revealTick++
         tempNeutralizedFlow.value = null
-        if (id != null) {
+        if (select && id != null) {
             selectedThreatFlow.value = NeptunClient.state.value.threats[id]
         }
         revealFlow.value = RevealRequest(revealTick, id, lat, lon)
+    }
+
+    /**
+     * Footer strip tap: pan the camera onto [t]'s dead-reckoned position (where its marker
+     * actually sits), without selecting it or opening the popup.
+     */
+    fun panToThreat(t: Threat) {
+        val now = System.currentTimeMillis()
+        val predicted = speedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
+            ?: GeoPoint(t.lat, t.lon)
+        revealThreat(t.id, predicted.latitude, predicted.longitude, select = false)
     }
 
     /** Auto-check at most once per day. [allowPopup] pops the dialog on start when no alert is active. */
@@ -983,8 +1021,7 @@ val uiState: StateFlow<UiState> = combine(
     }
 
     /** True when any threat or official alert is currently active — the update dialog stays hidden then. */
-    private fun hasActiveAlert(): Boolean =
-        uiState.value.mapThreats.isNotEmpty() || uiState.value.redCities.isNotEmpty()
+    private fun hasActiveAlert(): Boolean = uiState.value.alertActive
 
     fun checkForUpdates(notify: Boolean = true, popupAvailable: Boolean = true, popupOnlyWithoutAlert: Boolean = false) {
         if (isChecking) return

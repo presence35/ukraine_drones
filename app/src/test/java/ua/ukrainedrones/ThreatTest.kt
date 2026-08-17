@@ -152,6 +152,21 @@ class ThreatTest {
     }
 
     @Test
+    fun `courseDeg uses velocity bearing even when not flying`() {
+        // No speed/confirmedAt — predictPosition still glides along bearingDeg, so the icon
+        // must face it too (matches predictPosition's heading resolution).
+        val t = threat(bearingDeg = 270.0, heading = 10.0)
+        assertFalse(t.flying)
+        assertEquals(270.0, t.courseDeg, 1e-9)
+    }
+
+    @Test
+    fun `courseDeg falls back to heading then pseudo-course`() {
+        assertEquals(35.0, threat(heading = 35.0).courseDeg, 1e-9)
+        assertEquals(Threat.fallbackCourse("t1"), threat().courseDeg, 1e-9)
+    }
+
+    @Test
     fun `inOblast matches on oblast or name prefix`() {
         val alert = OblastAlert("kyiv", "Київ", "Київська", "2026-08-14")
         assertTrue(alert.inOblast("Київ"))

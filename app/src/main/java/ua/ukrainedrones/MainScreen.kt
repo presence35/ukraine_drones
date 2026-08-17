@@ -2,15 +2,13 @@ package ua.ukrainedrones
 
 import android.app.Activity
 import android.content.Intent
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -25,7 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Notifications
@@ -33,7 +30,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -107,6 +103,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 scrollToThreatsTick++
             },
             onThreatTapped = { viewModel.selectThreat(it) },
+            onThreatStripTap = { viewModel.panToThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
             onMapTapped = { viewModel.selectThreat(null) },
             onSlowRedChange = { viewModel.setSlowRedKm(it) },
@@ -156,11 +153,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 threatCardSize = uiState.threatCardSize,
                 iconSet = uiState.iconSet,
                 showMapScale = uiState.showMapScale,
+                deathAnimationEnabled = uiState.deathAnimationEnabled,
                 fastGroupCollapsed = uiState.fastGroupCollapsed,
                 slowGroupCollapsed = uiState.slowGroupCollapsed,
                 versionName = BuildConfig.VERSION_NAME,
                 isChecking = uiState.update is UpdateState.Checking,
                 latestVersion = uiState.latestVersion,
+                alertActive = uiState.alertActive,
                 onBack = { screen = Screen.MAP },
                 onLanguageChange = { viewModel.setLanguage(it) },
                 onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
@@ -192,6 +191,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
                 onIconSetChange = { viewModel.setThreatIconSet(it) },
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
+                onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFastGroupCollapse = { viewModel.setFastGroupCollapsed(it) },
                 onSlowGroupCollapse = { viewModel.setSlowGroupCollapsed(it) },
                 onExit = onExit,
@@ -243,17 +243,19 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         onOpenSettings = { viewModel.openInstallPermissionSettings() }
     )
 
-    // First-install: a paged setup — language, icon pack, alert groups, then a quick core-feature
-    // tour. Done or skipping marks it complete; the battery prompt follows after.
-    if (!uiState.languageChosen) {
-        FirstRunSetupDialog(
+    // First-install: a full-screen wizard — language (+tips), icon pack, which threats matter,
+    // then a feature preview. It force-closes without saving the moment an alert goes live
+    // (alerts outrank onboarding); the wizard returns once the alert clears.
+    if (!uiState.languageChosen && !uiState.alertActive) {
+        FirstLaunchWizard(
             current = uiState.language,
             iconSet = uiState.iconSet,
+            hiddenTypes = uiState.hiddenTypes,
             silencedTypes = uiState.silencedTypes,
             onChoose = { viewModel.setLanguage(it) },
             onIconSetChange = { viewModel.setThreatIconSet(it) },
-            onGroupAlertToggle = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
-            onLater = { viewModel.skipLanguageChoose() }
+            onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
+            onComplete = { viewModel.skipLanguageChoose() }
         )
     }
 
@@ -279,60 +281,97 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-private fun FirstRunSetupDialog(
+private fun FirstLaunchWizard(
     current: AppLanguage,
     iconSet: ThreatIconSet,
+    hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     onChoose: (AppLanguage) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
-    onGroupAlertToggle: (Set<ThreatType>, Boolean) -> Unit,
-    onLater: () -> Unit
+    onThreatEnabledToggle: (ThreatType, Boolean) -> Unit,
+    onComplete: () -> Unit
 ) {
     val s = Strings.get(current)
     var step by remember { mutableStateOf(0) }
+    BackHandler(enabled = step > 0) { step-- }
     val stepTitle = when (step) {
         0 -> s.languageChooseTitle
         1 -> s.iconSetTitle
-        2 -> s.onboardingTipsTitle
+        2 -> s.wizardCareTitle
         else -> s.onboardingFeaturesTitle
     }
-    AlertDialog(
-        onDismissRequest = onLater,
-        dismissButton = {
-            if (step > 0) TextButton(onClick = { step-- }) { Text(s.backButton) }
-            else TextButton(onClick = onLater) { Text(s.languageChooseLater) }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { if (step < 3) step++ else onLater() }
-            ) {
-                Text(if (step < 3) s.nextButton else s.okButton)
-            }
-        },
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stepTitle, modifier = Modifier.weight(1f))
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stepTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
                 Text(
                     "${step + 1}/4",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(10.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 when (step) {
-                    0 -> SetupLanguageStep(current, onChoose)
+                    0 -> {
+                        SetupLanguageStep(current, onChoose)
+                        Spacer(Modifier.height(16.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(12.dp))
+                        OnboardingTipRow(
+                            iconRes = R.drawable.ic_threat_shahed,
+                            iconTint = Color.Unspecified,
+                            text = s.onboardingTipTap
+                        )
+                        OnboardingTipRow(
+                            iconRes = R.drawable.ic_settings_ua,
+                            iconTint = Color.Unspecified,
+                            text = s.onboardingTipSettings
+                        )
+                        OnboardingTipRow(
+                            iconRes = R.drawable.ic_volume_up,
+                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = s.onboardingTipSiren
+                        )
+                    }
                     1 -> SetupIconPackStep(current, iconSet, onIconSetChange)
-                    2 -> SetupAlertGroupsStep(s, current, silencedTypes, onGroupAlertToggle)
+                    2 -> WizardThreatGrid(current, iconSet, hiddenTypes, silencedTypes, onThreatEnabledToggle)
                     else -> SetupFeaturesStep(s)
                 }
             }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (step > 0) {
+                    OutlinedButton(onClick = { step-- }) { Text(s.backButton) }
+                } else {
+                    OutlinedButton(onClick = onComplete) { Text(s.languageChooseLater) }
+                }
+                Button(
+                    onClick = { if (step < 3) step++ else onComplete() },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(if (step < 3) s.nextButton else s.wizardStartButton, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
-    )
+    }
 }
 
 @Composable
@@ -369,72 +408,70 @@ private fun SetupIconPackStep(lang: AppLanguage, iconSet: ThreatIconSet, onIconS
 }
 
 @Composable
-private fun SetupAlertGroupsStep(
-    s: Strings.StringSet,
+private fun WizardThreatGrid(
     lang: AppLanguage,
+    iconSet: ThreatIconSet,
+    hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
-    onGroupAlertToggle: (Set<ThreatType>, Boolean) -> Unit
+    onThreatEnabledToggle: (ThreatType, Boolean) -> Unit
 ) {
+    val s = Strings.get(lang)
     Column {
-        OnboardingTipRow(
-            iconRes = R.drawable.ic_threat_shahed,
-            iconTint = Color.Unspecified,
-            text = s.onboardingTipTap
-        )
-        OnboardingTipRow(
-            iconRes = R.drawable.ic_settings_ua,
-            iconTint = Color.Unspecified,
-            text = s.onboardingTipSettings
-        )
-        OnboardingTipRow(
-            iconRes = R.drawable.ic_volume_up,
-            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-            text = s.onboardingTipSiren
-        )
-        Spacer(Modifier.height(12.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(10.dp))
         Text(
-            s.threatsLabel,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
+            s.wizardCareSubtitle,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(2.dp))
-        fastAndSlowGroups(lang).forEach { (groupIcon, groupTitle, types) ->
-            val groupAlertsOn = types.none { it in silencedTypes }
+        Spacer(Modifier.height(14.dp))
+        ThreatType.values().toList().chunked(2).forEach { pair ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = groupIcon,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .semantics {
-                            semanticsContentDescription =
-                                if (groupIcon == "\u26A1") s.fastGroupIconDesc else s.slowGroupIconDesc
-                        }
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    groupTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                IconToggle(
-                    icon = Icons.Filled.Notifications,
-                    contentDescription = s.threatAlertLabel,
-                    on = groupAlertsOn,
-                    enabled = true,
-                    onClick = { onGroupAlertToggle(types, !groupAlertsOn) }
-                )
+                pair.forEach { type ->
+                    val on = type !in hiddenTypes && type !in silencedTypes
+                    val info = ThreatTypeCatalog.INFO.getValue(type)
+                    val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+                    val onColor = MaterialTheme.colorScheme.onSurface
+                    val offColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(
+                                width = 1.5.dp,
+                                color = if (on) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable { onThreatEnabledToggle(type, !on) }
+                            .padding(vertical = 14.dp, horizontal = 8.dp)
+                    ) {
+                        ThreatIcon(
+                            type = type,
+                            set = iconSet,
+                            size = 40.dp,
+                            tint = if (on) onColor else offColor
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (on) onColor else offColor,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            if (on) s.wizardCareOn else s.wizardCareOff,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (on) MaterialTheme.colorScheme.primary else offColor
+                        )
+                    }
+                }
             }
+            Spacer(Modifier.height(10.dp))
         }
     }
 }
@@ -442,7 +479,7 @@ private fun SetupAlertGroupsStep(
 @Composable
 private fun SetupFeaturesStep(s: Strings.StringSet) {
     val features = remember(s) {
-        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "follow", "night") }
+        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "lang") }
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         features.forEach { f ->
@@ -523,6 +560,7 @@ private fun MapScreen(
     onOpenSettings: () -> Unit,
     onOpenThreatSettings: () -> Unit,
     onThreatTapped: (Threat) -> Unit,
+    onThreatStripTap: (Threat) -> Unit,
     onDismissPopup: () -> Unit,
     onMapTapped: () -> Unit,
     onSlowRedChange: (Int) -> Unit,
@@ -717,8 +755,8 @@ private fun MapScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
-                                .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             ThreatType.values().forEach { type ->
@@ -726,11 +764,19 @@ private fun MapScreen(
                                 val visible = type !in uiState.hiddenTypes
                                 val alerting = type !in uiState.silencedTypes
                                 if (count > 0 && visible && alerting) {
+                                    val focus = uiState.focusLocation
+                                    val target = (uiState.threatsInner + uiState.threatsOuter)
+                                        .filter { it.type == type }
+                                        .minByOrNull {
+                                            if (focus != null) distanceMeters(focus.lat, focus.lon, it.lat, it.lon)
+                                            else 0.0
+                                        }
                                     ThreatStatusCell(
                                         type = type,
                                         count = count,
                                         enabled = true,
-                                        iconSet = uiState.iconSet
+                                        iconSet = uiState.iconSet,
+                                        onClick = { target?.let(onThreatStripTap) }
                                     )
                                 }
                             }
@@ -787,8 +833,14 @@ private fun MapScreen(
                     2 -> uiState.neutralizedThreat?.let { threat ->
                         val fade = remember { Animatable(1f) }
                         var neutralizing by remember { mutableStateOf(true) }
+                        val cardContext = LocalContext.current
+                        val vibrator = remember { cardContext.getSystemService(Vibrator::class.java) }
                         LaunchedEffect(Unit) {
                             delay(DEATH_EXPLOSION_START_MS)
+                            // A short pulse as the projectile detonates on the map.
+                            vibrator?.vibrate(
+                                VibrationEffect.createWaveform(vibrationPattern(1), -1)
+                            )
                             neutralizing = false
                             fade.animateTo(0f, tween(DEATH_EXPLOSION_LEN_MS.toInt()))
                             onDismissPopup()
@@ -1133,37 +1185,28 @@ private fun ThreatStatusCell(
     type: ThreatType,
     count: Int,
     enabled: Boolean,
-    iconSet: ThreatIconSet
+    iconSet: ThreatIconSet,
+    onClick: () -> Unit
 ) {
-    val active = enabled && count > 0
-    val lineAlpha by rememberInfiniteTransition(label = "threatLine").animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
-        label = "lineAlpha"
-    )
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
         ThreatIcon(
             type = type,
             set = iconSet,
-            size = 18.dp,
+            size = 28.dp,
             tint = if (enabled) Color.Unspecified else Color(0xFF9E9E9E)
         )
-        if (count > 0) {
-            Spacer(Modifier.height(2.dp))
-            Text("$count", style = MaterialTheme.typography.labelLarge)
-        }
-        Box(
-            modifier = Modifier
-                .padding(top = 2.dp)
-                .height(2.dp)
-                .width(18.dp)
-                .clip(RoundedCornerShape(50))
-                .background(
-                    if (active) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.outlineVariant
-                )
-                .alpha(if (active) lineAlpha else 0.4f)
+        Spacer(Modifier.width(7.dp))
+        Text(
+            "$count",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else Color(0xFF9E9E9E)
         )
     }
 }

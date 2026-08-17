@@ -35,15 +35,21 @@ const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
  * [hideAtBoom] = true, so the icon vanishes when the explosion starts instead (the threat
  * re-draws on the next overlay rebuild). [origin] is where the projectile takes off from —
  * your GPS position (or pinned city) at spawn time; null skips the flight visuals.
+ *
+ * A [dud] carries no icon and never explodes: it's a follow-up projectile fired when the
+ * threat turned out to be already destroyed (e.g. the server re-sent the resolution), so it
+ * streaks past the old position and off-screen, then is dropped from memory.
  */
 private class ActiveDeath(
+    val id: String?,
     val geo: GeoPoint,
     val origin: GeoPoint?,
     val start: Long,
     val icon: Drawable?,
     val rotationDeg: Float,
     val alpha: Float,
-    val hideAtBoom: Boolean
+    val hideAtBoom: Boolean,
+    val dud: Boolean
 )
 
 /**
@@ -60,7 +66,11 @@ class ThreatDeathOverlay : Overlay() {
 
     val isActive: Boolean get() = deaths.isNotEmpty()
 
+    /** Whether a death animation is already in flight for [id]. */
+    fun isActiveFor(id: String?): Boolean = id != null && deaths.any { it.id == id }
+
     fun spawn(
+        id: String? = null,
         geo: GeoPoint,
         origin: GeoPoint? = null,
         icon: Drawable? = null,
@@ -69,7 +79,18 @@ class ThreatDeathOverlay : Overlay() {
         hideAtBoom: Boolean = false
     ) {
         if (deaths.size >= 6) return
-        deaths.add(ActiveDeath(geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, hideAtBoom))
+        deaths.add(
+            ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, hideAtBoom, dud = false)
+        )
+    }
+
+    /** Follow-up projectile for an already-destroyed threat: no icon, never explodes, just
+     *  flies through and off-screen. Without an [origin] there's nothing to fly, so skip. */
+    fun spawnDud(id: String?, geo: GeoPoint, origin: GeoPoint?) {
+        if (origin == null || deaths.size >= 6) return
+        deaths.add(
+            ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), null, 0f, 1f, hideAtBoom = false, dud = true)
+        )
     }
 
     private val ringPaint = Paint().apply {
@@ -95,7 +116,10 @@ class ThreatDeathOverlay : Overlay() {
         val boomT = DEATH_EXPLOSION_START_MS.toFloat() / DEATH_DURATION_MS
         val boomLenT = DEATH_EXPLOSION_LEN_MS.toFloat() / DEATH_DURATION_MS
 
-        deaths.removeAll { now - it.start > DEATH_DURATION_MS }
+        deaths.removeAll {
+            val elapsed = now - it.start
+            elapsed > DEATH_DURATION_MS || (it.dud && elapsed > DEATH_EXPLOSION_START_MS)
+        }
         if (deaths.isEmpty()) return
 
         for (d in deaths) {
@@ -124,8 +148,9 @@ class ThreatDeathOverlay : Overlay() {
                 canvas.restore()
             }
 
-            // Lead-in ping (0-0.5s) — a soft ring marks the hit point.
-            if (t < 0.10f) {
+            // Lead-in ping (0-0.5s) — a soft ring marks the hit point. Duds skip it: the
+            // target is already gone, so nothing marks where it used to be.
+            if (t < 0.10f && !d.dud) {
                 val ping = t / 0.10f
                 ringPaint.color = Color.argb((0.8f * (1f - ping) * 255).toInt(), 255, 213, 0)
                 ringPaint.strokeWidth = 3f * density
@@ -174,10 +199,21 @@ class ThreatDeathOverlay : Overlay() {
                         }
                     }
                     if (entryFound) {
-                        val bx = sx + (x - sx) * p
-                        val by = sy + (y - sy) * p
-                        val headX = x - sx
-                        val headY = y - sy
+                        // A dud keeps going past the (already destroyed) target and exits the
+                        // screen — extend the endpoint by the viewport diagonal so it always
+                        // clears the edge regardless of pan/zoom.
+                        val tx = if (d.dud) {
+                            val diag = sqrt(W * W + H * H)
+                            x + dx / dist * diag
+                        } else x
+                        val ty = if (d.dud) {
+                            val diag = sqrt(W * W + H * H)
+                            y + dy / dist * diag
+                        } else y
+                        val bx = sx + (tx - sx) * p
+                        val by = sy + (ty - sy) * p
+                        val headX = tx - sx
+                        val headY = ty - sy
                         // Launch flash at the origin as the shot leaves (only when it's visible).
                         if (originVisible && t < 0.25f) {
                             val lf = ((t - 0.10f) / 0.15f).coerceIn(0f, 1f)
@@ -225,7 +261,8 @@ class ThreatDeathOverlay : Overlay() {
             }
 
             // Explosion (impact-5.0s): radial burst, center flash, shockwave ring, sparks.
-            if (t >= boomT) {
+            // Duds never detonate — the projectile just exits and is pruned above.
+            if (t >= boomT && !d.dud) {
                 val e = ((t - boomT) / boomLenT).coerceIn(0f, 1f)
                 val maxR = 46f * density
                 val br = maxR * e
