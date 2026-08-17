@@ -75,7 +75,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            res.srcDirs("src/main/res", "src/main/iconpacks/classic", "src/main/iconpacks/photo", "src/main/iconpacks/army")
+            res.srcDirs("src/main/res", "src/main/iconpacks/classic", "src/main/iconpacks/photo", "src/main/iconpacks/army", "src/main/iconpacks/comic")
         }
     }
 

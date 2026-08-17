@@ -2,12 +2,15 @@
 
 ## [Unreleased]
 
+- First-run setup is now a guided 4-step walkthrough: language → icon pack → tips + Fast/Slow alert groups (no more per-type toggles) → a quick tour of the core features. Settings → Additional has a "Repeat first setup" button to walk through it again (nothing else is reset).
+
 - First run: the onboarding sequence is now ordered — language picker, then the "keep alerts running" battery prompt, and only after both the system location/notification dialogs appear (permission dialogs no longer jump the queue). Existing users get the battery prompt once too (skipped automatically when already exempt).
 - Settings → Alerts: new "Vibration" section — independent Fast (missiles) and Slow (drones) strength sliders (Off/Soft/Medium/Strong/Urgent). Android has no per-notification vibration amplitude, so strength is expressed as a pulse pattern; official alerts without a known reason threat always ring with the strongest pattern.
 - System status: new "Alerts" log below the connection log — the last 20 fired alerts (red/yellow zone sirens + official alerts), each row with the threat icon, tier dot, type, datetime, location, distance from your GPS/pin and how long it rang. Survives restarts.
 - Timestamps: absolute times (connection log, alert history) now follow the app language instead of the device locale (UA "17.08, 14:30", EN "Aug 17, 14:30").
 - Planned (not started): home-screen widget / lock-screen glance — see ROADMAP.md.
 
+- Settings → Additional: the "Comic" icon set is here — a new drawn-style set of all seven threat icons, selectable in the "Threat icons" grid (the last "coming soon" placeholder is now gone, all four sets are real). Comic markers rotate along their course like the photo and army sets.
 - Settings → Additional: the "Army" icon set is here — a new drawn-style set of all seven threat icons, selectable in the "Threat icons" grid (the Comic placeholder remains). Army markers rotate along their course like the photo set.
 
 - Zones panel: slow/fast alerts are now independent — each of the four (slow red, slow yellow, fast red, fast yellow) has its own bell in the "Edit zones" sheet, so you can, e.g., mute slow yellow while keeping fast yellow. The night's custom zones get the same four independent bells.

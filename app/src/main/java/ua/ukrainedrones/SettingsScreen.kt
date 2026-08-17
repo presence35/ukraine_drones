@@ -2,12 +2,6 @@ package ua.ukrainedrones
 
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -143,7 +137,8 @@ fun SettingsScreen(
     onSlowGroupCollapse: (Boolean) -> Unit,
     onExit: () -> Unit,
     onCheckUpdate: () -> Unit,
-    onOpenGuide: () -> Unit
+    onOpenGuide: () -> Unit,
+    onRelaunchSetup: () -> Unit
 ) {
     val s = Strings.get(lang)
     val appContext = LocalContext.current
@@ -585,6 +580,21 @@ fun SettingsScreen(
                                             Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
                                         }
                                     }
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                OutlinedButton(
+                                    onClick = onRelaunchSetup,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(s.relaunchSetupTitle, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -1347,11 +1357,11 @@ private fun CardSizeTile(
 /** Icon-slot size inside an icon-set tile (also sizes the "coming soon" placeholder slot). */
 private val IconTileSlot = 44.dp
 
-/** Shared min height so the 2x2 grid stays aligned (name-less top row vs named coming-soon row). */
+/** Shared min height so the 2x2 grid stays aligned (name-less top row vs named bottom row). */
 private val IconTileMinHeight = 120.dp
 
-/** Icon-style picker: a 2x2 grid of cards — the three real sets (Classic, Photos, Army) with
- *  all seven icons in a scrollable panel, plus one "coming soon" placeholder (Comic). */
+/** Icon-style picker: a 2x2 grid of cards — the four real sets (Classic, Photos, Army, Comic)
+ *  with all seven icons in a scrollable panel. */
 @Composable
 private fun IconSetSelector(
     lang: AppLanguage,
@@ -1384,9 +1394,11 @@ private fun IconSetSelector(
                 onClick = { onChange(ThreatIconSet.ARMY) },
                 modifier = Modifier.weight(1f)
             )
-            ComingSoonTile(
+            IconSetTile(
+                set = ThreatIconSet.COMIC,
                 label = s.iconSetComicLabel,
-                comingSoon = s.iconSetComingSoonLabel,
+                selected = selected == ThreatIconSet.COMIC,
+                onClick = { onChange(ThreatIconSet.COMIC) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -1394,12 +1406,13 @@ private fun IconSetSelector(
 }
 
 @Composable
-private fun IconSetTile(
+internal fun IconSetTile(
     set: ThreatIconSet,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showLabel: Boolean = false
 ) {
     Card(
         modifier = modifier
@@ -1469,71 +1482,16 @@ private fun IconSetTile(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ComingSoonTile(label: String, comingSoon: String, modifier: Modifier = Modifier) {
-    val rocketBob = rememberInfiniteTransition(label = "rocket-bob")
-    val bob by rocketBob.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-    Card(
-        modifier = modifier.clip(RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = IconTileMinHeight)
-                .padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Slot sized like the real cards' icon row so the grid lines up; a bobbing
-            // rocket signals "launching soon" in place of icons.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IconTileSlot),
-                contentAlignment = Alignment.Center
-            ) {
+            if (showLabel) {
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "\uD83D\uDE80",
-                    fontSize = 22.sp,
-                    modifier = Modifier.graphicsLayer {
-                        translationY = (bob - 0.5f) * 4.dp.toPx()
-                    }
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-            ) {
-                Text(
-                    comingSoon,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.primary,
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Medium,
-                    style = MaterialTheme.typography.labelMedium
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
                 )
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
         }
     }
 }

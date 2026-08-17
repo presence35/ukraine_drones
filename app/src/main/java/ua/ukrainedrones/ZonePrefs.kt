@@ -20,7 +20,7 @@ enum class AppLanguage { UA, EN }
 enum class ThreatCardSize { SMALL, LARGE }
 
 /** Which visual style is used for threat icons everywhere (map, strip, popups, toggles). */
-enum class ThreatIconSet { CLASSIC, PHOTO, ARMY }
+enum class ThreatIconSet { CLASSIC, PHOTO, ARMY, COMIC }
 
 class ZonePrefs(private val context: Context) {
 

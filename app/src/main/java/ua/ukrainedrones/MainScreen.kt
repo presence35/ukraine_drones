@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Notifications
@@ -46,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -193,6 +195,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onSlowGroupCollapse = { viewModel.setSlowGroupCollapsed(it) },
                 onExit = onExit,
                 onCheckUpdate = { viewModel.checkForUpdates() },
+                onRelaunchSetup = { viewModel.relaunchSetup() },
                 onOpenGuide = {
                     guideFromSettings = true
                     guideFeatureId = null
@@ -239,19 +242,17 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         onOpenSettings = { viewModel.openInstallPermissionSettings() }
     )
 
-    // First-install: a small language picker, dismissable. Choosing or skipping marks it done.
+    // First-install: a paged setup — language, icon pack, alert groups, then a quick core-feature
+    // tour. Done or skipping marks it complete; the battery prompt follows after.
     if (!uiState.languageChosen) {
-        LanguageChooseDialog(
+        FirstRunSetupDialog(
             current = uiState.language,
             iconSet = uiState.iconSet,
-            hiddenTypes = uiState.hiddenTypes,
             silencedTypes = uiState.silencedTypes,
             onChoose = { viewModel.setLanguage(it) },
-            onLater = { viewModel.skipLanguageChoose() },
-            onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
-            onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
-            onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
-            onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) }
+            onIconSetChange = { viewModel.setThreatIconSet(it) },
+            onGroupAlertToggle = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
+            onLater = { viewModel.skipLanguageChoose() }
         )
     }
 
@@ -277,91 +278,213 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-private fun LanguageChooseDialog(
+private fun FirstRunSetupDialog(
     current: AppLanguage,
     iconSet: ThreatIconSet,
-    hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     onChoose: (AppLanguage) -> Unit,
-    onLater: () -> Unit,
-    onThreatMapToggle: (ThreatType, Boolean) -> Unit,
-    onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
-    onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
-    onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit
+    onIconSetChange: (ThreatIconSet) -> Unit,
+    onGroupAlertToggle: (Set<ThreatType>, Boolean) -> Unit,
+    onLater: () -> Unit
 ) {
     val s = Strings.get(current)
+    var step by remember { mutableStateOf(0) }
+    val stepTitle = when (step) {
+        0 -> s.languageChooseTitle
+        1 -> s.iconSetTitle
+        2 -> s.onboardingTipsTitle
+        else -> s.onboardingFeaturesTitle
+    }
     AlertDialog(
         onDismissRequest = onLater,
-        confirmButton = { TextButton(onClick = onLater) { Text(s.okButton) } },
-        title = { Text(s.languageChooseTitle) },
+        dismissButton = {
+            if (step > 0) TextButton(onClick = { step-- }) { Text(s.backButton) }
+            else TextButton(onClick = onLater) { Text(s.languageChooseLater) }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (step < 3) step++ else onLater() }
+            ) {
+                Text(if (step < 3) s.nextButton else s.okButton)
+            }
+        },
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stepTitle, modifier = Modifier.weight(1f))
+                Text(
+                    "${step + 1}/4",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    LanguageFlag(
-                        emoji = "\uD83C\uDDFA\uD83C\uDDE6",
-                        label = "Українська",
-                        active = current == AppLanguage.UA,
-                        onClick = { onChoose(AppLanguage.UA) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    LanguageFlag(
-                        emoji = "\uD83C\uDDE8\uD83C\uDDE6",
-                        label = "English",
-                        active = current == AppLanguage.EN,
-                        onClick = { onChoose(AppLanguage.EN) },
-                        modifier = Modifier.weight(1f)
-                    )
+                when (step) {
+                    0 -> SetupLanguageStep(current, onChoose)
+                    1 -> SetupIconPackStep(s, iconSet, onIconSetChange)
+                    2 -> SetupAlertGroupsStep(s, current, silencedTypes, onGroupAlertToggle)
+                    else -> SetupFeaturesStep(s)
                 }
-                Spacer(Modifier.height(16.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    s.onboardingTipsTitle,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-                OnboardingTipRow(
-                    iconRes = R.drawable.ic_threat_shahed,
-                    iconTint = Color.Unspecified,
-                    text = s.onboardingTipTap
-                )
-                OnboardingTipRow(
-                    iconRes = R.drawable.ic_settings_ua,
-                    iconTint = Color.Unspecified,
-                    text = s.onboardingTipSettings
-                )
-                OnboardingTipRow(
-                    iconRes = R.drawable.ic_volume_up,
-                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    text = s.onboardingTipSiren
-                )
-                Spacer(Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    s.threatsLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                SlimThreatToggles(
-                    lang = current,
-                    iconSet = iconSet,
-                    hiddenTypes = hiddenTypes,
-                    silencedTypes = silencedTypes,
-                    onThreatMapToggle = onThreatMapToggle,
-                    onThreatAlertToggle = onThreatAlertToggle,
-                    onThreatMapToggleAll = onThreatMapToggleAll,
-                    onThreatAlertToggleAll = onThreatAlertToggleAll
-                )
             }
         }
     )
+}
+
+@Composable
+private fun SetupLanguageStep(current: AppLanguage, onChoose: (AppLanguage) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        LanguageFlag(
+            emoji = "\uD83C\uDDFA\uD83C\uDDE6",
+            label = "Українська",
+            active = current == AppLanguage.UA,
+            onClick = { onChoose(AppLanguage.UA) },
+            modifier = Modifier.weight(1f)
+        )
+        LanguageFlag(
+            emoji = "\uD83C\uDDE8\uD83C\uDDE6",
+            label = "English",
+            active = current == AppLanguage.EN,
+            onClick = { onChoose(AppLanguage.EN) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun SetupIconPackStep(s: Strings.StringSet, iconSet: ThreatIconSet, onIconSetChange: (ThreatIconSet) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        IconSetTile(
+            set = ThreatIconSet.CLASSIC,
+            label = s.iconSetClassicLabel,
+            selected = iconSet == ThreatIconSet.CLASSIC,
+            onClick = { onIconSetChange(ThreatIconSet.CLASSIC) },
+            showLabel = true,
+            modifier = Modifier.weight(1f)
+        )
+        IconSetTile(
+            set = ThreatIconSet.PHOTO,
+            label = s.iconSetPhotoLabel,
+            selected = iconSet == ThreatIconSet.PHOTO,
+            onClick = { onIconSetChange(ThreatIconSet.PHOTO) },
+            showLabel = true,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun SetupAlertGroupsStep(
+    s: Strings.StringSet,
+    lang: AppLanguage,
+    silencedTypes: Set<ThreatType>,
+    onGroupAlertToggle: (Set<ThreatType>, Boolean) -> Unit
+) {
+    Column {
+        OnboardingTipRow(
+            iconRes = R.drawable.ic_threat_shahed,
+            iconTint = Color.Unspecified,
+            text = s.onboardingTipTap
+        )
+        OnboardingTipRow(
+            iconRes = R.drawable.ic_settings_ua,
+            iconTint = Color.Unspecified,
+            text = s.onboardingTipSettings
+        )
+        OnboardingTipRow(
+            iconRes = R.drawable.ic_volume_up,
+            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = s.onboardingTipSiren
+        )
+        Spacer(Modifier.height(12.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            s.threatsLabel,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(2.dp))
+        fastAndSlowGroups(lang).forEach { (groupIcon, groupTitle, types) ->
+            val groupAlertsOn = types.none { it in silencedTypes }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = groupIcon,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .semantics {
+                            semanticsContentDescription =
+                                if (groupIcon == "\u26A1") s.fastGroupIconDesc else s.slowGroupIconDesc
+                        }
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    groupTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                IconToggle(
+                    icon = Icons.Filled.Notifications,
+                    contentDescription = s.threatAlertLabel,
+                    on = groupAlertsOn,
+                    enabled = true,
+                    onClick = { onGroupAlertToggle(types, !groupAlertsOn) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupFeaturesStep(s: Strings.StringSet) {
+    val features = remember(s) {
+        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "follow", "night") }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        features.forEach { f ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                FeatureDiagram(
+                    kind = f.diagram,
+                    modifier = Modifier
+                        .size(width = 92.dp, height = 62.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        f.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        f.summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

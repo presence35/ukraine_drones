@@ -41641,3 +41641,547 @@ Two issues: `combine` supports max 5 typed flows (I added a 6th), and a lambda p
 ## 17/08/2026, 14:11:17
 
 Now fix the MainViewModel combine lambda order:
+## 17/08/2026, 14:12:50
+
+Pre-existing rename: `threat_photo_ballistic.png` was replaced by `top_right_threat_photo_ballistic.png` but `IconCatalog` wasn't updated. Let me check the diff:
+## 17/08/2026, 14:14:21
+
+The staged work renamed the ballistic photo but didn't update `IconCatalog` (still points to the deleted drawable and the old 0° base). Fixing to match the evident
+## 17/08/2026, 14:15:08
+
+The code maps `top_right_threat_photo_ballistic.png` to 45° (top-right). Let me visually inspect the new image to confirm its actual facing
+## 17/08/2026, 14:15:18
+
+Build green. Now the unit tests:
+
+
+## 17/08/2026, 14:15:28
+
+I can't view the image directly (no image input support in this model). Let me check the git history/diff to understand what changed.
+
+
+## 17/08/2026, 14:15:38
+
+
+
+
+## 17/08/2026, 14:15:54
+
+The code side already references the new file with 45°. Let me check how the direction is consumed downstream (marker rotation) to confirm consistency
+## 17/08/2026, 14:16:04
+
+
+
+
+## 17/08/2026, 14:16:12
+
+There are unstaged changes to IconCatalog.kt.
+## 17/08/2026, 14:16:20
+
+## Objective
+- Implement UX audit items #12–18: #12 permission dialogs after onboarding, #13 first-run battery exemption prompt, #16 Fast/Slow vibration sliders, #17 ROADMAP note for the widget/lock-screen glance, #18 alert-history log below the connection log, plus site-wide language-aware datetime formatting.
+
+## Important Details
+- User decisions this session (via `question` tool): "12+..." = items 12 through 18; #16 = only **2** sliders (Fast/Slow), not per-threat-type; #17 → new **ROADMAP.md**; #18 → base row **[icon][datetime][tier dot][type/Official label][locality][≈km] + duration**, stored as **recent 20, not just today**. Then user approved the full plan with "go".
+- #16 mechanics: Android notifications have no per-notification amplitude — "size" is a vibration pattern. Levels 0–4 (Off/Soft/Medium/Strong/Urgent), default 3. `vibrationPattern(level)`: 0 → `longArrayOf(0)` (silent), 1/2/3/4 increasing pulses. Applied via per-notification `setVibrate` (overrides the channel default; channels already `enableVibration(true)`). Official alerts without a known reason threat use fixed `VIBRATION_STRONG = 4`. Night mode shares the same sliders.
+- #12/#13 sequencing: `MainActivity` requests permissions only after `languageChosen && batteryOnboardShown` (returning users who already finished onboarding get it immediately). Battery dialog shows once when `languageChosen && !batteryOnboardShown && !batteryExempt`; already-exempt users auto-skip via a `LaunchedEffect` that sets `batteryOnboardShown=true`. Ordering: language → battery → permissions.
+- #18 recording: `AlertHistory` ring buffer (MAX_ENTRIES = 20) persisted to DataStore key `alert_history` (line format `at|end|tier|type|locality|distance`). Keys: `"id:<threatId>"` for zone alerts, `"official"` for official. Hooks in `AlertService.handleState`: zone post opens, `droppedZoneIds` closes, official post opens, official all-clear closes, grace reset calls `closeAllZoneAlerts()`. Distance uses new `focusLocation` field added to `MonitorEvent.State` + `distanceFromFocusKm(t, state)` helper.
+- `formatDateTime(lang, millis)` added to Strings.kt (java.time; UA `dd.MM, HH:mm` with `Locale("uk")`, EN `MMM d, HH:mm` with `Locale.ENGLISH`); replaces the old `SimpleDateFormat("MM/dd HH:mm:ss", Locale.getDefault())` in ConnectionStatus.
+- Project facts: `D:\Desktop\drones`, flat package `ua.ukrainedrones`, minSdk 26, mirror rule (zone/focus logic duplicated in MainViewModel + AlertService), verify with `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`, CHANGELOG entries under `## [Unreleased]`. Pre-existing uncommitted changes in the tree (NightMode.kt, iconpacks, etc.) were not touched. No commits made.
+
+## Work State
+### Completed
+- **#12** MainActivity: removed pre-`setContent` `requestLocationAndNotifications()` (was line 55); added `deferPermissionRequests()` gated on `languageChosen && batteryOnboardShown`; `AlertHistory.attach()` added to onCreate; `combine` import added.
+- **#13** ZonePrefs `batteryOnboardShown` key + getter/setter; MainViewModel `setBatteryOnboardShown` + UiState/PrefsQuad/PrefsSnapshot/seedFlow threading; MainScreen gate + auto-skip `LaunchedEffect` + `BatteryOnboardingDialog` (reuses `batteryTitle/batteryBody/batteryAllowButton`, new `batteryLater`).
+- **#16** ZonePrefs `fastVibrationLevel`/`slowVibrationLevel` (default 3, `coerceIn(0,4)`) + setters; MainViewModel UiState fields + `setFastVibrationLevel`/`setSlowVibrationLevel` + PrefsSnapshot combine (`vib` Pair) + seedFlow; SettingsScreen new params `fastVibrationLevel/slowVibrationLevel/onFastVibrationChange/onSlowVibrationChange`, Alerts-card "Vibration" section (title+desc+2 sliders), `VibrationSliderRow` composable + `vibrationLevelName`; AlertService `MonitorEvent.State` gains `fastVibrationLevel/slowVibrationLevel/focusLocation`, combine gains the levels flow, `postAlert` gains `vibrationLevel: Int = 3`, `buildAlertNotification` applies `setVibrate(vibrationPattern(vibrationLevel))`; top-level `internal fun vibrationPattern(level: Int): LongArray`; `VIBRATION_STRONG = 4` const.
+- **#17** Created `ROADMAP.md` (widget/lock-screen glance, planned-not-started).
+- **#18** Created `AlertHistory.kt`: `AlertHistoryEntry(atMillis, endMillis?, tier?, threatType?, locality?, distanceKm?)`, `object AlertHistory` (StateFlow `entries`, `attach`/`openAlert`/`closeAlert`/`closeAllZoneAlerts`), pure `internal serializeAlertHistory`/`parseAlertHistory` (default `maxEntries = AlertHistory.MAX_ENTRIES`, `MAX_ENTRIES` now `internal const`). AlertService recording/close hooks at zone post, `droppedZoneIds` filter, official post (non-silent branch only), official all-clear, grace reset. ConnectionStatus: new `lang` + `iconSet` params, `AlertHistorySection` + `AlertHistoryRow` below `ConnectionLogSection` (icon/tier dot/type label/`formatDateTime`/locality/≈km/duration via `connLogDurFormat`; official w/o threat uses `ic_trident`). MainScreen call site passes `lang = uiState.language, iconSet = uiState.iconSet`. ConnectionLog row now uses `formatDateTime`; `SimpleDateFormat`/`Date`/`Locale` imports removed; `roundToInt` import added.
+- **Strings** UA+EN: `batteryLater`, `vibrationTitle`, `vibrationDesc`, `vibrationOff/Soft/Medium/Strong/Urgent`, `alertHistoryTitle`, `alertHistoryEmpty`, `alertHistoryDistanceFormat` (≈%1$d км / ≈%1$d km), `alertHistoryOfficialLabel`; plus `formatDateTime` helper.
+- **Tests** added: `AlertHistoryTest.kt` (round-trip, malformed lines, 20-cap, empty), `VibrationTest.kt` (level 0 silent, level 3, distinctness, out-of-range fallback), `StringsFormatTest.kt` (per-language wall-clock assertions).
+- **CHANGELOG.md** updated under `[Unreleased]` (5 bullets covering #12/#13, #16, #18, datetime, #17 roadmap).
+- **ARCHITECTURE.md** module-map rows updated: MainActivity, new `AlertHistory.kt` row (after ConnectionLog), ZonePrefs, Strings, MainScreen, ConnectionStatus, SettingsScreen, AlertService. Testing-section list of test files was **not** yet updated to include the 3 new tests.
+
+### Active
+- Verification not yet run (todo "Verify: assembleDebug + testDebugUnitTest" is `pending`); build/test outcomes unknown.
+- Minor leftover: add `AlertHistoryTest.kt`, `VibrationTest.kt`, `StringsFormatTest.kt` to the ARCHITECTURE.md Testing list.
+
+### Blocked
+- (none)
+
+## Next Move
+1. Run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`; fix any compile/test failures (watch for: SettingsScreen param threading, MainViewModel PrefsQuad/combine arity, AlertService State constructor callers, AlertHistory `MAX_ENTRIES` visibility).
+2. Add the 3 new test files to the ARCHITECTURE.md Testing section.
+3. Report completion to the user with a summary of changes + verification results.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/MainActivity.kt`: #12 deferred permissions, `AlertHistory.attach`.
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: #13 battery dialog + auto-skip, SettingsScreen param threading, ConnectionStatus `lang`/`iconSet`.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: UiState/PrefsSnapshot/PrefsQuad/seedFlow + setters for battery + vibration.
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: `battery_onboard_shown`, `fast_vibration_level`, `slow_vibration_level`, `alert_history` keys.
+- `app/src/main/java/ua/ukrainedrones/AlertHistory.kt`: new #18 ring buffer + pure serialize/parse.
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt`: #16 vibration + #18 history hooks, `vibrationPattern`, `distanceFromFocusKm`, State fields.
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: #16 vibration sliders in Alerts card.
+- `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`: #18 history section + `formatDateTime` usage.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: new strings + `formatDateTime`.
+- `app/src/test/java/ua/ukrainedrones/AlertHistoryTest.kt`, `VibrationTest.kt`, `StringsFormatTest.kt`: new tests.
+- `ROADMAP.md` (new), `CHANGELOG.md`, `ARCHITECTURE.md`: docs updated (Testing list still to add).
+## 17/08/2026, 14:16:32
+
+
+
+
+## 17/08/2026, 14:16:36
+
+Everything on the code side already matches. Findings:
+
+**Already wired correctly** (uncommitted working-tree changes):
+- `IconCatalog.kt:59` → `photoRes(BALLISTIC)` = `R.drawable.top_right_threat_photo_ballistic` (file exists at `iconpacks/photo/drawable-nodpi/`, valid lowercase resource name)
+- `IconCatalog.kt:83` → `photoBaseDeg(BALLISTIC)` = `45f` (`_top_right` = 45°), so map markers rotate by `courseDeg - 45f` via `baseDeg` (`MapView.kt:559/683/729`)
+- Old `threat_photo_ballistic.png` is deleted (git shows `D`), and no `.kt` references remain to it
+
+**The one thing I can't verify**: the image's actual baked-in heading. This model has no image input, so I can't visually confirm the new photo truly faces top-right (45°).
+
+**Proposed plan** (only if you confirm the new photo faces top-right, i.e. 45°):
+1. No code changes needed — reference + 45° base are already consistent.
+2. Optionally run `.\gradlew.bat :app:assembleDebug` to confirm `R.drawable.top_right_threat_photo_ballistic` resolves and nothing else dangles.
+
+If the new photo faces a *different* direction (not 45°), tell me which, and I'll update the filename + `photoBaseDeg` accordingly.
+
+Does the new ballistic photo face top-right (45°)?
+## 17/08/2026, 14:16:37
+
+All done. Verification passed: `assembleDebug` and `testDebugUnitTest` both green (only pre-existing warnings).
+
+Two fixes were needed along the way:
+- **`combine` arity**: adding a 6th flow to AlertService's outer `combine` fell back to the vararg overload — folded the two vibration flows into the `TailPrefs` combine instead (still 5). Fixed a matching param-order bug in `MainViewModel.prefsSnapshot`.
+- **Pre-existing broken ref** (staged but not my work): `IconCatalog` still pointed at the deleted `threat_photo_ballistic` drawable; it's now `top_right_threat_photo_ballistic` with the matching 45° base.
+
+Items #12, #13, #16, #17, #18, datetime formatting, strings, tests, and CHANGELOG/ARCHITECTURE docs are all in place and verified.
+## 17/08/2026, 14:17:18
+
+```
+git add .
+git commit -m "Add UX items: permission deferral, battery prompt, vibration sliders, alert history, roadmap"
+```
+## 17/08/2026, 14:18:43
+
+I can update the `git-push` skill at `C:\Users\Bodi\.config\opencode\skills\git-push\SKILL.md` to drop `git add .`. How should the commit command look
+## 17/08/2026, 14:19:16
+
+Plan: edit `SKILL.md` to reply with only the commit line.
+
+Changes:
+- Remove line 16 `git add .` from the code block.
+- Update line 14: "Reply with **only** these two lines" → "Reply with **only** this single line".
+
+Resulting block:
+```
+git commit -m "[your one-sentence summary]"
+```
+
+Confirm and I'll apply it.
+## 17/08/2026, 14:22:34
+
+Let me get the actual crash rather than guess. Checking device/logcat plus reading the suspect code:
+
+
+## 17/08/2026, 14:24:44
+
+No device attached — I'll reason from code. Reading the new launch-path
+## 17/08/2026, 14:25:10
+
+
+
+
+## 17/08/2026, 14:25:40
+
+
+
+
+## 17/08/2026, 14:27:21
+
+
+
+
+## 17/08/2026, 14:28:19
+
+No device attached, so I'm auditing the launch path statically. Checking the staged (pre-existing) build/config/network changes that also run
+## 17/08/2026, 14:28:38
+
+build.gradle.kts untouched. Let me review the other staged launch-path files I haven't seen (MapView, NeptunClient, NightMode):
+
+
+## 17/08/2026, 14:31:10
+
+The user committed everything (a46c305), and there's now a new untracked `iconpacks/comic/` dir
+## 17/08/2026, 14:31:31
+
+The commit contains the pre-fix IconCatalog, and there's new untracked `comic/` work. Let me check for comic references in code
+## 17/08/2026, 14:32:33
+
+Let me diff the commit's launch-critical files (build config, NeptunClient, MapView) against the pre
+## 17/08/2026, 14:33:29
+
+
+
+
+## 17/08/2026, 14:33:44
+
+
+
+
+## 17/08/2026, 14:34:57
+
+
+
+
+## 17/08/2026, 14:35:18
+
+I can't view the images directly (this model doesn't support image input), so I can't determine each icon's baked-in facing direction myself. Let me check the session logs for context on these comic icons
+## 17/08/2026, 14:35:37
+
+Let me check whether the commit introduced any enum/catalog additions that could throw at first render:
+
+
+## 17/08/2026, 14:35:47
+
+
+
+
+## 17/08/2026, 14:36:04
+
+I have the full picture. The Comic icons (7 PNGs) mirror the Army import exactly, but I can't determine each icon's baked-in facing direction because this model can't view images. One quick question before I final
+## 17/08/2026, 14:36:44
+
+Plan confirmed. Here's the import plan for the Comic set:
+
+**1. Rename assets** — `iconpacks/comic/drawable-nodpi/*.png` → `threat_comic_<type>.png` (aviation, ballistic, cruise, fpv, kab, recon, shahed), matching the `threat_army_*` convention.
+
+**2. `app/build.gradle.kts:78`** — add `"src/main/iconpacks/comic"` to `res.srcDirs`.
+
+**3. `ZonePrefs.kt:23`** — `enum class ThreatIconSet { CLASSIC, PHOTO, ARMY, COMIC }` (deserialization is already generic via `values()`, falls back to `PHOTO`).
+
+**4. `IconCatalog.kt`** — add `comicRes(type)` (UNKNOWN → null), `COMIC` branches in `res()` and `baseDeg()`, and `comicBaseDeg(type)` using the Army values (shahed 0 / ballistic 45 / cruise 90 / fpv 180 / kab 225 / recon 225 / aviation 270). Update the letterbox check at line 129 to include comic so it draws as a raster set. Update the KDoc.
+
+**5. `SettingsScreen.kt:1387`** — replace the Comic `ComingSoonTile` with a real `IconSetTile(set = ThreatIconSet.COMIC, ...)` → clean 2x2 grid of 4 real sets. Remove the now-unused `ComingSoonTile` and `iconSetComingSoonLabel` string (StringSet + both locales).
+
+**6. Docs** — update `ARCHITECTURE.md` IconCatalog row; add a CHANGELOG entry under `## [Unreleased]`.
+
+**7. Verify** — `.\gradlew.bat :app:assembleDebug`.
+
+Default set stays PHOTO; no MainViewModel change. Ready to execute when you switch out of plan mode.
+## 17/08/2026, 14:37:40
+
+I did a thorough static audit of the launch path and everything checks out — no deterministic crash in the new code. But I found one very suspicious discrepancy that I can't confirm without a device.
+
+## What I found
+
+**The committed code has a broken resource reference.** Commit `a46c305` contains `IconCatalog` pointing at `R.drawable.threat_photo_ballistic` — but that PNG was **deleted** in the same commit (replaced by `top_right_threat_photo_ballistic.png`). My fix for this is sitting as an *unstaged* change in the working tree, **not** in the commit:
+
+```
+working tree:  BALLISTIC -> R.drawable.top_right_threat_photo_ballistic   ✅
+git HEAD:      BALLISTIC -> R.drawable.threat_photo_ballistic             💥 missing resource
+```
+
+If the APK you installed was built from the committed state (or an Android Studio build that didn't pick up the unstaged fix), the app will crash with `Resources$NotFoundException` the moment a ballistic threat renders on the map — i.e. right after launch when NEPTUN's first feed arrives. That matches "force close on launch".
+
+I also verified the rest of the launch path (MainActivity, MainViewModel, MainScreen, ConnectionStatus, AlertHistory, ZonePrefs, AlertService, build config) — clean. There's no device or emulator attached, so I can't pull logcat myself.
+
+## Plan
+
+1. **Fastest test**: rebuild + reinstall from the current working tree so the ballistic fix is included, then relaunch:
+   - `.\gradlew.bat :app:assembleDebug` → install → run. If it launches, the culprit was the broken committed `IconCatalog`.
+2. **If it still crashes**: I need the real stack trace to avoid guessing. Please connect the phone via USB (with USB debugging on) so I can run `adb logcat -d -b crash`, or paste the `FATAL EXCEPTION` block from Android Studio's Logcat.
+3. **Regardless of outcome**: commit the pending ballistic fix (`IconCatalog.kt` + `MainViewModel.kt` + `version.properties`) so the committed tree builds cleanly.
+
+Want to start with step 1 (rebuild + reinstall), or can you paste the crash trace / connect the device?
+## 17/08/2026, 14:37:43
+
+Now IconCatalog.kt — wire the comic set through.
+## 17/08/2026, 14:38:09
+
+Now check MapView.kt's `threatIcon` handles comic as a raster set.
+
+
+## 17/08/2026, 14:38:15
+
+MapView handles comic generically as a raster set. Now SettingsScreen — promote the Comic tile and remove the placeholder
+## 17/08/2026, 14:39:39
+
+Working tree (line 60):
+
+```kotlin
+ThreatType.BALLISTIC -> R.drawable.top_right_threat_photo_ballistic
+```
+
+Yes — the **working tree** now points at the correct, existing file (`top_right_threat_photo_ballistic.png`). The committed `git HEAD` still has the broken `threat_photo_ballistic`, but that only matters if you build from the commit rather than the working tree.
+
+However, I also spotted new activity since my last audit — line 72 now has `R.drawable.threat_comic_ball
+## 17/08/2026, 14:39:51
+
+That edit duplicated the function. Let me view and fix
+## 17/08/2026, 14:40:49
+
+
+
+
+## 17/08/2026, 14:42:02
+
+
+
+
+## 17/08/2026, 14:42:23
+
+Now remove the unused `iconSetComingSoonLabel` string (StringSet + both locales
+## 17/08/2026, 14:43:13
+
+Docs now — ARCHITECTURE.md and
+## 17/08/2026, 14:43:53
+
+Now verify
+## 17/08/2026, 14:45:02
+
+Comic set added. Build green (`:app:assembleDebug`).
+
+- Assets renamed to `threat_comic_*.png`, wired via `res.srcDirs` (build.gradle.kts:78)
+- `ThreatIconSet.COMIC` added (ZonePrefs.kt:23); generic `values()` prefs fallback handles it
+- `IconCatalog.kt`: `comicRes`, `COMIC` branches in `res()`/`baseDeg()`, `comicBaseDeg` = Army angles, raster letterboxing, KDoc
+- Settings: Comic promoted from "coming soon" to a real tile — 2×2 grid of four real sets; removed the now-dead `ComingSoonTile` and `iconSetComingSoonLabel` string
+- ARCHITECTURE.md + CHANGELOG updated
+
+Note: comic markers rotate using the Army facing angles (your earlier confirmation) since I can't view the PNGs.
+## 17/08/2026, 14:48:38
+
+Clearing data still crashing narrows it down: the fault runs unconditionally at startup. Let me inspect the current state of the icon-set wiring (which has been edited since my last audit
+## 17/08/2026, 14:49:17
+
+
+
+
+## 17/08/2026, 14:49:22
+
+## Plan: "Relaunch first setup" button
+
+Adds a button in Settings → **Additional settings** card (your pick) that re-shows the full first-run sequence: the language/onboarding dialog, then the battery-exemption prompt.
+
+**1. `Strings.kt`** — add to both `StringSet`s (near `additionalSettingsTitle`, ~line 426/679):
+- `relaunchSetupTitle` = «Повторити перший запуск» / "Repeat first setup"
+- `relaunchSetupDesc` = «Знову показати вікно мови та поради з підказками» / "Re-show the language and onboarding dialogs"
+
+**2. `MainViewModel.kt`** — new fun:
+```kotlin
+fun relaunchSetup() {
+    viewModelScope.launch {
+        prefs.setLanguageChosen(false)
+        prefs.setBatteryOnboardShown(false)
+    }
+}
+```
+Resets both flags so `LanguageChooseDialog` (gated by `!languageChosen`) and `BatteryOnboardingDialog` (gated by `!batteryOnboardShown` + not battery-exempt) reappear. MainActivity's permission chain is a one-shot (`deferPermissionRequests`), so it won't re-fire — safe. Battery-exempt users get the battery step silently skipped by the existing `LaunchedEffect` (MainScreen:262).
+
+**3. `SettingsScreen.kt`** — add `onRelaunchSetup: () -> Unit` param; inside the collapsible Additional card, after the battery block: `HorizontalDivider` + a clickable row (refresh-style icon + title + desc), styled like the other card rows.
+
+**4. `MainScreen.kt`** — pass `onRelaunchSetup = viewModel::relaunchSetup`. The dialog appears at the root level, so it overlays Settings — user completes it and lands back in Settings.
+
+**5. `CHANGELOG.md`** — entry under `[Unreleased]`.
+
+**6. Verify** — `.\gradlew.bat :app:assembleDebug` (UI-only; no domain logic touched).
+
+One note: the "Additional settings" card collapses, so the button hides when collapsed — acceptable, or should it live outside the collapse? I'll keep it inside the collapsed content per your placement choice. Ready to implement on "go".
+## 17/08/2026, 14:49:56
+
+Default icon set is **PHOTO**. Let me check for non-exhaustive `when`/comparisons on the now-4-value `ThreatIconSet` enum (a compile blocker would mean the installed APK predates the current tree
+## 17/08/2026, 14:51:11
+
+Let me check whether the installed APK predates the ballistic fix — if the user's APK is stale, that explains everything
+## 17/08/2026, 14:51:12
+
+
+
+
+## 17/08/2026, 14:51:47
+
+
+
+
+## 17/08/2026, 14:52:22
+
+Release builds use `isMinifyEnabled = true` + `isShrinkResources = true` — and a release APK was built at 14:46. Let me check the proguard rules and ThreatImages usage, then I'll have a complete picture:
+## 17/08/2026, 14:52:51
+
+I've done a thorough static audit and can't find a deterministic crash in the new code — everything compiles and unit tests pass. The key facts I've established:
+
+## What I know
+
+- **The current working tree is correct**: `IconCatalog.kt:60` points at `top_right_threat_photo_ballistic` (exists). Your APKs (debug 14:44, release 14:46) were built **after** the ballistic fix, so both contain it. The ballistic reference is *not* your crash.
+- **Default icon set is PHOTO**, and clearing data didn't help → the fault is unconditional (runs with fresh state), so it's not prefs/history-dependent.
+- Both APKs were built mid-edit of your in-progress **comic icon set** (`IconCatalog`, `build.gradle.kts`, `iconpacks/comic/` — all uncommitted).
+- Release builds run **R8 + `isShrinkResources=true`** (build.gradle.kts:54-55) — the release APK (14:46) is 5.4 MB vs debug 14.6 MB.
+
+## Plan
+
+**Step 1 — identify the crash (required, I can't guess further).** Pick one:
+- **Easiest**: connect the phone via USB (USB debugging on), then I run `adb logcat -d -b crash` and pin the exact exception + line.
+- Or paste the `FATAL EXCEPTION` block from Android Studio's Logcat.
+
+**Step 2 — quick empirical cross-check (no logcat needed):**
+- `.\gradlew.bat clean :app:assembleDebug` → install that fresh APK. A clean build rules out any stale R-class/build artifact. If the fresh debug APK runs, the failing one was a stale/release artifact.
+
+**Step 3 — fix based on the trace.** Likely candidates I'll verify against it:
+- If you installed the **release** APK: R8/`shrinkResources` stripping (the only keep-rules cover osmdroid; `proguard-rules.pro:4`). I'd add keeps for okhttp/coil/coroutines if the trace points there.
+- If a **debug** APK crashes: a runtime exception in one of the new launch paths (MainViewModel flows, AlertService coroutine, or a first-frame Compose exception) — the trace will tell.
+
+Also worth noting regardless of outcome: the comic work (`IconCatalog`/`build.gradle.kts`/`iconpacks/comic/`) is still uncommitted mid-edit — if you want, I can fold it into the same fix pass once the crash is identified.
+
+Which do you want — connect the phone (I'll pull logcat), or paste the crash from Logcat? Or should I start with the clean debug rebuild?
+## 17/08/2026, 14:53:23
+
+Good questions — let me answer the behavior one directly, then nail down the explainer design.
+
+**"Will the button just show the setup, or reset settings + relaunch?"** — It **just re-shows the setup**. It flips two persisted flags (`languageChosen`, `batteryOnboardShown`) back to `false`; every actual setting (zones, language, icon set, toggles, pin…) is untouched, and nothing restarts. The dialogs pop up over Settings, you walk through them, and you're back where you were. A factory-reset-and-relaunch would be a different, riskier action — I'd recommend against it.
+
+On the explainer step — the current first-run is one `LanguageChooseDialog` (language → tips → slim threat toggles → OK), then `BatteryOnboardingDialog`, then system permissions. The natural "more steps" shape:
+
+
+## 17/08/2026, 14:54:52
+
+The explainer is the last step, appended to what's already there — i.e. one paged dialog: **1) Language → 2) Tips + threat toggles → 3) Core-features explainer (new, last)**, then Done → battery prompt → permissions.
+
+## Plan
+
+### 1. First-launch → paged dialog
+`MainScreen.kt` — replace `LanguageChooseDialog` with a paged `FirstRunSetupDialog` (same call site, `!uiState.languageChosen`), driven by local `step: Int`:
+- **Step 0 — Language**: current flags content (`languageChooseTitle`). Buttons: skip (dismiss) / **Next**.
+- **Step 1 — Onboarding**: current tips + `SlimThreatToggles` (`onboardingTipsTitle`). Buttons: **Back** / **Next**.
+- **Step 2 — Core features** (new, last): curated quick list reusing the guide's `FeatureDiagram` + title + summary as compact rows in the dialog's scrollable column. Title: new `onboardingFeaturesTitle`. Buttons: **Back** / **Done** (= `onLater` → `skipLanguageChoose`).
+- Small "1/3" step indicator so it reads as a flow; choosing a language still just applies it live; `onDismissRequest` (outside/back) still = skip whole setup.
+
+### 2. Curated explainer content
+Reuse `guideFeatures(s)`, pick ~5 core ids — `live`, `zones`, `notif`, `follow`, `night` — rendered compact (diagram + title + summary, no expandable details).
+
+### 3. Relaunch button (behavior you asked about: just re-shows setup, no reset/relaunch)
+- `Strings.kt`: add `relaunchSetupTitle` («Повторити перший запуск» / "Repeat first setup") — no desc string; add `onboardingFeaturesTitle` («Основні можливості» / "Core features") and `nextButton` («Далі» / "Next").
+- `SettingsScreen.kt`: `onRelaunchSetup` param; at the bottom of the collapsible Additional card (after battery, with a divider) a full-width `OutlinedButton` with the label + `Icons.Default.Refresh`.
+- `MainViewModel.kt`: `relaunchSetup()` → `prefs.setLanguageChosen(false)` + `prefs.setBatteryOnboardShown(false)`.
+- `MainScreen.kt`: wire `onRelaunchSetup = viewModel::relaunchSetup`. The paged dialog appears over Settings; battery prompt follows after Done (or is auto-skipped if already exempt).
+
+### 4. Verify
+`.\gradlew.bat :app:assembleDebug` (UI-only change). CHANGELOG entry under `[Unreleased]`.
+
+Ready to implement on "go".
+## 17/08/2026, 14:56:55
+
+Got it — the setup grows to 4 steps and the threat step gets de-pertyled. Updated plan:
+
+## Plan
+
+### First-launch = one paged dialog (`MainScreen.kt`, replaces `LanguageChooseDialog`)
+Local `step: Int` with a "n / 4" indicator; buttons **Back / Next**, last step shows **Done** (= `onLater` → `skipLanguageChoose`). `onDismissRequest` (outside/back) still skips the whole setup.
+
+- **Step 0 — Language**: current flag tiles (`languageChooseTitle`).
+- **Step 1 — Icon pack** (new): two picker tiles — Classic and Photos — reusing the Settings `IconSetTile` (7 icons each, selected = border highlight), with the pack-name captions shown here (onboarding clarity). Wiring: `viewModel.setThreatIconSet`.
+- **Step 2 — Tips + Fast/Slow alerts**: keep the 3 onboarding tip rows, but replace the all-7 `SlimThreatToggles` with a group-only picker — two rows (⚡ Fast / 🐢 Slow) each with **just an Alerts toggle** (`onThreatAlertToggleAll(groupTypes, on)`). No per-type rows, no Map toggles. (Say the word if you also want the group Map toggles there.)
+- **Step 3 — Core features** (last, new): curated quick list reusing `FeatureDiagram` + title + summary from `guideFeatures(s)` (~5: live map, zones & sirens, follow/pin, night mode) in the dialog's scrollable column.
+
+### Relaunch button (just re-shows setup — no settings reset, no app restart)
+- `MainViewModel.relaunchSetup()` → `setLanguageChosen(false)` + `setBatteryOnboardShown(false)`.
+- `SettingsScreen.kt`: `onRelaunchSetup` param; at the bottom of the collapsible **Additional settings** card (divider + full-width `OutlinedButton` with `Icons.Default.Refresh`), label = `relaunchSetupTitle`. No desc string, as you said.
+- After Done, the battery prompt still follows (or is auto-skipped if already exempt).
+
+### Strings (`Strings.kt`, UA + EN)
+`relaunchSetupTitle` («Повторити перший запуск» / "Repeat first setup"), `onboardingFeaturesTitle` («Основні можливості» / "Core features"), `nextButton` («Далі» / "Next"). Reuse existing `iconSetTitle`, `languageChooseTitle`, `onboardingTipsTitle`, `fastGroupLabel`, `slowGroupLabel`, `threatAlertLabel`, `okButton`, `backButton`.
+
+### Misc
+- `IconSetTile` in `SettingsScreen.kt`: make `internal` + optional name-caption flag (Settings keeps icons-only).
+- Dialog signature slims down (drop per-type map/alert callbacks; add `onIconSetChange` + group-alert callback).
+- CHANGELOG entry under `[Unreleased]`; verify with `.\gradlew.bat :app:assembleDebug`.
+
+Ready to implement on "go".
+## 17/08/2026, 15:01:09
+
+Now let me make the SettingsScreen edits — signature, relaunch button, and IconSetTile:
+## 17/08/2026, 15:02:31
+
+I can't view images (no image support in this model), so I can't visually confirm the ballistic photo's facing direction — I'll ask about that. First, let me verify what's actually inside the APKs you built, since that's the fastest way to rule in/out the resource-stripping hypothesis for the crash:
+## 17/08/2026, 15:02:45
+
+The debug APK (14:44) has `top_right_threat_photo_ballistic` — consistent with its code, so it wasn't the crash. Now the decisive check on the release APK (R8 + `shrinkResources`) — does it still contain every drawable the code references?
+## 17/08/2026, 15:03:00
+
+Both APKs are resource-consistent. Let me do the full cross-check — every `R.drawable` referenced in code vs what's actually in the release APK:
+## 17/08/2026, 15:03:09
+
+Now the MainScreen paged dialog. First the call site:
+## 17/08/2026, 15:03:26
+
+No missing drawables — both APKs are internally consistent, so the crash is a runtime exception, not a resource issue. Let me check the last startup-path suspect: the update checker (network + JSON parsing at startup, uncaught exceptions there would crash the process):
+## 17/08/2026, 15:03:36
+
+Now replace the `LanguageChooseDialog` composable with the paged setup:
+## 17/08/2026, 15:03:48
+
+Now add the missing imports to MainScreen.kt and wire `onRelaunchSetup`:
+## 17/08/2026, 15:03:50
+
+UpdateManager has try/catch — safe. One last check: is the current `threat_photo_ballistic.png` the *rotated* image (top-right, ~42 KB) or the original un-rotated one (~19 KB)? That decides the base-degree fix:
+## 17/08/2026, 15:04:12
+
+The ballistic image (42,744 bytes) is the rotated one — renaming didn't change content, so `45f` stays correct. New suspicion: the photo icons were replaced with much larger images this session. If their dimensions are huge, the first frame (language dialog renders all 7 photo icons) could OOM. Let me check dimensions:
+## 17/08/2026, 15:04:32
+
+All image dimensions are fine (~0.7 MB max decoded) — no OOM risk. The crash needs the actual trace. But first, the immediate blocker. Let me check for every `top_right_` reference and the full current git state:
+## 17/08/2026, 15:04:44
+
+Now wire `onRelaunchSetup` in MainScreen's SettingsScreen call:
+## 17/08/2026, 15:05:00
+
+The full picture is now clear. Here's the plan.
+
+## Diagnosis
+
+**The build error (current blocker):** You renamed `top_right_threat_photo_ballistic.png` → `threat_photo_ballistic.png`, but `IconCatalog.kt:60` still references the old name:
+
+```kotlin
+ThreatType.BALLISTIC -> R.drawable.top_right_threat_photo_ballistic   // broken — no such file
+```
+
+That's the single compile error blocking `:app:release`. Confirmed: only one code reference; the renamed PNG exists on disk (untracked, same 42,744-byte rotated image, just renamed — direction prefixes were dropped from all photo files).
+
+## Fix
+
+1. **`IconCatalog.kt:60`** → `R.drawable.threat_photo_ballistic` (one-line change).
+2. **Keep `photoBaseDeg(BALLISTIC) = 45f`** — the image content is unchanged (it still faces top-right; only the filename changed), so the rotation math stays correct. The `// _top_right` comments describe the image, not the filename — they stay.
+3. Optionally refresh the two doc comments that reference the old filename-suffix convention (lines 92/108) — cosmetic, can skip for a minimal patch.
+4. Then `.\gradlew.bat :app:assembleDebug` to verify the tree compiles again (and `:app:release` once you confirm).
+
+## Crash diagnosis (still open)
+
+I've exhausted static checks on both APKs you built (14:44 debug, 14:46 release):
+- Resources complete — every `R.drawable` referenced in code exists in the release APK (verified via aapt2), so `shrinkResources`/missing-resource is ruled out.
+- Image dimensions all ≤ 517×383 (~0.7 MB decoded) — no OOM risk.
+- Launch path (MainActivity, MainViewModel flows, AlertService, Compose first frame, update checker) audited clean; no reflection; update checker has try/catch.
+
+The ballistic rename happened **after** those APKs were built, so it wasn't their crash. After we fix the build and you reinstall a fresh debug APK, if it still force-closes I'll need the real exception to pinpoint it:
+- **Easiest:** connect the phone via USB (USB debugging on) and I'll run `adb logcat -d -b crash`, or
+- Paste the `FATAL EXCEPTION` block from Android Studio's Logcat.
+
+Shall I go ahead and apply the one-line `IconCatalog` fix?
+## 17/08/2026, 15:07:13
+
+Pre-existing broken reference in the working tree (unrelated to my changes) — the ballistic photo was renamed but the reference wasn't updated:
+## 17/08/2026, 15:08:13
+
+Build passes. Let me clean up the unused `s` param in `SetupLanguageStep`:
+## 17/08/2026, 15:09:20
+
+Done. `:app:assembleDebug` passes.
+
+**First-run setup** (`MainScreen.kt`) — `LanguageChooseDialog` is now a paged `FirstRunSetupDialog`, 4 steps with a "n/4" indicator and Back/Next (Done on the last step):
+1. Language
+2. **Icon pack** (new) — Classic vs Photos tiles (reused `IconSetTile`, now `internal` with an optional `showLabel`)
+3. Tips + **Fast/Slow alert groups** (new) — no more all-7 per-type toggles, just ⚡/🐢 Alerts toggles
+4. **Core features** (new, last) — curated quick tour (live map, zones & sirens, follow/pin, night) reusing the guide diagrams
+
+**Relaunch button** — Settings → Additional card (after battery): "Repeat first setup" (Refresh icon), wired to `viewModel.relaunchSetup()`, which only flips `languageChosen`/`batteryOnboardShown` — no settings reset, no app restart. Battery prompt re-follows after Done (or is skipped if already exempt).
+
+Also fixed a pre-existing broken resource reference in `IconCatalog.kt:60` (`top_right_threat_photo_ballistic` → `threat_photo_ballistic`) that was blocking the build. CHANGELOG updated.

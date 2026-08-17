@@ -15325,3 +15325,79 @@ go
 ## 17/08/2026, 13:53:07
 
 go
+## 17/08/2026, 14:14:35
+
+ensure top_right_threat_photo_ballistic.png (i replcaed teh photo and moved its direction) in the iconpack is using correct
+## 17/08/2026, 14:16:21
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 17/08/2026, 14:17:08
+
+git push
+## 17/08/2026, 14:18:28
+
+stop saying "git add ." for my git push command.
+
+
+## 17/08/2026, 14:21:58
+
+force close on launch ((
+## 17/08/2026, 14:33:34
+
+add these D:\Desktop\drones\app\src\main\iconpacks\comic\drawable-nodpi
+
+
+## 17/08/2026, 14:36:59
+
+go
+## 17/08/2026, 14:38:55
+
+its pointing to the correct file now?
+
+threat_photo_ballistic
+## 17/08/2026, 14:45:56
+
+add a butotn to relaunch first setup, in settings, not sure exatcly where.
+## 17/08/2026, 14:48:02
+
+crash on startup. i cleared data and it still force close.
+## 17/08/2026, 14:50:45
+
+the first-luanch might need more steps too.  a quick explainer on core features as last step for example
+
+"relaunchSetupDesc " string isn't needed, just the button is obvous
+
+will pressing the button just show the setup, or it will reset settingsa nd relaunch app?
+## 17/08/2026, 14:56:03
+
+icon pack should be a step
+and selecting fast or slow (but don't show all 7 threats) for alerts .
+## 17/08/2026, 14:58:30
+
+go
+## 17/08/2026, 15:01:07
+
+it shoulnd't have "top_right_" anymore, i chagned the filename.
+
+> Task :drones:app:compileReleaseKotlin
+e: file:///D:/Desktop/drones/app/src/main/java/ua/ukrainedrones/IconCatalog.kt:60:44 Unresolved reference: top_right_threat_photo_ballistic
+
+> Task :drones:app:compileReleaseKotlin FAILED
+> Task :app:release FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':drones:app:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+## 17/08/2026, 15:08:43
+
+08-17 15:07:08.981 13855 13855 E AndroidRuntime:        at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+08-17 15:08:03.752 14243 14243 E AndroidRuntime: FATAL EXCEPTION: main
+08-17 15:08:03.752 14243 14243 E AndroidRuntime: Process: ua.ukrainedrones, PID: 14243
+08-17 15:08:03.752 14243 14243 E AndroidRuntime: java.lang.VerifyError: Verifier rejected class ua.ukrainedrones.Strings: void ua.ukrainedrones.Strings.<clinit>() failed to verify: void ua.ukrainedrones.Strings.<clinit>(): [0x367] Rejecting invocation, expected 15 argument registers, method signature has 16 or more (declaration of 'ua.ukrainedrones.Strings' appears in /data/app/~~T7yhakboKwgo_dEyj8-Uuw==/ua.ukrainedrones-kjiusZ-brc9arTLI-ekduA==/base.apk!classes3.dex)
+08-17 15:08:03.752 14243 14243 E AndroidRuntime:        at ua.ukrainedrones.AlertService.createChannels(AlertService.kt:836)
+## 17/08/2026, 15:09:27
+
+git push

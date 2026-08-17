@@ -361,7 +361,7 @@ combine(
                     )
                 }
         ) { window, zones -> NightPrefs(window, zones) }
-    ) { a, b, c, d, vib ->
+    ) { a, b, c, vib, night ->
         PrefsSnapshot(
             mapEnabled = a.map,
             alertEnabled = a.alert,
@@ -385,7 +385,7 @@ combine(
             slowGroupCollapsed = b.slowGroupCollapsed,
             fastVibrationLevel = vib.first,
             slowVibrationLevel = vib.second,
-            night = d
+            night = night
         )
     }
 
@@ -936,6 +936,15 @@ val uiState: StateFlow<UiState> = combine(
     /** Dismiss the first-run language picker without changing the language. */
     fun skipLanguageChoose() {
         viewModelScope.launch { prefs.setLanguageChosen(true) }
+    }
+
+    /** Re-open the first-run setup (language, icon pack, alert groups, feature tour + battery
+     *  prompt). Only flips the onboarding-completed flags — no setting is reset. */
+    fun relaunchSetup() {
+        viewModelScope.launch {
+            prefs.setLanguageChosen(false)
+            prefs.setBatteryOnboardShown(false)
+        }
     }
 
     fun selectThreat(threat: Threat?) {

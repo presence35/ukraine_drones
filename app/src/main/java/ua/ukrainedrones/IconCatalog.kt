@@ -16,8 +16,8 @@ import androidx.compose.ui.unit.Dp
 
 /**
  * Single source of truth for which drawable represents a threat type in which icon set.
- * The classic set is the monochrome vector set; the photo set is the bundled direction-
- * oriented photos (see `iconpacks/photo/drawable-nodpi/threat_photo_*.png`).
+ * The classic set is the monochrome vector set; the photo/army/comic sets are the bundled
+ * direction-oriented rasters (see `iconpacks/{photo,army,comic}/drawable-nodpi/threat_*_*.png`).
  */
 object IconCatalog {
 
@@ -38,6 +38,7 @@ object IconCatalog {
         ThreatIconSet.CLASSIC -> classicRes(type)
         ThreatIconSet.PHOTO -> photoRes(type) ?: classicRes(type)
         ThreatIconSet.ARMY -> armyRes(type) ?: classicRes(type)
+        ThreatIconSet.COMIC -> comicRes(type) ?: classicRes(type)
     }
 
     /** Army icon for [type], or null when the set has no asset (UNKNOWN). */
@@ -63,6 +64,18 @@ object IconCatalog {
         ThreatType.UNKNOWN -> null
     }
 
+    /** Comic icon for [type], or null when the set has no asset (UNKNOWN). */
+    internal fun comicRes(type: ThreatType): Int? = when (type) {
+        ThreatType.SHAHED -> R.drawable.threat_comic_shahed
+        ThreatType.FPV_LOITERING -> R.drawable.threat_comic_fpv
+        ThreatType.CRUISE_MISSILE -> R.drawable.threat_comic_cruise
+        ThreatType.BALLISTIC -> R.drawable.threat_comic_ballistic
+        ThreatType.KAB -> R.drawable.threat_comic_kab
+        ThreatType.AVIATION -> R.drawable.threat_comic_aviation
+        ThreatType.RECON -> R.drawable.threat_comic_recon
+        ThreatType.UNKNOWN -> null
+    }
+
     /** The seven threat types that have bundled photos, in display order. */
     fun photoTypes(): List<ThreatType> = listOf(
         ThreatType.SHAHED,
@@ -80,7 +93,7 @@ object IconCatalog {
      * icon by `courseDeg - base` so the subject points along its true course.
      */
     fun photoBaseDeg(type: ThreatType): Float = when (type) {
-        ThreatType.BALLISTIC -> 0f      // _top
+        ThreatType.BALLISTIC -> 45f      // _top_right
         ThreatType.CRUISE_MISSILE -> 90f // _right
         ThreatType.FPV_LOITERING -> 180f // _bottom_middle
         ThreatType.KAB -> 225f           // _bottom_left
@@ -105,10 +118,17 @@ object IconCatalog {
         ThreatType.UNKNOWN -> 0f
     }
 
+    /**
+     * Direction each comic icon's subject faces as baked into the image, in degrees clockwise
+     * from north/up (the source-file name, e.g. "top_right" = 45°).
+     */
+    fun comicBaseDeg(type: ThreatType): Float = armyBaseDeg(type)
+
     /** Baked-in facing direction for the active set (0° for the rotation-free classic set). */
     fun baseDeg(type: ThreatType, set: ThreatIconSet): Float = when (set) {
         ThreatIconSet.PHOTO -> photoBaseDeg(type)
         ThreatIconSet.ARMY -> armyBaseDeg(type)
+        ThreatIconSet.COMIC -> comicBaseDeg(type)
         ThreatIconSet.CLASSIC -> 0f
     }
 }
@@ -126,7 +146,7 @@ fun ThreatIcon(
     tint: Color = Color.Unspecified,
     contentDescription: String? = null
 ) {
-    if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null) {
+    if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null) {
         Icon(
             painter = painterResource(id = IconCatalog.res(type, set)),
             contentDescription = contentDescription,
