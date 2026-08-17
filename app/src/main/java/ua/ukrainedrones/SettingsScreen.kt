@@ -1,6 +1,8 @@
 package ua.ukrainedrones
 
 import android.content.Context
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -53,6 +55,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -991,6 +994,9 @@ private fun VibrationSliderRow(
     levelName: (Int) -> String,
     onLevelChange: (Int) -> Unit
 ) {
+    val context = LocalContext.current
+    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
+    var lastPreviewed by remember { mutableIntStateOf(level) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1005,7 +1011,16 @@ private fun VibrationSliderRow(
         )
         Slider(
             value = level.toFloat(),
-            onValueChange = { onLevelChange(it.roundToInt()) },
+            onValueChange = { newValue ->
+                val newLevel = newValue.roundToInt()
+                onLevelChange(newLevel)
+                if (newLevel != lastPreviewed) {
+                    lastPreviewed = newLevel
+                    if (newLevel > 0) {
+                        vibrator?.vibrate(VibrationEffect.createWaveform(vibrationPattern(newLevel), -1))
+                    }
+                }
+            },
             valueRange = 0f..4f,
             steps = 3,
             colors = SliderDefaults.colors(
@@ -1354,54 +1369,48 @@ private fun CardSizeTile(
     }
 }
 
-/** Icon-slot size inside an icon-set tile (also sizes the "coming soon" placeholder slot). */
-private val IconTileSlot = 44.dp
+/** Icon-slot size inside an icon-set tile. */
+private val IconTileSlot = 36.dp
 
-/** Shared min height so the 2x2 grid stays aligned (name-less top row vs named bottom row). */
-private val IconTileMinHeight = 120.dp
-
-/** Icon-style picker: a 2x2 grid of cards — the four real sets (Classic, Photos, Army, Comic)
- *  with all seven icons in a scrollable panel. */
+/** Icon-style picker: four stacked full-width rows (one per real set — Classic, Photos,
+ *  Army, Comic), each showing all seven icons side by side. */
 @Composable
-private fun IconSetSelector(
+internal fun IconSetSelector(
     lang: AppLanguage,
     selected: ThreatIconSet,
-    onChange: (ThreatIconSet) -> Unit
+    onChange: (ThreatIconSet) -> Unit,
+    slot: Dp = IconTileSlot
 ) {
     val s = Strings.get(lang)
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconSetTile(
-                set = ThreatIconSet.CLASSIC,
-                label = s.iconSetClassicLabel,
-                selected = selected == ThreatIconSet.CLASSIC,
-                onClick = { onChange(ThreatIconSet.CLASSIC) },
-                modifier = Modifier.weight(1f)
-            )
-            IconSetTile(
-                set = ThreatIconSet.PHOTO,
-                label = s.iconSetPhotoLabel,
-                selected = selected == ThreatIconSet.PHOTO,
-                onClick = { onChange(ThreatIconSet.PHOTO) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconSetTile(
-                set = ThreatIconSet.ARMY,
-                label = s.iconSetArmyLabel,
-                selected = selected == ThreatIconSet.ARMY,
-                onClick = { onChange(ThreatIconSet.ARMY) },
-                modifier = Modifier.weight(1f)
-            )
-            IconSetTile(
-                set = ThreatIconSet.COMIC,
-                label = s.iconSetComicLabel,
-                selected = selected == ThreatIconSet.COMIC,
-                onClick = { onChange(ThreatIconSet.COMIC) },
-                modifier = Modifier.weight(1f)
-            )
-        }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        IconSetTile(
+            set = ThreatIconSet.CLASSIC,
+            label = s.iconSetClassicLabel,
+            selected = selected == ThreatIconSet.CLASSIC,
+            onClick = { onChange(ThreatIconSet.CLASSIC) },
+            slot = slot
+        )
+        IconSetTile(
+            set = ThreatIconSet.PHOTO,
+            label = s.iconSetPhotoLabel,
+            selected = selected == ThreatIconSet.PHOTO,
+            onClick = { onChange(ThreatIconSet.PHOTO) },
+            slot = slot
+        )
+        IconSetTile(
+            set = ThreatIconSet.ARMY,
+            label = s.iconSetArmyLabel,
+            selected = selected == ThreatIconSet.ARMY,
+            onClick = { onChange(ThreatIconSet.ARMY) },
+            slot = slot
+        )
+        IconSetTile(
+            set = ThreatIconSet.COMIC,
+            label = s.iconSetComicLabel,
+            selected = selected == ThreatIconSet.COMIC,
+            onClick = { onChange(ThreatIconSet.COMIC) },
+            slot = slot
+        )
     }
 }
 
@@ -1412,10 +1421,11 @@ internal fun IconSetTile(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    showLabel: Boolean = false
+    slot: Dp = IconTileSlot
 ) {
     Card(
         modifier = modifier
+            .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
@@ -1425,72 +1435,21 @@ internal fun IconSetTile(
             else MaterialTheme.colorScheme.outlineVariant
         )
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = IconTileMinHeight)
-                .padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // All 7 photo-backed threat types in a single row that scrolls horizontally
-            // within the card; the photo set letterboxes each into its square slot.
-            val scrollState = rememberScrollState()
-            val cardBg = MaterialTheme.colorScheme.surfaceContainer
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(scrollState),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    IconCatalog.photoTypes().forEach { type ->
-                        ThreatIcon(
-                            type = type,
-                            set = set,
-                            size = IconTileSlot,
-                            contentDescription = label
-                        )
-                    }
-                }
-                // Edge scrims hint that the row scrolls horizontally: a fade on the right
-                // while more icons are hidden, and one on the left once you've scrolled.
-                if (scrollState.value > 0) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .fillMaxHeight()
-                            .width(20.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(cardBg, Color.Transparent)
-                                )
-                            )
+            IconCatalog.photoTypes().forEach { type ->
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    ThreatIcon(
+                        type = type,
+                        set = set,
+                        size = slot,
+                        contentDescription = label
                     )
                 }
-                if (scrollState.value < scrollState.maxValue) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .width(20.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(Color.Transparent, cardBg)
-                                )
-                            )
-                    )
-                }
-            }
-            if (showLabel) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
             }
         }
     }

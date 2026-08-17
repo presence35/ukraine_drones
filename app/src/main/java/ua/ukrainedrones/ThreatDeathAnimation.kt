@@ -20,11 +20,13 @@ import kotlin.math.sqrt
 /** Total length of the death animation: lead-in ping + projectile flight + explosion. */
 private const val DEATH_DURATION_MS = 5000L
 
-/** The projectile hits and the explosion begins this many ms into the animation. */
-const val DEATH_EXPLOSION_START_MS = 3500L
+/** The projectile hits and the explosion begins this many ms into the animation (0.5s ping +
+ *  1.5s flight). */
+const val DEATH_EXPLOSION_START_MS = 2000L
 
-/** Explosion window ends this many ms after it starts (5.0s - 3.5s). */
-private const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
+/** Explosion window ends this many ms after it starts (5.0s - 2.0s); the neutralized card
+ *  fades out across it. */
+const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
 
 /**
  * A dying threat. For real server removals [icon] is the marker's own drawable, so the icon
@@ -80,6 +82,10 @@ class ThreatDeathOverlay : Overlay() {
     private val bulletPaint = Paint().apply { isAntiAlias = true }
     private val reuse = android.graphics.Point()
     private val reuseOrigin = android.graphics.Point()
+
+    /** Ukraine flag colors: the projectile is gold with a blue chevron. */
+    private val UkraineGold = Color.rgb(255, 215, 0)
+    private val UkraineBlue = Color.rgb(0, 87, 183)
 
     override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
         if (shadow) return
@@ -187,25 +193,26 @@ class ThreatDeathOverlay : Overlay() {
                             canvas.drawCircle(ox, oy, 14f * density * lf, flashPaint)
                             flashPaint.shader = null
                         }
-                        // Bullet: glowing head + gold tail + white chevron along the heading.
+                        // Bullet: glowing gold head + gold tail + a blue chevron along the heading
+                        // (Ukraine colors).
                         canvas.save()
                         canvas.translate(bx, by)
                         canvas.rotate(Math.toDegrees(atan2(headY.toDouble(), headX.toDouble())).toFloat())
                         flashPaint.shader = RadialGradient(
                             0f, 0f, 14f * density,
                             intArrayOf(
-                                Color.argb(160, 255, 213, 0),
-                                Color.argb(0, 255, 213, 0)
+                                Color.argb(160, 255, 215, 0),
+                                Color.argb(0, 255, 215, 0)
                             ),
                             floatArrayOf(0f, 1f),
                             Shader.TileMode.CLAMP
                         )
                         canvas.drawCircle(0f, 0f, 14f * density, flashPaint)
                         flashPaint.shader = null
-                        bulletPaint.color = Color.rgb(255, 213, 0)
+                        bulletPaint.color = UkraineGold
                         canvas.drawCircle(-12f * density, 0f, 2f * density, bulletPaint)
                         canvas.drawCircle(-6f * density, 0f, 3.4f * density, bulletPaint)
-                        bulletPaint.color = Color.WHITE
+                        bulletPaint.color = UkraineBlue
                         val chevron = Path()
                         chevron.moveTo(6f * density, 0f)
                         chevron.lineTo(0f, -3.4f * density)

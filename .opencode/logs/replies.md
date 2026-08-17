@@ -42185,3 +42185,632 @@ Done. `:app:assembleDebug` passes.
 **Relaunch button** — Settings → Additional card (after battery): "Repeat first setup" (Refresh icon), wired to `viewModel.relaunchSetup()`, which only flips `languageChosen`/`batteryOnboardShown` — no settings reset, no app restart. Battery prompt re-follows after Done (or is skipped if already exempt).
 
 Also fixed a pre-existing broken resource reference in `IconCatalog.kt:60` (`top_right_threat_photo_ballistic` → `threat_photo_ballistic`) that was blocking the build. CHANGELOG updated.
+## 17/08/2026, 15:09:38
+
+That's the crash — a **`VerifyError` in `Strings.<clinit>`**. This is the classic dex register-limit failure: the `Strings` static initializer has grown too large to verify on-device, so the class fails to load at startup (called by `AlertService.createChannels`). It's deterministic, data-independent, and invisible to gradle/unit tests — matching everything. Let me confirm the structure to design the fix:
+## 17/08/2026, 15:09:47
+
+```
+git add .
+git commit -m "Guided 4-step first-run setup and repeat-setup button"
+```
+## 17/08/2026, 15:10:35
+
+The mystery crash is solved — and it's not ballistic, comic, or resources. Let me quantify the `StringSet` size to pick the right fix:
+## 17/08/2026, 15:11:11
+
+Let me pin down the exact `StringSet` size (the dex per-method/parameter limits decide the fix shape):
+## 17/08/2026, 15:12:46
+
+Found it — this is the real crash, and it's unrelated to ballistic/comic/resources. Here's the complete picture and plan.
+
+## Root cause
+
+```
+java.lang.VerifyError: Verifier rejected class ua.ukrainedrones.Strings:
+void ua.ukrainedrones.Strings.<clinit>() failed to verify ...
+at ua.ukrainedrones.AlertService.createChannels(AlertService.kt:836)
+```
+
+`Strings` is an `object`, so all its initialization runs in **one static initializer method (`<clinit>`)**. That single method constructs **both** `StringSet(UA)` and `StringSet(EN)` — and `StringSet` now has **273 constructor parameters** (Strings.kt:10-282). This makes `<clinit>` so large that the **on-device ART verifier rejects it** when the class first loads. Since `AlertService.createChannels` touches `Strings.get(...)` at startup, the app force-closes before the UI appears.
+
+Why it's been invisible:
+- `assembleDebug`/`testDebugUnitTest` **never run ART verification** (JVM only) → builds and tests pass.
+- It's not data-dependent → survives "clear data".
+- The ~15 strings added this session pushed `StringSet` past the verifier's per-method limit → crash appeared now.
+
+## Fix plan
+
+**Fix A — the build blocker (1 line):** `IconCatalog.kt:60` → `R.drawable.threat_photo_ballistic` (keep `45f`; the image content is unchanged).
+
+**Fix B — the VerifyError (the real fix):** shrink `Strings.<clinit>`. Two options:
+
+1. **Quick try (minimal diff):** move each construction out of `<clinit>` so no single method holds both giant calls, e.g.
+   ```kotlin
+   private val UA: StringSet by lazy { StringSet(...) }   // or private fun buildUa()
+   private val EN: StringSet by lazy { StringSet(...) }
+   ```
+   Each `StringSet(...)` lands in its own small method; `<clinit>` becomes trivial. **Uncertain** — if the verifier rejects the individual 273-arg invoke itself (not just the combined register pressure), this won't help.
+
+2. **Definitive fix:** split `StringSet` into ~5-6 nested data classes by theme (`Alerts`, `Settings`, `Map`, `Zones`, `Guide`, `Misc`), e.g. `data class StringSet(val alerts: Alerts, val settings: Settings, ...)`. Constructor drops to a handful of args; `<clinit>` becomes tiny. Mechanical but touches **~200 call sites** across ~15 files (`s.alertHistoryTitle` → `s.alerts.alertHistoryTitle`). Guaranteed to fix it and removes the latent dex hazard (273 params is over the 255 single-invocation limit — it's a ticking bomb regardless).
+
+**Verification:** `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`, then install on the phone to confirm the crash is gone (only the device verifier can confirm a VerifyError fix).
+
+**Recommendation:** try Fix B.1 first (5 min, tiny diff) — if the on-device crash persists, fall back to B.2. Either way, Fix A is included.
+
+Want me to start with the quick `by lazy` attempt, or go straight to the definitive split?
+## 17/08/2026, 15:15:06
+
+The definitive fix. This is a substantial mechanical refactor — let me set up tracking and gather the facts first.
+## 17/08/2026, 15:15:35
+
+259 `s.<prop>` call sites and zero external `StringSet(...)` constructions — so a facade that keeps the flat API is the low-risk path. Let me read the full file structure to build it correctly:
+## 17/08/2026, 15:16:17
+
+Now let me read the UA and EN value blocks to confirm they're in declaration order (so I can slice them cleanly):
+## 17/08/2026, 15:16:56
+
+UA values are in declaration order (with minor internal reordering — `onboardingTipSettings`/`Siren` come after `relaunchSetupTitle`). So I'll drive the refactor with a script that matches by name, not line slices. Let me read the tail and confirm the EN block shape:
+## 17/08/2026, 15:17:39
+
+## Objective
+- Fix the on-device startup crash (`VerifyError` in `Strings.<clinit>`) by "doing the proper one": split the 273-parameter `StringSet` data class into themed nested groups so no single dex method exceeds the register/invocation limits, plus fix the ballistic drawable reference that is currently blocking compilation.
+
+## Important Details
+- User decisions: "do the proper one" = definitive `StringSet` split (not just `by lazy`). Plan: 6 themed group data classes; `StringSet` becomes a facade (data class holding the groups) exposing the same flat property API via delegation getters so the **259 `s.<prop>` call sites** across 10 files stay unchanged.
+- Crash trace (user-pasted, 08-17 15:08): `java.lang.VerifyError: Verifier rejected class ua.ukrainedrones.Strings: void ua.ukrainedrones.Strings.<clinit>() failed to verify ... expected 15 argument registers, method signature has 16 or more ... at ua.ukrainedrones.AlertService.createChannels(AlertService.kt:836)`.
+- Root cause: `Strings` is an `object`; its single `<clinit>` constructs BOTH `StringSet(UA)` and `StringSet(EN)` inline; `StringSet` now has **273 constructor parameters** (Strings.kt lines 10–282) — over the dex 255 single-invocation limit. ART verifier rejects the class when `Strings.get()` is first touched (AlertService `createChannels`). Invisible to `assembleDebug`/`testDebugUnitTest` (JVM, no ART verification); deterministic and survives "clear data".
+- `StringSet(...)` has **zero construction sites outside Strings.kt**; `Strings.StringSet` is used only as a type in signatures (safe to keep the name). Facts gathered: 259 call sites (SettingsScreen 83, MainScreen 53, FeatureGuide 32, ConnectionStatus 25, AlertService 22, ThreatPopupCard 16, ZonesSheet 12, ThreatTogglePanel 7, MainViewModel 5, Strings 4).
+- Design requirement: each group's construction must live in its **own method** (per-group `by lazy` or separate builder functions) so no single method loads ~273 constants — otherwise the same VerifyError reproduces inside the lazy lambda.
+- Build blocker: user renamed `top_right_threat_photo_ballistic.png` back to `threat_photo_ballistic.png` (deleting the `top_right_` file) → `IconCatalog.kt:60` still references `R.drawable.top_right_threat_photo_ballistic` and now fails `:app:release` with `Unresolved reference`. The file is the SAME rotated image (42,744 bytes, last write 13:59:25) → `photoBaseDeg(BALLISTIC) = 45f` stays correct.
+- Git state: user committed `a46c305` "Add UX items: ..." (14:17:55; commit contains pre-fix IconCatalog). Working tree now has uncommitted: IconCatalog.kt (comic + ballistic fix), MainViewModel.kt, build.gradle.kts (adds `iconpacks/comic` to `res.srcDirs`), version.properties (0.3.106/versionCode 117), plus user edits to MainScreen/SettingsScreen/Strings/ZonePrefs; untracked `app/src/main/iconpacks/comic/` (7 PNGs, complete in `drawable-nodpi`); `top_right_threat_photo_ballistic.png` marked deleted.
+- User's comic work is fully wired: `ThreatIconSet` = {CLASSIC, PHOTO, ARMY, COMIC}; default icon set = PHOTO; `IconCatalog.res()/baseDeg()/comicRes()` handle COMIC; SettingsScreen has COMIC entry. Not the crash.
+- Ruled out (verified via aapt2 on both APKs): no referenced `R.drawable.*` missing from release APK; image dimensions all ≤ 517×383 (no OOM); UpdateManager has try/catch; no reflection. Debug APK (14:44:27) and release APK (14:46:34) predate the ballistic rename and are resource-consistent.
+- Prior-session work is all committed/verified: UX items #12/#13/#16/#17/#18, `formatDateTime`, new tests (AlertHistoryTest, VibrationTest, StringsFormatTest), CHANGELOG under `[Unreleased]`, ARCHITECTURE.md module map + Testing list. `assembleDebug` + `testDebugUnitTest` passed earlier (after fixing combine arity: `TailPrefs` in AlertService, param order in MainViewModel prefsSnapshot).
+
+## Work State
+### Completed
+- UX items #12–18, datetime formatting, tests, docs (CHANGELOG/ARCHITECTURE) — implemented and verified (`assembleDebug` + `testDebugUnitTest` green).
+- Crash root cause identified: VerifyError on `Strings.<clinit>`; 273-param `StringSet` confirmed.
+- Diagnostic checks: resource consistency in both APKs, image sizes, reflection, update checker — all clean.
+- Full `Strings.kt` structure mapped: `object Strings` (line 3), `get()` (4–7), `data class StringSet(` (9, closes 283), 273 `val` params (10–282, 8-space indent `^        val \w+`), `private val UA = StringSet(` (285, ~230 named args to ~560), `private val EN = StringSet(` (561), `formatDateTime` (~888), file is 899 lines.
+
+### Active
+- Todo "Map StringSet structure" — facts gathered; full property list + UA/EN blocks still needed (was reading Strings.kt lines 1–283 when interrupted).
+- Todo "Fix IconCatalog.kt:60" (pending): change `R.drawable.top_right_threat_photo_ballistic` → `R.drawable.threat_photo_ballistic`; keep 45f; optionally refresh stale doc comments about the filename-suffix convention (lines 92/108).
+- Todos pending: split StringSet into themed group data classes + facade getters; rebuild UA/EN via per-group lazy construction; verify assembleDebug + testDebugUnitTest.
+
+### Blocked
+- Build currently fails: `IconCatalog.kt:60` unresolved `top_right_threat_photo_ballistic` (blocks any build until fixed).
+- No device/emulator attached (`adb devices` empty, no AVD) — device verification of the VerifyError fix requires the user's phone.
+
+## Next Move
+1. Finish reading Strings.kt (all 273 property names in order, UA block 285–560, EN block 561–~872, tail incl. `formatDateTime`) to build the split accurately.
+2. Apply the ballistic one-liner to IconCatalog.kt:60 (`threat_photo_ballistic`), keeping `photoBaseDeg(BALLISTIC) = 45f`.
+3. Execute the split: 6 group data classes (suggested names: Alerts, Settings, MapStrings, Zones, Guide, Misc — avoid `Map` shadowing), `StringSet` facade with 6 group params + 273 delegation getters (no call-site changes), UA/EN built from per-group `by lazy` vals inside `object Strings`.
+4. Run `.\gradlew.bat :app:assembleDebug` then `.\gradlew.bat :app:testDebugUnitTest`.
+5. Ask user to install the fresh debug APK on-device to confirm the VerifyError is gone (only ART can verify), then commit the tree (ballistic fix + split) once confirmed.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: the file being refactored (273-param StringSet, UA/EN blocks, `formatDateTime`).
+- `app/src/main/java/ua/ukrainedrones/IconCatalog.kt`: line 60 ballistic ref (build blocker); `comicRes()`, `baseDeg()`/`res()` handle COMIC; photoBaseDeg/armyBaseDeg 45f for BALLISTIC.
+- `app/build.gradle.kts`: `res.srcDirs` now includes `src/main/iconpacks/classic|photo|army|comic` (comic uncommitted).
+- `app/src/main/iconpacks/comic/drawable-nodpi/`: 7 untracked `threat_comic_*.png`, complete.
+- `app/src/main/iconpacks/photo/drawable-nodpi/threat_photo_ballistic.png`: renamed back (untracked), same rotated image.
+- `app/version.properties`: 0.3.106 / versionCode 117 (uncommitted bump).
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt:836`: `createChannels` — where the VerifyError surfaces (first `Strings.get()` touch).
+- Commit `a46c305` (HEAD): contains broken pre-fix IconCatalog; about to be superseded by the rebuild of the working tree.
+## 17/08/2026, 15:18:17
+
+Let me confirm the file's exact structure markers before writing the transformation script:
+## 17/08/2026, 15:18:48
+
+Structure confirmed. Now let me check the file's encoding/BOM and line endings so the regenerated file matches exactly:
+## 17/08/2026, 15:19:34
+
+No BOM, CRLF, 899 lines. Let me verify the group boundary transition lines precisely before writing the generator:
+## 17/08/2026, 15:19:46
+
+All boundaries confirmed. Now I'll write the generator script (backup original first):
+## 17/08/2026, 15:20:09
+
+Generated successfully (1260 lines). Let me verify the structure:
+## 17/08/2026, 15:20:38
+
+Let me check if those `???????` in the tail comment are pre-existing in the original:
+## 17/08/2026, 15:20:45
+
+Pre-existing in the original — no regression. Now the real validation — build:
+## 17/08/2026, 15:21:16
+
+Build successful — all 273 call-site getters resolve. Now the unit tests:
+## 17/08/2026, 15:21:32
+
+Both green. Let me get the definitive proof that the ART-visible method signatures are now small by dumping the dex method register counts:
+## 17/08/2026, 15:23:08
+
+`<clinit>` is now **17 registers** (was failing before). Let me confirm the group builders and getters:
+## 17/08/2026, 15:23:56
+
+All methods ≤ 96 registers — the VerifyError is structurally fixed. Now let me check the ballistic drawable state, since the build just passed (the summary said the reference was broken):
+## 17/08/2026, 15:24:08
+
+The ballistic reference is already correct in the working tree (user's rename fixed it — build passes). Let me check the stale doc comments about the `top_right_` naming convention:
+## 17/08/2026, 15:24:20
+
+Doc comments are stale-but-harmless; leaving them (minimal patches). Let me do the strongest check — verify every string value survived byte-for-byte by comparing the backup's UA/EN arg maps against the new file's builders:
+## 17/08/2026, 15:24:34
+
+All 546 values byte-identical. Refactor complete and verified at every level:
+## 17/08/2026, 15:24:42
+
+The StringSet split is done. Summary:
+
+**What I did**
+- Rewrote `Strings.kt`: `StringSet` (273 params) → **7 themed group data classes** (`Onboarding`, `Settings`, `Status`, `Updates`, `Threat`, `Misc`, `Guide`) + a `StringSet` facade holding 6... 7 group fields with **273 delegating getters** — so all ~259 call sites compile unchanged.
+- UA/EN are built via **per-group private functions** (`uaOnboarding()`, `enGuide()`, …), so no single dex method constructs more than ~85 constants. `<clinit>` now does just 2 small `StringSet(...)` calls.
+
+**Verification**
+- `assembleDebug` ✓, `testDebugUnitTest` ✓
+- Dex dump: `<clinit>` is **17 registers** (was the failing ~16+ arg method); the largest method in the whole class tree is 96 registers — far under ART's limit.
+- Scripted comparison: all **546 values byte-identical** to the original file.
+
+**Needs you**
+- Only ART can confirm the VerifyError is gone. Install the fresh APK (`app\build\outputs\apk\debug\app-debug.apk`) on your phone and launch. If it starts clean, I'll commit (with `version.properties` bump) and we're done.
+- Note: the ballistic drawable ref in `IconCatalog.kt:60` was already `threat_photo_ballistic` in your working tree — no change needed there.
+## 17/08/2026, 15:32:54
+
+Confirmed. In the first-run step, `LanguageFlag(active = current == …)` makes the currently-selected language's flag washed-out (alpha 0.3 + blue chip) and the other one vivid — the Settings "switch-to" convention, which is backwards for a chooser.
+
+## Plan
+
+**`MainScreen.kt` → `SetupLanguageStep`** — invert the two `active` arguments (first-run only; Settings' flags stay as-is):
+
+```kotlin
+active = current != AppLanguage.UA,   // was: current == AppLanguage.UA
+active = current != AppLanguage.EN,   // was: current == AppLanguage.EN
+```
+
+Result: the **selected** language's flag renders full-color/vivid; the other one is the muted, blue-chipped one — so a tap gives clear "this is now chosen" feedback.
+
+Side effect to flag: with the current `LanguageFlag` rendering, the blue chip lands on the *unselected* tile (selected = vivid, no chip). If you'd rather the chip sit on the *selected* tile (chip + vivid on chosen), that needs a small `LanguageFlag` variant — say the word and I'll do that instead. Otherwise it's a 2-line change + rebuild (`:app:assembleDebug`).
+## 17/08/2026, 15:41:18
+
+Let me research all of these before planning.
+## 17/08/2026, 15:42:08
+
+## Objective
+- Polish the Ukraine Drones app's settings header, connection status, icon-set tiles, and "coming soon" tiles; add a "relaunch first setup" button; convert first-launch into a guided 4-step walkthrough (language, icon pack, Fast/Slow alert groups, core-features explainer), then commit/push per the user's "git push".
+
+## Important Details
+- Main language of repo/work: Kotlin/Compose Material3; single module `:app`, package `ua.ukrainedrones`. Build via `.\gradlew.bat :app:assembleDebug`.
+- Header emblem decision (user-confirmed): red (`neptun_red.png`) whenever NEPTUN is actually down; amber tint only while NEPTUN is alive but on backup → tint condition is now `backupActive && !neptunDown`.
+- "Coming soon" decision (user-confirmed): styled badge, keep pack name caption, NOT a lock icon → rocket 🚀 was chosen, but later the working tree (changed by another session) made Army/Comic real selectable icon sets, so `ComingSoonTile`/rocket became moot — all four sets are now real `IconSetTile`s.
+- Relaunch-setup decision: button lives in the collapsible "Additional settings" card (after battery), resets only `languageChosen` + `batteryOnboardShown` — no settings reset, no app restart. No desc string — button label alone.
+- Setup structure decision: one paged dialog, explainer is the LAST step, additional to everything already present; curated quick list (~5 core features from `guideFeatures`).
+- User's final message "git push" → git-push skill mandates NO tool runs; agent only printed the two commands (git add . / git commit -m "..."); nothing was actually executed.
+- Pre-existing (not ours) fixes/state in the working tree: Army/Comic icon packs, language-aware `formatDateTime` for connection-log timestamps (superseded the earlier "MM/dd HH:mm:ss" change), many unrelated uncommitted changes.
+
+## Work State
+### Completed
+- `SettingsScreen.kt`: removed the duplicated outer "Additional settings" `SectionHeader` (kept the collapsible card title+arrow); icon tiles are icon-only at 44dp (`IconTileSlot = 44.dp`, `IconTileMinHeight = 120.dp`); `IconSetTile` made `internal` with optional `showLabel` (used by the setup dialog); added `onRelaunchSetup` param and an `OutlinedButton` (Refresh icon + `s.relaunchSetupTitle`) at the bottom of the Additional card after the battery section.
+- `MainScreen.kt`: `FirstRunSetupDialog` (replaces `LanguageChooseDialog`) — 4 steps with "n/4" indicator, Back/Next, Done on last step (`onLater` → `skipLanguageChoose`); steps: `SetupLanguageStep`, `SetupIconPackStep` (Classic/Photos `IconSetTile`s, `showLabel=true`), `SetupAlertGroupsStep` (3 onboarding tips + ⚡/🐢 Fast/Slow groups via `fastAndSlowGroups`, Alerts `IconToggle` only via `onGroupAlertToggle`), `SetupFeaturesStep` (curated `guideFeatures` subset: live, zones, notif, follow, night with `FeatureDiagram`). Wired `onRelaunchSetup = { viewModel.relaunchSetup() }`. Imports: added `Icons.filled.Notifications` AND re-added `Icons.outlined.Notifications` (needed at `AllAlertsOffWarning`, lines ~1032/1039); added `androidx.compose.ui.unit.sp`; uses `semanticsContentDescription` alias.
+- `MainViewModel.kt`: `relaunchSetup()` → `prefs.setLanguageChosen(false)` + `prefs.setBatteryOnboardShown(false)`.
+- `Strings.kt` (UA+EN): added `nextButton` (Далі/Next), `onboardingFeaturesTitle` (Основні можливості/Core features), `relaunchSetupTitle` (Повторити перший запуск/Repeat first setup).
+- `ConnectionStatus.kt`: tint condition `backupActive && !online` → `backupActive && !neptunDown` (neptun red when down). (Earlier "MM/dd HH:mm:ss" log-format change was later superseded by language-aware `formatDateTime` per CHANGELOG/ARCHITECTURE.)
+- `AlertService.kt`: `retryPendingIntent()` uses `PendingIntent.getForegroundService` (was `getService`) with `FLAG_IMMUTABLE or FLAG_UPDATE_CURRENT`, requestCode 1.
+- `NeptunClient.kt`: `retryNow()` nulls `ws` BEFORE closing the old socket; `onClosed`/`onFailure` guarded with `if (ws !== webSocket) return` so superseded sockets can't clobber the new connection.
+- `IconCatalog.kt:60`: fixed pre-existing build-breaking reference `top_right_threat_photo_ballistic` → `threat_photo_ballistic`.
+- `CHANGELOG.md`: added [Unreleased] entry for the 4-step setup + repeat-setup button.
+- Build verified: `.\gradlew.bat :app:assembleDebug` → BUILD SUCCESSFUL (final run clean; earlier full unit-test run also passed in a prior session).
+- Final reply to "git push": printed `git add .` / `git commit -m "Guided 4-step first-run setup and repeat-setup button"` (per skill, no tools were run).
+
+### Active
+- (none)
+
+### Blocked
+- "git push" was requested but, per the git-push skill, no git commands were run — the two lines were handed to the user; do not run git unless re-asked.
+
+## Next Move
+1. (none — wait for the user to run the printed `git add .` / `git commit -m ...` / push, or for a new instruction)
+2. (none)
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: paged `FirstRunSetupDialog` + 4 step composables; `onRelaunchSetup` wiring.
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: Additional card relaunch button; `IconSetTile` (`internal`, `showLabel`); removed duplicate section header.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: `relaunchSetup()`.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: new strings (UA+EN).
+- `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`: emblem tint condition; log timestamps (now via `formatDateTime`).
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt`: foreground-service retry PendingIntent.
+- `app/src/main/java/ua/ukrainedrones/NeptunClient.kt`: stale-socket-safe `retryNow()` + ws-identity guards.
+- `app/src/main/java/ua/ukrainedrones/IconCatalog.kt`: ballistic photo resource reference fix.
+- `app/src/main/res/drawable-nodpi/`: `neptun.png` (orange), `neptun_green.png`, `neptun_red.png` (correct red for offline).
+- `CHANGELOG.md`: [Unreleased] entries.
+## 17/08/2026, 15:44:51
+
+Let me confirm the exact behavior you want before planning, since there are two ways to keep the bullet visible.
+## 17/08/2026, 15:46:51
+
+Understood — both the bullet and the target must be in view for the strike to land. Plan below.
+
+## Plan
+
+### `MapView.kt` — pan the threat into view when a death starts
+Add a small helper used at both spawn sites:
+
+```kotlin
+fun keepThreatOnScreen(mapView: MapView, geo: GeoPoint) {
+    val p = Point()
+    mapView.projection.toPixels(geo, p)
+    val margin = 48f * mapView.context.resources.displayMetrics.density
+    if (p.x < -margin || p.x > mapView.width + margin ||
+        p.y < -margin || p.y > mapView.height + margin) {
+        mapView.controller.animateTo(geo)   // smooth pan; threat slides into view
+    }
+}
+```
+
+- **Real removals** (collector, after `deathFx.spawn(...)`): call it with the death anchor (`marker?.position ?: raw fix`), so a threat that resolved off-screen gets panned into view before the bullet flies.
+- **Temp long-press** (marker case): same call — normally a no-op since you just pressed an on-screen marker, but harmless/consistent.
+
+Result: the camera gently centers the strike target at spawn; the bullet (already entering from the screen edge when its origin is off-screen) travels fully within the viewport and detonates on the visible threat — no more invisible hits.
+
+**Tradeoff (flagging):** this is a one-time pan at the moment the death starts. If you actively pan away *mid-flight* afterwards, it won't chase the threat — following you around would fight your own panning. If you'd rather it keep the threat locked in view for the whole 5s, I can move the check into the 60fps ticker (continuous tracking) instead.
+
+### Docs + verify
+- `ARCHITECTURE.md` row (MapView temp note + overlay) and `CHANGELOG.md` bullet: mention the strike target is kept on-screen.
+- `.\gradlew.bat :app:assembleDebug`.
+
+Ready on "go" — with or without continuous mid-flight tracking.
+## 17/08/2026, 15:46:54
+
+Research done. Here's the full picture and plan.
+
+## Plan
+
+### 1. Vibration slider preview
+- `AndroidManifest.xml`: add `<uses-permission android:name="android.permission.VIBRATE" />` (currently missing — preview won't work without it).
+- `SettingsScreen.kt` → `VibrationSliderRow`: pull `Vibrator` from `LocalContext`; when the slider settles on a **new** discrete level (guard against repeat-firing mid-drag), vibrate `vibrationPattern(newLevel)` once via `VibrationEffect.createWaveform(pattern, -1)`. Skip level 0 (off). `vibrationPattern` is already `internal` in `AlertService.kt:953`, same package.
+
+### 2. Icon packs
+- `MainScreen.kt` → `SetupIconPackStep`: replace the Classic/Photo row with a 2×2 grid of **all 4** packs (Classic, Photo, Army, Comic) reusing `IconSetTile`, `showLabel = false` (titles removed).
+- `SettingsScreen.kt`: compact the icon tiles to cut wasted space — `IconTileSlot` 44dp → 36dp, `IconTileMinHeight` 120dp → ~84dp, tighter vertical padding (the 7-icon scroll strip stays, so "swipe to see more" still applies).
+- `Strings.kt`: new `iconSetTitleSwipe` = UA «Іконки загроз — гортайте, щоб побачити більше» / EN "Threat icons — swipe to see more", used in the Settings Additional card. Keep existing `iconSetTitle` ("Threat icons" / «Іконки загроз») for the first-run step title.
+
+### 3. Disclaimers — why it doesn't stay open
+Root cause found: `disclaimerReadCount` auto-increments on the first **3** Settings opens (`MainViewModel.onDisclaimerShown()` :904, gate `disclaimerReadCount < 3` in `SettingsScreen.kt:162-165`). Once it reaches 3, the card stops auto-expanding and just remembers `disclaimerCollapsed`. Your counter is already consumed (dev opens), so it no longer force-opens — and if you ever tapped it closed, it stays closed. It's working as coded; the "3 times" are spent.
+
+### 4. Threat death animation
+- `ThreatDeathAnimation.kt`: shorten the flight to 1.5s by moving the impact earlier: `DEATH_DURATION_MS` 5000 → 3500, `DEATH_EXPLOSION_START_MS` 3500 → 2000 (ping 0.5s + flight 1.5s + explosion 1.5s; `DEATH_EXPLOSION_LEN_MS` recomputes). Bullet gets Ukraine colors: gold `#FFD700` body/glow + blue `#0057B7` chevron (was gold + white). Explosion core already gold/orange — keep.
+- `MainScreen.kt:793-825`: the compact neutralized card **already fades** (`fade.animateTo(0f, tween(1500))` at explosion start; the delay uses `DEATH_EXPLOSION_START_MS`, so it re-syncs to 2s automatically). The "hides immediately" feel comes from the instant full-popup → compact-card swap; add a `Crossfade` so the full card eases into the neutralized card instead of popping.
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`; CHANGELOG entry under `[Unreleased]`.
+
+Two forks I
+## 17/08/2026, 15:48:34
+
+That edit was wrong — let me check and fix the handler block
+## 17/08/2026, 15:49:00
+
+Now the real-path collector
+
+
+## 17/08/2026, 15:49:48
+
+Now add the helper. Let me find a good spot for it
+## 17/08/2026, 15:50:29
+
+All researched. Final plan:
+
+## Plan
+
+### 1. Vibration slider preview
+- `AndroidManifest.xml`: add `android.permission.VIBRATE` (missing today).
+- `SettingsScreen.kt` → `VibrationSliderRow`: vibrate once when the slider hits a **new** discrete level — `LocalContext` → `Vibrator`, `VibrationEffect.createWaveform(vibrationPattern(level), -1)` (reuse `AlertService.vibrationPattern`, `internal`). Skip level 0.
+
+### 2. Icon packs — one shared compact layout
+- Rework `IconSetSelector` into **4 stacked full-width rows** (one per pack), each row showing all 7 icons in a `Row` sized to fit — no horizontal scroll, no edge scrims, no labels. Make it `internal`; add an optional `slot` size (Settings ~36dp, dialog ~28dp so 7 icons fit the narrower dialog). Trim the old `IconTileSlot`/`IconTileMinHeight`/scroll machinery from `IconSetTile`.
+- First-run `SetupIconPackStep`: same 4 stacked rows, `slot = 28.dp`, no titles.
+- Title: with all 7 icons visible in each row, nothing scrolls — so I'll reuse the plain existing `iconSetTitle` ("Threat icons" / «Іконки загроз») instead of adding the "— swipe to see more" variant (a swipe hint would be stale). Say the word if you still want the swipe wording.
+
+### 3. Disclaimers — answer + no code change
+You said leave it as-is, so no change. The reinstall mystery: a true uninstall wipes DataStore, but `installDebug`/`adb install -r` (how the app gets replaced during development) **preserves app data**, so `disclaimerReadCount` carried over from earlier builds — it was already ≥3 by the time you reinstalled. It also increments on every Settings entry, even a quick peek.
+
+### 4. Threat death animation
+- `ThreatDeathAnimation.kt`: `DEATH_DURATION_MS` 5000 → 3500, `DEATH_EXPLOSION_START_MS` 3500 → 2000 → bullet flight is exactly 1.5s (ping 0.5s + flight 1.5s + explosion 1.5s). Bullet recolored Ukraine: gold `#FFD700` body/glow, blue `#0057B7` chevron (was gold + white).
+- `MainScreen.kt:793`: wrap the full-popup → neutralized-card swap in a `Crossfade` so the card fades out instead of popping (the existing 1.5s fade-out already re-syncs to the new 2s explosion start via the shared constant).
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug`; add a `CHANGELOG.md` `[Unreleased]` entry.
+## 17/08/2026, 15:50:44
+
+Now the docs
+
+
+## 17/08/2026, 15:51:51
+
+Done, builds green.
+
+- `keepThreatOnScreen` (`MapView.kt`) — when a death starts, projects the strike target; if it's off-screen (beyond a 48dp margin), the camera glides to it once via `animateTo`. Applied in both the real-removal collector and the temp long-press.
+- One-time nudge only — it never tracks mid-flight, so it can't fight your own panning.
+- Docs updated; `assembleDebug` passes.
+
+Now the strike is always watchable: threat panned into view, bullet enters from the edge (or your dot), and the hit lands on-screen.
+## 17/08/2026, 15:52:29
+
+Let me check the current handler and the bottom overlay's long
+## 17/08/2026, 15:52:45
+
+Starting with the vibration preview. First the manifest:
+
+
+## 17/08/2026, 15:52:57
+
+
+
+
+## 17/08/2026, 15:53:34
+
+
+
+
+## 17/08/2026, 15:53:43
+
+
+
+
+## 17/08/2026, 15:53:45
+
+Clear. Plan is small and self-contained.
+
+## Plan
+
+**1. `MapView.kt` — remove empty-ground spawn in the temp long-press handler**
+- Delete the `else` branch (lines 654-660) that spawns a death on the pressed empty-ground point.
+- On `nearest == null`, return `false` instead of `true` — the top overlay declines it, and the bottom overlay (`longPressHelper = true`, line 495) consumes it as a no-op, so nothing fires. Long-press on a threat marker (≤48dp) still spawns the death exactly as now.
+- Update the TEMP comment (lines 603-605) to "long-press a threat marker" instead of "marker or empty map".
+
+**2. Docs**
+- `ARCHITECTURE.md` row and `CHANGELOG.md` bullet: change "(on a marker or empty ground)" → "(on a threat marker)".
+
+**3. Verify**
+- `.\gradlew.bat :app:assembleDebug`
+
+No open questions — ready on "go".
+## 17/08/2026, 15:53:57
+
+Now the imports and the slider preview
+## 17/08/2026, 15:54:36
+
+Understood — bottom indicator row, bigger threat icon. One open question before I lock the plan:
+## 17/08/2026, 15:55:16
+
+Now rework the icon selector and tile:
+## 17/08/2026, 15:55:38
+
+## Plan: Small card bottom indicator row + bigger icons
+
+**`ThreatPopupCard.kt`**
+
+1. **SMALL branch (173–228) restructure** — outer `Column(padding 14.dp)`:
+   - **Top row** (`Row`, `Top`-aligned): `ThreatIcon` **32dp → 40dp** + `Spacer(12)` + `Column(weight 1f)` (title `titleMedium` + `SummaryPills(singleLine = true)`).
+   - `Spacer(8.dp)`
+   - **Bottom row** (`Row`, left-aligned, `CenterVertically`): `"R"/"Д"` label + `ReliabilityBar(compact = true)` · `Spacer(16)` · `LevelSkullIcon(22.dp)` + `HorizontalLevelBar(50.dp)` — both indicators on their own full-width row, all left-aligned.
+   - Delete the old right-side column (R stacked above skull).
+
+2. **LARGE branch header (≈237)** — `ThreatIcon` **32dp → 40dp** so both sizes stay equal (no icon jump when toggling).
+
+**Docs** — `ARCHITECTURE.md:70` and the `CHANGELOG.md` entry reworded (bottom indicator row; 40dp icons).
+
+Verify with `.\gradlew.bat :app:assembleDebug`.
+## 17/08/2026, 15:55:38
+
+Now update the first-run step in MainScreen.kt:
+## 17/08/2026, 15:56:21
+
+Now the death animation timing and bullet colors:
+## 17/08/2026, 15:56:54
+
+Now the MainScreen card transition. Let me read the popup region:
+## 17/08/2026, 15:57:34
+
+
+
+
+## 17/08/2026, 15:57:44
+
+## Objective
+- 5s "neutralized" flourish on the map when NEPTUN resolves/removes a threat: ping → projectile (from GPS/pinned city, or from just outside the screen edge) → explosion at the threat, with the strike always kept on-screen.
+- Threat marker lingers for the full 5s and is hidden forever only when the animation completes (real path); temp long-press test trigger fires the animation/card self-destruct on demand.
+- Two-phase popup card: "Neutralizing enemy…" during the flight, flips to "Neutralized" at impact and fades after.
+
+## Important Details
+- osmdroid 6.1.18; draw inside an `Overlay.draw()` using `mapView.projection.toPixels`; per-frame ticker in MapView invalidates ~60fps while `deathFx.isActive && !pausedState`.
+- Timing (single source of truth in `ThreatDeathAnimation.kt`): `DEATH_DURATION_MS = 5000L` (private), `DEATH_EXPLOSION_START_MS = 3500L` (public const, shared with MainScreen), `DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS`. Phases: ping `t < 0.10`, flight `0.10..boomT`, explosion `t >= boomT`; `boomT`/`boomLenT` derived from the consts in `draw()`.
+- Bullet (no guide-line): starts at GPS/pinned dot when on-screen (with launch flash `t<0.25`), else just outside the viewport edge via slab-method intersection (margin ~10dp) so it never pops in mid-air; endpoint = threat. Degenerate (no path/origin null) → skip flight visuals, explosion timing unchanged.
+- Origin at spawn = `focusLocationState ?: LocationTracker.location.value` (`focusLocationState` is a `rememberUpdatedState(uiState.focusLocation)` — selection/focus do not change `overlayKey`, so closures need `rememberUpdatedState` values: also `selectedThreatIdState`, `hiddenTypesState`, `iconSetState`).
+- `hideAtBoom = true` (temp long-press): icon hidden at explosion start (3.5s), threat re-draws on next overlay rebuild. Real path: icon kept through 5s, faded during explosion, dropped at prune.
+- Card two-phase: `MainScreen` shows "Neutralizing enemy…" for `DEATH_EXPLOSION_START_MS` (`delay`), then `neutralizing = false` (label flips to "Neutralized"), `fade.animateTo(0f, tween(1500))`, then `onDismissPopup()`. Strings added: `neutralizingLabel` ("Neutralizing enemy…" / "Знешкодження ворога…"), `neutralizingNote` ("Projectile in flight — our strike is closing in on the target." / "Снаряд у дорозі — наша зброя вже ближче до цілі.").
+- Card self-destruct (temp): `MainViewModel.tempNeutralizedFlow: MutableStateFlow<String?>`; `tempNeutralize(id)` sets it; `selectedGone` in `buildUiState` also true when `selected.id == tempNeutralizedId`; cleared in `selectThreat` and `revealThreat`. Wired via `onTempNeutralize` callback: MainScreen → MapScreen → `NeptunMapView`.
+- User directive: pan the threat into view **once at spawn** only — "dont fight user's pan ofc" — NO continuous mid-flight camera tracking.
+- Parallel night-mode session touched `AlertService.kt`, `ZonePrefs.kt`, `NightMode.kt` (untracked), `IconCatalog` (now `IconCatalog.baseDeg(type, iconSet)` at MapView ~line 685), `MainViewModel` (added `effectiveParams` + night zone params); their build breaks were fixed by this session: removed stray `currentReason = state.officialReason` in AlertService (tracking is `currentReasonThreatId`-based), escaped `%1\$s` in two `nightDayZonesNote` strings (UA + EN), restored dropped `tempNeutralizedId = live.tempNeutralizedId` arg at the `buildUiState(...).copy(...)` call site.
+- Mirror rule (still relevant for release): resolved/area-only/ghost filtering is instant in both `MainViewModel.buildUiState` and `AlertService`; delayed hiding is purely UI via the overlay. Temp code to delete at release: top `MapEventsOverlay` long-press block, `tempNeutralize`/`onTempNeutralize`, `hideAtBoom` flag usage, leftover `Point`/`sqrt` imports if unused.
+- Build command: `.\gradlew.bat :app:assembleDebug --console=plain -q` (green at all checkpoints through the two-phase card + tracer/edge edits).
+
+## Work State
+### Completed
+- `NeptunClient.kt`: `ThreatRemoved(id, lat, lon, type, courseDeg)` + `removedThreats` SharedFlow (emitted for `resolved` status and remove frames); courseDeg threaded through both emit sites.
+- `ThreatDeathAnimation.kt`: `ActiveDeath(geo, origin, start, icon, rotationDeg, alpha, hideAtBoom)`; `spawn(geo, origin, icon, rotationDeg, alpha, hideAtBoom)`; icon lingers (fade during explosion; instant drop at boom when `hideAtBoom`); ping → bullet (edge entry / origin start, launch flash, glowing head + gold tail + white chevron) → explosion; shared `DEATH_EXPLOSION_START_MS`; tracer removed; doc comments updated.
+- `MapView.kt`: three spawn sites pass origin (`focusLocationState ?: LocationTracker.location.value`); real collector passes marker icon/rotation/alpha with `IconCatalog.baseDeg` fallback rotation; temp long-press passes marker icon/rotation/alpha with `hideAtBoom = true`, removes the marker + `markerRefs` entry, calls `onTempNeutralize` when pressed id == `selectedThreatIdState`, and calls `keepThreatOnScreen(mapView, target)`; real collector calls `mapViewRef.value?.let { keepThreatOnScreen(it, anchor) }` before spawn.
+- `MainViewModel.kt`: `tempNeutralizedFlow` threaded through `LiveSnapshot`/combine/`buildUiState`; `selectedGone` includes temp override; `tempNeutralize(id)`; override cleared in `selectThreat`/`revealThreat`.
+- `MainScreen.kt`: `import kotlinx.coroutines.delay`; two-phase neutralized card (running → 3.5s → flip + 1.5s fade → dismiss); `onTempNeutralize` threaded through `MapScreen`.
+- `ThreatPopupCard.kt`: `neutralizing: Boolean = false` param switches label + note.
+- `Strings.kt`: neutralized/neutralizing labels + notes (UA + EN).
+- Docs: ARCHITECTURE.md rows (ThreatDeathAnimation with `DEATH_EXPLOSION_START_MS`, ThreatPopupCard, MainViewModel temp hook, MapView temp note; selected-threat invariant) + CHANGELOG (bullet wording, two-phase card) updated.
+- Fixed all parallel-session build breaks listed above; builds green after each fix.
+
+### Active
+- `keepThreatOnScreen(mapView: MapView, geo: GeoPoint)` helper is **called in two places but not yet defined** — build will fail (unresolved reference) until added.
+- Final docs touch + final build for the keep-on-screen change not yet done.
+
+### Blocked
+- (none)
+
+## Next Move
+1. Define the helper in `MapView.kt` (top-level private): project `geo` via `mapView.projection.toPixels` into a `Point`; if `p.x < -margin || p.x > mapView.width + margin || p.y < -margin || p.y > mapView.height + margin` (margin = `48f * density`) → `mapView.controller.animateTo(geo)`. One-time only — no ticker-based tracking.
+2. Update `ARCHITECTURE.md` (MapView row) + `CHANGELOG.md` bullet to mention the strike target is panned into view at spawn.
+3. Run `.\gradlew.bat :app:assembleDebug --console=plain -q`.
+
+## Relevant Files
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MapView.kt`: needs `keepThreatOnScreen` definition; call sites already placed (temp handler uses `mapView` directly; collector uses `mapViewRef.value`); `IconCatalog.baseDeg(r.type, iconSetState)` now used in collector; `focusLocationState`/`selectedThreatIdState` rememberUpdatedState values.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ThreatDeathAnimation.kt`: overlay, shared timing consts, bullet/edge-entry logic.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainViewModel.kt`: `tempNeutralizedFlow`, `selectedGone`, night-mode `effectiveParams` params from parallel session.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainScreen.kt`: two-phase card block (~lines 608-650), `onTempNeutralize` wiring.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ThreatPopupCard.kt`: `neutralizing` param.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Strings.kt`: neutralizing labels/notes; escaped night strings.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\NeptunClient.kt`: `ThreatRemoved` + `removedThreats` flow.
+- `D:\Desktop\drones\ARCHITECTURE.md`, `D:\Desktop\drones\CHANGELOG.md`: docs to update for keep-on-screen.
+## 17/08/2026, 15:58:02
+
+Let me verify the structure is balanced:
+## 17/08/2026, 15:58:12
+
+## Plan
+
+Mirror the existing `showMapScale` toggle exactly (pref → UiState → Settings toggle → gated usage), default **on** so nothing changes until the user flips it.
+
+**1. `ZonePrefs.kt`**
+- `private val deathAnimationKey = booleanPreferencesKey("death_animation_enabled")`
+- `fun deathAnimationEnabled(): Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[deathAnimationKey] ?: true }`
+- `suspend fun setDeathAnimationEnabled(enabled: Boolean)` (edit the same way as `setShowMapScale`).
+
+**2. `MainViewModel.kt`**
+- `UiState`: `val deathAnimationEnabled: Boolean = true` (next to `showMapScale`, line 95).
+- `AlertConfig` (line 228): add `val deathAnimationEnabled: Boolean`; add `prefs.deathAnimationEnabled()` to the flags-combine (line 310) and `flags[10]` (it's an `Array<Boolean>`, currently 10 flags).
+- `PrefsSnapshot` mapping (line 383) + `buildUiState` copy (line 523): `deathAnimationEnabled = b.deathAnimationEnabled`.
+- Setter `fun setDeathAnimationEnabled(enabled: Boolean) { viewModelScope.launch { prefs.setDeathAnimationEnabled(enabled) } }` (next to `setShowMapScale`, line 928).
+
+**3. `Strings.kt`** — add to `Misc` (UA line ~784, EN line ~1088) + getter delegation (`StringSet`, line ~494):
+- `deathAnimationTitle`: "Neutralizing animation" / "Анімація знешкодження"
+- `deathAnimationDesc`: "Play a projectile-and-explosion flourish when a threat is neutralized." / "Показувати анімацію снаряда й вибуху, коли загрозу знешкоджено."
+
+**4. `SettingsScreen.kt`**
+- Param `deathAnimationEnabled: Boolean` (next to `showMapScale`, line 101) + callback `onDeathAnimationChange: (Boolean) -> Unit` (line 137).
+- `AlertToggleRow` directly above the `showMapScale` row (line 517), icon `R.drawable.ic_skull` (best-fit existing drawable).
+
+**5. `MainScreen.kt`**
+- Wire `deathAnimationEnabled = uiState.deathAnimationEnabled` (line 157) and `onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) }` (line 193).
+
+**6. `MapView.kt`**
+- Gate both spawn sites: real-removal collector (~line 680) and temp long-press (~line 646) → `if (uiState.deathAnimationEnabled)` / `selectedThreatIdState`... — collector reads `uiState` directly; long-press needs `deathAnimationEnabled` via `rememberUpdatedState` (a `deathAnimEnabledState`) since `overlayKey` isn't part of the closure. When disabled: real path just returns (marker drops at prune as before), long-press on a marker still removes the marker + fires `onTempNeutralize` but plays no animation.
+
+**7. Docs** — `CHANGELOG.md` `[Unreleased]` bullet + `ARCHITECTURE.md` (MapView/MainViewModel rows) mention the new toggle.
+
+**8. Verify** — `.\gradlew.bat :app:assembleDebug`.
+
+One design question before I go:
+## 17/08/2026, 15:58:20
+
+Structure is balanced. Now the LARGE icon:
+## 17/08/2026, 15:58:28
+
+Now replace the two popup blocks with the crossfade:
+## 17/08/2026, 15:58:40
+
+Now the CHANGELOG. Let me check the current Unreleased section:
+## 17/08/2026, 15:59:16
+
+Now let me verify the SettingsScreen imports for `Dp` type and check remaining issues before building:
+## 17/08/2026, 15:59:35
+
+Need `Dp` type import:
+## 17/08/2026, 16:00:12
+
+Good details. Let me verify the exact card/orchestration and vibration plumbing before finalizing.
+## 17/08/2026, 16:00:13
+
+
+
+
+## 17/08/2026, 16:00:32
+
+Build is green (`BUILD SUCCESSFUL`; the earlier failure was transient — a clean rerun compiled and assembled fine). 
+
+Done: Small card is now two rows — top row has the enlarged 40dp threat icon + title + single-line pills; bottom row holds the "R"/"Д" reliability bar and the skull+level bar, both left-aligned. LARGE got the same 40dp icon so sizes stay consistent. Docs updated.
+## 17/08/2026, 16:00:35
+
+Done. BUILD SUCCESSFUL.
+
+- **Vibration preview**: `VIBRATE` permission added; `VibrationSliderRow` pulses `vibrationPattern(level)` once per new level while dragging (SettingsScreen.kt:1000).
+- **Icon packs**: `IconSetSelector` is now 4 stacked full-width rows, all 7 icons fit side-by-side — no titles, no scroll/scrims (`IconTileSlot` 36dp). Shared with the first-run step at 28dp (MainScreen.kt `SetupIconPackStep`). Title stays plain "Threat icons".
+- **Death animation**: impact moved to 2.0s → bullet flight is exactly 1.5s; bullet now gold head + blue `#0057B7` chevron (Ukraine colors); `DEATH_EXPLOSION_LEN_MS` is now public.
+- **Card fade**: full popup → neutralized card now crossfades (300ms) instead of popping; the neutralized card fades out across the 3s explosion (`tween(DEATH_EXPLOSION_LEN_MS)`).
+- **Disclaimers**: left as-is (reinstall via `installDebug`/`adb install -r` preserves DataStore, so the 3-read counter was already spent). CHANGELOG updated under `[Unreleased]`.
+## 17/08/2026, 16:00:58
+
+
+
+
+## 17/08/2026, 16:01:45
+
+
+
+
+## 17/08/2026, 16:03:33
+
+Need to check how `refreshedSelected` behaves for a resolved threat (determines the card-off behavior)
+
+
+## 17/08/2026, 16:04:18
+
+
+
+
+## 17/08/2026, 16:05:14
+
+Confirmed the trigger: **yes** — the automatic bullet fires exactly when NEPTUN reports the threat gone. `NeptunClient` emits `ThreatRemoved` only from two spots: an `upsert` frame whose status is `"resolved"`, or an explicit `remove` frame (`NeptunClient.kt:418`, `:430`). Ghost/area-only transitions don't emit — those are client-side and never spawn a bullet.
+
+Before I finalize the plan, one behavior to pin down. I checked the pipeline: when a threat resolves, its data is removed from `neptun.threats`, so the full card has nothing left to render. So "the card wouldn't change to neutralized or hide" needs one concrete form
+## 17/08/2026, 16:05:55
+
+## Plan
+
+**1. `ZonePrefs.kt`** — mirror `showMapScale` (key at line 49, accessor at ~288):
+- `deathAnimationEnabledKey = booleanPreferencesKey("death_animation_enabled")`
+- `deathAnimationEnabled(): Flow<Boolean>` default `true`
+- `setDeathAnimationEnabled(Boolean)`
+
+**2. `MainViewModel.kt`**
+- `UiState.deathAnimationEnabled: Boolean = true` (line 95).
+- `AlertConfig` field (228), add `prefs.deathAnimationEnabled()` to the flags-combine (310) and `flags[10]` (317), map in PrefsSnapshot (383) and buildUiState copy (523), setter `setDeathAnimationEnabled` (next to 928).
+- Card gating in `buildUiState` (634–703) — `val animOn = b.deathAnimationEnabled`:
+  - `neutralizedThreat = if (selectedGone && animOn) selected else null` (never flips when off)
+  - `selectedThreat = when { selectedGone && animOn -> null; selectedGone && !animOn -> selected; else -> refreshedSelected }` → frozen snapshot stays until the user taps X.
+
+**3. `Strings.kt`** — `Misc` UA (line 784) + EN (line 1088) + `StringSet` getters (line 494):
+- `deathAnimationTitle`: "Neutralizing animation" / "Анімація знешкодження"
+- `deathAnimationDesc`: "Play a projectile-and-explosion flourish when a threat is neutralized." / "Показувати анімацію снаряда й вибуху, коли загрозу знешкоджено."
+
+**4. `SettingsScreen.kt`** — params `deathAnimationEnabled` (101) + `onDeathAnimationChange` (137); `AlertToggleRow` above the showMapScale row (517), icon `R.drawable.ic_skull`.
+
+**5. `MainScreen.kt`**
+- Wire the two new params (157, 193).
+- Explosion vibration: `remember { LocalContext.current.getSystemService(Vibrator::class.java) }`; in the two-phase `LaunchedEffect` (line 790) right after `delay(DEATH_EXPLOSION_START_MS)`: `vibrator?.vibrate(VibrationEffect.createWaveform(vibrationPattern(1), -1))` — a short soft pulse, reusing the app's existing soft pattern. Only reachable when animation is on (card branch doesn't exist when off).
+
+**6. `MapView.kt`**
+- `val deathAnimEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)` (284).
+- Real collector (682): gate with `&& deathAnimEnabledState` — when off, no spawn; the resolved marker just vanishes via the normal pipeline (already the case: NeptunClient removes it).
+- Temp long-press (646): when off, still unhook the marker + fire `onTempNeutralize`, but skip `keepThreatOnScreen` + `deathFx.spawn`. Use the fresh `deathAnimEnabledState` (the factory closure's `uiState` is the first composition only).
+
+**7. Docs** — CHANGELOG bullet (new toggle + explosion vibration); ARCHITECTURE rows for MapView/MainViewModel/MainScreen.
+
+**8. Verify** — `.\gradlew.bat :app:assembleDebug`
+
+Off = no bullet, no explosion, no vibration, card stays frozen until dismissed. On = current behavior unchanged. Ready on "go".
+## 17/08/2026, 16:05:59
+
+```
+git add .
+git commit -m "Vibration previews, compact 4-pack icon picker, faster Ukraine-colored death bullet, card crossfade"
+```

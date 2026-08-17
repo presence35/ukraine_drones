@@ -6,7 +6,7 @@ object Strings {
         AppLanguage.EN -> EN
     }
 
-    data class StringSet(
+    data class Onboarding(
         val appTitle: String,
         val officialAlertBanner: String,
         val settingsTitle: String,
@@ -22,7 +22,10 @@ object Strings {
         val onboardingTipSettings: String,
         val onboardingTipSiren: String,
         val onboardingFeaturesTitle: String,
-        val relaunchSetupTitle: String,
+        val relaunchSetupTitle: String
+    )
+
+    data class Settings(
         val zonesLabel: String,
         val redZoneLabel: String,
         val yellowZoneLabel: String,
@@ -68,7 +71,10 @@ object Strings {
         val alertToggleHintRest: String,
         val disclaimerTitle: String,
         val disclaimerBody: String,
-        val exitButton: String,
+        val exitButton: String
+    )
+
+    data class Status(
         val redZoneAlert: String,
         val yellowZoneAlert: String,
         val notifOngoingTitle: String,
@@ -107,7 +113,10 @@ object Strings {
         val hoursAgoSuffix: String,
         val daysAgoSuffix: String,
         val mixedTimeFormat: String,
-        val noThreatsMessage: String,
+        val noThreatsMessage: String
+    )
+
+    data class Updates(
         val updateAvailableTitle: String,
         val updateVersionLabel: String,
         val updateNotesTitle: String,
@@ -126,7 +135,10 @@ object Strings {
         val updateCheckFailed: String,
         val checkForUpdates: String,
         val updateButton: String,
-        val updateAvailableButton: String,
+        val updateAvailableButton: String
+    )
+
+    data class Threat(
         val advisoryLabel: String,
         val areaOnlyLabel: String,
         val cardSkullNote: String,
@@ -164,7 +176,10 @@ object Strings {
         val offlineOfficialSirensLine: String,
         val offlineRetryAction: String,
         val offlineChannelName: String,
-        val offlineChannelDesc: String,
+        val offlineChannelDesc: String
+    )
+
+    data class Misc(
         val connLogTitle: String,
         val connLogEmpty: String,
         val connLogDurFormat: String,
@@ -194,7 +209,10 @@ object Strings {
         val iconSetClassicLabel: String,
         val iconSetPhotoLabel: String,
         val iconSetArmyLabel: String,
-        val iconSetComicLabel: String,
+        val iconSetComicLabel: String
+    )
+
+    data class Guide(
         val guideTitle: String,
         val guideSettingsButton: String,
         val guideCategoryMap: String,
@@ -282,7 +300,291 @@ object Strings {
         val neutralizingNote: String
     )
 
-    private val UA = StringSet(
+    data class StringSet(
+        val onboarding: Onboarding,
+        val settings: Settings,
+        val status: Status,
+        val updates: Updates,
+        val threat: Threat,
+        val misc: Misc,
+        val guide: Guide
+    ) {
+        val appTitle: String get() = onboarding.appTitle
+        val officialAlertBanner: String get() = onboarding.officialAlertBanner
+        val settingsTitle: String get() = onboarding.settingsTitle
+        val settingsButton: String get() = onboarding.settingsButton
+        val backButton: String get() = onboarding.backButton
+        val languageLabel: String get() = onboarding.languageLabel
+        val languageChooseTitle: String get() = onboarding.languageChooseTitle
+        val languageChooseLater: String get() = onboarding.languageChooseLater
+        val okButton: String get() = onboarding.okButton
+        val nextButton: String get() = onboarding.nextButton
+        val onboardingTipsTitle: String get() = onboarding.onboardingTipsTitle
+        val onboardingTipTap: String get() = onboarding.onboardingTipTap
+        val onboardingTipSettings: String get() = onboarding.onboardingTipSettings
+        val onboardingTipSiren: String get() = onboarding.onboardingTipSiren
+        val onboardingFeaturesTitle: String get() = onboarding.onboardingFeaturesTitle
+        val relaunchSetupTitle: String get() = onboarding.relaunchSetupTitle
+        val zonesLabel: String get() = settings.zonesLabel
+        val redZoneLabel: String get() = settings.redZoneLabel
+        val yellowZoneLabel: String get() = settings.yellowZoneLabel
+        val alertsLabel: String get() = settings.alertsLabel
+        val redZoneAlertsTitle: String get() = settings.redZoneAlertsTitle
+        val redZoneAlertsDesc: String get() = settings.redZoneAlertsDesc
+        val yellowZoneAlertsTitle: String get() = settings.yellowZoneAlertsTitle
+        val yellowZoneAlertsDesc: String get() = settings.yellowZoneAlertsDesc
+        val officialAlertsTitle: String get() = settings.officialAlertsTitle
+        val officialAlertsDesc: String get() = settings.officialAlertsDesc
+        val officialAlertsRedTridentNote: String get() = settings.officialAlertsRedTridentNote
+        val sirenOverrideTitle: String get() = settings.sirenOverrideTitle
+        val sirenOverrideDesc: String get() = settings.sirenOverrideDesc
+        val nightModeLabel: String get() = settings.nightModeLabel
+        val nightModeDesc: String get() = settings.nightModeDesc
+        val nightStartTimeLabel: String get() = settings.nightStartTimeLabel
+        val nightEndTimeLabel: String get() = settings.nightEndTimeLabel
+        val nightSoundLabel: String get() = settings.nightSoundLabel
+        val nightZoneSirenOverrideTitle: String get() = settings.nightZoneSirenOverrideTitle
+        val nightZoneSirenOverrideDesc: String get() = settings.nightZoneSirenOverrideDesc
+        val nightOfficialSirenOverrideTitle: String get() = settings.nightOfficialSirenOverrideTitle
+        val nightOfficialSirenOverrideDesc: String get() = settings.nightOfficialSirenOverrideDesc
+        val nightCustomZonesTitle: String get() = settings.nightCustomZonesTitle
+        val nightCustomZonesDesc: String get() = settings.nightCustomZonesDesc
+        val nightDayZonesNote: String get() = settings.nightDayZonesNote
+        val nightMuteWarning: String get() = settings.nightMuteWarning
+        val nightMuteExitNote: String get() = settings.nightMuteExitNote
+        val allAlertsOffLabel: String get() = settings.allAlertsOffLabel
+        val zoneButtonRed: String get() = settings.zoneButtonRed
+        val zoneButtonYellow: String get() = settings.zoneButtonYellow
+        val slowSectionLabel: String get() = settings.slowSectionLabel
+        val fastSectionLabel: String get() = settings.fastSectionLabel
+        val threatsLabel: String get() = settings.threatsLabel
+        val threatMapLabel: String get() = settings.threatMapLabel
+        val threatAlertLabel: String get() = settings.threatAlertLabel
+        val fastGroupLabel: String get() = settings.fastGroupLabel
+        val slowGroupLabel: String get() = settings.slowGroupLabel
+        val fastGroupIconDesc: String get() = settings.fastGroupIconDesc
+        val slowGroupIconDesc: String get() = settings.slowGroupIconDesc
+        val mapToggleHintPrefix: String get() = settings.mapToggleHintPrefix
+        val mapToggleHintRest: String get() = settings.mapToggleHintRest
+        val alertToggleHintPrefix: String get() = settings.alertToggleHintPrefix
+        val alertToggleHintRest: String get() = settings.alertToggleHintRest
+        val disclaimerTitle: String get() = settings.disclaimerTitle
+        val disclaimerBody: String get() = settings.disclaimerBody
+        val exitButton: String get() = settings.exitButton
+        val redZoneAlert: String get() = status.redZoneAlert
+        val yellowZoneAlert: String get() = status.yellowZoneAlert
+        val notifOngoingTitle: String get() = status.notifOngoingTitle
+        val notifChannelName: String get() = status.notifChannelName
+        val notifChannelDesc: String get() = status.notifChannelDesc
+        val notifStatusZones: String get() = status.notifStatusZones
+        val notifBodyRegion: String get() = status.notifBodyRegion
+        val attributionText: String get() = status.attributionText
+        val madeBy: String get() = status.madeBy
+        val connOnline: String get() = status.connOnline
+        val connOffline: String get() = status.connOffline
+        val connServerLine: String get() = status.connServerLine
+        val connUpLine: String get() = status.connUpLine
+        val connDownLine: String get() = status.connDownLine
+        val connBackup: String get() = status.connBackup
+        val connStatusTitle: String get() = status.connStatusTitle
+        val connNeptunLabel: String get() = status.connNeptunLabel
+        val connBackupLabel: String get() = status.connBackupLabel
+        val connActiveLabel: String get() = status.connActiveLabel
+        val connForceOfflineTitle: String get() = status.connForceOfflineTitle
+        val connBackupNoMapDesc: String get() = status.connBackupNoMapDesc
+        val attributionBackup: String get() = status.attributionBackup
+        val reliabilityLow: String get() = status.reliabilityLow
+        val reliabilityMedium: String get() = status.reliabilityMedium
+        val reliabilityHigh: String get() = status.reliabilityHigh
+        val reliabilityUnknown: String get() = status.reliabilityUnknown
+        val reliabilityLabel: String get() = status.reliabilityLabel
+        val reliabilityShort: String get() = status.reliabilityShort
+        val speedUnit: String get() = status.speedUnit
+        val groupLabel: String get() = status.groupLabel
+        val uncertaintyLabel: String get() = status.uncertaintyLabel
+        val noRegion: String get() = status.noRegion
+        val unknownLocation: String get() = status.unknownLocation
+        val minutesAgoSuffix: String get() = status.minutesAgoSuffix
+        val justNow: String get() = status.justNow
+        val hoursAgoSuffix: String get() = status.hoursAgoSuffix
+        val daysAgoSuffix: String get() = status.daysAgoSuffix
+        val mixedTimeFormat: String get() = status.mixedTimeFormat
+        val noThreatsMessage: String get() = status.noThreatsMessage
+        val updateAvailableTitle: String get() = updates.updateAvailableTitle
+        val updateVersionLabel: String get() = updates.updateVersionLabel
+        val updateNotesTitle: String get() = updates.updateNotesTitle
+        val updateDownload: String get() = updates.updateDownload
+        val updateDownloading: String get() = updates.updateDownloading
+        val updateInstall: String get() = updates.updateInstall
+        val updateLater: String get() = updates.updateLater
+        val updateRetry: String get() = updates.updateRetry
+        val updateFailedTitle: String get() = updates.updateFailedTitle
+        val updateInstallPermissionTitle: String get() = updates.updateInstallPermissionTitle
+        val updateInstallPermissionBody: String get() = updates.updateInstallPermissionBody
+        val updateOpenSettings: String get() = updates.updateOpenSettings
+        val updateReadyToInstallTitle: String get() = updates.updateReadyToInstallTitle
+        val updateReadyToInstallBody: String get() = updates.updateReadyToInstallBody
+        val updateUpToDate: String get() = updates.updateUpToDate
+        val updateCheckFailed: String get() = updates.updateCheckFailed
+        val checkForUpdates: String get() = updates.checkForUpdates
+        val updateButton: String get() = updates.updateButton
+        val updateAvailableButton: String get() = updates.updateAvailableButton
+        val advisoryLabel: String get() = threat.advisoryLabel
+        val areaOnlyLabel: String get() = threat.areaOnlyLabel
+        val cardSkullNote: String get() = threat.cardSkullNote
+        val distanceLabel: String get() = threat.distanceLabel
+        val distanceToCityFormat: String get() = threat.distanceToCityFormat
+        val etaLabel: String get() = threat.etaLabel
+        val etaUnit: String get() = threat.etaUnit
+        val approxNote: String get() = threat.approxNote
+        val pillDistanceCd: String get() = threat.pillDistanceCd
+        val gpsOffLabel: String get() = threat.gpsOffLabel
+        val inRedZone: String get() = threat.inRedZone
+        val inYellowZone: String get() = threat.inYellowZone
+        val outsideZones: String get() = threat.outsideZones
+        val editZonesLabel: String get() = threat.editZonesLabel
+        val alertsBellToggle: String get() = threat.alertsBellToggle
+        val kmUnit: String get() = threat.kmUnit
+        val minUnit: String get() = threat.minUnit
+        val meterUnit: String get() = threat.meterUnit
+        val moreInfoLabel: String get() = threat.moreInfoLabel
+        val offLabel: String get() = threat.offLabel
+        val mapCenterLabel: String get() = threat.mapCenterLabel
+        val followMeTitle: String get() = threat.followMeTitle
+        val followMeDesc: String get() = threat.followMeDesc
+        val pinCityTitle: String get() = threat.pinCityTitle
+        val pinCityDesc: String get() = threat.pinCityDesc
+        val mapPillPinned: String get() = threat.mapPillPinned
+        val alertBannerFormat: String get() = threat.alertBannerFormat
+        val alertSourceBackup: String get() = threat.alertSourceBackup
+        val alertSourceBoth: String get() = threat.alertSourceBoth
+        val notifBodyRegionFormat: String get() = threat.notifBodyRegionFormat
+        val notifReasonFormat: String get() = threat.notifReasonFormat
+        val notifStatusPinned: String get() = threat.notifStatusPinned
+        val offlineStatusTitle: String get() = threat.offlineStatusTitle
+        val offlineBodyFormat: String get() = threat.offlineBodyFormat
+        val offlineOfficialSirensLine: String get() = threat.offlineOfficialSirensLine
+        val offlineRetryAction: String get() = threat.offlineRetryAction
+        val offlineChannelName: String get() = threat.offlineChannelName
+        val offlineChannelDesc: String get() = threat.offlineChannelDesc
+        val connLogTitle: String get() = misc.connLogTitle
+        val connLogEmpty: String get() = misc.connLogEmpty
+        val connLogDurFormat: String get() = misc.connLogDurFormat
+        val allClearTitle: String get() = misc.allClearTitle
+        val allClearText: String get() = misc.allClearText
+        val batteryTitle: String get() = misc.batteryTitle
+        val batteryBody: String get() = misc.batteryBody
+        val batteryAllowButton: String get() = misc.batteryAllowButton
+        val batteryLater: String get() = misc.batteryLater
+        val batteryGranted: String get() = misc.batteryGranted
+        val vibrationTitle: String get() = misc.vibrationTitle
+        val vibrationDesc: String get() = misc.vibrationDesc
+        val vibrationOff: String get() = misc.vibrationOff
+        val vibrationSoft: String get() = misc.vibrationSoft
+        val vibrationMedium: String get() = misc.vibrationMedium
+        val vibrationStrong: String get() = misc.vibrationStrong
+        val vibrationUrgent: String get() = misc.vibrationUrgent
+        val alertHistoryTitle: String get() = misc.alertHistoryTitle
+        val alertHistoryEmpty: String get() = misc.alertHistoryEmpty
+        val alertHistoryDistanceFormat: String get() = misc.alertHistoryDistanceFormat
+        val alertHistoryOfficialLabel: String get() = misc.alertHistoryOfficialLabel
+        val cardSizeLabel: String get() = misc.cardSizeLabel
+        val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
+        val showMapScaleTitle: String get() = misc.showMapScaleTitle
+        val showMapScaleDesc: String get() = misc.showMapScaleDesc
+        val iconSetTitle: String get() = misc.iconSetTitle
+        val iconSetClassicLabel: String get() = misc.iconSetClassicLabel
+        val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
+        val iconSetArmyLabel: String get() = misc.iconSetArmyLabel
+        val iconSetComicLabel: String get() = misc.iconSetComicLabel
+        val guideTitle: String get() = guide.guideTitle
+        val guideSettingsButton: String get() = guide.guideSettingsButton
+        val guideCategoryMap: String get() = guide.guideCategoryMap
+        val guideCategoryZones: String get() = guide.guideCategoryZones
+        val guideCategoryLocation: String get() = guide.guideCategoryLocation
+        val guideCategoryCards: String get() = guide.guideCategoryCards
+        val guideCategorySettings: String get() = guide.guideCategorySettings
+        val guideLiveTitle: String get() = guide.guideLiveTitle
+        val guideLiveSummary: String get() = guide.guideLiveSummary
+        val guideLiveD1: String get() = guide.guideLiveD1
+        val guideLiveD2: String get() = guide.guideLiveD2
+        val guideLiveD3: String get() = guide.guideLiveD3
+        val guideStripTitle: String get() = guide.guideStripTitle
+        val guideStripSummary: String get() = guide.guideStripSummary
+        val guideStripD1: String get() = guide.guideStripD1
+        val guideStripD2: String get() = guide.guideStripD2
+        val guideStripD3: String get() = guide.guideStripD3
+        val guideConnTitle: String get() = guide.guideConnTitle
+        val guideConnSummary: String get() = guide.guideConnSummary
+        val guideConnD1: String get() = guide.guideConnD1
+        val guideConnD2: String get() = guide.guideConnD2
+        val guideConnD3: String get() = guide.guideConnD3
+        val guideZonesTitle: String get() = guide.guideZonesTitle
+        val guideZonesSummary: String get() = guide.guideZonesSummary
+        val guideZonesD1: String get() = guide.guideZonesD1
+        val guideZonesD2: String get() = guide.guideZonesD2
+        val guideZonesD3: String get() = guide.guideZonesD3
+        val guideEditZonesTitle: String get() = guide.guideEditZonesTitle
+        val guideEditZonesSummary: String get() = guide.guideEditZonesSummary
+        val guideEditZonesD1: String get() = guide.guideEditZonesD1
+        val guideEditZonesD2: String get() = guide.guideEditZonesD2
+        val guideEditZonesD3: String get() = guide.guideEditZonesD3
+        val guideNotifTitle: String get() = guide.guideNotifTitle
+        val guideNotifSummary: String get() = guide.guideNotifSummary
+        val guideNotifD1: String get() = guide.guideNotifD1
+        val guideNotifD2: String get() = guide.guideNotifD2
+        val guideNotifD3: String get() = guide.guideNotifD3
+        val guideFastTitle: String get() = guide.guideFastTitle
+        val guideFastSummary: String get() = guide.guideFastSummary
+        val guideFastD1: String get() = guide.guideFastD1
+        val guideFastD2: String get() = guide.guideFastD2
+        val guideFastD3: String get() = guide.guideFastD3
+        val guideNightTitle: String get() = guide.guideNightTitle
+        val guideNightSummary: String get() = guide.guideNightSummary
+        val guideNightD1: String get() = guide.guideNightD1
+        val guideNightD2: String get() = guide.guideNightD2
+        val guideNightD3: String get() = guide.guideNightD3
+        val guideFollowTitle: String get() = guide.guideFollowTitle
+        val guideFollowSummary: String get() = guide.guideFollowSummary
+        val guideFollowD1: String get() = guide.guideFollowD1
+        val guideFollowD2: String get() = guide.guideFollowD2
+        val guideFollowD3: String get() = guide.guideFollowD3
+        val guidePinTitle: String get() = guide.guidePinTitle
+        val guidePinSummary: String get() = guide.guidePinSummary
+        val guidePinD1: String get() = guide.guidePinD1
+        val guidePinD2: String get() = guide.guidePinD2
+        val guideCardSizeTitle: String get() = guide.guideCardSizeTitle
+        val guideCardSizeSummary: String get() = guide.guideCardSizeSummary
+        val guideCardSizeD1: String get() = guide.guideCardSizeD1
+        val guideCardSizeD3: String get() = guide.guideCardSizeD3
+        val guideCardReadTitle: String get() = guide.guideCardReadTitle
+        val guideCardReadSummary: String get() = guide.guideCardReadSummary
+        val guideCardReadD1: String get() = guide.guideCardReadD1
+        val guideCardReadD2: String get() = guide.guideCardReadD2
+        val guideCardReadD3: String get() = guide.guideCardReadD3
+        val guideLangTitle: String get() = guide.guideLangTitle
+        val guideLangSummary: String get() = guide.guideLangSummary
+        val guideLangD1: String get() = guide.guideLangD1
+        val guideLangD2: String get() = guide.guideLangD2
+        val guideLangD3: String get() = guide.guideLangD3
+        val guideTogglesTitle: String get() = guide.guideTogglesTitle
+        val guideTogglesSummary: String get() = guide.guideTogglesSummary
+        val guideTogglesD1: String get() = guide.guideTogglesD1
+        val guideTogglesD2: String get() = guide.guideTogglesD2
+        val guideTogglesD3: String get() = guide.guideTogglesD3
+        val guideUpdateTitle: String get() = guide.guideUpdateTitle
+        val guideUpdateSummary: String get() = guide.guideUpdateSummary
+        val guideUpdateD1: String get() = guide.guideUpdateD1
+        val guideUpdateD2: String get() = guide.guideUpdateD2
+        val guideUpdateD3: String get() = guide.guideUpdateD3
+        val lastSeenAgoFormat: String get() = guide.lastSeenAgoFormat
+        val neutralizedLabel: String get() = guide.neutralizedLabel
+        val neutralizedNote: String get() = guide.neutralizedNote
+        val neutralizingLabel: String get() = guide.neutralizingLabel
+        val neutralizingNote: String get() = guide.neutralizingNote
+    }
+
+    private fun uaOnboarding() = Onboarding(
         appTitle = "Українські дрони",
         officialAlertBanner = "Одеса: тривога",
         settingsTitle = "Налаштування",
@@ -295,10 +597,13 @@ object Strings {
         nextButton = "Далі",
         onboardingTipsTitle = "Кілька підказок",
         onboardingTipTap = "Натисни будь-який дрон на мапі, щоб відкрити його картку.",
-        onboardingFeaturesTitle = "Основні можливості",
-        relaunchSetupTitle = "Повторити перший запуск",
         onboardingTipSettings = "У Налаштуваннях (шестерня) — зони тривог, мова та путівник по функціях.",
         onboardingTipSiren = "Сирена за замовчуванням слідує за режимом звуку телефона — увімкни «Сирена звучить завжди», щоб змінити.",
+        onboardingFeaturesTitle = "Основні можливості",
+        relaunchSetupTitle = "Повторити перший запуск",
+    )
+
+    private fun uaSettings() = Settings(
         zonesLabel = "Зони тривог",
         redZoneLabel = "Червона зона",
         yellowZoneLabel = "Жовта зона",
@@ -309,6 +614,7 @@ object Strings {
         yellowZoneAlertsDesc = "Попереджувальний звук при загрозі в жовтій зоні.",
         officialAlertsTitle = "Офіційні сповіщення",
         officialAlertsDesc = "Сповіщення про офіційну повітряну тривогу в області. Не впливає на червону/жовту зони.",
+        officialAlertsRedTridentNote = "Червоний тризуб у шапці означає, що офіційна тривога активна.",
         sirenOverrideTitle = "Сирена звучить завжди",
         sirenOverrideDesc = "Сигнал тривоги звучить, навіть коли телефон у вібро- чи беззвучному режимі. За замовчуванням вимкнено — звук слідує за налаштуваннями телефону.",
         nightModeLabel = "Нічний режим",
@@ -325,11 +631,11 @@ object Strings {
         nightDayZonesNote = "Редагуєш денні зони — уночі (%1\$s) діють окремі.",
         nightMuteWarning = "Вночі атаки найбільш імовірні — ти можеш проспати одну.",
         nightMuteExitNote = "Якщо справді хочеш повної тиші — скористайся кнопкою «Зупинити моніторинг і вийти» нижче; інакше легко забути повернути налаштування вранці.",
-        officialAlertsRedTridentNote = "Червоний тризуб у шапці означає, що офіційна тривога активна.",
+        allAlertsOffLabel = "Усі сповіщення вимкнено",
         zoneButtonRed = "Червона зона: натисни, щоб наблизити",
         zoneButtonYellow = "Жовта зона: натисни, щоб наблизити",
-        slowSectionLabel = "Повільні — відстань, км",
-        fastSectionLabel = "Швидкі — час до прильоту, хв",
+        slowSectionLabel = "Повільні — відстань",
+        fastSectionLabel = "Швидкі — час до прильоту",
         threatsLabel = "Загрози — натисни, щоб увімкнути",
         threatMapLabel = "Мапа",
         threatAlertLabel = "Сповіщення",
@@ -344,8 +650,11 @@ object Strings {
         disclaimerTitle = "Застереження",
         disclaimerBody = "Завжди керуйся офіційними сигналами повітряної тривоги — цей застосунок не є офіційним джерелом тривог.\n• Координати, відстані, ETA та швидкість — приблизні: противник не транслює дані точно, навіть коли фіксація позначена як підтверджена.\n• Показник рівня загрози (0–10) — приблизна оцінка, а не офіційний рейтинг.\n• Тривоги залежать від приблизного місцезнаходження телефона — неправильна точка означає неправильну зону.\n• Застосунок не може гарантувати вашу безпеку. Все це лише орієнтир.",
         exitButton = "Зупинити моніторинг і вийти",
-        redZoneAlert = "Червона зона: тривога",
-        yellowZoneAlert = "Жовта зона: тривога",
+    )
+
+    private fun uaStatus() = Status(
+        redZoneAlert = "Червона тривога",
+        yellowZoneAlert = "Жовта тривога",
         notifOngoingTitle = "Моніторинг тривог",
         notifChannelName = "Фоновий статус",
         notifChannelDesc = "Моніторинг працює у фоновому режимі. Вимкнення цього лише приховує статусне сповіщення — сповіщення про повітряну тривогу все одно спрацьовуватимуть.",
@@ -372,7 +681,7 @@ object Strings {
         reliabilityUnknown = "Достовірність: Невідома",
         reliabilityLabel = "Достовірність",
         reliabilityShort = "Д",
-        speedUnit = "км/год",
+        speedUnit = "кмг",
         groupLabel = "Хвиля",
         uncertaintyLabel = "Точність",
         noRegion = "Одеська область",
@@ -383,6 +692,9 @@ object Strings {
         daysAgoSuffix = "дн тому",
         mixedTimeFormat = "%1\$d год %2\$d хв тому",
         noThreatsMessage = "Немає актуальних загроз",
+    )
+
+    private fun uaUpdates() = Updates(
         updateAvailableTitle = "Доступна нова версія",
         updateVersionLabel = "Версія",
         updateNotesTitle = "Що нового",
@@ -402,6 +714,9 @@ object Strings {
         checkForUpdates = "Перевірити оновлення",
         updateButton = "Оновити",
         updateAvailableButton = "Доступне оновлення",
+    )
+
+    private fun uaThreat() = Threat(
         advisoryLabel = "Спостереження",
         areaOnlyLabel = "Лише область (без точної точки)",
         cardSkullNote = "Череп (0–10) — приблизна оцінка: тип, відстань, достовірність, джерела. Не офіційний рейтинг і не гарантія вашої безпеки.",
@@ -422,7 +737,6 @@ object Strings {
         meterUnit = "м",
         moreInfoLabel = "Детальніше",
         offLabel = "ВИМК",
-        allAlertsOffLabel = "Усі сповіщення вимкнено",
         mapCenterLabel = "Центр карти",
         followMeTitle = "Слідувати за мною",
         followMeDesc = "Карта та зони слідують за твоїм GPS-положенням.",
@@ -441,6 +755,9 @@ object Strings {
         offlineRetryAction = "Повторити",
         offlineChannelName = "Офлайн-моніторинг",
         offlineChannelDesc = "Повідомлення, коли з'єднання із сервером тривог втрачено.",
+    )
+
+    private fun uaMisc() = Misc(
         connLogTitle = "Журнал з'єднання",
         connLogEmpty = "Подій ще немає",
         connLogDurFormat = "%1\$d хв %2\$d с",
@@ -471,6 +788,9 @@ object Strings {
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
         iconSetComicLabel = "Комікс",
+    )
+
+    private fun uaGuide() = Guide(
         guideTitle = "Путівник по функціях",
         guideSettingsButton = "Путівник по функціях",
         guideCategoryMap = "Карта",
@@ -558,7 +878,17 @@ object Strings {
         neutralizingNote = "Снаряд у дорозі — наша зброя вже ближче до цілі.",
     )
 
-    private val EN = StringSet(
+    private val UA = StringSet(
+        uaOnboarding(),
+        uaSettings(),
+        uaStatus(),
+        uaUpdates(),
+        uaThreat(),
+        uaMisc(),
+        uaGuide(),
+    )
+
+    private fun enOnboarding() = Onboarding(
         appTitle = "Ukraine Drones",
         officialAlertBanner = "Odesa: alert",
         settingsTitle = "Settings",
@@ -571,10 +901,13 @@ object Strings {
         nextButton = "Next",
         onboardingTipsTitle = "A few tips",
         onboardingTipTap = "Tap any drone on the map to open its details card.",
-        onboardingFeaturesTitle = "Core features",
-        relaunchSetupTitle = "Repeat first setup",
         onboardingTipSettings = "Settings (gear icon) holds alert zones, language and the feature guide.",
         onboardingTipSiren = "Sirens follow your phone's sound mode by default — turn on \"Sirens always sound\" to change it.",
+        onboardingFeaturesTitle = "Core features",
+        relaunchSetupTitle = "Repeat first setup",
+    )
+
+    private fun enSettings() = Settings(
         zonesLabel = "Alert zones",
         redZoneLabel = "Red zone",
         yellowZoneLabel = "Yellow zone",
@@ -585,6 +918,7 @@ object Strings {
         yellowZoneAlertsDesc = "Warning chime for threats in the yellow zone.",
         officialAlertsTitle = "Official alerts",
         officialAlertsDesc = "Alerts for the official oblast air-raid signal. Does not affect your Red/Yellow zone alerts.",
+        officialAlertsRedTridentNote = "A red trident in the header means the official alert is on.",
         sirenOverrideTitle = "Sirens always sound",
         sirenOverrideDesc = "Ring the siren even when the phone is on vibrate or silent. Off by default — alerts follow your phone's sound settings.",
         nightModeLabel = "Night mode",
@@ -601,11 +935,11 @@ object Strings {
         nightDayZonesNote = "Editing day zones — at night (%1\$s) separate ones apply.",
         nightMuteWarning = "Attacks are most common at night — you may sleep through one.",
         nightMuteExitNote = "If you truly want total silence, use \"Stop Monitoring & Exit\" below instead — otherwise you may forget to switch alerts back on tomorrow.",
-        officialAlertsRedTridentNote = "A red trident in the header means the official alert is on.",
+        allAlertsOffLabel = "All alerts are off",
         zoneButtonRed = "Red zone: tap to zoom in",
         zoneButtonYellow = "Yellow zone: tap to zoom in",
-        slowSectionLabel = "Slow — distance, km",
-        fastSectionLabel = "Fast — time to arrival, min",
+        slowSectionLabel = "Slow — distance",
+        fastSectionLabel = "Fast — time to arrival",
         threatsLabel = "Threats — tap to toggle",
         threatMapLabel = "Map",
         threatAlertLabel = "Alerts",
@@ -620,8 +954,11 @@ object Strings {
         disclaimerTitle = "Disclaimers",
         disclaimerBody = "Always follow official air-raid signals — this app is not an official alert source.\n• Positions, distances, ETA and speeds are approximate: the enemy isn't broadcasting precisely, even when a fix is marked confirmed.\n• The skull threat level (0–10) is a rough estimate, not an official rating.\n• Alerts depend on your phone's coarse location — a wrong fix means a wrong zone.\n• This app cannot guarantee your safety. Treat everything as an approximate guide.",
         exitButton = "Stop Monitoring & Exit",
-        redZoneAlert = "Red zone: alert",
-        yellowZoneAlert = "Yellow zone: alert",
+    )
+
+    private fun enStatus() = Status(
+        redZoneAlert = "Red alert",
+        yellowZoneAlert = "Yellow alert",
         notifOngoingTitle = "Alert monitoring",
         notifChannelName = "Background status",
         notifChannelDesc = "Monitoring runs in the background. Turning this off only hides this status notification — air-raid alerts still sound.",
@@ -648,7 +985,7 @@ object Strings {
         reliabilityUnknown = "Reliability: Unknown",
         reliabilityLabel = "Reliability",
         reliabilityShort = "R",
-        speedUnit = "km/h",
+        speedUnit = "kmh",
         groupLabel = "Wave size",
         uncertaintyLabel = "Precision",
         noRegion = "Odesa region",
@@ -659,6 +996,9 @@ object Strings {
         daysAgoSuffix = "d ago",
         mixedTimeFormat = "%1\$d h %2\$d min ago",
         noThreatsMessage = "No relevant threats",
+    )
+
+    private fun enUpdates() = Updates(
         updateAvailableTitle = "New version available",
         updateVersionLabel = "Version",
         updateNotesTitle = "What's new",
@@ -678,6 +1018,9 @@ object Strings {
         checkForUpdates = "Check for updates",
         updateButton = "Update",
         updateAvailableButton = "Update available",
+    )
+
+    private fun enThreat() = Threat(
         advisoryLabel = "Observation",
         areaOnlyLabel = "Area-level (no precise point)",
         cardSkullNote = "Skull (0–10) is an approximate estimate — type, distance, reliability, sources. Not an official rating or a guarantee of your safety.",
@@ -698,7 +1041,6 @@ object Strings {
         meterUnit = "m",
         moreInfoLabel = "More info",
         offLabel = "OFF",
-        allAlertsOffLabel = "All alerts are off",
         mapCenterLabel = "Map centre",
         followMeTitle = "Follow me",
         followMeDesc = "The map and zones follow your GPS position.",
@@ -717,6 +1059,9 @@ object Strings {
         offlineRetryAction = "Retry",
         offlineChannelName = "Offline monitoring",
         offlineChannelDesc = "Notifications when the connection to the alert server is lost.",
+    )
+
+    private fun enMisc() = Misc(
         connLogTitle = "Connection log",
         connLogEmpty = "No events yet",
         connLogDurFormat = "%1\$dm %2\$ds",
@@ -747,6 +1092,9 @@ object Strings {
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",
         iconSetComicLabel = "Comic",
+    )
+
+    private fun enGuide() = Guide(
         guideTitle = "Feature guide",
         guideSettingsButton = "Feature guide",
         guideCategoryMap = "Map",
@@ -833,7 +1181,19 @@ object Strings {
         neutralizingLabel = "Neutralizing enemy…",
         neutralizingNote = "Projectile in flight — our strike is closing in on the target.",
     )
+
+    private val EN = StringSet(
+        enOnboarding(),
+        enSettings(),
+        enStatus(),
+        enUpdates(),
+        enThreat(),
+        enMisc(),
+        enGuide(),
+    )
+
 }
+
 
 /**
  * Pluralized "source(s)" word for the given count, per language.

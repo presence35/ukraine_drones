@@ -632,7 +632,7 @@ fun NeptunMapView(
                                 val pressedId = markerRefs.value.entries
                                     .firstOrNull { it.value === nearest }?.key
                                 // Unhook the real marker so the normal pipeline stops drawing
-                                // it; the overlay now renders its icon through the countdown and
+                                // it; the overlay now renders its icon through the flight and
                                 // drops it when the explosion starts.
                                 mapView.overlays.remove(nearest)
                                 markerRefs.value.entries.removeAll { it.value === nearest }
@@ -641,8 +641,10 @@ fun NeptunMapView(
                                     onTempNeutralize(pressedId)
                                 }
                                 val origin = focusLocationState ?: LocationTracker.location.value
+                                val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
+                                keepThreatOnScreen(mapView, target)
                                 deathFx.spawn(
-                                    nearest.position ?: GeoPoint(p.latitude, p.longitude),
+                                    target,
                                     origin = origin?.let { GeoPoint(it.lat, it.lon) },
                                     icon = nearest.icon,
                                     rotationDeg = nearest.rotation,
@@ -684,6 +686,9 @@ fun NeptunMapView(
                     val rotation = marker?.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
                     val icon = marker?.icon ?: threatIcon(context, r.type, iconSetState)
                     val origin = focusLocationState ?: LocationTracker.location.value
+                    // If the resolved threat is off-screen, glide it into view so the strike
+                    // is actually seen (never fights the user's own panning — one-time pan).
+                    mapViewRef.value?.let { keepThreatOnScreen(it, anchor) }
                     deathFx.spawn(
                         anchor,
                         origin = origin?.let { GeoPoint(it.lat, it.lon) },
@@ -767,5 +772,19 @@ fun NeptunMapView(
             }
             if (dirty) mapView.invalidate()
         }
+    }
+}
+
+/** Glide the camera onto [geo] when it's outside the viewport, so a death strike is actually
+ *  seen. One-time nudge at spawn — deliberately never chases the target later, so it never
+ *  fights the user's own panning. */
+private fun keepThreatOnScreen(mapView: MapView, geo: GeoPoint) {
+    val p = Point()
+    mapView.projection.toPixels(geo, p)
+    val margin = 48f * mapView.context.resources.displayMetrics.density
+    if (p.x < -margin || p.x > mapView.width + margin ||
+        p.y < -margin || p.y > mapView.height + margin
+    ) {
+        mapView.controller.animateTo(geo)
     }
 }

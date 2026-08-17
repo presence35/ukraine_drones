@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -325,7 +326,7 @@ private fun FirstRunSetupDialog(
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 when (step) {
                     0 -> SetupLanguageStep(current, onChoose)
-                    1 -> SetupIconPackStep(s, iconSet, onIconSetChange)
+                    1 -> SetupIconPackStep(current, iconSet, onIconSetChange)
                     2 -> SetupAlertGroupsStep(s, current, silencedTypes, onGroupAlertToggle)
                     else -> SetupFeaturesStep(s)
                 }
@@ -358,25 +359,13 @@ private fun SetupLanguageStep(current: AppLanguage, onChoose: (AppLanguage) -> U
 }
 
 @Composable
-private fun SetupIconPackStep(s: Strings.StringSet, iconSet: ThreatIconSet, onIconSetChange: (ThreatIconSet) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        IconSetTile(
-            set = ThreatIconSet.CLASSIC,
-            label = s.iconSetClassicLabel,
-            selected = iconSet == ThreatIconSet.CLASSIC,
-            onClick = { onIconSetChange(ThreatIconSet.CLASSIC) },
-            showLabel = true,
-            modifier = Modifier.weight(1f)
-        )
-        IconSetTile(
-            set = ThreatIconSet.PHOTO,
-            label = s.iconSetPhotoLabel,
-            selected = iconSet == ThreatIconSet.PHOTO,
-            onClick = { onIconSetChange(ThreatIconSet.PHOTO) },
-            showLabel = true,
-            modifier = Modifier.weight(1f)
-        )
-    }
+private fun SetupIconPackStep(lang: AppLanguage, iconSet: ThreatIconSet, onIconSetChange: (ThreatIconSet) -> Unit) {
+    IconSetSelector(
+        lang = lang,
+        selected = iconSet,
+        onChange = onIconSetChange,
+        slot = 28.dp
+    )
 }
 
 @Composable
@@ -750,76 +739,76 @@ private fun MapScreen(
                 }
             }
 
-            // Threat detail popup, overlaid top-center above the zone bar
-            uiState.selectedThreat?.let { threat ->
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 12.dp, start = 16.dp, end = 16.dp)
-                ) {
-                    Column {
-                        ThreatPopupCard(
-                            threat = threat,
-                            lang = uiState.language,
-                            iconSet = uiState.iconSet,
-                            proximity = uiState.selectedThreatInfo,
-                            pinnedCity = if (uiState.followMe) null else uiState.pinnedCity,
-                            threatLevel = uiState.threatLevel,
-                            cardSize = uiState.threatCardSize,
-                            alertsOff = threat.type in uiState.silencedTypes,
-                            onDismiss = onDismissPopup,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            ThreatCardSizeControl(
-                                current = uiState.threatCardSize,
-                                contentDescription = s.cardSizeLabel,
-                                onClick = {
-                                    onThreatCardSizeChange(nextThreatCardSize(uiState.threatCardSize))
-                                },
-                                modifier = Modifier.padding(top = 6.dp)
+            // Threat popup: the full interactive card while a threat is selected, crossfading
+            // into the compact neutralized card the instant it resolves (so the popup never pops
+            // out), which then fades out across the map explosion, clearing the selection.
+            Crossfade(
+                targetState = when {
+                    uiState.selectedThreat != null -> 1
+                    uiState.neutralizedThreat != null -> 2
+                    else -> 0
+                },
+                animationSpec = tween(300),
+                label = "threatCardSwap",
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+            ) { state ->
+                when (state) {
+                    1 -> uiState.selectedThreat?.let { threat ->
+                        Column {
+                            ThreatPopupCard(
+                                threat = threat,
+                                lang = uiState.language,
+                                iconSet = uiState.iconSet,
+                                proximity = uiState.selectedThreatInfo,
+                                pinnedCity = if (uiState.followMe) null else uiState.pinnedCity,
+                                threatLevel = uiState.threatLevel,
+                                cardSize = uiState.threatCardSize,
+                                alertsOff = threat.type in uiState.silencedTypes,
+                                onDismiss = onDismissPopup,
+                                modifier = Modifier.fillMaxWidth()
                             )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                ThreatCardSizeControl(
+                                    current = uiState.threatCardSize,
+                                    contentDescription = s.cardSizeLabel,
+                                    onClick = {
+                                        onThreatCardSizeChange(nextThreatCardSize(uiState.threatCardSize))
+                                    },
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
                         }
                     }
-                }
-            }
-
-            // Neutralized card: the selected threat just resolved — "Neutralizing enemy" through
-            // the ping + projectile flight, then flips to "Neutralized" the moment the
-            // explosion starts and fades out across it, clearing the selection.
-            if (uiState.selectedThreat == null) {
-                uiState.neutralizedThreat?.let { threat ->
-                    val fade = remember { Animatable(1f) }
-                    var neutralizing by remember { mutableStateOf(true) }
-                    LaunchedEffect(Unit) {
-                        delay(DEATH_EXPLOSION_START_MS)
-                        neutralizing = false
-                        fade.animateTo(0f, tween(1500))
-                        onDismissPopup()
-                    }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 12.dp, start = 16.dp, end = 16.dp)
-                            .graphicsLayer { alpha = fade.value }
-                    ) {
-                        ThreatPopupCard(
-                            threat = threat,
-                            lang = uiState.language,
-                            iconSet = uiState.iconSet,
-                            proximity = null,
-                            pinnedCity = null,
-                            threatLevel = 0.0,
-                            cardSize = uiState.threatCardSize,
-                            interactive = false,
-                            neutralized = true,
-                            neutralizing = neutralizing,
-                            onDismiss = onDismissPopup,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    2 -> uiState.neutralizedThreat?.let { threat ->
+                        val fade = remember { Animatable(1f) }
+                        var neutralizing by remember { mutableStateOf(true) }
+                        LaunchedEffect(Unit) {
+                            delay(DEATH_EXPLOSION_START_MS)
+                            neutralizing = false
+                            fade.animateTo(0f, tween(DEATH_EXPLOSION_LEN_MS.toInt()))
+                            onDismissPopup()
+                        }
+                        Box(modifier = Modifier.graphicsLayer { alpha = fade.value }) {
+                            ThreatPopupCard(
+                                threat = threat,
+                                lang = uiState.language,
+                                iconSet = uiState.iconSet,
+                                proximity = null,
+                                pinnedCity = null,
+                                threatLevel = 0.0,
+                                cardSize = uiState.threatCardSize,
+                                interactive = false,
+                                neutralized = true,
+                                neutralizing = neutralizing,
+                                onDismiss = onDismissPopup,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }

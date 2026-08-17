@@ -15401,3 +15401,62 @@ Execution failed for task ':drones:app:compileReleaseKotlin'.
 ## 17/08/2026, 15:09:27
 
 git push
+## 17/08/2026, 15:13:44
+
+do the proper one
+## 17/08/2026, 15:17:40
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 17/08/2026, 15:31:37
+
+the first-run "choose langaue" should be inverse of the selected lanuage
+## 17/08/2026, 15:40:46
+
+and, the vibration sliders should give preview.
+and, the first-run should show all 4 icon packs, but remove the titles (also from the threat icons in additional settings, thre's wasted space, maybe make the cards fit better). and reword the title to "Threat icons - swipe to see more"
+
+and, why in settings->Disclaimers isn't staying open every tiem I open settings? I thought it would stay for 3 times?
+
+and, the threat card explosion, the card should fade away, not just hide immediately. also make the bullet takes only 1.5s, and color it ukraine colors.
+## 17/08/2026, 15:42:09
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 17/08/2026, 15:43:43
+
+the bullet needs to stay in viewport so we see it hit the threat.
+## 17/08/2026, 15:47:57
+
+, go dont fight user's pan ofc.
+## 17/08/2026, 15:51:57
+
+user should not be able to long press on a non-threat.
+## 17/08/2026, 15:52:22
+
+go.
+## 17/08/2026, 15:53:50
+
+small cards should put the tow bars on their own row at the bottom, R on left, skull on left.  Make the threat pic larger since our icons are good now.
+## 17/08/2026, 15:54:31
+
+add setting in addiotnal settings to toggle the neutralzing animation
+## 17/08/2026, 15:57:25
+
+go
+## 17/08/2026, 15:57:46
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 17/08/2026, 16:03:48
+
+i didn't mean 2 rows in total.  the title + 3 piills might be too wide.  it's not so much to compact the real easte, but to give less overhwleming information.  so a total of 3 rows is fine:
+
+[threat     [title]
+icon        [p1] [p1] [p3]
+              [r bar]           [skill bar]
+]
+can we rename "aviaitoan /mig31k" to just mig31k, the aviation seems redudent.
+## 17/08/2026, 16:05:47
+
+git push
+## 17/08/2026, 16:06:03
+
+?
