@@ -73,7 +73,8 @@ fun ThreatPopupCard(
     cardSize: ThreatCardSize = ThreatCardSize.LARGE,
     interactive: Boolean = true,
     alertsOff: Boolean = false,
-    neutralized: Boolean = false
+    neutralized: Boolean = false,
+    neutralizing: Boolean = false
 ) {
     val s = Strings.get(lang)
     val typeInfo = ThreatTypeCatalog.INFO.getValue(threat.type)
@@ -141,14 +142,14 @@ fun ThreatPopupCard(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        s.neutralizedLabel,
+                        if (neutralizing) s.neutralizingLabel else s.neutralizedLabel,
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF9E9E9E)
                     )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    s.neutralizedNote,
+                    if (neutralizing) s.neutralizingNote else s.neutralizedNote,
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF9E9E9E)
                 )

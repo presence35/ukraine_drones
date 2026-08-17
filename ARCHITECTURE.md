@@ -33,7 +33,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 
 | File | Responsibility |
 | --- | --- |
-| `NeptunClient.kt` | `object` singleton. Owns the NEPTUN WebSocket (`wss://neptun.in.ua/api/v1/stream`) with backoff reconnect + keep-alive/watchdog tasks, plus REST merge (`/api/v1/threats`). Exposes `StateFlow<NeptunState>` (threats map, oblastAlerts, connected, `offlineSince`/`offlineElapsedSec`). Handles `snapshot`/`upsert`/`remove`/`alerts`/`heartbeat` frames. Emits `removedThreats: SharedFlow<ThreatRemoved>` (resolved/remove frames — drives the map death animation). `retryNow()` forces an immediate reconnect (used by the offline-notification Retry action). Hosts the shared `OFFLINE_GRACE_MS` (30s) and a 5s watchdog feeding `ConnectionLog`. |
+| `NeptunClient.kt` | `object` singleton. Owns the NEPTUN WebSocket (`wss://neptun.in.ua/api/v1/stream`) with fast-first-attempt backoff reconnect (1-3s on the first retry, exponential capped at 15s) + keep-alive/watchdog tasks, plus REST merge (`/api/v1/threats`). Exposes `StateFlow<NeptunState>` (threats map, oblastAlerts, connected, `offlineSince`/`offlineElapsedSec`). Handles `snapshot`/`upsert`/`remove`/`alerts`/`heartbeat` frames. Emits `removedThreats: SharedFlow<ThreatRemoved>` (resolved/remove frames — drives the map death animation). `retryNow()` forces an immediate reconnect (used by the offline-notification Retry action). Hosts the shared `OFFLINE_GRACE_MS` (30s) and a 5s watchdog feeding `ConnectionLog`. `reconnectDelayMs` is pure (unit-tested). |
 | `AlertsUaClient.kt` | `object` singleton. Independent oblast-alert backup source: polls the keyless public `https://alerts.com.ua/api/states` every ~20s and exposes `StateFlow<AlertsUaState>` (alerts + `lastOkAt`/`lastError` health). Merged into `NeptunState.oblastAlerts` only when NEPTUN is down or its alert feed is silent (`backupActive`); its own health (`backupUp`/`backupOfflineElapsedSec`) feeds the system-status popup. |
 | `Threat.kt` | `Threat` data model + JSON parsing, `ThreatType`/`ThreatTypeCatalog` (labels/descriptions UA+EN, staleness, nominal speeds), `OblastAlert`, `Reliability`, `AlertSource`, `mergeAlerts`, and `translateCourseAssessment` (EN rendering of NEPTUN's course text: hard-coded sentence templates + glossary, place names transliterated). |
 
@@ -42,7 +42,7 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | File | Responsibility |
 | --- | --- |
 | `MainViewModel.kt` | `AndroidViewModel`. Combines NEPTUN state + GPS + prefs + a 1s clock into `StateFlow<UiState>` via `buildUiState`. Also drives the update flow. This is the UI-side copy of the zone/focus/alert logic (see invariants). A TEMP `tempNeutralize` hook treats a long-pressed threat id as neutralized so its card self-destructs like a real resolution. |
-| `ConnectionLog.kt` | `object` singleton. Persisted ring buffer of the last 10 connection statuses (ONLINE/OFFLINE/BACKUP with episode durations). Fed by `NeptunClient`'s 5s watchdog via `observe(...)`; only commits a drop once it outlasts the shared `OFFLINE_GRACE_MS` (random hiccups are ignored); the in-progress episode is exposed live (`currentEpisode`). Rendered in the System-status popup. |
+| `ConnectionLog.kt` | `object` singleton. Persisted ring buffer of the last 10 connection statuses (ONLINE/OFFLINE/BACKUP with episode durations). Fed by `NeptunClient`'s 5s watchdog via `observe(...)`; only commits a drop once it outlasts the shared `OFFLINE_GRACE_MS` (random hiccups are ignored); the in-progress episode is exposed live (`currentEpisode`). Rendered in the System-status popup. The episode-commit decision is the pure `commitLogState` (unit-tested); `attach()` restores DataStore asynchronously off the main thread. |
 | `Prediction.kt` | `LatLng`, `distanceMeters`, per-type staleness (`staleAfterMs`/`isExpired`), `predictPosition` dead-reckoning, and `ThreatSpeedTracker` (speed from server → measured fixes → nominal). |
 
 ### Domain logic
@@ -50,10 +50,11 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | File | Responsibility |
 | --- | --- |
 | `Zones.kt` | `ThreatZone` (INNER/OUTER), `ZoneParams` (slow km / fast min thresholds), `FastThreatTypes` (the single source for the fast group), `zoneTier(t, distKm, speedKmh, params)` — the single source of truth for zone tiering, plus `etaMinutes`, `reachKm` (per-type max cover) and `BALLISTIC_SPEED_KMH` (AVIATION override). |
+| `NightMode.kt` | Night-mode shared helpers consumed by **both** `MainViewModel` and `AlertService` (mirror rule): `NightConfig` (window), `NightZones` (night thresholds + armed bells), `isNightActive` (overnight-aware), `effectiveZoneParams`/`effectiveArmed` (night values only while the window is active). |
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 threat gauge for the popup (severity × distance × reliability × sources × count × quality × staleness × ETA). |
 | `Cities.kt` | Curated city list (grouped by oblast region, ~350 places) + `CityLabelOverlay` (draws city names, red when oblast on alert, threat counts). EN names derive from the app's own КМУ №55 transliteration. `focusAttribution` maps the focus point (pinned city, else nearest **major** city to GPS) to an oblast stem via `cityOblast`; minor cities are map-context only (zoom ≥ 10) and never drive attribution/banner. |
 | `Transliteration.kt` | `Transliteration` — official КМУ №55 Ukrainian→Latin romanization. Place names are transliterated, never semantically translated (the EN gate). |
-| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, `ThreatIconSet`, and the DataStore-backed preference store (`zone_prefs`). All toggles/km+min zone thresholds/language/follow/pin/threat map-visibility + alert-enable + map-scale + icon-set live here, plus the serialized `ConnectionLog` entries and in-progress episode. Also `threatMapFlow` and `threatAlertFlow`. |
+| `ZonePrefs.kt` | `AppLanguage`, `ThreatCardSize`, `ThreatIconSet`, and the DataStore-backed preference store (`zone_prefs`). All toggles/km+min zone thresholds/language/follow/pin/threat map-visibility + alert-enable + map-scale + icon-set live here, plus the serialized `ConnectionLog` entries, in-progress episode, and offline-restore state (`offline_pending_since`, used by `AlertService` to re-flag an outage after a service kill). Also `threatMapFlow` and `threatAlertFlow`. Night mode keeps its own copies of the zone thresholds/armed bells/always-sound overrides plus the window (`night*`) here, so the day config is never clobbered. |
 | `Strings.kt` | `Strings` → `StringSet` — the UA/EN string table (the app never relies on Android resource localization). |
 | `ThreatImages.kt` | Reference photos for the expanded threat card: bundled webp for some types, Wikimedia Commons hotlinks for the rest. |
 | `IconCatalog.kt` | Single source of truth for threat icon drawables: `classicRes` (vector set), `res(type, set)` (vector or photo set, photos live in `iconpacks/photo/drawable-nodpi/threat_photo_*.png`), `photoBaseDeg` (each photo's baked-in facing angle), and the `ThreatIcon` composable that letterboxes photos in square slots. Replaces the old per-file `iconFor`/`iconResFor`/`threatIconRes` mappings. Icon-pack assets live under `app/src/main/iconpacks/` (classic + photo) and are merged into the res namespace via `res.srcDirs` in `build.gradle.kts`. |
@@ -64,20 +65,20 @@ Grouped by subsystem. Every file is listed with its one-line responsibility.
 | --- | --- |
 | `MainScreen.kt` | Top-level Compose UI: header (trident glow, title — tap to fit the whole country, gear), alert banner, `MapScreen`, threat strip, `ZonesSheet` (fully-visible zones panel), `UpdateDialog`, first-run `LanguageChooseDialog` (with slim threat toggles). |
 | `ConnectionStatus.kt` | Connection pill (red "offline" / amber "backup" / green "online" — the online state shows the NEPTUN emblem and a green label) + the "System status" dialog: per-source dot rows (NEPTUN + backup alerts.com.ua), backup scope note, TEMP force-offline toggle, legend, attribution link, and a collapsible connection log (`ConnectionLog`, last 10 statuses with durations). |
-| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: slow-distance zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. A TEMP map long-press fires the death animation (and self-destructs the selected threat's card) on demand. |
+| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE` (CartoDB dark-nolabels). OSMdroid rendering: slow-distance zone circles, type-icon markers, course rotation, dead-reckoned positions, GPS dot, city pin, scale bar, Ukraine view limits; `fitUkraineTick` zooms to the whole country. `overlayKey` covers only threat identity/status/staleness + static config (never raw lat/lon/course), so marker positions, rotation and staleness dimming update in-place via the 1s loop instead of full `overlays.clear()` rebuilds; a rebuild is deferred while a death animation is active. A TEMP map long-press fires the death animation (and self-destructs the selected threat's card) on demand. |
 | `SettingsScreen.kt` | Language, map centre (pin city / follow me), Fast/Slow-grouped per-type Map/Alerts icon-chips + a per-group master row (collapsible per group, expanded by default), reference photos, threat card size, alert toggles, updates, battery exemption, feature guide. The top "Disclaimers" card auto-expands on the first 3 Settings opens (`disclaimer_read_count`) then remembers the user's collapse state. |
 | `ZonesSheet.kt` | "Edit zones" bottom sheet over the live map: Slow (km) and Fast (min) red/yellow sliders with per-zone alert bells and section captions — everything visible at once. A gear in the top-right opens Settings scrolled to the Threats section. |
-| `ThreatPopupCard.kt` | Threat detail popup in two sizes (small / large): type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / "R" (UA "Д") bar stacked above the skull in small), wave size, time since seen. |
+| `ThreatPopupCard.kt` | Threat detail popup in two sizes (small / large): type, region, threat-level gauge, a neutral distance/ETA/speed pill trio, precision, reliability (3-segment bar in full / "R" (UA "Д") bar stacked above the skull in small), wave size, time since seen. The `neutralized`/`neutralizing` compact variant announces a resolved threat ("Neutralized" / "Neutralizing enemy…"). |
 | `ThreatTogglePanel.kt` | Shared Fast/Slow grouping (`fastAndSlowGroups`), the Map/Alerts `ToggleChip` + `IconToggle`, and `SlimThreatToggles` — the per-type compact panel reused by the first-run dialog and Settings. |
 | `FeatureGuide.kt` | Static in-app feature guide. |
 | `FeatureDiagrams.kt` | Diagram drawables used by the feature guide. |
-| `ThreatDeathAnimation.kt` | `ThreatDeathOverlay` — an osmdroid overlay drawing a 5s "neutralized" flourish at a threat's last position when NEPTUN resolves/removes it: lead-in ping → 3-2-1 countdown in a dark pill → quick explosion. The threat's own marker icon keeps rendering in the overlay for the full 5s and is hidden forever the moment the animation completes. The map's projection anchors it (tracks pan/zoom); a per-frame invalidate ticker in `MapView` animates it. A TEMP map long-press (on a marker or empty ground) fires it on demand for testing. |
+| `ThreatDeathAnimation.kt` | `ThreatDeathOverlay` — an osmdroid overlay drawing a 5s "neutralized" flourish at a threat's last position when NEPTUN resolves/removes it: a soft ping marking the target, then a small projectile flies in — from your GPS position (or pinned city) when it's on screen, else from just outside the screen edge — and explodes on impact. Explosion start is exposed as `DEATH_EXPLOSION_START_MS` so `MainScreen`'s neutralizing→neutralized card flip matches it. The threat's own marker icon keeps rendering in the overlay for the full 5s and is hidden forever the moment the animation completes. The map's projection anchors it (tracks pan/zoom); a per-frame invalidate ticker in `MapView` animates it. A TEMP map long-press (on a marker or empty ground) fires it on demand for testing. |
 
 ### Background / alerting
 
 | File | Responsibility |
 | --- | --- |
-| `AlertService.kt` | Foreground `dataSync` service — the always-on monitor. Owns `NeptunClient.start()`, consumes `NeptunClient.state` + `LocationTracker.location` + prefs, and posts siren/chime/all-clear notifications with a 60s grace window and event coalescing. Official-alert bodies carry a threat reason (best `ThreatLevelModel`-scored threat in the focus oblast, else a region fallback) and are silently re-posted on the same id as reasons arrive; all-clear cancels the siren immediately when no zone alert is active. Also posts silent offline notifications (30s grace via the shared `NeptunClient.OFFLINE_GRACE_MS`, immediate when an official alert is active) with a Retry action → `NeptunClient.retryNow()`, and calls `ConnectionLog.attach()` on start. **Independent reimplementation of the zone/focus logic.** |
+| `AlertService.kt` | Foreground `dataSync` service — the always-on monitor. Owns `NeptunClient.start()`, consumes `NeptunClient.state` + `LocationTracker.location` + prefs, and posts siren/chime/all-clear notifications with a 60s grace window and event coalescing. Official-alert bodies carry a threat reason (best `ThreatLevelModel`-scored threat in the focus oblast, else a region fallback) and are silently re-posted on the same id as reasons arrive; all-clear cancels the siren immediately when no zone alert is active. Also posts silent offline notifications (30s grace via the shared `NeptunClient.OFFLINE_GRACE_MS`, immediate when an official alert is active) with a Retry action → `NeptunClient.retryNow()`, and calls `ConnectionLog.attach()` on start. The offline state is persisted (`offline_pending_since`) so a drop that spans a service kill is re-flagged after restart. **Independent reimplementation of the zone/focus logic.** |
 | `BootReceiver.kt` | Restarts `AlertService` after reboot (`BOOT_COMPLETED`) and in-app update (`MY_PACKAGE_REPLACED`). |
 | `LocationTracker.kt` | `object` singleton. Battery-cheap coarse location: `NETWORK_PROVIDER` only, ~2 min / 250 m, falls back to last known. Exposes `StateFlow<LatLng?>`. |
 | `BatteryOptimization.kt` | Helpers for the "keep monitoring alive" battery-exemption flow. |
@@ -145,6 +146,9 @@ Treat these as a contract. If you change one, update **every** place that relies
   to `zoneTier`, `ZoneParams`, `focusAttribution`, `staleAfterMs`,
   or `predictPosition` must be mirrored in **both** files or the UI and notifications drift.
   `Zones.kt` is the single source of truth for tier math — call `zoneTier`, never inline it.
+  Night mode is shared, not mirrored: both sides call `isNightActive`/`effectiveZoneParams`/
+  `effectiveArmed` from `NightMode.kt` and resolve the effective params/armed/overrides per
+  tick (`now`), so a new night knob needs only a pref + a `NightMode.kt` change.
 
 - **Threat type gating.** `ZonePrefs.threatMapFlow` gates which types render on the map
   (`MainViewModel`); `threatAlertFlow` gates which types fire alerts (`AlertService`). The two
@@ -185,9 +189,9 @@ Treat these as a contract. If you change one, update **every** place that relies
   or once `isGhost` — the staleness window plus `STALE_GHOST_CAP_MS` (~30 min) — passes. When
   the **selected** threat is gone this way (removed from the map, server-marked `resolved` /
   area-only, or a ghost), `MainViewModel` sets `UiState.neutralizedThreat` and nulls
-  `selectedThreat`, so the UI swaps the popup for a compact "neutralized" card (icon + type +
-  a caption that it's just a visual flourish) and fades it out over the same 5s as the map
-  death animation. Stale-but-trackable
+  `selectedThreat`, so the UI swaps the popup for a compact "neutralizing" card (icon + type +
+  a caption) that reads "Neutralizing enemy…" while the strike plays, flips to "Neutralized"
+  at the explosion (after `DEATH_EXPLOSION_START_MS`) and fades out across it. Stale-but-trackable
   threats never trigger it.
   Dead-reckoning applies to any active threat with a real heading (velocity `bearingDeg`,
   else top-level `heading`) and caps at a per-type horizon and max-ghost distance. The ViewModel
@@ -236,6 +240,8 @@ JUnit unit tests in `app/src/test/java/ua/ukrainedrones/`:
 - `ThreatLevelTest.kt` — threat-level scoring.
 - `ZonesTest.kt` — slow km tiering, fast min tiering, `etaMinutes`, `reachKm`, AVIATION override, null-speed fast.
 - `UpdateManagerTest.kt` — `versionNameGreater`.
+- `NeptunClientTest.kt` — reconnect backoff (fast first attempt, exponential cap).
+- `ConnectionLogTest.kt` — episode-commit rules (grace window, blips, recovery rows, ring-buffer cap).
 - `TestThreats.kt` — shared `threat(...)` builder helper.
 
 Run: `.\gradlew.bat :app:testDebugUnitTest`

@@ -1,10 +1,14 @@
 package ua.ukrainedrones
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /** Connection states shown in the status log — mirrors the header pill's three states. */
@@ -36,6 +40,7 @@ object ConnectionLog {
     @Volatile private var lastStatus: ConnStatus? = null
     @Volatile private var attached = false
     private var appContext: Context? = null
+    private val attachScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * Restore persisted entries + any in-progress episode from DataStore. Call once (from
@@ -45,18 +50,22 @@ object ConnectionLog {
         if (attached) return
         attached = true
         appContext = context.applicationContext
-        val prefs = ZonePrefs(context.applicationContext)
-        val (restoredPending, restoredEntries) = runBlocking {
-            val loaded = parse(prefs.connLog().first())
-            val since = prefs.connLogPendingSince().first()
-            val name = prefs.connLogPendingStatus().first()
-            val restored = if (since > 0) {
-                ConnLogEntry(since, ConnStatus.entries.firstOrNull { it.name == name } ?: ConnStatus.OFFLINE, null)
-            } else null
-            restored to loaded
+        // The DataStore reads are dispatched off the calling thread: attach() is invoked from
+        // the main thread at app/service startup, and a synchronous runBlocking there is jank.
+        attachScope.launch {
+            val prefs = ZonePrefs(context.applicationContext)
+            val (restoredPending, restoredEntries) = runBlocking {
+                val loaded = parse(prefs.connLog().first())
+                val since = prefs.connLogPendingSince().first()
+                val name = prefs.connLogPendingStatus().first()
+                val restored = if (since > 0) {
+                    ConnLogEntry(since, ConnStatus.entries.firstOrNull { it.name == name } ?: ConnStatus.OFFLINE, null)
+                } else null
+                restored to loaded
+            }
+            pending = restoredPending
+            _entries.value = restoredEntries
         }
-        pending = restoredPending
-        _entries.value = restoredEntries
     }
 
     /**
@@ -66,30 +75,13 @@ object ConnectionLog {
     fun observe(status: ConnStatus, now: Long) {
         val prev = lastStatus
         lastStatus = status
-        if (prev == null) return // first sighting after (re)start — never fabricate an episode
-        if (status == prev) return
-
-        val current = pending
-        var dirty = false
-        if (current != null && current.status != ConnStatus.ONLINE) {
-            val durSec = (now - current.atMillis) / 1000
-            if (durSec * 1000 >= NeptunClient.OFFLINE_GRACE_MS) {
-                _entries.value = (_entries.value + current.copy(durationSec = durSec)).takeLast(MAX_ENTRIES)
-                dirty = true
-            }
-            pending = null
-            persistPending(0L, "")
+        val t = commitLogState(prev, status, now, pending, _entries.value, MAX_ENTRIES, NeptunClient.OFFLINE_GRACE_MS) ?: return
+        _entries.value = t.entries
+        pending = t.nextPending
+        if (t.persistPendingSince >= 0) {
+            persistPending(t.persistPendingSince, t.persistPendingStatus)
         }
-        if (status == ConnStatus.ONLINE) {
-            if (dirty) {
-                _entries.value = (_entries.value + ConnLogEntry(now, ConnStatus.ONLINE, null)).takeLast(MAX_ENTRIES)
-            }
-            if (dirty) persist()
-        } else {
-            pending = ConnLogEntry(now, status, null)
-            persistPending(now, status.name)
-            if (dirty) persist()
-        }
+        if (t.persistLog) persist()
     }
 
     /** The in-progress off/backup episode with its running duration, or null when online. */
@@ -121,4 +113,60 @@ object ConnectionLog {
             val dur = parts[2].toLongOrNull()
             ConnLogEntry(at, status, dur)
         }.takeLast(MAX_ENTRIES)
+}
+
+/** Result of one [commitLogState] step: what to persist and what the log becomes. */
+internal data class LogTransition(
+    val entries: List<ConnLogEntry>,
+    val nextPending: ConnLogEntry?,
+    /** Pending-episode state to persist; -1 = leave the persisted value untouched. */
+    val persistPendingSince: Long,
+    val persistPendingStatus: String,
+    val persistLog: Boolean
+)
+
+/**
+ * Pure episode-commit decision for [ConnectionLog.observe] (extracted so the grace-window and
+ * ring-buffer rules are unit-testable without DataStore). Returns null when the status didn't
+ * actually change. A completed off/backup episode is committed to the ring buffer only once it
+ * has outlasted [graceMs]; a recovery to [ConnStatus.ONLINE] adds a bracketing row when the
+ * episode was committed. [maxEntries] caps the ring buffer.
+ */
+internal fun commitLogState(
+    prevStatus: ConnStatus?,
+    status: ConnStatus,
+    now: Long,
+    pending: ConnLogEntry?,
+    entries: List<ConnLogEntry>,
+    maxEntries: Int,
+    graceMs: Long
+): LogTransition? {
+    if (prevStatus == null || status == prevStatus) return null
+    var newEntries = entries
+    var dirty = false
+    var clearPending = false
+    val episode = pending
+    if (episode != null && episode.status != ConnStatus.ONLINE) {
+        val durSec = (now - episode.atMillis) / 1000
+        if (durSec * 1000 >= graceMs) {
+            newEntries = (newEntries + episode.copy(durationSec = durSec)).takeLast(maxEntries)
+            dirty = true
+        }
+        clearPending = true
+    }
+    val nextPending = if (status == ConnStatus.ONLINE) null else ConnLogEntry(now, status, null)
+    if (status == ConnStatus.ONLINE && dirty) {
+        newEntries = (newEntries + ConnLogEntry(now, ConnStatus.ONLINE, null)).takeLast(maxEntries)
+    }
+    return LogTransition(
+        entries = newEntries,
+        nextPending = nextPending,
+        persistPendingSince = when {
+            nextPending != null -> now
+            clearPending -> 0L
+            else -> -1L
+        },
+        persistPendingStatus = nextPending?.status?.name ?: "",
+        persistLog = dirty
+    )
 }

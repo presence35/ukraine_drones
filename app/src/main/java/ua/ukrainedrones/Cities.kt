@@ -486,7 +486,10 @@ fun focusAttribution(followMe: Boolean, userLocation: LatLng?, pinned: City?): F
             bannerCityEn = gps.nameEn
         )
     } else {
-        FocusAttribution(null, "Одеса", "Odesa")
+        // No usable fix and no pinned city: don't fabricate a specific city (a leftover from
+        // the app's Odesa-only origin) — the callers substitute a localized "unknown location"
+        // label instead. A null token already suppresses official-alert matching.
+        FocusAttribution(null, "", "")
     }
 }
 

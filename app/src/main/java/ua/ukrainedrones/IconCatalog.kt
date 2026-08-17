@@ -68,7 +68,7 @@ object IconCatalog {
      */
     fun photoBaseDeg(type: ThreatType): Float = when (type) {
         ThreatType.BALLISTIC -> 0f      // _top
-        ThreatType.CRUISE_MISSILE -> 45f // _top_right
+        ThreatType.CRUISE_MISSILE -> 90f // _right
         ThreatType.FPV_LOITERING -> 180f // _bottom_middle
         ThreatType.KAB -> 225f           // _bottom_left
         ThreatType.AVIATION -> 270f      // _left

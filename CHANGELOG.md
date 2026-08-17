@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- Stability: the map no longer rebuilds itself on every threat position update — marker positions, course rotation and staleness dimming now update in place, so during an active alert the map stays smooth (fixes a force-close during the death animation and a significant battery drain).
+- Notifications: an official alert whose reason text arrives after the initial trigger now updates the same notification silently instead of re-ringing the siren.
+- Notifications: a connection drop that starts while the app's background service is killed (and restarted by the system) is now surfaced after the restart instead of being lost.
+- Connectivity: the first reconnect attempt after a drop is now near-immediate (~1-3s) instead of up to 30s, so a flapping feed recovers fast.
+- Banner: with no GPS fix and no pinned city, the banner no longer claims the location is Odesa — it shows "Unknown location" instead.
+
+- Photo threat icons: the cruise-missile photo now faces right (was top-right).
+
+- Settings → new "Night mode" section: a separate scenario for the night. Set on/off hours (overnight windows supported), decide whether zone sirens and official alerts still ring on vibrate/silent ("always sound") during the night, and optionally give the night its own zone thresholds + red/yellow armed bells (so you can sleep through everything). While the window is active, the map circles and zone tiers switch to the effective (night) values; the "Edit zones" sheet keeps editing the day ones and notes the night window. Alerts follow the same effective logic in the background service.
+
 - Settings → Additional: the "Unrestricted in background" status now explains itself — once the app runs unrestricted, the card shows the same context as the request (Android won't pause it, so alerts keep ringing on very little power) instead of a bare status line.
 
 - Notifications: an official alert no longer re-sounds every few minutes when its reason text is the same threat — the reason body updates only when a genuinely different threat becomes the reason (NEPTUN refreshes confirmation counts on the same object, which used to retrigger the siren).
@@ -23,7 +33,7 @@
 - Zones panel: a gear in the top-right opens Settings directly on the Threats section.
 - Language: English text is now fully offline. Place names (cities, oblasts, districts) are romanized — never "translated" — via the official Ukrainian transliteration rules (Золоте → Zolote, not "Gold"), and military vocabulary (UAV, Shahed, missile, heading toward…) is hard-coded. The live Google translate call is gone, so EN notifications post instantly with no network dependency.
 
-- Map: when a threat is resolved or removed by the server, a playful 5-second "neutralized" animation plays at its last position — a quick ping, a 3-2-1 countdown, then a small explosion. The threat's icon stays on the map for the full animation and is removed for good only once it completes. The "Neutralized" popup card now fades out in sync with the animation. (Long-pressing a threat marker or empty map fires it on demand, including the card self-destruct — a temporary dev/testing aid.)
+- Map: when a threat is resolved or removed by the server, a playful 5-second "neutralized" animation plays at its last position — a soft ping marks the target, then a small projectile flies in from your GPS position (or pinned city, or just outside the screen edge when it's off-screen) and explodes on impact. The threat's icon stays on the map for the full animation and is removed for good only once it completes. While the strike plays, the popup card reads "Neutralizing enemy…"; the moment the explosion starts it flips to "Neutralized" and fades away. (Long-pressing a threat marker or empty map fires it on demand, including the card self-destruct — a temporary dev/testing aid.)
 - Settings → top card: now the "Disclaimers" section with a full list of caveats (approximate numbers, unofficial rating, coarse location, no safety guarantee). It auto-expands on the first 3 Settings opens, then remembers the state you leave it in.
 - Threat popup: the "Neutralized" fade now also triggers when the selected threat goes stale past the ghost cap, and the card carries a caption that it's just a visual flourish — the threat is no longer around for whatever reason.
 - Settings → Additional: a new "Threat icons" picker switches the whole app between the classic vector icons and the new photo set (each option shows all seven icons in a scrollable panel). Photo markers on the map are rotated so each subject points along its true course; in small slots they keep their aspect ratio instead of stretching.

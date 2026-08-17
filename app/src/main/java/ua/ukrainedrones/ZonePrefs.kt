@@ -51,6 +51,19 @@ class ZonePrefs(private val context: Context) {
     private val connLogKey = stringPreferencesKey("conn_log")
     private val connLogPendingSinceKey = longPreferencesKey("conn_log_pending_since")
     private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
+    private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
+    private val nightEnabledKey = booleanPreferencesKey("night_enabled")
+    private val nightStartMinKey = intPreferencesKey("night_start_min")
+    private val nightEndMinKey = intPreferencesKey("night_end_min")
+    private val nightUseCustomZonesKey = booleanPreferencesKey("night_use_custom_zones")
+    private val nightSlowRedKmKey = intPreferencesKey("night_slow_red_km")
+    private val nightSlowYellowKmKey = intPreferencesKey("night_slow_yellow_km")
+    private val nightFastRedMinKey = intPreferencesKey("night_fast_red_min")
+    private val nightFastYellowMinKey = intPreferencesKey("night_fast_yellow_min")
+    private val nightRedArmedKey = booleanPreferencesKey("night_red_zone_armed")
+    private val nightYellowArmedKey = booleanPreferencesKey("night_yellow_zone_armed")
+    private val nightZoneSirenOverrideKey = booleanPreferencesKey("night_zone_siren_override")
+    private val nightOfficialSirenOverrideKey = booleanPreferencesKey("night_official_siren_override")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 2–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -248,7 +261,7 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[threatIconSetKey] = set.name }
     }
 
-    /** Whether the map's bottom-left scale bar is shown — default on. */
+    /** Whether the map's bottom-right scale bar is shown — default on. */
     fun showMapScale(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[showMapScaleKey] ?: true }
 
@@ -302,6 +315,110 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setConnLogPendingStatus(status: String) {
         context.dataStore.edit { it[connLogPendingStatusKey] = status }
+    }
+
+    /** Epoch millis when the current NEPTUN outage started (0 = none), across service restarts. */
+    fun offlinePendingSince(): Flow<Long> =
+        context.dataStore.data.map { prefs -> prefs[offlinePendingSinceKey] ?: 0L }
+
+    suspend fun setOfflinePendingSince(ts: Long) {
+        context.dataStore.edit { it[offlinePendingSinceKey] = ts }
+    }
+
+    /** Whether the night-mode window is enabled. */
+    fun nightEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightEnabledKey] ?: false }
+
+    suspend fun setNightEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[nightEnabledKey] = enabled }
+    }
+
+    /** Night window start, minute since midnight (default 22:00 = 1320). */
+    fun nightStartMin(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightStartMinKey] ?: 22 * 60 }
+
+    suspend fun setNightStartMin(min: Int) {
+        context.dataStore.edit { it[nightStartMinKey] = min.coerceIn(0, 1439) }
+    }
+
+    /** Night window end, minute since midnight (default 07:00 = 420). */
+    fun nightEndMin(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightEndMinKey] ?: 7 * 60 }
+
+    suspend fun setNightEndMin(min: Int) {
+        context.dataStore.edit { it[nightEndMinKey] = min.coerceIn(0, 1439) }
+    }
+
+    /** Whether the night window uses its own zone thresholds/armed bells (false = day values). */
+    fun nightUseCustomZones(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightUseCustomZonesKey] ?: false }
+
+    suspend fun setNightUseCustomZones(use: Boolean) {
+        context.dataStore.edit { it[nightUseCustomZonesKey] = use }
+    }
+
+    /** Night red (inner) slow-threat distance threshold in km — range 2–20, default 20. */
+    fun nightSlowRedKm(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightSlowRedKmKey] ?: 20 }
+
+    suspend fun setNightSlowRedKm(km: Int) {
+        context.dataStore.edit { it[nightSlowRedKmKey] = km.coerceIn(2, 20) }
+    }
+
+    /** Night yellow (outer) slow-threat distance threshold in km — range 21–50, default 50. */
+    fun nightSlowYellowKm(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightSlowYellowKmKey] ?: 50 }
+
+    suspend fun setNightSlowYellowKm(km: Int) {
+        context.dataStore.edit { it[nightSlowYellowKmKey] = km.coerceIn(21, 50) }
+    }
+
+    /** Night red (inner) fast-threat ETA threshold in minutes — range 2–5, default 5. */
+    fun nightFastRedMin(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightFastRedMinKey] ?: 5 }
+
+    suspend fun setNightFastRedMin(min: Int) {
+        context.dataStore.edit { it[nightFastRedMinKey] = min.coerceIn(2, 5) }
+    }
+
+    /** Night yellow (outer) fast-threat ETA threshold in minutes — range 6–20, default 20. */
+    fun nightFastYellowMin(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightFastYellowMinKey] ?: 20 }
+
+    suspend fun setNightFastYellowMin(min: Int) {
+        context.dataStore.edit { it[nightFastYellowMinKey] = min.coerceIn(6, 20) }
+    }
+
+    /** Whether the red zone can fire urgent siren alerts during the night window. */
+    fun nightRedZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightRedArmedKey] ?: true }
+
+    suspend fun setNightRedZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[nightRedArmedKey] = armed }
+    }
+
+    /** Whether the yellow zone can fire warning alerts during the night window. */
+    fun nightYellowZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightYellowArmedKey] ?: true }
+
+    suspend fun setNightYellowZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[nightYellowArmedKey] = armed }
+    }
+
+    /** Whether zone sirens ring on the alarm stream (even on vibrate/silent) at night. Default off. */
+    fun nightZoneSirenOverride(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightZoneSirenOverrideKey] ?: false }
+
+    suspend fun setNightZoneSirenOverride(override: Boolean) {
+        context.dataStore.edit { it[nightZoneSirenOverrideKey] = override }
+    }
+
+    /** Whether official oblast alerts ring on the alarm stream (even on vibrate/silent) at night. */
+    fun nightOfficialSirenOverride(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightOfficialSirenOverrideKey] ?: false }
+
+    suspend fun setNightOfficialSirenOverride(override: Boolean) {
+        context.dataStore.edit { it[nightOfficialSirenOverrideKey] = override }
     }
 }
 

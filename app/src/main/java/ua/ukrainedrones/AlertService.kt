@@ -75,6 +75,7 @@ class AlertService : Service() {
     private var wasConnected = true
     private var offlineNotifShown = false
     private var offlineAlertJob: Job? = null
+    private var offlineRestorePending = false
     private val speedTracker = ThreatSpeedTracker()
     private var alertEpoch = 0
 
@@ -93,7 +94,8 @@ class AlertService : Service() {
             val redArmed: Boolean,
             val yellowArmed: Boolean,
             val officialAlertsEnabled: Boolean,
-            val sirenOverride: Boolean,
+            val zoneSirenOverride: Boolean,
+            val officialSirenOverride: Boolean,
             val connected: Boolean,
             val offlineElapsedSec: Long?
         ) : MonitorEvent()
@@ -108,6 +110,22 @@ class AlertService : Service() {
         val followMe: Boolean
     )
 
+    /** Night-mode window prefs (raw, day values untouched). */
+    private data class NightWindow(
+        val enabled: Boolean,
+        val startMin: Int,
+        val endMin: Int,
+        val useCustomZones: Boolean
+    )
+
+    /** All night prefs combined, so the effective (night vs day) config resolves once per tick. */
+    private data class NightSettings(
+        val window: NightWindow,
+        val zones: NightZones,
+        val zoneSirenOverride: Boolean,
+        val officialSirenOverride: Boolean
+    )
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -116,6 +134,16 @@ class AlertService : Service() {
         ConnectionLog.attach(applicationContext)
         NeptunClient.start()
         scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
+        scope.launch {
+            val prefs = ZonePrefs(applicationContext)
+            if (prefs.offlinePendingSince().first() > 0) {
+                // The service was killed while an outage was in progress. START_STICKY restarts
+                // it with a fresh instance, so restore the pre-kill offline state and let the
+                // first handleState tick re-flag it (a drop missed entirely otherwise).
+                wasConnected = false
+                offlineRestorePending = true
+            }
+        }
         LocationTracker.start(this)
         startForegroundCompat()
     }
@@ -184,8 +212,32 @@ class AlertService : Service() {
                     threatAlertFlow(prefs),
                     prefs.language(),
                     prefs.pinnedCity()
-                ) { enabled, lang, pinned -> Triple(enabled, lang, pinned) }
-            ) { core, params, config, tail ->
+                ) { enabled, lang, pinned -> Triple(enabled, lang, pinned) },
+                combine(
+                    combine(
+                        prefs.nightEnabled(), prefs.nightStartMin(), prefs.nightEndMin(),
+                        prefs.nightUseCustomZones()
+                    ) { enabled, start, end, use ->
+                        NightWindow(enabled, start, end, use)
+                    },
+                    combine(
+                        combine(
+                            prefs.nightSlowRedKm(), prefs.nightSlowYellowKm(), prefs.nightFastRedMin(),
+                            prefs.nightFastYellowMin()
+                        ) { sr, sy, fr, fy ->
+                            NightZones(sr, sy, fr, fy, redArmed = true, yellowArmed = true)
+                        },
+                        combine(
+                            prefs.nightRedZoneArmed(), prefs.nightYellowZoneArmed()
+                        ) { ra, ya -> ra to ya }
+                    ) { zones, armed -> zones.copy(redArmed = armed.first, yellowArmed = armed.second) },
+                    combine(
+                        prefs.nightZoneSirenOverride(), prefs.nightOfficialSirenOverride()
+                    ) { zoneOv, officialOv -> zoneOv to officialOv }
+                ) { window, zones, ov ->
+                    NightSettings(window, zones, ov.first, ov.second)
+                }
+            ) { core, params, config, tail, night ->
                 val neptun = core.first
                 val gps = core.second
                 val now = core.third
@@ -193,6 +245,18 @@ class AlertService : Service() {
                 val lang = tail.second
                 val pinned = tail.third?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
                 val focus = if (followMe) gps else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
+                val nightActive = isNightActive(
+                    NightConfig(night.window.enabled, night.window.startMin, night.window.endMin),
+                    now
+                )
+                val effectiveParams = effectiveZoneParams(
+                    params, night.zones, night.window.useCustomZones, nightActive
+                )
+                val (redArmed, yellowArmed) = effectiveArmed(
+                    config.redArmed, config.yellowArmed, night.zones, night.window.useCustomZones, nightActive
+                )
+                val zoneSirenOverride = if (nightActive) night.zoneSirenOverride else config.sirenOverride
+                val officialSirenOverride = if (nightActive) night.officialSirenOverride else config.sirenOverride
                 val attribution = focusAttribution(followMe, gps, pinned)
                 val officialActive = attribution.token?.let { token ->
                     neptun.oblastAlerts.any { it.inOblast(token) }
@@ -200,7 +264,7 @@ class AlertService : Service() {
                 val (officialReason, officialReasonThreatId) = if (officialActive) {
                     buildReason(
                         neptun, attribution.token, lang, focus,
-                        params, now,
+                        effectiveParams, now,
                         tail.first,
                         focusRegionText(lang, followMe, pinned)
                     )
@@ -208,18 +272,21 @@ class AlertService : Service() {
                 MonitorEvent.State(
                     focusOblastAlertActive = officialActive,
                     focusAlertSource = attribution.token?.let { token -> neptun.alertSourceFor(token) },
-                    focusBannerCity = if (lang == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn,
+                    focusBannerCity = (
+                        if (lang == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
+                    ).ifBlank { Strings.get(lang).unknownLocation },
                     focusRegion = focusRegionText(lang, followMe, pinned),
                     focusPinned = !followMe && pinned != null,
                     officialReason = officialReason,
                     officialReasonThreatId = officialReasonThreatId,
-                    zoneThreats = zoneThreats(neptun, params, focus, tail.first, now),
-                    params = params,
+                    zoneThreats = zoneThreats(neptun, effectiveParams, focus, tail.first, now),
+                    params = effectiveParams,
                     lang = lang,
-                    redArmed = config.redArmed,
-                    yellowArmed = config.yellowArmed,
+                    redArmed = redArmed,
+                    yellowArmed = yellowArmed,
                     officialAlertsEnabled = config.officialAlertsEnabled,
-                    sirenOverride = config.sirenOverride,
+                    zoneSirenOverride = zoneSirenOverride,
+                    officialSirenOverride = officialSirenOverride,
                     connected = neptun.connected,
                     offlineElapsedSec = neptun.offlineElapsedSec
                 )
@@ -273,7 +340,7 @@ class AlertService : Service() {
         return map
     }
 
-    private fun handleState(state: MonitorEvent.State) {
+    private suspend fun handleState(state: MonitorEvent.State) {
         val s = Strings.get(state.lang)
 
         if (lastChannelLang != state.lang) {
@@ -289,15 +356,32 @@ class AlertService : Service() {
             offlineNotifShown = false
             offlineAlertJob?.cancel()
             offlineAlertJob = null
+            offlineRestorePending = false
+            if (!wasConnected) persistOfflineSince(0L)
         } else if (wasConnected) {
             // Just dropped: decide whether to alert now or after the grace.
             offlineAlertJob?.cancel()
             val alertNow = state.focusOblastAlertActive
+            persistOfflineSince(System.currentTimeMillis())
             offlineAlertJob = scope.launch {
                 if (!alertNow) {
                     delay(NeptunClient.OFFLINE_GRACE_MS)
                     // During the grace an official alert may have fired — alert immediately then.
                 }
+                if (!offlineNotifShown && !NeptunClient.state.value.connected) {
+                    postOfflineAlert(state.lang)
+                    offlineNotifShown = true
+                }
+            }
+        } else if (offlineRestorePending) {
+            // An outage was already in progress when the service died and restarted; the
+            // pre-kill drop was never flagged. Surface it exactly like a fresh drop (grace,
+            // or immediately when an official alert is on), then clear the restore flag.
+            offlineRestorePending = false
+            offlineAlertJob?.cancel()
+            val alertNow = state.focusOblastAlertActive
+            offlineAlertJob = scope.launch {
+                if (!alertNow) delay(NeptunClient.OFFLINE_GRACE_MS)
                 if (!offlineNotifShown && !NeptunClient.state.value.connected) {
                     postOfflineAlert(state.lang)
                     offlineNotifShown = true
@@ -347,7 +431,7 @@ class AlertService : Service() {
             val (id, zone) = newEntries.first()
             val t = all[id]
             val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
-            postAlert(zone, bannerFor(zone, s), body, state.sirenOverride, revealThreat = t)
+            postAlert(zone, bannerFor(zone, s), body, state.zoneSirenOverride, revealThreat = t)
             posted = true
             knownZones = knownZones + (id to zone)
         }
@@ -367,7 +451,7 @@ class AlertService : Service() {
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
-                state.sirenOverride,
+                state.officialSirenOverride,
                 revealThreat = state.officialReasonThreatId?.let { all[it] }
             )
             currentReasonThreatId = state.officialReasonThreatId
@@ -384,8 +468,9 @@ class AlertService : Service() {
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
-                state.sirenOverride,
-                revealThreat = state.officialReasonThreatId?.let { all[it] }
+                state.officialSirenOverride,
+                revealThreat = state.officialReasonThreatId?.let { all[it] },
+                silent = true
             )
             currentReasonThreatId = state.officialReasonThreatId
         }
@@ -527,7 +612,8 @@ class AlertService : Service() {
         title: String,
         body: String,
         sirenOverride: Boolean,
-        revealThreat: Threat?
+        revealThreat: Threat?,
+        silent: Boolean
     ): NotificationCompat.Builder {
         // Without the override, sirens follow the phone's ringer/vibrate mode via the
         // notification stream; with it, they ring on the alarm stream even in vibrate/silent.
@@ -546,6 +632,11 @@ class AlertService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent(revealThreat))
+            .apply {
+                // Silent updates refresh the alert body without re-ringing the siren on the
+                // same notification (e.g. a reason text arriving after the initial alert).
+                if (silent) setOnlyAlertOnce(true)
+            }
     }
 
     private fun postAlert(
@@ -553,12 +644,13 @@ class AlertService : Service() {
         title: String,
         body: String,
         sirenOverride: Boolean,
-        revealThreat: Threat? = null
+        revealThreat: Threat? = null,
+        silent: Boolean = false
     ) {
         alertEpoch++
         safeNotify(
             NOTIF_ALERT,
-            buildAlertNotification(zone, title, body, sirenOverride, revealThreat).build()
+            buildAlertNotification(zone, title, body, sirenOverride, revealThreat, silent).build()
         )
     }
 
@@ -568,6 +660,11 @@ class AlertService : Service() {
             NotificationManagerCompat.from(this).cancel(NOTIF_ALERT)
         } catch (_: SecurityException) {
         }
+    }
+
+    /** Persist the current outage start across service restarts (0 clears it). */
+    private suspend fun persistOfflineSince(ts: Long) {
+        ZonePrefs(applicationContext).setOfflinePendingSince(ts)
     }
 
     /** One-shot "connection dropped" alert on the silent offline channel. */

@@ -368,22 +368,27 @@ object NeptunClient {
     private fun scheduleReconnect() {
         if (manuallyStopped) return
         // Mirror the website's reconnect logic: let a long-lived connection earn a backoff
-        // reset, then pick a randomized first retry and exponential backoff capped at 15s.
+        // reset, then retry — fast on the first attempt (this is an always-on safety app, not
+        // a browser tab), with exponential backoff capped at 15s on repeated failures.
         if (openedAt > 0 && System.currentTimeMillis() - openedAt > 10_000) {
             reconnectAttempt = 0
         }
         reconnectAttempt++
-        val delayMs =
-            if (reconnectAttempt <= 1) {
-                5_000L + (0..25_000).random()
-            } else {
-                minOf(15_000L, 1000L * (1 shl (reconnectAttempt - 1))) + (0..400).random()
-            }
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            delay(delayMs)
+            delay(reconnectDelayMs(reconnectAttempt))
             if (!manuallyStopped) connect()
         }
+    }
+
+    /**
+     * Randomized reconnect delay for the Nth attempt (1 = first attempt after a long-lived
+     * connection). Pure so it can be unit-tested: first retry is quick (1-3s), later attempts
+     * back off exponentially, capped at 15s with a small jitter.
+     */
+    internal fun reconnectDelayMs(attempt: Int): Long = when {
+        attempt <= 1 -> 1000L + (0..2000).random()
+        else -> minOf(15_000L, 1000L * (1 shl (attempt - 1))) + (0..400).random()
     }
 
     private fun handleFrame(text: String) {

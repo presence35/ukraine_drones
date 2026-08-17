@@ -1,6 +1,7 @@
 package ua.ukrainedrones
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -53,5 +54,17 @@ class CitiesTest {
         assertEquals("Одеськ", fa.token)
         assertEquals("Одеса", fa.bannerCityUa)
         assertEquals("Odesa", fa.bannerCityEn)
+    }
+
+    @Test
+    fun `focusAttribution without location falls back to no city`() {
+        val fa = focusAttribution(
+            followMe = true,
+            userLocation = null,
+            pinned = null
+        )
+        assertNull(fa.token)
+        assertEquals("", fa.bannerCityUa)
+        assertEquals("", fa.bannerCityEn)
     }
 }

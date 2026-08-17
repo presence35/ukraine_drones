@@ -42,6 +42,23 @@ data class UiState(
     val fastYellowMin: Int = 20,  // fast threats: ETA to the yellow (outer) zone, minutes
     val redArmed: Boolean = true,
     val yellowArmed: Boolean = true,
+    val activeZoneParams: ZoneParams = ZoneParams(20, 50, 5, 20), // effective (night-aware) thresholds
+    val activeRedArmed: Boolean = true,
+    val activeYellowArmed: Boolean = true,
+    val nightActive: Boolean = false,                    // night window currently in effect
+    val nightWindowText: String = "",                    // localized "22:00–07:00" when configured
+    val nightEnabled: Boolean = false,
+    val nightStartMin: Int = 22 * 60,
+    val nightEndMin: Int = 7 * 60,
+    val nightUseCustomZones: Boolean = false,
+    val nightSlowRedKm: Int = 20,
+    val nightSlowYellowKm: Int = 50,
+    val nightFastRedMin: Int = 5,
+    val nightFastYellowMin: Int = 20,
+    val nightRedArmed: Boolean = true,
+    val nightYellowArmed: Boolean = true,
+    val nightZoneSirenOverride: Boolean = false,
+    val nightOfficialSirenOverride: Boolean = false,
     val officialAlertsEnabled: Boolean = true,
     val sirenOverride: Boolean = false,
     val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
@@ -153,6 +170,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val iconSet: ThreatIconSet
     )
 
+    /** Night-mode window prefs (raw, day values untouched). */
+    private data class NightWindowPrefs(
+        val enabled: Boolean,
+        val startMin: Int,
+        val endMin: Int,
+        val useCustomZones: Boolean
+    )
+
+    /** Night-mode zone prefs (raw). */
+    private data class NightZonesPrefs(
+        val slowRedKm: Int,
+        val slowYellowKm: Int,
+        val fastRedMin: Int,
+        val fastYellowMin: Int,
+        val redArmed: Boolean,
+        val yellowArmed: Boolean,
+        val zoneSirenOverride: Boolean,
+        val officialSirenOverride: Boolean
+    )
+
+    private data class NightPrefs(
+        val window: NightWindowPrefs,
+        val zones: NightZonesPrefs
+    )
+
     private data class PrefsSnapshot(
         val mapEnabled: Set<ThreatType>,
         val alertEnabled: Set<ThreatType>,
@@ -170,7 +212,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val iconSet: ThreatIconSet,
         val showMapScale: Boolean,
         val fastGroupCollapsed: Boolean,
-        val slowGroupCollapsed: Boolean
+        val slowGroupCollapsed: Boolean,
+        val night: NightPrefs
     )
 
     /** Live inputs that change every frame/second: stream, GPS, selection, time. */
@@ -256,8 +299,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.threatIconSet()
         ) { pinned, chosen, card, iconSet ->
             PrefsQuad(pinned, chosen, card, iconSet)
-        }
-    ) { a, b, c ->
+        },
+        combine(
+            combine(
+                prefs.nightEnabled(), prefs.nightStartMin(), prefs.nightEndMin(),
+                prefs.nightUseCustomZones()
+            ) { enabled, start, end, use ->
+                NightWindowPrefs(enabled, start, end, use)
+            },
+combine(
+                    combine(
+                        prefs.nightSlowRedKm(), prefs.nightSlowYellowKm(), prefs.nightFastRedMin(),
+                        prefs.nightFastYellowMin()
+                    ) { sr, sy, fr, fy ->
+                        NightZonesPrefs(sr, sy, fr, fy, true, true, false, false)
+                    },
+                    combine(
+                        prefs.nightRedZoneArmed(), prefs.nightYellowZoneArmed(),
+                        prefs.nightZoneSirenOverride(), prefs.nightOfficialSirenOverride()
+                    ) { flags: Array<Boolean> ->
+                        flags
+                    }
+                ) { zones, flags ->
+                    zones.copy(
+                        redArmed = flags[0],
+                        yellowArmed = flags[1],
+                        zoneSirenOverride = flags[2],
+                        officialSirenOverride = flags[3]
+                    )
+                }
+        ) { window, zones -> NightPrefs(window, zones) }
+    ) { a, b, c, d ->
         PrefsSnapshot(
             mapEnabled = a.map,
             alertEnabled = a.alert,
@@ -275,7 +347,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             iconSet = c.iconSet,
             showMapScale = b.showMapScale,
             fastGroupCollapsed = b.fastGroupCollapsed,
-            slowGroupCollapsed = b.slowGroupCollapsed
+            slowGroupCollapsed = b.slowGroupCollapsed,
+            night = d
         )
     }
 
@@ -301,21 +374,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         prefs.followMe().first()
         prefs.pinnedCity().first()
         prefs.languageChosen().first()
+        prefs.nightEnabled().first()
+        prefs.nightStartMin().first()
+        prefs.nightEndMin().first()
+        prefs.nightUseCustomZones().first()
+        prefs.nightSlowRedKm().first()
+        prefs.nightSlowYellowKm().first()
+        prefs.nightFastRedMin().first()
+        prefs.nightFastYellowMin().first()
+        prefs.nightRedZoneArmed().first()
+        prefs.nightYellowZoneArmed().first()
+        prefs.nightZoneSirenOverride().first()
+        prefs.nightOfficialSirenOverride().first()
         emit(Unit)
     }.flowOn(Dispatchers.IO)
 
-    val uiState: StateFlow<UiState> = combine(
+val uiState: StateFlow<UiState> = combine(
         seedFlow,
         liveSnapshot,
         prefsSnapshot,
         updateUiFlow
     ) { _, live, prefs, updateUi ->
+        val nightActive = isNightActive(
+            NightConfig(prefs.night.window.enabled, prefs.night.window.startMin, prefs.night.window.endMin),
+            live.now
+        )
+        val nightZones = NightZones(
+            prefs.night.zones.slowRedKm, prefs.night.zones.slowYellowKm,
+            prefs.night.zones.fastRedMin, prefs.night.zones.fastYellowMin,
+            prefs.night.zones.redArmed, prefs.night.zones.yellowArmed
+        )
+        val effectiveParams = effectiveZoneParams(
+            ZoneParams(live.slowRedKm, live.slowYellowKm, live.fastRedMin, live.fastYellowMin),
+            nightZones, prefs.night.window.useCustomZones, nightActive
+        )
+        val (activeRedArmed, activeYellowArmed) = effectiveArmed(
+            prefs.redArmed, prefs.yellowArmed, nightZones, prefs.night.window.useCustomZones, nightActive
+        )
         buildUiState(
             neptun = live.neptun,
             slowRedKm = live.slowRedKm,
             slowYellowKm = live.slowYellowKm,
             fastRedMin = live.fastRedMin,
             fastYellowMin = live.fastYellowMin,
+            effectiveParams = effectiveParams,
             mapEnabledTypes = prefs.mapEnabled,
             alertedTypes = prefs.alertEnabled,
             language = prefs.language,
@@ -338,6 +440,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             yellowArmed = prefs.yellowArmed,
             officialAlertsEnabled = prefs.officialAlertsEnabled,
             sirenOverride = prefs.sirenOverride,
+            activeZoneParams = effectiveParams,
+            activeRedArmed = activeRedArmed,
+            activeYellowArmed = activeYellowArmed,
+            nightActive = nightActive,
+            nightWindowText = if (prefs.night.window.enabled) {
+                nightWindowText(prefs.night.window.startMin, prefs.night.window.endMin)
+            } else "",
+            nightEnabled = prefs.night.window.enabled,
+            nightStartMin = prefs.night.window.startMin,
+            nightEndMin = prefs.night.window.endMin,
+            nightUseCustomZones = prefs.night.window.useCustomZones,
+            nightSlowRedKm = prefs.night.zones.slowRedKm,
+            nightSlowYellowKm = prefs.night.zones.slowYellowKm,
+            nightFastRedMin = prefs.night.zones.fastRedMin,
+            nightFastYellowMin = prefs.night.zones.fastYellowMin,
+            nightRedArmed = prefs.night.zones.redArmed,
+            nightYellowArmed = prefs.night.zones.yellowArmed,
+            nightZoneSirenOverride = prefs.night.zones.zoneSirenOverride,
+            nightOfficialSirenOverride = prefs.night.zones.officialSirenOverride,
             languageChosen = prefs.languageChosen,
             threatCardSize = prefs.cardSize,
             iconSet = prefs.iconSet,
@@ -357,6 +478,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         slowYellowKm: Int,
         fastRedMin: Int,
         fastYellowMin: Int,
+        effectiveParams: ZoneParams,
         mapEnabledTypes: Set<ThreatType>,
         alertedTypes: Set<ThreatType>,
         language: AppLanguage,
@@ -368,7 +490,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         reveal: RevealRequest?,
         tempNeutralizedId: String?
     ): UiState {
-        val params = ZoneParams(slowRedKm, slowYellowKm, fastRedMin, fastYellowMin)
+        val params = effectiveParams
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
         val focusLocation = if (followMe) userLocation
         else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: userLocation
@@ -379,8 +501,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val focusOblastAlertActive = focusToken?.let { token ->
             neptun.oblastAlerts.any { it.inOblast(token) }
         } == true
-        val focusBannerCity =
+        val focusBannerCity = (
             if (language == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
+        ).ifBlank { Strings.get(language).unknownLocation }
         // Oblasts with an official alert: a city label turns red when its oblast is listed.
         val activeRegionTokens = buildSet {
             for (citiesToken in Cities.cityOblast.values) {
@@ -523,6 +646,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Localized "22:00–07:00" label for the configured night window. */
+    private fun nightWindowText(startMin: Int, endMin: Int): String =
+        "${timeText(startMin)}–${timeText(endMin)}"
+
+    private fun timeText(min: Int): String =
+        String.format(java.util.Locale.US, "%02d:%02d", min / 60, min % 60)
+
     fun setSlowRedKm(km: Int) {
         viewModelScope.launch { prefs.setSlowRedKm(km) }
     }
@@ -561,6 +691,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSirenOverride(override: Boolean) {
         viewModelScope.launch { prefs.setSirenOverride(override) }
+    }
+
+    fun setNightEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setNightEnabled(enabled) }
+    }
+
+    fun setNightStartMin(min: Int) {
+        viewModelScope.launch { prefs.setNightStartMin(min) }
+    }
+
+    fun setNightEndMin(min: Int) {
+        viewModelScope.launch { prefs.setNightEndMin(min) }
+    }
+
+    fun setNightUseCustomZones(use: Boolean) {
+        viewModelScope.launch { prefs.setNightUseCustomZones(use) }
+    }
+
+    fun setNightSlowRedKm(km: Int) {
+        viewModelScope.launch { prefs.setNightSlowRedKm(km) }
+    }
+
+    fun setNightSlowYellowKm(km: Int) {
+        viewModelScope.launch { prefs.setNightSlowYellowKm(km) }
+    }
+
+    fun setNightFastRedMin(min: Int) {
+        viewModelScope.launch { prefs.setNightFastRedMin(min) }
+    }
+
+    fun setNightFastYellowMin(min: Int) {
+        viewModelScope.launch { prefs.setNightFastYellowMin(min) }
+    }
+
+    fun setNightRedArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setNightRedZoneArmed(armed) }
+    }
+
+    fun setNightYellowArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setNightYellowZoneArmed(armed) }
+    }
+
+    fun setNightZoneSirenOverride(override: Boolean) {
+        viewModelScope.launch { prefs.setNightZoneSirenOverride(override) }
+    }
+
+    fun setNightOfficialSirenOverride(override: Boolean) {
+        viewModelScope.launch { prefs.setNightOfficialSirenOverride(override) }
     }
 
     /** Follow-me toggle: switching it back on resumes GPS-centered zones/camera. */

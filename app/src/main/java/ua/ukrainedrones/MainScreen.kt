@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
@@ -123,6 +124,18 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 silencedTypes = uiState.silencedTypes,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
                 sirenOverride = uiState.sirenOverride,
+                nightEnabled = uiState.nightEnabled,
+                nightStartMin = uiState.nightStartMin,
+                nightEndMin = uiState.nightEndMin,
+                nightUseCustomZones = uiState.nightUseCustomZones,
+                nightSlowRedKm = uiState.nightSlowRedKm,
+                nightSlowYellowKm = uiState.nightSlowYellowKm,
+                nightFastRedMin = uiState.nightFastRedMin,
+                nightFastYellowMin = uiState.nightFastYellowMin,
+                nightRedArmed = uiState.nightRedArmed,
+                nightYellowArmed = uiState.nightYellowArmed,
+                nightZoneSirenOverride = uiState.nightZoneSirenOverride,
+                nightOfficialSirenOverride = uiState.nightOfficialSirenOverride,
                 disclaimerCollapsed = uiState.disclaimerCollapsed,
                 disclaimerReadCount = uiState.disclaimerReadCount,
                 followMe = uiState.followMe,
@@ -143,6 +156,18 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
+                onNightEnabledChange = { viewModel.setNightEnabled(it) },
+                onNightStartChange = { viewModel.setNightStartMin(it) },
+                onNightEndChange = { viewModel.setNightEndMin(it) },
+                onNightUseCustomZonesChange = { viewModel.setNightUseCustomZones(it) },
+                onNightSlowRedChange = { viewModel.setNightSlowRedKm(it) },
+                onNightSlowYellowChange = { viewModel.setNightSlowYellowKm(it) },
+                onNightFastRedChange = { viewModel.setNightFastRedMin(it) },
+                onNightFastYellowChange = { viewModel.setNightFastYellowMin(it) },
+                onNightRedArmedChange = { viewModel.setNightRedArmed(it) },
+                onNightYellowArmedChange = { viewModel.setNightYellowArmed(it) },
+                onNightZoneSirenOverrideChange = { viewModel.setNightZoneSirenOverride(it) },
+                onNightOfficialSirenOverrideChange = { viewModel.setNightOfficialSirenOverride(it) },
                 onFollowMeChange = { viewModel.setFollowMe(it) },
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
@@ -377,12 +402,11 @@ private fun MapScreen(
         topBar = {
             val activeZone = uiState.activeZone
             val officialOnly = uiState.focusOblastAlertActive && activeZone == null
-            val zoneColor = when (activeZone) {
+            val borderColor = when (activeZone) {
                 ThreatZone.INNER -> AlertRed
                 ThreatZone.OUTER -> Color(0xFFF9A825)
-                null -> MaterialTheme.colorScheme.surface
+                null -> if (officialOnly) AlertRed else Color.Transparent
             }
-            val containerColor = if (activeZone != null) zoneColor else MaterialTheme.colorScheme.surface
             val pinnedCityName = if (uiState.followMe) null else uiState.pinnedCity?.let {
                 if (uiState.language == AppLanguage.UA) it.nameUa else it.nameEn
             }
@@ -398,17 +422,13 @@ private fun MapScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(containerColor)
-                    .then(
-                        if (officialOnly) Modifier.border(2.5.dp, AlertRed)
-                        else Modifier
-                    )
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(2.5.dp, borderColor)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 UkraineEmblem(
                     active = uiState.focusOblastAlertActive,
-                    contrast = activeZone != null,
                     modifier = Modifier.padding(end = 4.dp)
                 )
                 Box(
@@ -475,24 +495,25 @@ private fun MapScreen(
                             metersPerPixel = scaleMpp,
                             lang = uiState.language,
                             modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 12.dp, bottom = 12.dp)
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 12.dp, bottom = 12.dp)
                         )
                     }
                     if (!uiState.followMe) {
                         uiState.pinnedCity?.let { city ->
                             val cityName = if (uiState.language == AppLanguage.UA) city.nameUa else city.nameEn
+                            val alertsOff = !uiState.activeRedArmed && !uiState.activeYellowArmed
                             PinnedPill(
                                 text = String.format(s.mapPillPinned, cityName),
                                 modifier = Modifier
                                     .align(Alignment.BottomStart)
-                                    .padding(start = 12.dp, bottom = 40.dp)
+                                    .padding(start = 12.dp, bottom = if (alertsOff) 100.dp else 40.dp)
                             )
                         }
                     }
                     ZoneButtons(
-                        redArmed = uiState.redArmed,
-                        yellowArmed = uiState.yellowArmed,
+                        redArmed = uiState.activeRedArmed,
+                        yellowArmed = uiState.activeYellowArmed,
                         lang = uiState.language,
                         onZoneTap = { zone ->
                             zoomZone = zone
@@ -585,19 +606,17 @@ private fun MapScreen(
                 }
             }
 
-            // Neutralized card: the selected threat just resolved — show its type briefly,
-            // hold, then fade out and clear the selection.
+            // Neutralized card: the selected threat just resolved — "Neutralizing enemy" through
+            // the ping + projectile flight, then flips to "Neutralized" the moment the
+            // explosion starts and fades out across it, clearing the selection.
             if (uiState.selectedThreat == null) {
                 uiState.neutralizedThreat?.let { threat ->
                     val fade = remember { Animatable(1f) }
+                    var neutralizing by remember { mutableStateOf(true) }
                     LaunchedEffect(Unit) {
-                        fade.animateTo(
-                            0f,
-                            tween(
-                                5000,
-                                easing = { t -> if (t < 0.8f) 1f else 1f - (t - 0.8f) / 0.2f }
-                            )
-                        )
+                        delay(DEATH_EXPLOSION_START_MS)
+                        neutralizing = false
+                        fade.animateTo(0f, tween(1500))
                         onDismissPopup()
                     }
                     Box(
@@ -616,6 +635,7 @@ private fun MapScreen(
                             cardSize = uiState.threatCardSize,
                             interactive = false,
                             neutralized = true,
+                            neutralizing = neutralizing,
                             onDismiss = onDismissPopup,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -674,6 +694,9 @@ private fun MapScreen(
                             redArmed = uiState.redArmed,
                             yellowArmed = uiState.yellowArmed,
                             lang = uiState.language,
+                            nightNote = if (uiState.nightActive) {
+                                String.format(s.nightDayZonesNote, uiState.nightWindowText)
+                            } else null,
                             onSlowRedChange = onSlowRedChange,
                             onSlowYellowChange = onSlowYellowChange,
                             onFastRedChange = onFastRedChange,
@@ -691,7 +714,7 @@ private fun MapScreen(
 }
 
 @Composable
-private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier, contrast: Boolean = false) {
+private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier) {
     val red = AlertRed
     Box(modifier = modifier.size(32.dp), contentAlignment = Alignment.Center) {
         if (active) {
@@ -708,8 +731,7 @@ private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier, contra
         Image(
             painter = painterResource(R.drawable.ic_trident),
             contentDescription = null,
-            colorFilter = if (contrast) ColorFilter.tint(Color.White)
-            else if (active) ColorFilter.tint(red) else null,
+            colorFilter = if (active) ColorFilter.tint(red) else null,
             modifier = Modifier.fillMaxSize()
         )
     }

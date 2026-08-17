@@ -77,9 +77,12 @@ private fun zoneBoundingBox(center: IGeoPoint, radiusKm: Double): BoundingBox {
 }
 
 private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
+    // Identity + lifecycle only. Continuously-changing fields (lat/lon/courseDeg) are
+    // deliberately excluded: they churn on nearly every WebSocket frame during an alert,
+    // defeating the key's whole purpose (avoid clears + full rebuilds). Position smoothing
+    // and course/staleness rendering happen in-place in the 1s marker loop instead.
     append(t.id).append('@').append(t.status).append('@')
-    append(t.lat).append(',').append(t.lon).append('@')
-    append(t.courseDeg).append('@').append(if (t.isStale(now)) 'S' else 'L').append(';')
+    append(if (t.isStale(now)) 'S' else 'L').append(';')
 }
 
 /**
@@ -254,7 +257,7 @@ fun NeptunMapView(
     val overlayKey = buildString {
         append(lang).append('A').append(uiState.activeZone)
         append('I').append(iconSet)
-        append('R').append(uiState.slowRedKm).append('Y').append(uiState.slowYellowKm)
+        append('R').append(uiState.activeZoneParams.slowRedKm).append('Y').append(uiState.activeZoneParams.slowYellowKm)
         append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
         append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
         append('O').append(uiState.focusOblastAlertActive)
@@ -277,6 +280,8 @@ fun NeptunMapView(
     val pausedState by rememberUpdatedState(paused)
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
     val iconSetState by rememberUpdatedState(uiState.iconSet)
+    val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
+    val focusLocationState by rememberUpdatedState(uiState.focusLocation)
     val deathFx = remember { ThreatDeathOverlay() }
 
     AndroidView(
@@ -371,7 +376,7 @@ fun NeptunMapView(
             if (!didDefaultFit.value && focus != null) {
                 didDefaultFit.value = true
                 mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.slowYellowKm.toDouble()),
+                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
                     true
                 )
             }
@@ -381,7 +386,7 @@ fun NeptunMapView(
             if (!uiState.followMe && pinned != null && lastPinnedCity.value != pinned.nameUa) {
                 lastPinnedCity.value = pinned.nameUa
                 mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.slowYellowKm.toDouble()),
+                    zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
                     true
                 )
             } else if (uiState.followMe) {
@@ -399,8 +404,8 @@ fun NeptunMapView(
                 lastZoomTick.value = zoomTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
                 val radiusKm = when (zoomZone) {
-                    ThreatZone.INNER -> uiState.slowRedKm.toDouble()
-                    else -> uiState.slowYellowKm.toDouble()
+                    ThreatZone.INNER -> uiState.activeZoneParams.slowRedKm.toDouble()
+                    else -> uiState.activeZoneParams.slowYellowKm.toDouble()
                 }
                 mapView.zoomToBoundingBox(zoneBoundingBox(center, radiusKm), true)
             }
@@ -411,7 +416,7 @@ fun NeptunMapView(
             if (fitZonesTick != lastFitZonesTick.value) {
                 lastFitZonesTick.value = fitZonesTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
-                val zone = zoneBoundingBox(center, uiState.slowYellowKm.toDouble())
+                val zone = zoneBoundingBox(center, uiState.activeZoneParams.slowYellowKm.toDouble())
                 val visibleFrac = 0.6f
                 val dLat = zone.latNorth - center.latitude
                 val southPad = dLat * 2 * ((1f / visibleFrac) - 1f)
@@ -466,6 +471,11 @@ fun NeptunMapView(
 
             if (overlayKey == lastOverlayKey.value) {
                 // No change — skip clearing + redrawing the map (avoids banner flicker).
+            } else if (deathFx.isActive) {
+                // A death animation is mid-flight: defer the clear+rebuild until it finishes.
+                // clearing mapView.overlays (of which deathFx is a member) while the 16ms
+                // invalidate loop is drawing can race the overlay list. The 1s UI-state tick
+                // recomposes this update block, so the deferred rebuild fires right after.
             } else {
                 lastOverlayKey.value = overlayKey
 
@@ -498,7 +508,7 @@ fun NeptunMapView(
                     val yellowAlert = uiState.activeZone == ThreatZone.OUTER
                     val redAlert = uiState.activeZone == ThreatZone.INNER
                     mapView.overlays.add(Polygon(mapView).apply {
-                        points = circlePoints(zoneCenter, uiState.slowYellowKm * 1000.0)
+                        points = circlePoints(zoneCenter, uiState.activeZoneParams.slowYellowKm * 1000.0)
                         fillColor = Color.TRANSPARENT
                         strokeColor = if (yellowAlert) Color.argb(235, 255, 213, 0)
                         else Color.argb(150, 255, 213, 0)
@@ -507,7 +517,7 @@ fun NeptunMapView(
                         setInfoWindow(null)
                     })
                     mapView.overlays.add(Polygon(mapView).apply {
-                        points = circlePoints(zoneCenter, uiState.slowRedKm * 1000.0)
+                        points = circlePoints(zoneCenter, uiState.activeZoneParams.slowRedKm * 1000.0)
                         fillColor = Color.TRANSPARENT
                         strokeColor = if (redAlert) Color.argb(235, 255, 60, 60)
                         else Color.argb(160, 255, 82, 82)
@@ -627,18 +637,24 @@ fun NeptunMapView(
                                 mapView.overlays.remove(nearest)
                                 markerRefs.value.entries.removeAll { it.value === nearest }
                                 mapView.invalidate()
-                                if (pressedId != null && pressedId == uiState.selectedThreat?.id) {
+                                if (pressedId != null && pressedId == selectedThreatIdState) {
                                     onTempNeutralize(pressedId)
                                 }
+                                val origin = focusLocationState ?: LocationTracker.location.value
                                 deathFx.spawn(
                                     nearest.position ?: GeoPoint(p.latitude, p.longitude),
+                                    origin = origin?.let { GeoPoint(it.lat, it.lon) },
                                     icon = nearest.icon,
                                     rotationDeg = nearest.rotation,
                                     alpha = nearest.alpha,
                                     hideAtBoom = true
                                 )
                             } else {
-                                deathFx.spawn(GeoPoint(p.latitude, p.longitude))
+                                val origin = focusLocationState ?: LocationTracker.location.value
+                                deathFx.spawn(
+                                    GeoPoint(p.latitude, p.longitude),
+                                    origin = origin?.let { GeoPoint(it.lat, it.lon) }
+                                )
                             }
                             return true
                         }
@@ -667,8 +683,10 @@ fun NeptunMapView(
                     val base = if (iconSetState == ThreatIconSet.PHOTO) IconCatalog.photoBaseDeg(r.type) else 0f
                     val rotation = marker?.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
                     val icon = marker?.icon ?: threatIcon(context, r.type, iconSetState)
+                    val origin = focusLocationState ?: LocationTracker.location.value
                     deathFx.spawn(
                         anchor,
+                        origin = origin?.let { GeoPoint(it.lat, it.lon) },
                         icon = icon,
                         rotationDeg = rotation,
                         alpha = marker?.alpha ?: 1f
@@ -699,6 +717,22 @@ fun NeptunMapView(
             var dirty = false
             for (t in uiState.mapThreats) {
                 val marker = markerRefs.value[t.id] ?: continue
+                // Staleness dimming + course rotation update in-place too (they're excluded
+                // from overlayKey, so a full rebuild no longer runs for them).
+                val targetAlpha = if (t.isStale(now)) 0.25f else 1.0f
+                if (marker.alpha != targetAlpha) {
+                    marker.alpha = targetAlpha
+                    dirty = true
+                }
+                val targetRot = if (t.areaOnly) 0f else {
+                    val course = t.courseDeg.toFloat()
+                    val base = if (iconSetState == ThreatIconSet.PHOTO) IconCatalog.photoBaseDeg(t.type) else 0f
+                    (course - base + 360f) % 360f
+                }
+                if (marker.rotation != targetRot) {
+                    marker.rotation = targetRot
+                    dirty = true
+                }
                 val speed = speedTracker.estimate(t.id, t) ?: continue
                 val predicted = predictPosition(t, speed, now) ?: continue
                 val cur = marker.position

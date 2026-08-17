@@ -25,9 +25,11 @@ To replace a capture, run the app (e.g. in an emulator) and use
 
 - **Live threat stream** from `wss://neptun.in.ua/api/v1/stream` (with REST merge when the
   stream goes quiet), drawn over a dark OpenStreetMap-style base. No Google account or key.
-- **Two alert tiers by time-to-arrival** — a Red tier (urgent, full siren) for threats that
-  could reach you within the red time, and a Yellow tier (warning, two-tone chime) for those
-  within the yellow time. Thresholds are adjustable in minutes (red 5–20, yellow 20–60).
+- **Two alert tiers** — a Red tier (urgent, full siren) for threats inside the inner band and
+  a Yellow tier (warning, two-tone chime) for the outer band. Slow threats (UAVs, FPV, recon,
+  unknown) are measured by distance in km (red default 20, yellow default 50); fast threats
+  (ballistic, cruise, aviation, guided bombs) by time-to-arrival in minutes (red default 5,
+  yellow default 20). Thresholds are adjustable.
 - **Official oblast air-raid alerts** on their own — the trident glow in the header turns
   red while a government signal is active. Controlled independently in Settings.
 - **Eight threat types** with vector icons, plain-language descriptions and reference
@@ -50,10 +52,12 @@ To replace a capture, run the app (e.g. in an emulator) and use
 
 Three independent alert sources, each with its own toggle:
 
-1. **Red tier** — a threat that could reach you within the red time (default 20 min) triggers
-   the urgent air-raid siren.
-2. **Yellow tier** — a threat that could reach you within the yellow time (default 60 min)
-   triggers a two-tone warning chime.
+1. **Red tier** — a slow threat (UAV/FPV/recon/unknown) within the red distance (default
+   20 km, adjustable 2–20) or a fast threat (ballistic/cruise/aviation/guided bomb) within the
+   red time-to-arrival (default 5 min) triggers the urgent air-raid siren.
+2. **Yellow tier** — a slow threat within the yellow distance (default 50 km, adjustable
+   21–50) or a fast threat within the yellow time-to-arrival (default 20 min) triggers a
+   two-tone warning chime.
 3. **Official oblast alert** — follows the government signal on its own; never mixed with
    the zone alerts.
 
@@ -64,10 +68,11 @@ map pin. Time thresholds are dragged in the **Edit zones** sheet (sliders update
 circles live); each zone has its own bell + switch, and when both are muted a small "All
 alerts are off" pill appears on the map.
 
-Tiers are measured as time-to-arrival, so every object type is handled the same way — a fast
-ballistic/cruise missile simply crosses a threshold sooner (and from farther out) than a
-Shahed. The red/yellow circles on the map are a reference visual: how far a Shahed (180 km/h)
-flies in that time.
+Slow threats are tiered by straight-line distance from your focus point; fast threats by
+estimated time-to-arrival (ETA), computed from their speed — a fast ballistic/cruise missile
+crosses its ETA threshold sooner, and from farther out, than a Shahed. Because the circles on
+the map only show the **slow km** thresholds (a reference for how far a Shahed can be and still
+alert), a fast object can legitimately ring from outside the drawn circle.
 
 Sirens respect your phone's sound mode by default — they ring at notification volume and
 only vibrate on vibrate/silent. The **"Sirens always sound"** setting (off by default, in

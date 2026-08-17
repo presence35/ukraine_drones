@@ -16,6 +16,10 @@ import kotlin.math.roundToInt
 private val RedZoneColor = Color(0xFFD32F2F)
 private val YellowZoneColor = Color(0xFFF9A825)
 
+/** The red/yellow accent colors used by zone sliders everywhere (sheet + Settings). */
+internal val ZoneRedColor = RedZoneColor
+internal val ZoneYellowColor = YellowZoneColor
+
 /**
  * Alert-zone panel shown in the bottom sheet over the map, so the sliders can be
  * tuned while the slow-distance circles are live on the map behind. Slow threats tier
@@ -31,6 +35,7 @@ fun ZonesPanel(
     redArmed: Boolean,
     yellowArmed: Boolean,
     lang: AppLanguage,
+    nightNote: String? = null,
     onSlowRedChange: (Int) -> Unit,
     onSlowYellowChange: (Int) -> Unit,
     onFastRedChange: (Int) -> Unit,
@@ -65,6 +70,14 @@ fun ZonesPanel(
             }
         }
         Spacer(Modifier.height(6.dp))
+        nightNote?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
         SectionCaption(s.slowSectionLabel)
         ZoneRow(
             value = slowRedKm,
@@ -121,7 +134,7 @@ fun ZonesPanel(
 }
 
 @Composable
-private fun SectionCaption(text: String) {
+internal fun SectionCaption(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.labelLarge,
@@ -132,7 +145,7 @@ private fun SectionCaption(text: String) {
 }
 
 @Composable
-private fun ZoneRow(
+internal fun ZoneRow(
     value: Int,
     range: ClosedFloatingPointRange<Float>,
     unit: String,

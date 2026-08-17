@@ -73,6 +73,18 @@ fun SettingsScreen(
     silencedTypes: Set<ThreatType>,
     officialAlertsEnabled: Boolean,
     sirenOverride: Boolean,
+    nightEnabled: Boolean,
+    nightStartMin: Int,
+    nightEndMin: Int,
+    nightUseCustomZones: Boolean,
+    nightSlowRedKm: Int,
+    nightSlowYellowKm: Int,
+    nightFastRedMin: Int,
+    nightFastYellowMin: Int,
+    nightRedArmed: Boolean,
+    nightYellowArmed: Boolean,
+    nightZoneSirenOverride: Boolean,
+    nightOfficialSirenOverride: Boolean,
     disclaimerCollapsed: Boolean,
     disclaimerReadCount: Int,
     followMe: Boolean,
@@ -93,6 +105,18 @@ fun SettingsScreen(
     onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
+    onNightEnabledChange: (Boolean) -> Unit,
+    onNightStartChange: (Int) -> Unit,
+    onNightEndChange: (Int) -> Unit,
+    onNightUseCustomZonesChange: (Boolean) -> Unit,
+    onNightSlowRedChange: (Int) -> Unit,
+    onNightSlowYellowChange: (Int) -> Unit,
+    onNightFastRedChange: (Int) -> Unit,
+    onNightFastYellowChange: (Int) -> Unit,
+    onNightRedArmedChange: (Boolean) -> Unit,
+    onNightYellowArmedChange: (Boolean) -> Unit,
+    onNightZoneSirenOverrideChange: (Boolean) -> Unit,
+    onNightOfficialSirenOverrideChange: (Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
@@ -358,6 +382,39 @@ fun SettingsScreen(
                 }
             }
 
+            item { SectionHeader(s.nightModeLabel, painterResource(R.drawable.ic_moon)) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    NightModeCard(
+                        lang = lang,
+                        enabled = nightEnabled,
+                        startMin = nightStartMin,
+                        endMin = nightEndMin,
+                        useCustomZones = nightUseCustomZones,
+                        slowRedKm = nightSlowRedKm,
+                        slowYellowKm = nightSlowYellowKm,
+                        fastRedMin = nightFastRedMin,
+                        fastYellowMin = nightFastYellowMin,
+                        redArmed = nightRedArmed,
+                        yellowArmed = nightYellowArmed,
+                        zoneSirenOverride = nightZoneSirenOverride,
+                        officialSirenOverride = nightOfficialSirenOverride,
+                        onEnabledChange = onNightEnabledChange,
+                        onStartChange = onNightStartChange,
+                        onEndChange = onNightEndChange,
+                        onUseCustomZonesChange = onNightUseCustomZonesChange,
+                        onSlowRedChange = onNightSlowRedChange,
+                        onSlowYellowChange = onNightSlowYellowChange,
+                        onFastRedChange = onNightFastRedChange,
+                        onFastYellowChange = onNightFastYellowChange,
+                        onRedArmedChange = onNightRedArmedChange,
+                        onYellowArmedChange = onNightYellowArmedChange,
+                        onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
+                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange
+                    )
+                }
+            }
+
             item { SectionHeader(s.alertsLabel, rememberVectorPainter(Icons.Default.Notifications)) }
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -383,7 +440,6 @@ fun SettingsScreen(
                 }
             }
 
-            item { SectionHeader(s.additionalSettingsTitle, rememberVectorPainter(Icons.Default.Settings)) }
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column {
@@ -572,6 +628,208 @@ fun SettingsScreen(
     }
 
     }
+
+private fun timeText(min: Int): String =
+    String.format(java.util.Locale.US, "%02d:%02d", min / 60, min % 60)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NightModeCard(
+    lang: AppLanguage,
+    enabled: Boolean,
+    startMin: Int,
+    endMin: Int,
+    useCustomZones: Boolean,
+    slowRedKm: Int,
+    slowYellowKm: Int,
+    fastRedMin: Int,
+    fastYellowMin: Int,
+    redArmed: Boolean,
+    yellowArmed: Boolean,
+    zoneSirenOverride: Boolean,
+    officialSirenOverride: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onStartChange: (Int) -> Unit,
+    onEndChange: (Int) -> Unit,
+    onUseCustomZonesChange: (Boolean) -> Unit,
+    onSlowRedChange: (Int) -> Unit,
+    onSlowYellowChange: (Int) -> Unit,
+    onFastRedChange: (Int) -> Unit,
+    onFastYellowChange: (Int) -> Unit,
+    onRedArmedChange: (Boolean) -> Unit,
+    onYellowArmedChange: (Boolean) -> Unit,
+    onZoneSirenOverrideChange: (Boolean) -> Unit,
+    onOfficialSirenOverrideChange: (Boolean) -> Unit
+) {
+    val s = Strings.get(lang)
+    var editing by remember { mutableStateOf<String?>(null) }  // "start" | "end" | null
+
+    Column {
+        AlertToggleRow(
+            title = s.nightModeLabel,
+            description = s.nightModeDesc,
+            checked = enabled,
+            onCheckedChange = onEnabledChange,
+            icon = painterResource(R.drawable.ic_moon),
+            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (enabled) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                NightTimeField(
+                    label = s.nightStartTimeLabel,
+                    minute = startMin,
+                    onClick = { editing = "start" },
+                    modifier = Modifier.weight(1f)
+                )
+                NightTimeField(
+                    label = s.nightEndTimeLabel,
+                    minute = endMin,
+                    onClick = { editing = "end" },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SectionCaption(s.nightSoundLabel)
+            Column(modifier = Modifier.padding(horizontal = 14.dp)) {
+                AlertToggleRow(
+                    title = s.nightZoneSirenOverrideTitle,
+                    description = s.nightZoneSirenOverrideDesc,
+                    checked = zoneSirenOverride,
+                    onCheckedChange = onZoneSirenOverrideChange,
+                    icon = painterResource(R.drawable.ic_volume_up),
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AlertToggleRow(
+                    title = s.nightOfficialSirenOverrideTitle,
+                    description = s.nightOfficialSirenOverrideDesc,
+                    checked = officialSirenOverride,
+                    onCheckedChange = onOfficialSirenOverrideChange,
+                    icon = painterResource(R.drawable.ic_trident)
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AlertToggleRow(
+                title = s.nightCustomZonesTitle,
+                description = s.nightCustomZonesDesc,
+                checked = useCustomZones,
+                onCheckedChange = onUseCustomZonesChange
+            )
+            if (useCustomZones) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    SectionCaption(s.slowSectionLabel)
+                    ZoneRow(
+                        value = slowRedKm,
+                        range = 2f..20f,
+                        unit = s.kmUnit,
+                        accent = ZoneRedColor,
+                        armed = redArmed,
+                        bellDesc = s.alertsBellToggle,
+                        onArmedChange = onRedArmedChange,
+                        onCommit = onSlowRedChange
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(8.dp))
+                    ZoneRow(
+                        value = slowYellowKm,
+                        range = 21f..50f,
+                        unit = s.kmUnit,
+                        accent = ZoneYellowColor,
+                        armed = yellowArmed,
+                        bellDesc = s.alertsBellToggle,
+                        onArmedChange = onYellowArmedChange,
+                        onCommit = onSlowYellowChange
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    SectionCaption(s.fastSectionLabel)
+                    ZoneRow(
+                        value = fastRedMin,
+                        range = 2f..5f,
+                        unit = s.minUnit,
+                        accent = ZoneRedColor,
+                        armed = redArmed,
+                        bellDesc = s.alertsBellToggle,
+                        onArmedChange = onRedArmedChange,
+                        onCommit = onFastRedChange
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(8.dp))
+                    ZoneRow(
+                        value = fastYellowMin,
+                        range = 6f..20f,
+                        unit = s.minUnit,
+                        accent = ZoneYellowColor,
+                        armed = yellowArmed,
+                        bellDesc = s.alertsBellToggle,
+                        onArmedChange = onYellowArmedChange,
+                        onCommit = onFastYellowChange
+                    )
+                }
+            }
+        }
+    }
+
+    if (editing != null) {
+        val initial = if (editing == "start") startMin else endMin
+        val timeState = rememberTimePickerState(
+            initialHour = initial / 60,
+            initialMinute = initial % 60,
+            is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = {
+                Text(if (editing == "start") s.nightStartTimeLabel else s.nightEndTimeLabel)
+            },
+            text = { TimePicker(state = timeState) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val minute = timeState.hour * 60 + timeState.minute
+                    if (editing == "start") onStartChange(minute) else onEndChange(minute)
+                    editing = null
+                }) { Text(s.okButton) }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = null }) { Text(s.backButton) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun NightTimeField(
+    label: String,
+    minute: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(onClick = onClick, modifier = modifier) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                timeText(minute),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
 
 private fun imageRequest(context: Context, url: String): ImageRequest =
     ImageRequest.Builder(context)

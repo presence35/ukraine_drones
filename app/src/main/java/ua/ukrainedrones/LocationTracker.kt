@@ -36,7 +36,6 @@ object LocationTracker {
         appContext = app
         if (started) return
         if (!hasPermission(app)) return
-        started = true
         val l = object : LocationListener {
             override fun onLocationChanged(loc: Location) {
                 _location.value = LatLng(loc.latitude, loc.longitude)
@@ -49,8 +48,13 @@ object LocationTracker {
             val looper = Looper.getMainLooper()
             // Network provider only: the alert zones are km-scale, so a coarse fix is
             // plenty, and skipping GPS keeps the radio off (battery-cheapest).
-            runCatching {
+            val requested = runCatching {
                 lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, UPDATE_INTERVAL_MS, MIN_DISTANCE_METERS, l, looper)
+            }
+            if (requested.isSuccess) {
+                // Only mark started once the update request actually registered; otherwise a
+                // failed start (e.g. SecurityException) would make every future start() a no-op.
+                started = true
             }
         } catch (_: SecurityException) {
             _location.value = null

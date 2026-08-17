@@ -40106,3 +40106,1219 @@ Build passes. Offline label is now red, and the NEPTUN emblem grew from 10dp to 
 ## 17/08/2026, 00:08:41
 
 Done. The granted state now shows a titled "Unrestricted in background" header plus the same explanatory body as the request card (`SettingsScreen.kt:437`), and CHANGELOG updated. Build passes.
+## 17/08/2026, 00:12:30
+
+
+
+
+## 17/08/2026, 00:14:41
+
+
+
+
+## 17/08/2026, 00:15:30
+
+Let me inspect the current state of the wiring to find why the card isn
+## 17/08/2026, 00:15:46
+
+
+
+
+## 17/08/2026, 00:16:09
+
+
+
+
+## 17/08/2026, 00:16:24
+
+Now I have full context. Let me set up the task list and start.
+
+
+## 17/08/2026, 00:16:53
+
+Now the prefs:
+
+
+## 17/08/2026, 00:17:09
+
+
+
+
+## 17/08/2026, 00:17:19
+
+Now AlertService. First the `State` data class and effective over
+## 17/08/2026, 00:17:19
+
+Found the bug. It's a stale-closure issue, not the neutralized logic.
+
+## Root cause
+
+`MapScreen` only rebuilds the overlays (and the `MapEventsOverlay`'s `longPressHelper` closure) when `overlayKey` changes (`MapView.kt:467-470`), and `overlayKey` does **not** include `selectedThreat` (`MapView.kt:253-263`). So tapping a marker → `selectThreat(...)` → recomposition runs the `update` block, but the closure keeps the `uiState` snapshot from the *last overlay rebuild* — where `uiState.selectedThreat` was still `null`. The check `pressedId == uiState.selectedThreat?.id` (`MapView.kt:630`) is therefore `false` whenever the card was opened after the last rebuild, so `onTempNeutralize` never fires and the card survives.
+
+(The hit-testing works despite the stale snapshot because marker data changes are part of `overlayKey` — only the selection goes stale.)
+
+## Plan
+
+One-line-ish fix in `MapView.kt`, mirroring the existing pattern:
+
+1. Next to `pausedState` / `hiddenTypesState` (`MapView.kt:277-279`), add:
+   ```kotlin
+   val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
+   ```
+   `rememberUpdatedState` refreshes `.value` on every recomposition (selection changes included), so the closure reads the *current* selected id at long-press time instead of the stale captured one.
+2. In `longPressHelper`, change the comparison to `pressedId == selectedThreatIdState` (`MapView.kt:630`).
+3. `.\gradlew.bat :app:assembleDebug`.
+
+The rest of the chain (temp override → `selectedGone` → `neutralizedThreat` → card fade) is already verified correct.
+## 17/08/2026, 00:18:01
+
+
+
+
+## 17/08/2026, 00:18:08
+
+
+
+
+## 17/08/2026, 00:18:18
+
+
+
+
+## 17/08/2026, 00:18:35
+
+Now MainViewModel. Add
+## 17/08/2026, 00:19:17
+
+Unrelated error in `AlertService.kt` (not from my change). Let me look
+## 17/08/2026, 00:19:18
+
+
+
+
+## 17/08/2026, 00:19:43
+
+Plan is clear. Here's what's happening in the header (`MainScreen.kt:377-452`) and the change:
+
+**Current behavior**
+- Background `containerColor` fills `AlertRed` (INNER) / yellow `0xFFF9A825` (OUTER) when a zone is active (`MainScreen.kt:380-385`).
+- A red border exists only for `officialOnly` (oblast alert, no zone) — `MainScreen.kt:403`.
+- Fill triggered the "contrast hacks": title forced white when a zone is active (`:422`), and `UkraineEmblem(contrast = …)` tinting the trident white (`:711`, `:411`).
+
+**Proposed change** (in `MainScreen.kt`)
+1. Header background always stays `MaterialTheme.colorScheme.surface`.
+2. Border-only signaling: always apply `.border(2.5.dp, …)` with `zoneColor` (AlertRed / yellow) when a zone is active, else `AlertRed` for `officialOnly`, else transparent — replaces both the fill and the conditional border.
+3. Drop the contrast hacks:
+   - Remove the white title override for `activeZone != null`.
+   - Remove `UkraineEmblem`'s `contrast` param (`MainScreen.kt:694`, `:711`) and the call-site arg (`:411`); trident is red when active, default otherwise.
+
+**Open question** — title styling while a
+## 17/08/2026, 00:19:49
+
+This `AlertService.kt` damage isn't from my edits. Let me check git state
+
+
+## 17/08/2026, 00:19:52
+
+
+
+
+## 17/08/2026, 00:20:08
+
+A parallel session left `AlertService.kt` half-edited (that's the official-alert reason re-post work). Let me see its diff
+
+
+## 17/08/2026, 00:20:27
+
+The parallel night-mode session added a stray `currentReason = ...` (never declared; the tracking is now threat-id-based via `currentReasonThreatId`) and mangled the indentation. Minimal fix:
+
+
+## 17/08/2026, 00:20:28
+
+Now add the night combine source to `
+## 17/08/2026, 00:20:52
+
+
+
+
+## 17/08/2026, 00:21:12
+
+Fixed and green. Two things:
+
+1. **Card self-destruct** — the bug was a stale closure: the long-press handler captured `uiState` from the last overlay rebuild, which predated the tap, so `selectedThreat?.id` was stale `null`. Now compares against `selectedThreatIdState` (a `rememberUpdatedState` value refreshed on every recomposition), so `onTempNeutralize` actually fires.
+2. **Unrelated broken build** — a parallel night-mode session left `AlertService.kt:444` referencing an undeclared `currentReason` (the tracking is now threat-id-based via `currentReasonThreatId`). Removed the stray line and fixed the mangled `postAlert` indentation so the night-mode work compiles too.
+
+`assembleDebug` passes. Long-pressing the selected threat now: explosion plays, marker icon hides at the boom, and the card self-destructs via the neutralized flow (fade aligned to 5s).
+## 17/08/2026, 00:21:13
+
+Plan confirmed:
+
+**Edit `MainScreen.kt` (header, `:377-452`)**
+1. `containerColor` → always `MaterialTheme.colorScheme.surface` (drop the red/yellow fill).
+2. Always apply `.border(2.5.dp, borderColor)` where `borderColor` = AlertRed (INNER) / yellow `0xFFF9A825` (OUTER) / AlertRed (`officialOnly`) / transparent otherwise — replaces both the fill and the conditional `officialOnly` border.
+3. Keep the title as-is: white while a zone is active, `0xFFE57373` for officialOnly, gradient otherwise (no change to text logic).
+
+**Edit `UkraineEmblem` (`:694`, `:711`) + call site (`:411`)**
+4. Remove the `contrast` param and white-trident tint — it only existed for readability on the red/yellow fill. Trident is red when `active`, default otherwise.
+
+No strings, no logic, no mirrored files (pure UI, `MainScreen.kt` only), no ARCHITECTURE.md impact. Ready to implement on your go.
+## 17/08/2026, 00:21:28
+
+
+
+
+## 17/08/2026, 00:21:39
+
+
+
+
+## 17/08/2026, 00:21:49
+
+Now MapView — switch the circles/zoom to effective params
+## 17/08/2026, 12:12:09
+
+Now MainScreen — ZoneButtons and Settings wiring
+## 17/08/2026, 12:12:55
+
+Now ZonesSheet — make pieces reusable and add the night note
+## 17/08/2026, 12:13:00
+
+Let me review the current overlay and what's available
+## 17/08/2026, 12:13:29
+
+I'll verify these findings against the code before drafting a plan. Let me start with the architecture doc and the
+## 17/08/2026, 12:13:32
+
+
+
+
+## 17/08/2026, 12:13:36
+
+Let me locate the actual source
+## 17/08/2026, 12:13:51
+
+Bugs #1-3 confirmed. Now the map/key churn, reconnect, focus attribution, and UX files
+## 17/08/2026, 12:14:09
+
+Now the moon drawable and Strings
+
+
+## 17/08/2026, 12:14:18
+
+Now the remaining verification targets: focus attribution, reconnect, force-offline switch, MainActivity, README
+## 17/08/2026, 12:14:36
+
+All confirmed. Now README, the battery-exemption section, and the seedFlow pattern referenced
+## 17/08/2026, 12:14:38
+
+Simple change — the scale currently sits at `Alignment.BottomStart` (MainScreen.kt:482).
+
+Plan:
+1. **MainScreen.kt:482-483** — `Alignment.BottomStart` → `Alignment.BottomEnd`, `padding(start = 12.dp, bottom = 12.dp)` → `padding(end = 12.dp, bottom = 12.dp)`. Bottom-right is free (pinned-city pill is bottom-left, zone buttons bottom-center).
+2. **Strings.kt:399, 637** + **ZonePrefs.kt:251 comment** — update "bottom-left" → "bottom-right" wording.
+
+That's it — no logic or layout conflicts. Ready to execute on your go.
+## 17/08/2026, 12:14:55
+
+## Plan
+
+Keep the 5s structure (ping → flight → explosion), replacing only the 3-2-1 countdown with a projectile flying from your GPS position to the threat, detonating on impact at 3.5s (same moment the explosion currently starts). Real-path and temp-path behavior for the lingering icon (`hideAtBoom`) is unchanged.
+
+### 1. `ThreatDeathAnimation.kt`
+- `ActiveDeath` gains `origin: GeoPoint?`; `spawn(geo, origin: GeoPoint? = null, icon, rotationDeg, alpha, hideAtBoom)`.
+- Delete the countdown block (`t in 0.10f..0.70f`, lines 122-138) and the now-unused `textPaint`/`pillPaint`.
+- Add the flight phase in the same window (`0.10f..0.70f`), progress `p = (t - 0.10f) / 0.60f` (0 at 0.5s → 1 at 3.5s = impact, which is when the existing explosion already fires — perfect sync):
+  - If `origin != null`: project it to screen → `(ox, oy)`; heading from `atan2(ty-oy, tx-ox)`.
+  - **Tracer**: faint thin gold line origin→threat, slightly brighter from origin→bullet.
+  - **Bullet**: small chevron/triangle rotated to heading at `(ox + dx·p, oy + dy·p)` with a glowing gold core + white-hot center + short tail (drawn via `canvas.translate/rotate`, keeping it screen-projection anchored like the rest).
+  - **Launch flash**: tiny expanding gold dot at the origin during `0.10f..0.25f`.
+  - Degenerate cases: origin ≈ threat (screen distance <1px) or `origin == null` → no flight visuals; the explosion still fires at 3.5s, so timing stays uniform.
+- Add `tracerPaint` + `bulletPaint` (reuse `ringPaint`/`flashPaint` for the launch flash/glow). Update the file-top, class, and icon-lingering comments.
+
+### 2. `MapView.kt` — pass the origin at spawn
+- Origin = live GPS (`LocationTracker.location.value`), falling back to `uiState.focusLocation` (pinned city / GPS) via a new `focusLocationState by rememberUpdatedState(...)` (same stale-closure fix as `selectedThreatIdState`).
+- Pass it in all three spawn sites: real-path collector (line 671), temp marker long-press, temp empty-ground spawn.
+
+### 3. Docs
+- `ARCHITECTURE.md` row and the `CHANGELOG.md` entry: "3-2-1 countdown" → "a small projectile from your position to the threat, exploding on impact".
+
+### 4. Verify
+- `.\gradlew.bat :app:assembleDebug`.
+
+No open questions — GPS→threat direction, 3s flight, impact at 3.5s. Ready on "go".
+## 17/08/2026, 12:14:59
+
+
+
+
+## 17/08/2026, 12:15:10
+
+README exists but its wording differs from the bug report's quote — I need the real defaults/ranges from Zone
+## 17/08/2026, 12:15:53
+
+Now the Settings screen. First the signature params
+## 17/08/2026, 12:16:18
+
+Now insert the Night mode section in the LazyColumn, before the Alerts section
+## 17/08/2026, 12:16:48
+
+Now wire MainScreen's SettingsScreen call
+## 17/08/2026, 12:16:51
+
+Understood. Here's the situation and plan.
+
+**Current layout** (`MainScreen.kt` map overlay box, lines ~468-500):
+- `PinnedPill` — `Alignment.BottomStart`, `bottom = 40.dp` (line 484)
+- `ZoneButtons` — `Alignment.BottomCenter`, `bottom = 4.dp` (line 499). Its internal `Column` stacks `AllAlertsOffWarning` (only when `!redArmed && !yellowArmed`, line 780-783) above the zone-button row (~66-92dp up from the bottom).
+
+So when both alerts are off, the "all alerts are off" pill (~66-92dp from bottom) renders **above** the pinned pill (40dp from bottom).
+
+**Plan — minimal change in `MainScreen.kt`:**
+
+1. In the map overlay `Box`, compute `allAlertsOff = !uiState.activeRedArmed && !uiState.activeYellowArmed` (same condition ZoneButtons uses).
+2. Change the `PinnedPill` modifier (line 482-485) to use a taller bottom offset when alerts are off so it clears the warning pill, e.g.:
+   `bottom = if (allAlertsOff) 100.dp else 40.dp` (pill stack is ~88dp tall + 4dp padding, so 100dp puts the pinned pill above it; 40dp keeps current position otherwise).
+
+This keeps both pills in their current horizontal spots (pinned left, warning centered) and just lifts the pinned pill above the warning.
+
+Want me to implement it this way, or would you prefer restructuring so the two pills stack in one bottom-left column?
+## 17/08/2026, 12:17:10
+
+That edit was sloppy — let me expose the night prefs through UiState properly instead. First revert the placeholder
+
+
+## 17/08/2026, 12:17:15
+
+All 11 items verified against code. Let me check the one remaining affected test before drafting
+## 17/08/2026, 12:17:26
+
+Now add the night prefs fields to UiState and wire
+## 17/08/2026, 12:17:57
+
+The two siren override prefs also need to reach the ViewModel. Update `NightZonesPrefs`
+
+
+## 17/08/2026, 12:18:08
+
+All findings verified against code. Two report quotes differ from current source (README wording and exact defaults), but the substance of every item holds. Summary of what I confirmed:
+
+- **#1** — confirmed: wait-for-reason branch (AlertService.kt:428-445) re-posts via `postAlert`/`buildAlertNotification` with no `setOnlyAlertOnce`, so each reason-text update replays the siren.
+- **#2** — confirmed: `started = true` at LocationTracker.kt:39 before the `runCatching` around `requestLocationUpdates` (line 53); a SecurityException leaves it stuck.
+- **#3** — confirmed: `runBlocking` + 3 DataStore reads in ConnectionLog.attach() on the main thread, called from MainActivity.kt:53 and AlertService.onCreate.
+- **#4** — confirmed: Cities.kt:489 hardcodes `FocusAttribution(null, "Одеса", "Odesa")`; no test asserts the old fallback, so no test breakage.
+- **#5/#6/#7** — confirmed: appendThreatKey (MapView.kt:79-83) folds lat/lon/courseDeg into overlayKey (254-263); rebuild gate clears all overlays (473) while `deathFx`/markers are live; full rebuild decodes/bitmaps per marker (540) on the main thread; the cheap 1s loop (693-712) only moves positions.
+- **#8** — confirmed: `wasConnected`/`offlineNotifShown`/`offlineAlertJob` are plain instance fields (AlertService.kt:75-77) that reset on process death; no `onTaskRemoved()`.
+- **#9** — confirmed: NeptunClient.kt:376-381 first retry `5000 + random(0..25000)`, and the `openedAt>10s` reset (372-374) re-arms the long first delay on flapping connections.
+- **#10** — confirmed mismatch, but the real ranges are: slow km red default 20 (2-20), yellow 50 (21-50); fast ETA min red 5 (2-5), yellow 20 (6-20) — README's "everything tiers by time-to-arrival, red 5-20 / yellow 20-60 min" is the wrong part (ZonePrefs.kt:72-96).
+- **#11** — confirmed unguarded Switch (ConnectionStatus.kt:149-158) reaching `temp_force_offline`, persisted in DataStore.
+- **#12** — confirmed: permission requests fire at MainActivity.kt:55, before `setContent` (line 56) can show the first-run dialog.
+
+Before I write the plan, a
+## 17/08/2026, 12:18:40
+
+The nested `to` chain is wrong — fix the flag
+## 17/08/2026, 12:19:12
+
+Now add the MainScreen callbacks for night setters
+
+
+## 17/08/2026, 12:19:32
+
+
+
+
+## 17/08/2026, 12:19:43
+
+Now the tests — check existing style
+## 17/08/2026, 12:20:21
+
+
+
+
+## 17/08/2026, 12:20:49
+
+
+
+
+## 17/08/2026, 12:22:31
+
+One design detail to nail down for #4 — how `bannerCity` is consumed and whether a localized "unknown" label already exists
+
+
+## 17/08/2026, 12:23:02
+
+Now let me build. First the debug assemble
+## 17/08/2026, 12:23:17
+
+Design nailed: `focusAttribution` can't know language, so the #4 fix substitutes a localized label in the two mirrored consumers. Here's the plan.
+
+---
+
+# Fix Plan — confirmed bugs #1-9 + README #10 (+ tests for extracted logic)
+
+Scope decisions locked: UX #12-18 and force-offline switch #11 deferred. Mirror rule is honored throughout (nothing here changes `zoneTier`/`ZoneParams`/`staleAfterMs`/`predictPosition`; `focusAttribution` lives in `Cities.kt` shared by both consumers, and the #4 label fix is applied identically in both).
+
+## A. Confirmed bugs
+
+**#1 — Siren replays on silent reason updates** (`AlertService.kt`)
+Add a `silent: Boolean = false` param to `postAlert` (line 605) and thread it into `buildAlertNotification` (line 579) as `.setOnlyAlertOnce(true)`. Pass `silent = true` only in the wait-for-reason branch (lines 437-444).
+*Why not just set it unconditionally:* that would also suppress the siren replay on a zone **escalation** OUTER→INNER (same `NOTIF_ALERT` id, different channel), a real regression.
+
+**#2 — `LocationTracker.start()` permanent no-op** (`LocationTracker.kt:34-58`)
+Set `started = true` only after the request succeeds. Wrap the two `requestLocationUpdates`/`pickLastKnown` calls so the flag is set on the success path (inside/after the `runCatching` succeeds) and stays false on `SecurityException`, so the next `start()` retries.
+
+**#3 — `ConnectionLog.attach()` blocks main thread** (`ConnectionLog.kt:44-60`)
+Turn `attach()` into fire-and-forget on `Dispatchers.IO` (mirroring `MainViewModel.seedFlow`): set the `attached` guard immediately for idempotency, run the `runBlocking` prefs reads inside a launched coroutine, then write `pending`/`_entries`. `pending` is `@Volatile` and `_entries` a `StateFlow`, so concurrent readers are safe; the next watchdog tick self-corrects any transient mismatch. Callers (`MainActivity.kt:53`, `AlertService.onCreate:133`) stay unchanged.
+
+**#4 — Odesa fallback banner nationwide** (`Cities.kt:489`)
+- Change fallback to `FocusAttribution(null, "", "")` (token stays null → alert matching already suppressed).
+- Add `unknownLocation` to `Strings.StringSet` (UA «Невідоме місцеположення», EN "Unknown location").
+- Substitution in both mirrored consumers: `AlertService.kt:264` and `MainViewModel.kt:503-504` → `attribution.bannerCityUa.ifEmpty { s.unknownLocation }` (same one-liner, both files).
+- Existing `CitiesTest` unaffected (no test asserts the old fallback); add a new test (see C).
+
+**#5 — `overlayKey` churn (root cause of #6 + #7)** (`MapView.kt`)
+- `appendThreatKey` (79-83): drop `lat`/`lon`/`courseDeg`; keep `id` + `status` + staleness flag. overlayKey (254-263) then changes only on identity/status/stale-flip/config/region changes — rare.
+- Move the fields that were dropped into the existing 1s incremental loop (693-712): alongside `marker.position`, also set `marker.rotation` (recompute from `t.courseDeg` − `photoBaseDeg(type)` when `PHOTO`, same math as 548-552) and `marker.alpha` (0.25 when `t.isStale(now)`). In-place mutation on retained `markerRefs` markers; mark `dirty` when any changes.
+- Net effect: no more `overlays.clear()` + full rebuild per frame → #7 battery drain gone; the death-animation `clear()` race in #6 is eliminated as a side effect.
+
+**#6 — Force-close during death animation** (`MapView.kt:597-646`)
+Covered by #5. Add one cheap hardening line in the rebuild block (468): skip the clear+rebuild while `deathFx.isActive` (defer to the next key change / animation end), since `deathFx` is a member of `mapView.overlays` and `clear()` during the 16ms invalidate loop is the crash race.
+
+**#7 — ~20%/day battery drain** — fully covered by #5 (bitmap decode/scale in `threatIcon`, line 540, only runs on rare rebuilds now).
+
+**#8 — Offline alert lost after service kill** (`AlertService.kt`)
+- Add two DataStore keys to `ZonePrefs` mirroring the `connLogPendingSince`/`connLogPendingStatus` pattern: `offlinePendingSince` + `offlinePendingStatus`.
+- In `handleState`'s drop branch (346-359), persist both keys; clear them in the `state.connected` recovery branch (342-345).
+- In `onCreate` (130-138), after `ConnectionLog.attach`, read the keys; if an outage was in progress at kill time, set `wasConnected = false` and `offlineRestorePending = true`.
+- Add a restore branch in `handleState`'s offline chain (before/alongside the `wasConnected` drop branch, ~line 346): when `offlineRestorePending && !offlineNotifShown && still offline` → reuse the existing drop logic (grace delay, or immediate when `state.focusOblastAlertActive`), then `postOfflineAlert`. Clear the flag once consumed.
+
+**#9 — 5-30s first retry delay** (`NeptunClient.kt:376-381`)
+- Shorten the first-attempt delay to `1000L + (0..2000).random()` (~1-3s); keep the exponential backoff branch (capped 15s) for repeated failures. The `openedAt > 10s` reset (372-374) now re-arms a *short* first delay on flapping, which is the desired behavior.
+- Extract the delay computation into a pure function (e.g. `internal fun reconnectDelayMs(attempt: Int, openedAt: Long, now: Long): Long`) so it's unit-testable.
+
+## B. README (#10) — `README.md`
+Rewrite the tier docs to the dual model (real ranges from `ZonePrefs.kt:72-96`):
+- **Slow** threats (UAV/Shahed, FPV, recon, unknown): tier by **distance** — red ≤ 20 km (adjustable 2-20), yellow ≤ 50 km (21-50).
+- **Fast** threats (ballistic, cruise, aviation/Kinzhal, KAB): tier by **ETA** — red ≤ 5 min (2-5), yellow ≤ 20 min (6-20).
+- Map circles show the **slow km** thresholds; fast objects legitimately alert from outside the drawn circle (line 67-70 currently claims the opposite).
+- Fix the "red 5-20 / yellow 20-60 min, every type handled the same" claims (lines 28-30, 53-56).
+
+## C. Tests — extract + test pure logic
+- **NeptunClient**: test `reconnectDelayMs` — first attempt short & bounded, backoff caps at 15s, `openedAt>10s` resets to attempt 1.
+- **ConnectionLog**: extract the episode-commit decision in `observe()` (66-93) into a pure function over `(lastStatus, pending, status, now)`; test grace-window commits, blip ignoring, recovery row, ring-buffer cap. `persist*` stays at the call site.
+- **CitiesTest**: add a `focusAttribution` test for the null-GPS fallback → token null + empty banner (substitution asserted by caller-level behavior, or assert empty).
+- **AlertService**: extract only if a clean pure slice emerges from the #8 restore decision (grace-vs-immediate given `focusOblastAlertActive`); otherwise note it as Android-coupled and skip.
+- **LocationTracker**: no pure slice available (Android LocationManager); covered by manual build verification.
+
+## D. Verification & housekeeping
+- Build + test: `.\gradlew.bat :app:assembleDebug` then `.\gradlew.bat :app:testDebugUnitTest`.
+- `CHANGELOG.md`: append entries under `## [Unreleased]` (all user-visible: silent reason updates, reconnect speed, fallback label, README).
+- `ARCHITECTURE.md`: tiny touch-ups only — `ZonePrefs` row gains "offline-restore state"; no invariant text changes (AlertService row already says reasons are "silently re-posted"; reconnect row already says "backoff reconnect").
+- No release in this pass (triggered only on "release it").
+
+Ready to execute on your go. Want me to start, or adjust scope first?
+## 17/08/2026, 12:24:51
+
+Same package, so `LocationTracker`/`LatLng` resolve without imports. Implementing
+## 17/08/2026, 12:25:12
+
+Now replace the countdown block with the flight phase and fix the icon-ling
+## 17/08/2026, 12:25:38
+
+Now `MapView.kt` — origin state + three spawn
+## 17/08/2026, 12:26:19
+
+Now the docs
+## 17/08/2026, 12:27:04
+
+Parallel-session edits landed mid-build (MainViewModel, Strings). Let me inspect all three failures
+## 17/08/2026, 12:27:27
+
+The parallel night-mode rewrite dropped my `tempNeutralizedId` arg. Restoring it:
+## 17/08/2026, 12:27:44
+
+`MainViewModel` is consistent now. Let me check the `Strings.kt` breakage from the parallel session
+## 17/08/2026, 12:28:09
+
+Confirmed — the new `nightDayZonesNote` strings use unescaped `%1$s` (Kotlin template). Fixing both:
+## 17/08/2026, 12:28:29
+
+Now fix my `atan2` typing issue in the flight block:
+## 17/08/2026, 12:29:27
+
+Done, builds green.
+
+- **Bullet flight** replaces the 3-2-1 countdown (`ThreatDeathAnimation.kt`): after the target ping, a small projectile rides a gold tracer from your **GPS position or pinned city** (`uiState.focusLocation`, falling back to live `LocationTracker.location`) to the threat, with a launch flash at the origin and a glowing chevron-tipped bullet, detonating on impact at 3.5s (same moment the explosion fires). No GPS/pin → flight skipped, explosion still on time.
+- Origin is captured at spawn in all three call sites (real removals + both temp triggers).
+- Also repaired two parallel-session build breaks that landed mid-work: restored the dropped `tempNeutralizedId` arg in `MainViewModel`, and escaped `%1\$s` in the two new `nightDayZonesNote` strings (were being parsed as Kotlin templates).
+## 17/08/2026, 12:30:06
+
+Starting with #1 (AlertService). Reading the relevant section and the Strings field structure
+## 17/08/2026, 12:30:25
+
+Now the wait-for-reason branch passes `silent = true`:
+## 17/08/2026, 12:30:39
+
+#1 done. Now #2 (LocationTracker) and #3 (ConnectionLog):
+## 17/08/2026, 12:30:47
+
+#3 — dispatch attach's DataStore reads off the main thread:
+## 17/08/2026, 12:31:01
+
+#3 done. Now #4 — add the `unknownLocation` string, change the fallback, substitute in both consumers:
+## 17/08/2026, 12:31:25
+
+Now the two mirrored consumers. Let me read the exact context in each:
+## 17/08/2026, 12:31:44
+
+I made a duplicate declaration. Fixing:
+## 17/08/2026, 12:31:51
+
+Now the AlertService consumer (line 264):
+## 17/08/2026, 12:32:24
+
+Now the MapView work. Reading the surrounding context I haven't seen
+## 17/08/2026, 12:32:52
+
+Let me check `ThreatDeathOverlay.isActive` semantics before writing the guard
+## 17/08/2026, 12:33:22
+
+
+
+
+## 17/08/2026, 12:33:43
+
+`isActive` is a plain getter over a pruned list — safe to read in the update block. Making the three Map
+## 17/08/2026, 12:34:11
+
+Now the 1s loop gains rotation + alpha in
+## 17/08/2026, 12:34:26
+
+#5-7 done. Now #8 — read the ZonePrefs persistence pattern to mirror
+
+
+## 17/08/2026, 12:34:46
+
+## Plan
+
+**What changed:** `threat_photo_cruise.png` (238×76) now faces right instead of top-right.
+
+**1. `app/src/main/java/ua/ukrainedrones/IconCatalog.kt:71`** — update the baked-in facing angle:
+- `ThreatType.CRUISE_MISSILE -> 45f // _top_right` → `90f // _right` (right = 90° clockwise from north/up).
+
+**2. Nothing else.** The "thinner" aspect is already handled automatically:
+- Map markers scale by intrinsic ratio (`MapView.kt:96-100`: width fixed at 32dp, height proportional) — no hardcoded size.
+- `ThreatIcon` letterboxes with `ContentScale.Fit` (`IconCatalog.kt:106`).
+- No unit tests cover `photoBaseDeg`, so no test changes.
+
+**3. `CHANGELOG.md`** — one bullet under `## [Unreleased]` per AGENTS.md: "Photo threat icons: the cruise-missile photo now faces right (was top-right)."
+
+**4. Verify:** `.\gradlew.bat :app:assembleDebug` (no domain logic touched, so no unit tests required).
+
+Confirm and I'll implement.
+## 17/08/2026, 12:35:29
+
+Adding the persistence keys to
+## 17/08/2026, 12:35:46
+
+Now the AlertService side — restore in onCreate, persist on drop/recover, and the restore
+## 17/08/2026, 12:36:29
+
+
+
+
+## 17/08/2026, 12:36:45
+
+Now add the `persistOfflineSince` helper next to the
+## 17/08/2026, 12:37:02
+
+#8 done. Now #9 — NeptunClient. Reading the reconnect context and fields
+
+
+## 17/08/2026, 12:37:52
+
+#9 done. Now #10 — README zone-model
+## 17/08/2026, 12:38:13
+
+My change is fine, but there's a pre-existing compile error in `AlertService.kt:360/365`. Let me look.
+
+
+## 17/08/2026, 12:38:35
+
+
+
+
+## 17/08/2026, 12:39:25
+
+`handleState` is collected inside `scope.launch` (line 183/293), so making it `suspend` is the clean
+## 17/08/2026, 12:39:59
+
+Done. Changes:
+- `IconCatalog.kt:71` — cruise base angle 45f → 90f (`// _right`).
+- `CHANGELOG.md` — added Unreleased bullet.
+- `AlertService.kt:343` — made `handleState` `suspend` to fix a pre-existing compile error blocking the build (`persistOfflineSince` is a suspend fn).
+
+Build passes.
+## 17/08/2026, 12:40:17
+
+README done. Now the tests + pure-logic extraction. First the ConnectionLog refactor
+
+
+## 17/08/2026, 12:40:30
+
+Now add the pure `commit
+## 17/08/2026, 12:40:39
+
+
+
+
+## 17/08/2026, 12:41:36
+
+Now the test files. Checking existing conventions first
+
+
+## 17/08/2026, 12:42:15
+
+NeptunState is pure Kotlin, so `NeptunClient` initializes cleanly in JVM tests. Writing the three
+## 17/08/2026, 12:43:07
+
+
+
+
+## 17/08/2026, 12:43:25
+
+Now the CitiesTest fallback
+## 17/08/2026, 12:44:02
+
+Now CHANGELOG and ARCHITECTURE touch-ups. Reading CHANGELOG
+## 17/08/2026, 12:44:31
+
+Now the two ARCHITECTURE.md touch-ups:
+
+
+## 17/08/2026, 12:45:34
+
+
+
+
+## 17/08/2026, 12:47:17
+
+One issue to fix: `persistOfflineSince` is suspend but `handleState` is a plain function. Let me verify and fix
+
+
+## 17/08/2026, 12:47:52
+
+Let me verify against git to be sure what the original signature
+## 17/08/2026, 12:48:08
+
+The diff confirms `handleState` is now `suspend` (needed for the suspend persist call) — correct. Let me verify the MapView rebuild-gate structure, then build
+## 17/08/2026, 12:48:20
+
+Structure is correct. Now the build verification
+## 17/08/2026, 12:48:39
+
+Main source compiles. Now the unit tests:
+## 17/08/2026, 12:49:45
+
+
+
+
+## 17/08/2026, 12:50:10
+
+All tests pass. Let me confirm the new tests actually ran
+
+
+## 17/08/2026, 12:50:24
+
+
+
+
+## 17/08/2026, 12:50:35
+
+Let me verify `mapThreats` ordering is stable — if it's sorted by distance, moving threats could still churn the
+## 17/08/2026, 12:51:27
+
+I can't view images directly, so let me sample the pixel colors to find which PNG is red vs
+## 17/08/2026, 12:51:43
+
+mapThreats iterates `neptun.threats.values` (a LinkedHashMap, insertion-ordered), so ordering is stable under movement — no residual churn. Final review of the full diff
+
+
+## 17/08/2026, 12:52:07
+
+Pre-existing uncommitted work (NightMode, icons, etc.) is untouched by me — my edits are a clean subset. Final read of the AlertService offline
+## 17/08/2026, 12:52:46
+
+The offline chain is coherent — the restore-vs-fresh-drop race is guarded by `offlineNotifShown`. Marking everything complete
+
+
+## 17/08/2026, 12:53:05
+
+All items done. Build + tests green (`assembleDebug` OK, `testDebugUnitTest` OK — 10 new tests across `NeptunClientTest`/`ConnectionLogTest`/`CitiesTest`).
+
+**Fixed (confirmed bugs):**
+- **#1** — wait-for-reason updates now post with `setOnlyAlertOnce(true)` via a `silent` param (escalations still re-sound).
+- **#2** — `LocationTracker.start()` sets `started` only after `requestLocationUpdates` succeeds.
+- **#3** — `ConnectionLog.attach()` reads DataStore off the main thread.
+- **#4** — `focusAttribution` fallback is empty; both consumers substitute `Strings.unknownLocation` ("Невідоме місцеположення"/"Unknown location").
+- **#5/6/7** — `appendThreatKey` keeps only id/status/staleness; the 1s loop now also updates rotation + dim in place; rebuilds defer while `deathFx.isActive`. No more per-frame clears/bitmap decodes.
+- **#8** — outage start persisted (`offline_pending_since`), restored in `onCreate`, re-flagged via a one-shot restore branch.
+- **#9** — first reconnect attempt now 1-3s (was 5-30s); extracted pure `reconnectDelayMs` for tests.
+- **#10** — README documents the real dual model (slow-by-km 20/50, fast-by-min 5/20).
+
+**Housekeeping:** CHANGELOG entry added; ARCHITECTURE rows updated (ZonePrefs, ConnectionLog, NeptunClient, AlertService, MapView, testing list).
+
+Not in scope this pass (per your choices): #11 force-offline switch, UX #12-18. Nothing committed.
+## 17/08/2026, 12:53:17
+
+Now let me examine the notification retry mechanism and the "
+## 17/08/2026, 12:53:22
+
+
+
+
+## 17/08/2026, 12:53:55
+
+Понял. The tracer goes away entirely, and the bullet must always be visible immediately — it enters from just outside the screen edge along the origin→threat line, and only launches from the GPS/city dot when that dot is actually on screen.
+
+## Plan (all in `ThreatDeathAnimation.kt` flight block)
+
+**1. Remove the guide-line** — delete both `drawLine` tracer calls (faint full path + brighter head). Bullet, glow, tail, chevron stay.
+
+**2. Compute the bullet's start point** (per frame, in screen space):
+- Project origin → `(ox, oy)` (threat already at `(x, y)`).
+- If `(ox, oy)` is inside the viewport (`mapView.width`/`height`) → **start at the GPS dot** (`startX=ox, startY=oy`), and the existing launch flash shows there.
+- Else → **slab method** intersection of the ray origin→threat with the viewport rect gives the entry point `tEntry`; start the bullet a small margin (≈10dp) *outside* that edge: `start = (ox + dx·tEntry, oy + dy·tEntry) − (dx/dist, dy/dist)·margin`. So it glides in from the edge immediately — no dead air when GPS is far away.
+- No intersection / origin or line never touches the screen → skip flight visuals (explosion timing unchanged).
+
+**3. Bullet motion** — lerp `(startX,startY) → (x,y)` with the same `p` progress (arrives at the threat exactly when the explosion fires at 3.5s); heading `atan2(y−startY, x−startX)`. Launch flash only when the origin was on-screen.
+
+**4. Docs** — update `ARCHITECTURE.md` row + `CHANGELOG` bullet ("flies in from the screen edge, or from your position when it's visible").
+
+**5. Verify** — `.\gradlew.bat :app:assembleDebug`.
+
+Note: the bullet still takes the full 3s flight even when starting at the screen edge (a distant threat crosses the screen at a relaxed pace). Want it to also feel snappier when the on-screen distance is short (e.g., cap flight so the whole screen sweep always takes the same visual speed)? I can add that, but the default keeps the 5s total + impact timing untouched. Ready on "go" — with or without the speed tweak.
+## 17/08/2026, 12:54:04
+
+
+
+
+## 17/08/2026, 12:55:11
+
+Let me look at the relevant files.
+## 17/08/2026, 12:55:15
+
+Now let me look at how the zones panel is used and how settings navigation works.
+## 17/08/2026, 12:55:43
+
+Now let me look at how redArmed/yellowArmed work, the slow/fast grouping icons, and the guide strings/diagrams.
+## 17/08/2026, 12:55:53
+
+Let me look at the guide strings, diagrams, and check for existing slow/fast icons.
+## 17/08/2026, 12:55:57
+
+Found existing fast (lightning) / slow (turtle) group icons. Let me see them in ThreatTogglePanel and the SettingsScreen section captions usage.
+## 17/08/2026, 12:56:03
+
+Let me read the SettingsScreen zone section and the FeatureDiagrams structure.
+## 17/08/2026, 12:56:29
+
+
+
+
+## 17/08/2026, 12:56:32
+
+Let me find the day-zones section in SettingsScreen and check the ic_moon drawable.
+## 17/08/2026, 12:56:34
+
+Let me check the current neutralized-card fade block before planning
+## 17/08/2026, 12:56:50
+
+Понял — currently the card holds 4s and fades over the last second (4–5s), i.e. it's fading *during* the explosion's tail. You want it fully visible through the whole animation and only fading *after* the explosion completes.
+
+## Plan
+
+**1. `MainScreen.kt:613-620`** — extend the neutralized-card fade so the hold covers the full 5s animation and the fade happens after it:
+
+```kotlin
+fade.animateTo(
+    0f,
+    tween(
+        6000,
+        easing = { t -> if (t < 5f / 6f) 1f else 1f - (t - 5f / 6f) / (1f / 6f) }
+    )
+)
+onDismissPopup()
+```
+
+Result: card stays fully opaque through the 5s ping → flight → explosion, then fades over 1s (5s→6s) and dismisses — the fade starts exactly when the explosion ends. Same change serves both real removals and the temp long-press (they share this card).
+
+**2. Docs** — `CHANGELOG.md` bullet: "fades out in sync with the animation" → "stays visible through the animation and fades away after the explosion". Same wording tweak in the `ARCHITECTURE.md` invariant (~line 189).
+
+**3. Verify** — `.\gradlew.bat :app:assembleDebug`.
+
+Ready on "go".
+## 17/08/2026, 12:57:11
+
+I have a good picture now. Let me quickly verify the CHANGELOG and check git status.
+## 17/08/2026, 12:57:14
+
+I have a full picture now. Two quick clarifications before I write the plan:
+## 17/08/2026, 12:57:42
+
+Here's what I found and my plan. First, your yellow-alert question:
+
+**It's by design, not a bug — currently.** The armed bell is per *severity tier*, not per group: slow-yellow and fast-yellow both bind to the single `yellowArmed` flag (same for the two reds). `ZonesSheet.kt:95-104` and `ZonesSheet.kt:120-129` both pass the same `yellowArmed`/`onYellowArmedChange`; `AlertService.kt:412-414` treats it as one "yellow zone" switch regardless of fast/slow. Same story in the night custom zones. Decoupling into 4 independent bells (slow-red/slow-yellow/fast-red/fast-yellow) is a real model change touching the mirrored logic in both `MainViewModel` + `AlertService`, prefs, night mode, and tests.
+
+Let me confirm that decision before finalizing the plan.
+## 17/08/2026, 13:01:12
+
+Let me research the pieces these items touch before planning: datetime rendering, the Alerts settings section, the ConnectionStatus dialog, and how alert events could be recorded.
+## 17/08/2026, 13:01:29
+
+Datetime is only rendered in one spot (ConnectionStatus.kt:298, `Locale.getDefault()`); vibration is channel-level only. Let me read the ConnectionStatus dialog and the Settings Alerts section in full
+## 17/08/2026, 13:01:46
+
+Decoupling all 4 it is. Let me read the exact code that needs to change.
+## 17/08/2026, 13:01:51
+
+Let me find the Settings Alerts section structure and how Settings is laid out
+## 17/08/2026, 13:01:54
+
+Now the prefs, ViewModel, and AlertService armed logic.
+## 17/08/2026, 13:02:54
+
+Let me check the ConnectionStatus call site for what's already available to thread (lang/iconSet)
+## 17/08/2026, 13:03:25
+
+Good — that's the fine-grained split: red when NEPTUN is actually down, amber only when NEPTUN is alive-but-on-backup. Let me verify one thing for the coming-soon visual:
+## 17/08/2026, 13:03:54
+
+Research done. Here's the plan for #12/13 + #14-18, with open decisions flagged.
+
+---
+
+# Plan — UX items #12-18
+
+## #12 — Permission dialogs after onboarding (`MainActivity.kt:55`)
+Currently `requestLocationAndNotifications()` fires before `setContent`, so the system permission dialog beats the first-run language dialog. Fix is event-driven so the dialog always shows first:
+- `MainActivity` collects `ZonePrefs.languageChosen()` in a coroutine. First time it becomes `true` (user picked a language **or** tapped "later"), fire `requestLocationAndNotifications()`.
+- Returning users (already chosen at startup): request after the first frame instead of before it.
+- The existing chained location→notification flow stays unchanged.
+
+## #13 — Battery exemption at first run
+Reuse the existing `BatteryOptimization` helpers + `batteryTitle/batteryBody/batteryAllowButton` strings (already in `Strings.kt`). After the language dialog resolves, show a one-time battery card (skip if already exempt or denied) using the same request-exemption intent as Settings. Place it right after the language dialog in `MainScreen`.
+
+## #14, #15 — ignore (noted, no work)
+
+## #16 — Per-threat-type vibration sliders (Settings → Alerts)
+Platform constraint: Android notifications can't set vibration *amplitude*; "size" = the pattern (pulse length/count). Design:
+- `ZonePrefs`: `vibrationLevel(type): Flow<Int>` (default 3, range 0-4) + setter. 8 keys, one per type.
+- Settings Alerts card (after the siren-override toggle): a collapsible **"Vibration per type"** row (default collapsed) → 8 sliders 0-4 (Off/Soft/Medium/Strong/Urgent), grouped Fast/Slow with type icons.
+- `AlertService`: thread `Map<ThreatType, Int>` into `MonitorEvent.State`; in `buildAlertNotification`, apply `setVibrate(pattern)` from `revealThreat.type` (works on API 26+ since channels already `enableVibration(true)`). Official alerts (zone null, no type) use a fixed strong pattern. Night mode shares the same sliders (no night copy) — note in CHANGELOG.
+- Extract `vibrationPattern(level: Int): LongArray?` as a pure function → unit-testable.
+
+## #17 — Widget/lock-screen glance
+Noted as planned, not started. **Where to record?** → see Q3.
+
+## #18 — Alert history below the connection log
+- **Persistence**: new ring buffer in `ZonePrefs` (serialized, mirroring `connLog`): recent ~20 fired-alert events `{atMillis, tier, threatType?, locality?, distanceKm?}`.
+- **Recording**: in `AlertService` at the two real siren/chime posts — the zone-alert `newEntries` post and the official-alert edge post (silent reason updates already can't re-fire). Add `focusLocation: LatLng?` to `MonitorEvent.State` to compute the distance at record time.
+- **UI**: `ConnectionStatus` dialog, directly below `ConnectionLogSection` — a collapsible "Alerts" section, newest first. Row: **[type icon] [datetime] [tier dot] [type label / "Official alert"] [region/locality] [≈distance km]**.
+- Thread `lang` + `iconSet` into `ConnectionStatus` (both available at the MainScreen call site, MainScreen.kt:451).
+- Extract serialize/parse as pure functions → testable.
+
+## datetime normalization (your fyi)
+New shared helper, e.g. `Strings.formatDateTime(lang, millis)` using `java.time` + locale (UA `dd.MM, HH:mm`; EN `MMM d, HH:mm`). Replace the one raw site (ConnectionLog's `SimpleDateFormat("HH:mm:ss", Locale.getDefault())`, ConnectionStatus.kt:298) and use it for the new history rows — this makes all absolute timestamps follow the selected language, not the device locale.
+
+## Housekeeping
+CHANGELOG entries, Strings additions, ARCHITECTURE.md row updates (ZonePrefs, ConnectionStatus, AlertService), verify with `assembleDebug` + `testDebugUnitTest`.
+
+---
+
+A few decisions before I finalize:
+## 17/08/2026, 13:03:58
+
+All research done. Here's the plan:
+
+## Plan
+
+### 1. Settings — remove redundant "Additional settings" header, keep collapse
+`SettingsScreen.kt:443` — delete the outer `SectionHeader(s.additionalSettingsTitle, …)` item. The collapsible card row (lines 447–467) keeps its title + arrow + collapse state, so the section becomes its own header exactly like the Disclaimers card. (Doesn't affect the `scrollToThreatsTick` item index 7 — that's earlier in the list.)
+
+### 2. Settings — icon set tiles: icons only, bigger
+`SettingsScreen.kt` `IconSetSelector` / `IconSetTile`:
+- Drop the pack-name `Text(label)` captions from the two real tiles (Classic/Photos). Icons keep their `contentDescription` for a11y.
+- Bump icon size `38.dp → 44.dp` so the row fills the card better.
+
+### 3. Settings — make "coming soon" interesting (no lock)
+`SettingsScreen.kt` `ComingSoonTile` — replace the bare "Скоро"/"Coming soon" text with:
+- A gently bobbing 🚀 emoji (fits the drone "things that fly" theme, signals launch-not-gated; matches the codebase's existing emoji usage — flags, ⚡ group icons).
+- A "Coming soon" pill (rounded `Surface`, primary-tinted like the speed badge elsewhere).
+- Keep the pack name (Army/Comic) as a small caption (your chosen option).
+- Bump the slot height to match the 44.dp icon row, and give the four tiles a shared `heightIn(min=…)` so the 2×2 grid stays aligned with the name-less top row.
+
+### 4. Header — offline NEPTUN emblem red, amber only for backup
+`ConnectionStatus.kt:89` — change the tint condition from `backupActive && !online` to `backupActive && !neptunDown`. Result:
+- NEPTUN actually down → plain red `neptun_red.png` ("offline" label). ✓
+- NEPTUN alive but feed silent → amber tint ("backup" label) — preserved. ✓
+- Online → green. ✓
+
+### 5. Connection log time → `MM/dd HH:mm:ss`
+`ConnectionStatus.kt:298` — change `SimpleDateFormat("HH:mm:ss", …)` → `SimpleDateFormat("MM/dd HH:mm:ss", …)`.
+
+### 6. Notification "tap to retry" actually retries
+Two changes:
+- `AlertService.kt:737` `retryPendingIntent()`: `PendingIntent.getService` → `PendingIntent.getForegroundService` (minSdk 26). `getService` can fail with `ForegroundServiceStartNotAllowedException` on Android 12+ if the service was killed, silently killing the retry.
+- `NeptunClient.kt` `retryNow()` race fix: a stale half-open socket's `onClosed`/`onFailure` callback fires *after* `retryNow` has already created the new socket and would null it out, clear `connectInFlight`, and schedule a duplicate reconnect. Guard `onClosed`/`onFailure` with a `ws === webSocket` identity check so superseded sockets only close themselves.
+
+### 7. CHANGELOG
+Append the user-visible bits under `## [Unreleased]` (settings/header/log/retry).
+
+### 8. Verify
+`.\gradlew.bat :app:assembleDebug` (retry logic touches domain-adjacent code → also `:app:testDebugUnitTest` for `NeptunClientTest`/`ConnectionLogTest`).
+
+Want me to proceed?
+## 17/08/2026, 13:03:59
+
+Here's the full plan.
+
+## 1. Decouple the zone bells → 4 independent armed flags (slow/fast × red/yellow)
+
+New model: `slowRedArmed, slowYellowArmed, fastRedArmed, fastYellowArmed` for day, plus the same 4 for night. `NightZones.redArmed/yellowArmed` → the 4. Effective resolution stays night-overrides-day while the window is active.
+
+- **ZonePrefs.kt** — replace the 2 day + 2 night armed keys/flows/setters with 8. New flows fall back to the old keys (`slowRedArmedKey ?: redArmedKey ?: true`, etc.) so existing users who muted a tier keep it muted — race-free, no explicit migration. Setters write the new keys.
+- **NightMode.kt** — `NightZones` gains the 4 night bells; add `ZoneArmed(slowRed, slowYellow, fastRed, fastYellow)`; `effectiveArmed(day: ZoneArmed, night: NightZones, …): ZoneArmed` returns all 4.
+- **MainViewModel.kt** — `UiState`/`PrefsSnapshot`/`NightZonesPrefs`/`AlertConfig` swap `redArmed/yellowArmed` for the 4 (and `active*` + `night*` variants); prefs combine reads all 8 flows; setters `setSlowRedArmed`/`setSlowYellowArmed`/`setFastRedArmed`/`setFastYellowArmed` (+ night); `setAlertsArmed` sets all 4.
+- **AlertService.kt** (mirror rule — same change as ViewModel) — 4 armed in `MonitorEvent.State`/`AlertConfig`; `alertTier(id, spatial)` at AlertService.kt:411 now picks the bell by group: `fast = FastThreatTypes.contains(all[id]?.type)`, INNER uses that group's red bell (else its yellow bell), OUTER uses its yellow bell.
+- **ZonesSheet.kt / SettingsScreen.kt / MainScreen.kt** — `ZonesPanel` + `NightModeCard` take 4 armed values + callbacks and wire them to the 4 `ZoneRow`s; `ZoneButtons` pill states become `any`-of-group (`redArmed = activeSlowRed || activeFastRed`, etc.); `alertsOff` = none of the 4 active.
+- **NightModeTest.kt** — update `NightZones` + `effectiveArmed` asserts to the 4-value shape.
+
+## 2. Slow/fast icons in the alert-zones panel
+- `SectionCaption` (ZonesSheet.kt:137) gains an optional leading emoji + a11y description; `ZonesPanel` passes 🐢 to the Slow caption and ⚡ to the Fast caption (reusing the `fastGroupIconDesc`/`slowGroupIconDesc` strings). Same icons on the Night-mode custom-zone captions in SettingsScreen for consistency.
+
+## 3. Settings opens at last scroll point (+ the gear leak)
+Root cause: `scrollToThreatsTick` never resets, so after the zones-sheet gear scrolls once, the header gear re-triggers it; and `rememberLazyListState()` inside SettingsScreen is discarded on exit.
+- Hoist `settingsListState` to MainScreen, pass into SettingsScreen.
+- Reset the tick after consumption via an `onThreatsScrollHandled` callback → only the zones-sheet gear jumps to the Threats section; the header gear opens at the remembered position.
+
+## 4. Night mode in the feature guide
+- `FeatureGuide.kt`: add a `night` entry under "Zones & alerts" (after the zone-alerts card) with `GuideDiagram.NIGHT`.
+- `Strings.kt`: `guideNightTitle/Summary/D1..D3` (UA + EN) — schedule window, own night zones/bells, per-channel sound overrides.
+- `FeatureDiagrams.kt`: new `NIGHT` enum + `drawNight()` (moon crescent + mini sliders/bells).
+
+## Wrap-up
+- CHANGELOG `[Unreleased]` entries for all four.
+- Verify: `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest` (domain logic touched).
+
+Two notes: `setAlertsArmed` is currently dead code (kept, updated to set all 4); and the zone pill / "All alerts off" warning now derive from the 4 active flags. Ready to implement when you switch out of plan mode.
+## 17/08/2026, 13:04:40
+
+Let me check how `ThreatPopupCard` renders the neutralized mode and what labels exist
+## 17/08/2026, 13:05:32
+
+Got it — a two-phase card: **"Neutralizing enemy"** while the ping+bullet play, then flip to **"Neutralized"** at the moment of impact and fade out. Plan below.
+
+## Plan
+
+### 1. `ThreatDeathAnimation.kt` — single source of truth for the timing
+- Add top-level `const val DEATH_EXPLOSION_START_MS = 3500L` (the overlay's explosion currently starts at `t >= 0.70` of the 5000ms = 3.5s). Refactor the `0.70f`/`0.30f` fractions to derive from the const so MainScreen and the overlay can never drift.
+
+### 2. `Strings.kt` — new labels (EN + UA)
+- `neutralizingLabel`: EN `Neutralizing enemy…` / UA `Знешкодження ворога…`
+- `neutralizingNote`: EN `Intercept in progress…` / UA `Йде перехоплення…`
+- Existing `neutralizedLabel`/`neutralizedNote` unchanged. (UA wording is a proposal — easy to tweak.)
+
+### 3. `ThreatPopupCard.kt` — mode flag
+- Add `neutralizing: Boolean = false`; in the neutralized compact branch pick text by mode: `s.neutralizingLabel/Note` while neutralizing, `s.neutralizedLabel/Note` otherwise.
+
+### 4. `MainScreen.kt` — two-phase sequence
+- `var neutralizing by remember { mutableStateOf(true) }`
+- `LaunchedEffect(Unit)`: `delay(DEATH_EXPLOSION_START_MS)` → `neutralizing = false` → `fade.animateTo(0f, tween(1500))` → `onDismissPopup()`
+- Box alpha = `fade.value` (stays 1 through phase 1, fades only after the flip).
+- Pass `neutralizing = neutralizing`; add `import kotlinx.coroutines.delay`.
+
+**Result:** "Neutralizing enemy" for the ping+flight (3.5s) → at impact the card flips to "Neutralized" and fades across the 1.5s explosion, gone at 5s — same moment the map icon is hidden forever.
+
+### 5. Docs
+- `CHANGELOG.md` + `ARCHITECTURE.md`: describe the two-phase card.
+
+### 6. Verify
+- `.\gradlew.bat :app:assembleDebug`
+
+**Timing assumption:** the flip to "Neutralized" happens at the impact (3.5s, when the explosion starts), fading over the explosion so it's gone at 5s. Say the word if you'd rather flip only after the explosion completes (5s). Ready on "go".
+## 17/08/2026, 13:06:15
+
+The 8 came from night mode: night mode keeps its **own copies** of the armed bells (that's how "sleep through everything at night" works — the `night*` prefs so the day config isn't clobbered). So it's 4 day + 4 night = 8 prefs keys. The *logical* model is 4 bells; the storage is 8 because there are two scenarios (day/night).
+## 17/08/2026, 13:07:50
+
+The "go" applies to the two-phase card plan (the tracer/screen-edge tweak from earlier is still pending your word — it wasn't applied). Implementing the card plan. Let me read the draw() phases to refactor the timing const
+## 17/08/2026, 13:09:10
+
+Now the explosion block's `0.70f`/`0.30f`
+## 17/08/2026, 13:09:43
+
+Now `Strings.kt` — add the neutralizing labels
+
+
+## 17/08/2026, 13:10:54
+
+Now `ThreatPopupCard.kt` — the `neutralizing`
+## 17/08/2026, 13:11:08
+
+Updated plan (forward-looking only, no old-key fallback):
+
+## 1. Decouple the zone bells → 4 logical bells, 8 prefs keys (4 day + 4 night)
+- **ZonePrefs.kt** — new keys `slow_red_armed`, `slow_yellow_armed`, `fast_red_armed`, `fast_yellow_armed` + the `night_*` versions (8 total), each defaulting `true`. Flows/setters per key, no reading of old keys.
+- **NightMode.kt** — `NightZones` holds the 4 night bells; add `data class ZoneArmed(slowRed, slowYellow, fastRed, fastYellow)`; `effectiveArmed(day: ZoneArmed, night: NightZones, …): ZoneArmed`.
+- **MainViewModel.kt** — `UiState`/`PrefsSnapshot`/`NightZonesPrefs`/`AlertConfig` carry the 4 (+ `active*`, `night*`); prefs combine reads the 8 flows; setters `setSlowRedArmed`/`setSlowYellowArmed`/`setFastRedArmed`/`setFastYellowArmed` (+ 4 night); `setAlertsArmed` sets all 4 day ones (still dead code).
+- **AlertService.kt** (mirror) — 4 armed in `MonitorEvent.State`/`AlertConfig`; `alertTier(id, spatial)` picks the bell by `FastThreatTypes.contains(all[id]?.type)`.
+- **ZonesSheet.kt / SettingsScreen.kt / MainScreen.kt** — `ZonesPanel` + `NightModeCard` take the 4 armed values + callbacks; `ZoneButtons` pills become `any`-of-group; `alertsOff` = none of the 4 active.
+- **NightModeTest.kt** — update `NightZones` + `effectiveArmed` asserts to 4 values.
+
+## 2. Slow/fast icons in the alert-zones panel
+`SectionCaption` gains an optional leading emoji; 🐢 on the Slow caption, ⚡ on the Fast caption (same `fastGroupIconDesc`/`slowGroupIconDesc` strings), also applied to the night custom-zone captions in SettingsScreen.
+
+## 3. Settings opens at last scroll point (+ gear leak)
+- Hoist `settingsListState` to MainScreen, pass into SettingsScreen.
+- `onThreatsScrollHandled` resets `scrollToThreatsTick` after the zones-sheet gear scrolls once, so the header gear just opens at the remembered position.
+
+## 4. Night mode in the feature guide
+`night` entry under "Zones & alerts" with new `guideNight*` UA/EN strings + `GuideDiagram.NIGHT` + `drawNight()` (moon crescent + mini sliders/bells).
+
+## Wrap-up
+CHANGELOG `[Unreleased]` entries; verify with `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+## 17/08/2026, 13:11:28
+
+Now the `MainScreen.kt` two-phase block
+## 17/08/2026, 13:12:03
+
+Add the `delay` import:
+## 17/08/2026, 13:12:16
+
+Now the docs
+## 17/08/2026, 13:12:16
+
+All decisions locked. Final consolidated plan:
+
+---
+
+# Plan — UX items #12-18
+
+## #12 — Permission dialogs after onboarding (`MainActivity.kt`)
+Replace the pre-`setContent` call (`requestLocationAndNotifications()` at line 55) with event-driven sequencing:
+- Capture `wasChosenAtStart = languageChosen` at startup.
+- **Returning user** (chosen at start): request permissions after the first frame.
+- **First-run user**: collect `languageChosen && batteryOnboardShown` (both true once the first-run dialogs resolve) → then request.
+- Existing chained location→notification flow untouched.
+
+## #13 — Battery exemption at first run
+- New pref `batteryOnboardShown` (default false).
+- In `MainScreen`, only during a first-run session (`!wasChosenAtStart && languageChosen && !batteryOnboardShown && !exempt`): a one-time battery dialog reusing `BatteryOptimization` + existing `batteryTitle/batteryBody/batteryAllowButton`, plus a "later" action; either way sets `batteryOnboardShown`. Ordering: **language → battery → permissions**.
+
+## #14, #15 — ignore (no work)
+
+## #16 — Vibration sliders, Fast/Slow only (Settings → Alerts)
+- `ZonePrefs`: `fastVibrationLevel` / `slowVibrationLevel` (default 3, range 0-4) + setters.
+- Settings Alerts card: two sliders **Fast** and **Slow** (0-4: Off/Soft/Medium/Strong/Urgent), each with a hint that Android expresses "size" as pulse pattern.
+- `AlertService`: thread both levels into `MonitorEvent.State`; in `buildAlertNotification` apply `setVibrate(patternFor(level))` where level = fast/slow by `revealThreat.type in FastThreatTypes`; official alerts without a known reason threat use a fixed strong pattern. `patternFor(0) = longArrayOf(0,0)` (silent), 1-4 = increasing pulses. Extracted as a pure, testable function.
+- Night mode shares the same sliders.
+
+## #17 — Widget/lock-screen glance
+Noted in a new **`ROADMAP.md`** as planned-not-started.
+
+## #18 — Alert history below the connection log (`ConnectionStatus`)
+- `ZonePrefs`: serialized ring buffer (mirroring `connLog`), cap **20**, newest first. Event: `{atMillis, endMillis?, tier, threatType?, locality?, distanceKm?}`.
+- `AlertService` records at the two real siren/chime posts (zone `newEntries` + official edge); add `focusLocation: LatLng?` to `MonitorEvent.State` for distance. On close (id leaves `knownZones`, or official clears) patches `endMillis` → **duration** shown live/on close. Events still open across a restart show no duration.
+- UI: `AlertHistorySection` below `ConnectionLogSection`, collapsible. Row: **[icon] [datetime] [tier dot] [type/"Official alert" label] [region/locality] [≈distance km] [duration]**. Thread `lang` + `iconSet` into `ConnectionStatus` (available at MainScreen.kt:451).
+- Pure serialize/parse extracted → unit-tested.
+
+## datetime normalization (your fyi)
+- New shared helper `formatDateTime(lang, millis)` (java.time, UA `dd.MM, HH:mm` / EN `MMM d, HH:mm`), living in `Strings.kt`.
+- Replace the one raw site (`SimpleDateFormat(..., Locale.getDefault())`, ConnectionStatus.kt:298) and use it in the new history rows — all absolute timestamps follow the selected language, not device locale.
+
+## New strings (UA+EN)
+Vibration (title, Off/Soft/Medium/Strong/Urgent), history (title, empty, ≈distance, "Official alert", duration), battery onboarding ("later" button).
+
+## Verification & housekeeping
+- `assembleDebug` + `testDebugUnitTest`; new pure-logic tests (vibration pattern, history serialize/parse, datetime formatter).
+- CHANGELOG entries under `[Unreleased]`; ARCHITECTURE.md rows for ZonePrefs, AlertService, ConnectionStatus, SettingsScreen, MainActivity, Strings + Testing section.
+
+---
+
+Shall I proceed?
+## 17/08/2026, 13:13:09
+
+## Objective
+- Continue fixing UX items #12–18 of the audit conversation. User decisions so far: #14 ignore, #15 ignore, #16 = vibration size sliders per threat type in Settings→Alerts, #17 = "later, make a note", #18 = alert-history view below the connection log in the ConnectionStatus dialog with rows like `[threat icon] [datetime] [distance from gps/pin]` + user asks "anything else?", and a side note that datetime must be normalized site-wide per language. #12–#13 status is still ambiguous ("12+..." in the user's last message).
+
+## Important Details
+- Project: `D:\Desktop\drones`, single-module Android app, package `ua.ukrainedrones` (flat, no subpackages), Kotlin, minSdk 26 (java.time available), tests in `app/src/test/java/ua/ukrainedrones/`.
+- User preferences/decisions this session: fixed bugs #1–10 + extract-and-test pure logic; defer #11 (force-offline switch) and all of #12–18; then user revisited the UX list with the decisions above.
+- Mirror rule (AGENTS.md): zone/focus logic duplicated in `MainViewModel` + `AlertService`; `focusAttribution` lives in `Cities.kt` (shared); any change must be applied to both consumers.
+- Conventions: run `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`; CHANGELOG entries go under `## [Unreleased]`; update ARCHITECTURE.md only when documented invariants change; prefs must go through `ZonePrefs` (DataStore, `zone_prefs`) — no second prefs store.
+- Working tree already has unrelated pre-existing uncommitted changes (NightMode.kt, iconpacks, SettingsScreen/MainViewModel diffs, version.properties) — do not touch those.
+- No committing performed; nothing was committed this session.
+- Datetime facts: only absolute datetime rendered today is `SimpleDateFormat("HH:mm:ss", Locale.getDefault())` at ConnectionStatus.kt:298 (connection-log rows). `MainViewModel.kt:654` and `SettingsScreen.kt:634` use `Locale.US` for `%02d:%02d` minute counts (not datetimes; keep). `Strings.StringSet` has relative-time strings only.
+- Vibration facts: only channel-level `enableVibration(true)` in AlertService channel creation (~lines 756–810); no per-notification `setVibrate` anywhere. Android O+ allows per-notification `setVibrate(long[])` (pattern only — no amplitude from notifications), so a "size slider" must map to a vibration pattern.
+- Settings Alerts section location: SettingsScreen.kt:418–441 — `SectionHeader(s.alertsLabel, ...)`, Card containing `AlertToggleRow(officialAlertsTitle/officialAlertsEnabled)` + divider + `AlertToggleRow(sirenOverrideTitle/sirenOverride)`. `SettingsScreen` signature params start ~line 69 (`lang`, night*, followMe, pinnedCity, iconSet, etc.); plumbing from MainScreen.kt:124–125 shows how toggles are threaded.
+- Alert channels: `CHANNEL_ALERTS ("alerts_siren2")`, `CHANNEL_ALERTS_OUTER ("alerts_siren_outer2")`, `CHANNEL_ALLCLEAR`, `CHANNEL_ALERTS_ALARM`, `CHANNEL_ALERTS_OUTER_ALARM` (AlertService.kt:43–47). Channel chosen by zone, not threat type.
+- Alert posting entry point for history recording: `postAlert(zone, title, body, sirenOverride, revealThreat, silent)` (has `alertEpoch++`); official wait-for-reason branch (~428–446) posts `silent=true`.
+- `Threat` has: `id, lat, lon, locality, region, district, type, courseDeg, status, updatedAtMillis`. `ThreatType` enum: SHAHED, FPV_LOITERING, BALLISTIC, CRUISE_MISSILE, AVIATION, KAB, RECON, UNKNOWN (8 types).
+- `ConnectionLog` is the persistence pattern to mirror for alert history: DataStore keys + `serialize/parse` ring buffer, `MAX_ENTRIES=10`, StateFlow `entries`, pure `commitLogState` (already extracted + tested).
+- `AppLanguage { UA, EN }` defined in ZonePrefs.kt.
+
+## Work State
+### Completed
+- Verified + fixed audit items #1–10 (build + tests green):
+  - #1 AlertService: `postAlert`/`buildAlertNotification` gained `silent: Boolean = false` → `setOnlyAlertOnce(true)`; wait-for-reason branch passes `silent = true`.
+  - #2 LocationTracker: `started = true` moved after successful `requestLocationUpdates` (runCatching).
+  - #3 ConnectionLog.attach(): DataStore reads dispatched via `attachScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)`.
+  - #4 Cities.kt `focusAttribution` fallback → `FocusAttribution(null, "", "")`; added `strings.unknownLocation` (UA "Невідоме місцеположення", EN "Unknown location"); substituted via `.ifBlank { ... }` in MainViewModel.kt (~504-506) and AlertService.kt (~264).
+  - #5/#6/#7 MapView.kt: `appendThreatKey` now only id+status+staleness (no lat/lon/courseDeg); 1s loop (LaunchedEffect ~702) also updates `marker.rotation` + `marker.alpha` in place; rebuild block (starting ~472) defers while `deathFx.isActive`.
+  - #8 AlertService: new ZonePrefs key `offlinePendingSinceKey`/`setOfflinePendingSince`; `offlineRestorePending` flag restored in `onCreate`; `handleState` (now `suspend`) persists on drop (`persistOfflineSince(now)`), clears on recovery, has a one-shot restore branch; helper `persistOfflineSince`.
+  - #9 NeptunClient: first reconnect `1000L + (0..2000).random()`; extracted pure `internal fun reconnectDelayMs(attempt: Int)` (exponential `minOf(15_000L, 1000L * (1 shl (attempt - 1))) + (0..400)`).
+  - #10 README.md: tier docs rewritten to dual model (slow km red 20/2-20, yellow 50/21-50; fast ETA min red 5, yellow 20; map circles = slow km thresholds only).
+  - ConnectionLog: extracted pure `commitLogState` + `LogTransition` (internal, top-level).
+  - Tests added: `NeptunClientTest.kt` (3), `ConnectionLogTest.kt` (7), CitiesTest fallback addition (now 7 tests) — all pass.
+  - CHANGELOG.md entry added under `[Unreleased]`; ARCHITECTURE.md rows updated (NeptunClient, ConnectionLog, ZonePrefs, AlertService, MapView) + testing list.
+- Verification: `.\gradlew.bat :app:assembleDebug` BUILD SUCCESSFUL; `.\gradlew.bat :app:testDebugUnitTest` BUILD SUCCESSFUL; test XMLs show failures=0.
+- Research for the UX round (see Important Details): datetime sites, vibration sites, Settings Alerts section, ConnectionStatus dialog, Threat fields, SettingsScreen plumbing surface.
+
+### Active
+- Planning UX items #12–18 per user's latest message; research done, but no clarifying questions asked and no plan presented yet for this round.
+
+### Blocked
+- Ambiguities awaiting user clarification (not yet asked):
+  1. "12+..." — does it approve #12 (reorder permission dialogs after onboarding) and/or #13 (battery-exemption onboarding)?
+  2. #16 slider mechanics: notifications only support vibration patterns, not amplitude — confirm mapping slider → pattern; also does it apply to official alerts (no threat type) and to outer/yellow?
+  3. #17 where to "make a note" (CHANGELOG planned section vs a notes/roadmap file).
+  4. #18 extra row fields ("anything else?") and persistence shape (ring buffer like ConnectionLog vs today-only; recording point in AlertService).
+
+## Next Move
+1. Ask the user the 4 clarifying questions above (scope of #12/#13, #16 pattern-based vibration mapping + official alerts, #17 note location, #18 row fields + persistence).
+2. Then plan: add localized datetime helper keyed by `AppLanguage` (e.g. in Strings.kt, java.time, minSdk 26 OK) and replace ConnectionStatus.kt:298 `Locale.getDefault()` usage; design `ZonePrefs` prefs for per-type vibration levels + alert-history ring buffer; design AlertService recording in `postAlert` and SettingsScreen UI under the Alerts section (SettingsScreen.kt:418–441) and history section below ConnectionLogSection in ConnectionStatus.kt.
+3. After approval, implement, update CHANGELOG/ARCHITECTURE as needed, verify with `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt` (~418-441 Alerts section; signature ~69-99): home for #16 vibration sliders.
+- `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt` (dialog: force-offline switch 149-158; datetime 298): home for #18 history + `Locale.getDefault()` fix.
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt` (`postAlert` ~646-653, channels 43-47, offline chain 354-397): recording point for alert-history + vibration pattern application.
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: add prefs keys (vibration levels, alert-history ring buffer).
+- `app/src/main/java/ua/ukrainedrones/ConnectionLog.kt`: persistence/ring-buffer/`commitLogState` pattern to mirror for alert history.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: `unknownLocation` added; place for localized datetime helpers + new UI strings.
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt` (~124-125): plumbing pattern for new SettingsScreen params.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt` (~62-63, 504-506): UiState fields + `focusBannerCity` consumer (mirror rule for any focus changes).
+- `app/src/main/java/ua/ukrainedrones/Cities.kt` (`focusAttribution` ~473-492): shared focus logic.
+- `CHANGELOG.md` / `ARCHITECTURE.md`: update per AGENTS.md after UX work.
+## 17/08/2026, 13:13:22
+
+Let me verify the remaining implementation touchpoints so the plan is concrete before execution.
+## 17/08/2026, 13:13:34
+
+All touchpoints verified. Plan is fully concrete — no open questions remain. Final confirmation of the key hooks:
+
+- `MainActivity.kt:55` (`requestLocationAndNotifications()` before `setContent`) → the only line to change for #12; `languageChosen` reader exists (`ZonePrefs:220`).
+- `AlertService.handleState`: zone post at `:434`, zone close detection at `:441` (`knownZones.filterKeys`), official post at `:449-467`, official close at `:482` → the 4 recording hooks for #18.
+- `FastThreatTypes` at `Zones.kt:7` → the fast/slow split for #16.
+- Battery strings already exist (`Strings.kt:423-425` UA, `678-680` EN) → #13 reuses them.
+- `ConnectionLogSection(s)` at `ConnectionStatus.kt:180` → the insertion point for the new `AlertHistorySection`.
+
+Final plan summary (as presented above):
+
+1. **#12** `MainActivity`: drop the pre-`setContent` permission call; request after first frame for returning users, and after `languageChosen && batteryOnboardShown` for first-run.
+2. **#13** `MainScreen`: one-time battery dialog (new pref `batteryOnboardShown`), shown only during a first-run session, ordering language → battery → permissions.
+3. **#14/#15** — ignored.
+4. **#16** `ZonePrefs` fast/slow vibration levels (default 3, 0-4) → two sliders in the Settings Alerts card → `setVibrate(patternFor(level))` in `buildAlertNotification` (fast/slow by `FastThreatTypes`; official-without-threat = fixed strong; level 0 = silent). Pure `patternFor` → tested.
+5. **#17** — new `ROADMAP.md` noting the widget/lock-screen glance as planned.
+6. **#18** `ZonePrefs` alert-history ring buffer (cap 20, newest first) recorded at the 4 `handleState` hooks with `endMillis` on close (duration), plus `focusLocation` in `MonitorEvent.State` for distance; collapsible `AlertHistorySection` below `ConnectionLogSection`, rows `[icon][datetime][tier dot][type/"Official alert"][region][≈km][duration]`; thread `lang`+`iconSet` into `ConnectionStatus`.
+7. **datetime** shared `formatDateTime(lang, millis)` in `Strings.kt` (java.time; UA `dd.MM, HH:mm`, EN `MMM d, HH:mm`); replace the `Locale.getDefault()` site at `ConnectionStatus.kt:298`.
+8. New UA/EN strings, tests (`patternFor`, history serialize/parse, formatter), CHANGELOG under `[Unreleased]`, ARCHITECTURE.md updates; verify `assembleDebug` + `testDebugUnitTest`.
+
+Plan is ready — approve to exit plan mode and I'll implement.
+## 17/08/2026, 13:13:57
+
+Done, builds green.
+
+Two-phase card implemented:
+- `ThreatDeathAnimation.kt` — explosion start is now the shared `DEATH_EXPLOSION_START_MS = 3500L`; the overlay's `0.70f`/`0.30f` phase math derives from it.
+- `Strings.kt` — new `neutralizingLabel`/`neutralizingNote` (EN "Neutralizing enemy…", UA "Знешкодження ворога…").
+- `ThreatPopupCard.kt` — `neutralizing` flag picks the label + note per phase.
+- `MainScreen.kt` — card shows "Neutralizing enemy…" for 3.5s (ping + flight), flips to "Neutralized" exactly at impact, then fades over the 1.5s explosion and dismisses at 5s.
+
+Reminder: the earlier **hide-the-guide-line / bullet-starts-just-outside-the-screen-edge** tweak is still pending your word — it was planned but never confirmed ("go" went to this card work instead). Say the word if you want it.
+## 17/08/2026, 13:14:09
+
+You're right — the framing is backwards. For a safety app, night is exactly when you *must* be woken (attacks hit hardest while people sleep), and day has the city-wide sirens for ambient awareness. The current card sells "sleep through everything," which is the wrong message.
+
+The good news: the decoupled 4+4 model already supports your direction **mechanically** — day and night bells are independent, so "mute by day, fully alert at night" is just day-bells-off + night-bells-on. No structural change needed for that polarity; the day/night copies make either framing work.
+
+What's actually worth changing:
+1. **Copy** — reframe the Night card from "quieter night scenario" → "night is the critical window; alerts stay on by default." And the CHANGELOG line ("so you can sleep through everything") shouldn't be the pitch.
+2. **A safety nudge** — when a user mutes night bells, warn: attacks are most common at night; suggest keeping at least red on.
+3. **Default** — night mode is currently off (`nightEnabled ?: false`). Since night is critical, you could default it ON (bells on) and let users opt out — a stronger product stance, but changes first-run behavior.
+
+My honest take: do (1) + (2) regardless — they're the real fix and cost little. (3) is a judgment call.
+
+
+## 17/08/2026, 13:15:30
+
+Implementing the tracer/screen-edge plan. Removing the guide-line paint first
+## 17/08/2026, 13:16:32
+
+Now the flight block — no tracer, edge
+## 17/08/2026, 13:16:51
+
+Update the doc comments that still mention the tracer
+
+
+## 17/08/2026, 13:17:11
+
+Now the docs
+
+
+## 17/08/2026, 13:17:56
+
+Done, builds green.
+
+- **Guide-line removed** — `tracerPaint` deleted; no more line.
+- **Bullet start** — if your GPS/pinned dot is on screen, it launches from there (launch flash too); otherwise it enters from just outside the screen edge along the origin→threat line (slab-method intersection, ~10dp margin), so there's never dead air when the dot is far off-screen. No visible path → flight visuals skipped, explosion timing untouched.
+
+Both pending tweaks are now in: two-phase card + this bullet behavior.
+## 17/08/2026, 13:18:20
+
+Night mode ON by default changes first-run behavior, so let me verify the exit button location and the night defaults.
+
+
+## 17/08/2026, 13:19:42
+
+Everything's mapped. Here's the final consolidated plan.
+
+## 1. Decouple the zone bells → 4 logical bells (8 prefs keys: 4 day + 4 night)
+Forward-looking only, no old-key reads (beta).
+- **ZonePrefs.kt** — new keys `slow_red_armed`, `slow_yellow_armed`, `fast_red_armed`, `fast_yellow_armed` + `night_*` versions (8), all default `true`. Flows/setters per key.
+- **NightMode.kt** — `NightZones` holds the 4 night bells; new `data class ZoneArmed(slowRed, slowYellow, fastRed, fastYellow)`; `effectiveArmed(day: ZoneArmed, night: NightZones, …): ZoneArmed`.
+- **MainViewModel.kt** — `UiState`/`PrefsSnapshot`/`NightZonesPrefs`/`AlertConfig` carry the 4 (+ `active*`, `night*`); combine reads the 8 flows; setters `setSlowRedArmed`/`setSlowYellowArmed`/`setFastRedArmed`/`setFastYellowArmed` (+ night); `setAlertsArmed` sets all 4 day ones (still dead code).
+- **AlertService.kt** (mirror) — 4 armed in `MonitorEvent.State`/`AlertConfig`; `alertTier(id, spatial)` picks the bell via `FastThreatTypes.contains(all[id]?.type)`.
+- **ZonesSheet.kt / SettingsScreen.kt / MainScreen.kt** — `ZonesPanel` + `NightModeCard` take 4 armed values + callbacks; `ZoneButtons` pills become `any`-of-group; `alertsOff` = none of the 4 active.
+- **NightModeTest.kt** — `NightZones` + `effectiveArmed` asserts updated to 4 values.
+
+## 2. Slow/fast icons in the alert-zones panel
+`SectionCaption` gains an optional leading emoji; 🐢 on Slow, ⚡ on Fast (reusing `fastGroupIconDesc`/`slowGroupIconDesc`), also on the night custom-zone captions in SettingsScreen.
+
+## 3. Settings opens at last scroll point (+ gear leak)
+- Hoist `settingsListState` to MainScreen, pass into SettingsScreen.
+- `onThreatsScrollHandled` resets `scrollToThreatsTick` after the zones-sheet gear scrolls once → header gear opens at the remembered position.
+
+## 4. Night mode = critical window (inversion)
+- **ON by default** — `nightEnabled ?: false` → `?: true` (fresh installs). Defaults are behavior-neutral (22:00–07:00 window, night zones = day values, bells on), so nothing audible changes out of the box.
+- **Copy reframe** — `nightModeDesc` (UA/EN): from "a separate quieter scenario" → "night is when you must wake up; attacks hit hardest while people sleep — keep alerts on."
+- **Mute warning** — new strings `nightMuteWarning` ("Attacks are most common at night — you may sleep through one") shown in `NightModeCard` when any night bell is off.
+- **Stop & exit note** — new `nightMuteExitNote`: "If you truly want total silence, use 'Stop Monitoring & Exit' below — otherwise you may forget to switch alerts back on tomorrow." Rendered under the warning, referencing the existing `exitButton` at the bottom of Settings.
+- **CHANGELOG** — reframe the existing night-mode entry ("so you can sleep through everything") and add entries for the inversion + decoupling.
+
+## 5. Night mode in the feature guide
+`night` entry under "Zones & alerts" with `guideNight*` UA/EN strings (reflecting the critical-window framing) + `GuideDiagram.NIGHT` + `drawNight()` (moon crescent + mini sliders/bells).
+
+## Wrap-up
+CHANGELOG `[Unreleased]` entries for all changes; verify with `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.

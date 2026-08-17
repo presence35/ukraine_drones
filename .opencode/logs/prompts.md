@@ -15064,3 +15064,250 @@ go
 ## 17/08/2026, 00:08:03
 
 reuse
+## 17/08/2026, 00:12:17
+
+go
+## 17/08/2026, 00:15:01
+
+it doesn't kill the card still
+## 17/08/2026, 00:18:12
+
+intsead of filling the header with red or yellow, let's keep the border only.  this solves some other color issues we hacked around.
+## 17/08/2026, 00:18:27
+
+go
+## 17/08/2026, 00:21:37
+
+go
+## 17/08/2026, 00:24:38
+
+why's it keep notificing me of stuff in android notif even tho it's not even close to my alerts.
+## 17/08/2026, 00:24:52
+
+continue
+## 17/08/2026, 00:28:52
+
+instead of 3,2,1, make a small bullet travel from gps to the threat.  on impact trigger explosion.  and check why the trheat card still doesn't fade away
+## 17/08/2026, 12:11:34
+
+instead of 3,2,1, make a small bullet travel from gps to the threat.  on impact trigger explosion.  
+## 17/08/2026, 12:11:41
+
+continue
+## 17/08/2026, 12:13:20
+
+
+
+## CONFIRMED BUGS (code-verified)
+
+1. Siren replays on "silent" notification update
+   File: AlertService.kt:374-391, buildAlertNotification() ~525-549
+   The "wait-for-reason" branch claims to silently update the alert notification as
+   NEPTUN adds confirmations, but calls the same postAlert()/buildAlertNotification()
+   used for the initial trigger — no setOnlyAlertOnce(true). Every reason-text update
+   re-triggers sound + vibration.
+   Fix: add .setOnlyAlertOnce(true) to buildAlertNotification(), or split a
+   non-alerting update path for this branch.
+
+2. LocationTracker.start() can become a permanent no-op
+   File: LocationTracker.kt:34-58
+   `started = true` is set at line 39, before requestLocationUpdates() (line 53) is
+   attempted. If that call throws SecurityException, `started` stays true forever,
+   so all future start() calls (including the one fired right after the user grants
+   permission) silently return early. Only fix is restarting the app.
+   Fix: only set `started = true` after the update request succeeds, or reset it
+   in the catch block.
+
+3. ConnectionLog.attach() blocks the main thread
+   File: ConnectionLog.kt:44-60, called from MainActivity.kt:53 (before setContent)
+   attach() runs runBlocking{} reading 3 DataStore flows synchronously on the UI
+   thread at startup — a real jank/possible-ANR source. MainViewModel.seedFlow was
+   explicitly written to avoid this same pattern (see its comment).
+   Fix: move attach() off the main thread, e.g. dispatch via Dispatchers.IO like
+   seedFlow does.
+
+4. focusAttribution() hardcodes "Odesa" as a fallback banner nationwide
+   File: Cities.kt:488-490
+   When GPS is unavailable and no nearby listed city is found, the banner shows
+   "Одеса"/"Odesa" regardless of the user's actual location — a leftover from the
+   app's Odesa-only origin. token=null correctly suppresses alert matching, but the
+   displayed city name is still wrong/misleading for users elsewhere in Ukraine.
+   Fix: fall back to a generic "Unknown location" label instead of a specific city.
+
+5. overlayKey churns on every threat position update — ROOT CAUSE of #6 and #7 below
+   File: MapView.kt:254-263 (overlayKey construction), 467-473 (rebuild gate)
+   overlayKey folds in every mapThreat's raw lat/lon/courseDeg (via appendThreatKey,
+   line 79-83). mapThreats is only populated when an oblast alert is active
+   (MainViewModel.kt:420), and during an active alert threat positions update on
+   nearly every WebSocket frame — so overlayKey changes constantly, defeating its
+   own stated purpose ("only rebuild when threat data actually changes").
+   Fix: exclude continuously-changing fields (lat/lon/courseDeg) from overlayKey;
+   let the existing 1s incremental-move LaunchedEffect (line 692-712) handle position
+   smoothing instead of forcing a full overlays.clear() + rebuild.
+
+6. Force-close on threat-explode animation, reproducible in pinned-city mode
+   File: MapView.kt long-press handler (596-646) + overlayKey churn (see #5)
+   Long-press removes the marker (mapView.overlays.remove(nearest)) and starts a 5s
+   death animation via deathFx.spawn(). If overlayKey changes mid-animation
+   (near-certain during an active alert, which is exactly when pinned-city mode is
+   used), mapView.overlays.clear() fires while the death overlay and stale marker
+   refs are still in play, racing against the 16ms invalidate loop — plausible
+   ConcurrentModificationException / crash on osmdroid's overlay list.
+   GPS-follow mode rarely hits this because mapThreats is often empty absent a local
+   alert, so overlayKey rarely changes.
+   Fix: same as #5 — stabilizing overlayKey should resolve this as a side effect.
+   Consider additionally guarding the rebuild block to defer/skip while deathFx.isActive.
+
+7. ~20%/day battery drain — ROOT CAUSE is #5
+   File: MapView.kt:522-559 (full rebuild) vs. 692-712 (cheap incremental path)
+   Every overlayKey change forces mapView.overlays.clear() + full marker rebuild,
+   including bitmap decode/scale per marker (threatIcon(), line 90-100) on the main
+   thread. During an active alert with many moving threats this can fire many times
+   a minute — exactly when the cheap 1s smoothing loop below it was designed to take
+   over instead.
+   Fix: same as #5.
+
+8. Offline notification may not fire after a service restart/kill
+   File: AlertService.kt:67-79 (instance fields), 113-121 (onCreate)
+   wasConnected/offlineNotifShown/offlineAlertJob are plain instance fields that
+   reset to defaults on every fresh onCreate(). If the OS kills the service (e.g.
+   via notification-swipe on some OEMs/Android 14+, or battery optimization without
+   the exemption granted — see UX #3), and it restarts via START_STICKY, any
+   in-progress outage from before the kill is never flagged. No onTaskRemoved()
+   override exists either.
+   Fix: persist "was offline since <t>" across restarts (similar to how
+   ConnectionLog already persists pending episodes via
+   connLogPendingSince/connLogPendingStatus) and check it in onCreate().
+
+9. Reconnect after a drop is deliberately delayed 5-30s, every time
+   File: NeptunClient.kt:376-381 (scheduleReconnect)
+   First retry after any disconnect waits `5000 + random(0..25000)` ms — average
+   ~17.5s, worst case 30s — before even attempting, copied from a browser-tab retry
+   strategy. A flapping connection resets this timer via reconnectJob?.cancel() on
+   every new failure, so it can go a long time without ever actually attempting a
+   connection. retryNow() exists as a manual bypass but is only reachable via the
+   offline notification's Retry button.
+   Fix: shorten the first-attempt delay significantly (e.g. 1-3s) for an always-on
+   safety app; consider immediate retry on the first drop, backoff only on repeated
+   failures.
+
+## DOC/CODE MISMATCH
+
+10. README zone defaults are wrong
+    File: README.md ("red 1-5 km, yellow 6-20 km")
+    Actual: slowRedKm default 20 (range 2-20), slowYellowKm default 50 (range
+    21-50), PLUS a separate fast-threat ETA tier (fastRedMin/fastYellowMin,
+    default 5/20 min) not mentioned at all. Zones.kt's own doc comments are
+    accurate; ZonePrefs.kt confirms the real ranges. README needs a rewrite.
+
+## SHIP-BLOCKING UX
+
+11. "Force NEPTUN offline" debug switch is live in production UI
+    File: ConnectionStatus.kt:149-157
+    Real, unguarded Switch in the connection-status popup (reachable by tapping the
+    always-visible status pill) that silences the live feed in favor of the backup
+    source. No warning, persists across restarts via DataStore. Meant for internal
+    QA only (see TEMP comments in NeptunClient.kt/MainViewModel.kt).
+    Fix: remove from release UI or gate behind a hidden dev-mode gesture.
+
+## UX / PRODUCT SUGGESTIONS (non-blocking)
+
+12. Permission dialogs fire before any onboarding explanation (MainActivity.kt:50-55)
+    — reorder so language/onboarding shows first.
+13. Battery-optimization exemption only surfaced in Settings, never at first run
+    (SettingsScreen.kt:460-479) — directly relates to #8; should be part of onboarding.
+14. City picker (SettingsScreen.kt:790-839) has no search, plain alphabetical dropdown
+    over 26 cities — fine now, will degrade if list grows.
+15. ConnectionLog history (persisted, well-built) is buried 3 taps deep — consider
+    surfacing "last outage: Xm ago, lasted Ys" near the status pill.
+16. No haptic distinction between red/yellow zone alerts beyond sound.
+17. No widget/lock-screen glance for current zone status.
+18. No "alerts today" history view for users who were away/asleep during an alert.
+
+## RULED OUT (checked, not bugs)
+- NOMINAL_SPEED_MPS missing ThreatType.UNKNOWN (Prediction.kt) — intentional,
+  covered by PredictionTest.kt's explicit assertion.
+- BootReceiver starting foreground service from BroadcastReceiver — allowed
+  under the documented BOOT_COMPLETED/MY_PACKAGE_REPLACED exception.
+- ThreatType enum coverage across Zones/ThreatLevel/reachKm — complete, tested.
+
+## TEST COVERAGE GAP
+Zero unit tests for: NeptunClient, AlertService, ConnectionLog, MainViewModel,
+LocationTracker — exactly where bugs #1-3, #6-9 live. Everything with solid
+coverage (Prediction, Zones, ThreatLevel, Cities, Threat, Transliteration,
+UpdateManager, AlertsUaClient) is correspondingly clean.
+## 17/08/2026, 12:14:00
+
+the scale should be on the right side of the map, not the left.
+## 17/08/2026, 12:14:40
+
+"pinned" city pill should be above the "all alerts are off" pill
+## 17/08/2026, 12:15:10
+
+go
+## 17/08/2026, 12:17:49
+
+go
+## 17/08/2026, 12:23:49
+
+gps position or pinned city
+## 17/08/2026, 12:29:48
+
+go
+## 17/08/2026, 12:32:08
+
+D:\Desktop\drones\app\src\main\iconpacks\photo\drawable-nodpi\threat_photo_cruise.png was changed, it's now facing right and is thinner.
+## 17/08/2026, 12:37:41
+
+go
+## 17/08/2026, 12:49:57
+
+in settings screen, "additional settings" is redudnenat group header.  keep the collapse tho. And remove the icon packs names, just hte icons show, make them a bit bigger to fit the card.  make the "coming soon" more itnersting.
+
+in header, the offline neptun image should be red, not orange, check the folder for the correct png.
+in connectionstatus, the conneciton log should show as "mm/dd hh:mm:ss".  ensure the android notif's "tap to retry" actually retries.
+## 17/08/2026, 12:52:24
+
+hide the guide-line, just the bullet is visible, and make it start from just outside the screen edge, not from the gps starting point (unless the gps dot is literally visible on screen), because otherwise it looks like nothing is happening for 1s if the gps dot is far away panned on the map.  ponyal?
+## 17/08/2026, 12:55:00
+
+add the slow/fast icons to the alertzones panel.  is it correct that the 2 yellow alerts should sync, you can't have slow yellow on, but fast yellow off? That seems wrong.
+
+ensure the settings screen opens to last scroll point. I think there's a bug where it always opens to Threats because the alertzones panel's settings shortcut auto-scrolls there, so even clicking the header's setting auto-scrolls too.
+
+add night mode to the feature guide.
+## 17/08/2026, 12:56:06
+
+the threat card should not disappear immiately, it should fade away after the explsion.
+## 17/08/2026, 13:00:35
+
+12+...
+
+14 ignore
+15 ignore
+16 in Settings->Alerts we can put vibration size sliders for each threat type.
+17 later, make a note
+18 put it below connection log in connectionstatus screen, for now.  something like [threat icon] [datetime] [distance from gps\pin]...anyting else?
+
+fyi [datetime] should be normalized site-wide depending on language selection.
+## 17/08/2026, 13:04:01
+
+the threat card could have a "neutrlaizing enemy" mode, then once the threat is actually exploded the card entered "neturalized" mode and starts to fade away
+## 17/08/2026, 13:05:55
+
+it's beta, we don't need "new" vs "old" checks, justmake the code forward-looking only.  Why 8? It should only be 4 no?
+## 17/08/2026, 13:06:39
+
+go
+## 17/08/2026, 13:11:53
+
+in a sense we have it backward.  Altho you might want to sleep thru the attacks, it's at night that it's most important you're aware of what's happening.  During the day there's more alertness city-wide etc, so you could mute during daytime, and nightitme is the critical time to NOT mute everything.  It's the opposite of how app's night mode usually works.  thoughts?
+## 17/08/2026, 13:13:10
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 17/08/2026, 13:14:21
+
+go
+## 17/08/2026, 13:20:08
+
+go
