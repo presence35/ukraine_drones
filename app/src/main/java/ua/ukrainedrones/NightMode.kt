@@ -11,14 +11,24 @@ data class NightConfig(
     val endMin: Int
 )
 
+/** The four independent armed bells: slow/fast x red/yellow. */
+data class ZoneArmed(
+    val slowRed: Boolean,
+    val slowYellow: Boolean,
+    val fastRed: Boolean,
+    val fastYellow: Boolean
+)
+
 /** Night-mode zone values: custom thresholds + armed bells, applied while the window is active. */
 data class NightZones(
     val slowRedKm: Int,
     val slowYellowKm: Int,
     val fastRedMin: Int,
     val fastYellowMin: Int,
-    val redArmed: Boolean,
-    val yellowArmed: Boolean
+    val slowRedArmed: Boolean,
+    val slowYellowArmed: Boolean,
+    val fastRedArmed: Boolean,
+    val fastYellowArmed: Boolean
 )
 
 /**
@@ -52,13 +62,15 @@ fun effectiveZoneParams(
 
 /** The active armed bells: night custom values while the window is active, else the day ones. */
 fun effectiveArmed(
-    dayRed: Boolean,
-    dayYellow: Boolean,
+    day: ZoneArmed,
     night: NightZones,
     useNightZones: Boolean,
     nightActive: Boolean
-): Pair<Boolean, Boolean> = if (nightActive && useNightZones) {
-    night.redArmed to night.yellowArmed
+): ZoneArmed = if (nightActive && useNightZones) {
+    ZoneArmed(
+        night.slowRedArmed, night.slowYellowArmed,
+        night.fastRedArmed, night.fastYellowArmed
+    )
 } else {
-    dayRed to dayYellow
+    day
 }

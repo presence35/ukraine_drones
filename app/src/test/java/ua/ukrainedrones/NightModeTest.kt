@@ -51,7 +51,7 @@ class NightModeTest {
     @Test
     fun `effective params pick night values only while active and enabled`() {
         val day = ZoneParams(20, 50, 5, 20)
-        val night = NightZones(10, 30, 3, 10, redArmed = false, yellowArmed = true)
+        val night = NightZones(10, 30, 3, 10, slowRedArmed = false, slowYellowArmed = true, fastRedArmed = true, fastYellowArmed = false)
         assertEquals(day, effectiveZoneParams(day, night, useNightZones = true, nightActive = false))
         assertEquals(day, effectiveZoneParams(day, night, useNightZones = false, nightActive = true))
         val effective = effectiveZoneParams(day, night, useNightZones = true, nightActive = true)
@@ -63,9 +63,13 @@ class NightModeTest {
 
     @Test
     fun `effective armed picks night bells only while active and enabled`() {
-        val night = NightZones(10, 30, 3, 10, redArmed = false, yellowArmed = false)
-        assertEquals(true to true, effectiveArmed(true, true, night, true, false))
-        assertEquals(false to false, effectiveArmed(true, true, night, true, true))
-        assertEquals(true to true, effectiveArmed(true, true, night, false, true))
+        val night = NightZones(10, 30, 3, 10,
+            slowRedArmed = false, slowYellowArmed = false,
+            fastRedArmed = false, fastYellowArmed = false)
+        val day = ZoneArmed(true, true, true, true)
+        val muted = ZoneArmed(false, false, false, false)
+        assertEquals(day, effectiveArmed(day, night, true, false))
+        assertEquals(muted, effectiveArmed(day, night, true, true))
+        assertEquals(day, effectiveArmed(day, night, false, true))
     }
 }

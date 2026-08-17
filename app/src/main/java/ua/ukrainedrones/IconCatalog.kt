@@ -37,6 +37,19 @@ object IconCatalog {
     fun res(type: ThreatType, set: ThreatIconSet): Int = when (set) {
         ThreatIconSet.CLASSIC -> classicRes(type)
         ThreatIconSet.PHOTO -> photoRes(type) ?: classicRes(type)
+        ThreatIconSet.ARMY -> armyRes(type) ?: classicRes(type)
+    }
+
+    /** Army icon for [type], or null when the set has no asset (UNKNOWN). */
+    internal fun armyRes(type: ThreatType): Int? = when (type) {
+        ThreatType.SHAHED -> R.drawable.threat_army_shahed
+        ThreatType.FPV_LOITERING -> R.drawable.threat_army_fpv
+        ThreatType.CRUISE_MISSILE -> R.drawable.threat_army_cruise
+        ThreatType.BALLISTIC -> R.drawable.threat_army_ballistic
+        ThreatType.KAB -> R.drawable.threat_army_kab
+        ThreatType.AVIATION -> R.drawable.threat_army_aviation
+        ThreatType.RECON -> R.drawable.threat_army_recon
+        ThreatType.UNKNOWN -> null
     }
 
     internal fun photoRes(type: ThreatType): Int? = when (type) {
@@ -76,6 +89,28 @@ object IconCatalog {
         ThreatType.SHAHED -> 0f          // _top_middle
         ThreatType.UNKNOWN -> 0f
     }
+
+    /**
+     * Direction each army icon's subject faces as baked into the image, in degrees clockwise
+     * from north/up (the source-file name, e.g. "top_right" = 45°).
+     */
+    fun armyBaseDeg(type: ThreatType): Float = when (type) {
+        ThreatType.BALLISTIC -> 45f       // _top_right
+        ThreatType.CRUISE_MISSILE -> 90f  // _right
+        ThreatType.FPV_LOITERING -> 180f  // _bottom
+        ThreatType.KAB -> 225f            // _bottom_left
+        ThreatType.AVIATION -> 270f       // _left
+        ThreatType.RECON -> 225f          // _bottom_left
+        ThreatType.SHAHED -> 0f           // _top
+        ThreatType.UNKNOWN -> 0f
+    }
+
+    /** Baked-in facing direction for the active set (0° for the rotation-free classic set). */
+    fun baseDeg(type: ThreatType, set: ThreatIconSet): Float = when (set) {
+        ThreatIconSet.PHOTO -> photoBaseDeg(type)
+        ThreatIconSet.ARMY -> armyBaseDeg(type)
+        ThreatIconSet.CLASSIC -> 0f
+    }
 }
 
 /**
@@ -91,7 +126,7 @@ fun ThreatIcon(
     tint: Color = Color.Unspecified,
     contentDescription: String? = null
 ) {
-    if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null) {
+    if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null) {
         Icon(
             painter = painterResource(id = IconCatalog.res(type, set)),
             contentDescription = contentDescription,

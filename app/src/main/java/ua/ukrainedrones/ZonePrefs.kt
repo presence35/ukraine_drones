@@ -20,7 +20,7 @@ enum class AppLanguage { UA, EN }
 enum class ThreatCardSize { SMALL, LARGE }
 
 /** Which visual style is used for threat icons everywhere (map, strip, popups, toggles). */
-enum class ThreatIconSet { CLASSIC, PHOTO }
+enum class ThreatIconSet { CLASSIC, PHOTO, ARMY }
 
 class ZonePrefs(private val context: Context) {
 
@@ -30,8 +30,10 @@ class ZonePrefs(private val context: Context) {
     private val slowYellowKmKey = intPreferencesKey("slow_yellow_km")
     private val fastRedMinKey = intPreferencesKey("fast_red_min")
     private val fastYellowMinKey = intPreferencesKey("fast_yellow_min")
-    private val redArmedKey = booleanPreferencesKey("red_zone_armed")
-    private val yellowArmedKey = booleanPreferencesKey("yellow_zone_armed")
+    private val slowRedArmedKey = booleanPreferencesKey("slow_red_armed")
+    private val slowYellowArmedKey = booleanPreferencesKey("slow_yellow_armed")
+    private val fastRedArmedKey = booleanPreferencesKey("fast_red_armed")
+    private val fastYellowArmedKey = booleanPreferencesKey("fast_yellow_armed")
     private val officialAlertsKey = booleanPreferencesKey("official_alerts_enabled")
     private val sirenOverrideKey = booleanPreferencesKey("siren_override")
     private val disclaimerCollapsedKey = booleanPreferencesKey("disclaimer_collapsed")
@@ -52,6 +54,10 @@ class ZonePrefs(private val context: Context) {
     private val connLogPendingSinceKey = longPreferencesKey("conn_log_pending_since")
     private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
     private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
+    private val batteryOnboardShownKey = booleanPreferencesKey("battery_onboard_shown")
+    private val fastVibrationLevelKey = intPreferencesKey("fast_vibration_level")
+    private val slowVibrationLevelKey = intPreferencesKey("slow_vibration_level")
+    private val alertHistoryKey = stringPreferencesKey("alert_history")
     private val nightEnabledKey = booleanPreferencesKey("night_enabled")
     private val nightStartMinKey = intPreferencesKey("night_start_min")
     private val nightEndMinKey = intPreferencesKey("night_end_min")
@@ -60,8 +66,10 @@ class ZonePrefs(private val context: Context) {
     private val nightSlowYellowKmKey = intPreferencesKey("night_slow_yellow_km")
     private val nightFastRedMinKey = intPreferencesKey("night_fast_red_min")
     private val nightFastYellowMinKey = intPreferencesKey("night_fast_yellow_min")
-    private val nightRedArmedKey = booleanPreferencesKey("night_red_zone_armed")
-    private val nightYellowArmedKey = booleanPreferencesKey("night_yellow_zone_armed")
+    private val nightSlowRedArmedKey = booleanPreferencesKey("night_slow_red_armed")
+    private val nightSlowYellowArmedKey = booleanPreferencesKey("night_slow_yellow_armed")
+    private val nightFastRedArmedKey = booleanPreferencesKey("night_fast_red_armed")
+    private val nightFastYellowArmedKey = booleanPreferencesKey("night_fast_yellow_armed")
     private val nightZoneSirenOverrideKey = booleanPreferencesKey("night_zone_siren_override")
     private val nightOfficialSirenOverrideKey = booleanPreferencesKey("night_official_siren_override")
 
@@ -97,20 +105,36 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[fastYellowMinKey] = min.coerceIn(6, 20) }
     }
 
-    /** Whether the red zone can fire urgent siren alerts. */
-    fun redZoneArmed(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[redArmedKey] ?: true }
+    /** Whether the slow red zone can fire urgent siren alerts. */
+    fun slowRedZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[slowRedArmedKey] ?: true }
 
-    suspend fun setRedZoneArmed(armed: Boolean) {
-        context.dataStore.edit { it[redArmedKey] = armed }
+    suspend fun setSlowRedZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[slowRedArmedKey] = armed }
     }
 
-    /** Whether the yellow zone can fire warning alerts. */
-    fun yellowZoneArmed(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[yellowArmedKey] ?: true }
+    /** Whether the slow yellow zone can fire warning alerts. */
+    fun slowYellowZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[slowYellowArmedKey] ?: true }
 
-    suspend fun setYellowZoneArmed(armed: Boolean) {
-        context.dataStore.edit { it[yellowArmedKey] = armed }
+    suspend fun setSlowYellowZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[slowYellowArmedKey] = armed }
+    }
+
+    /** Whether the fast red zone can fire urgent siren alerts. */
+    fun fastRedZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[fastRedArmedKey] ?: true }
+
+    suspend fun setFastRedZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[fastRedArmedKey] = armed }
+    }
+
+    /** Whether the fast yellow zone can fire warning alerts. */
+    fun fastYellowZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[fastYellowArmedKey] ?: true }
+
+    suspend fun setFastYellowZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[fastYellowArmedKey] = armed }
     }
 
     /** Whether the app notifies on the official oblast air-raid alert. Zone alerts are unaffected. */
@@ -325,9 +349,41 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[offlinePendingSinceKey] = ts }
     }
 
+    /** Whether the first-run battery-exemption prompt has been shown once (dismissed or allowed). */
+    fun batteryOnboardShown(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[batteryOnboardShownKey] ?: false }
+
+    suspend fun setBatteryOnboardShown(shown: Boolean) {
+        context.dataStore.edit { it[batteryOnboardShownKey] = shown }
+    }
+
+    /** Vibration strength 0–4 for fast (missile) zone alerts — default 3 (strong). */
+    fun fastVibrationLevel(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[fastVibrationLevelKey] ?: 3 }
+
+    suspend fun setFastVibrationLevel(level: Int) {
+        context.dataStore.edit { it[fastVibrationLevelKey] = level.coerceIn(0, 4) }
+    }
+
+    /** Vibration strength 0–4 for slow (drone) zone alerts — default 3 (strong). */
+    fun slowVibrationLevel(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[slowVibrationLevelKey] ?: 3 }
+
+    suspend fun setSlowVibrationLevel(level: Int) {
+        context.dataStore.edit { it[slowVibrationLevelKey] = level.coerceIn(0, 4) }
+    }
+
+    /** Serialized fired-alert history ("at|end|tier|type|locality|distance" lines), for the status popup. */
+    fun alertHistory(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[alertHistoryKey] ?: "" }
+
+    suspend fun setAlertHistory(serialized: String) {
+        context.dataStore.edit { it[alertHistoryKey] = serialized }
+    }
+
     /** Whether the night-mode window is enabled. */
     fun nightEnabled(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[nightEnabledKey] ?: false }
+        context.dataStore.data.map { prefs -> prefs[nightEnabledKey] ?: true }
 
     suspend fun setNightEnabled(enabled: Boolean) {
         context.dataStore.edit { it[nightEnabledKey] = enabled }
@@ -389,20 +445,36 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[nightFastYellowMinKey] = min.coerceIn(6, 20) }
     }
 
-    /** Whether the red zone can fire urgent siren alerts during the night window. */
-    fun nightRedZoneArmed(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[nightRedArmedKey] ?: true }
+    /** Whether the slow red zone can fire urgent siren alerts during the night window. */
+    fun nightSlowRedZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightSlowRedArmedKey] ?: true }
 
-    suspend fun setNightRedZoneArmed(armed: Boolean) {
-        context.dataStore.edit { it[nightRedArmedKey] = armed }
+    suspend fun setNightSlowRedZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[nightSlowRedArmedKey] = armed }
     }
 
-    /** Whether the yellow zone can fire warning alerts during the night window. */
-    fun nightYellowZoneArmed(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[nightYellowArmedKey] ?: true }
+    /** Whether the slow yellow zone can fire warning alerts during the night window. */
+    fun nightSlowYellowZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightSlowYellowArmedKey] ?: true }
 
-    suspend fun setNightYellowZoneArmed(armed: Boolean) {
-        context.dataStore.edit { it[nightYellowArmedKey] = armed }
+    suspend fun setNightSlowYellowZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[nightSlowYellowArmedKey] = armed }
+    }
+
+    /** Whether the fast red zone can fire urgent siren alerts during the night window. */
+    fun nightFastRedZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightFastRedArmedKey] ?: true }
+
+    suspend fun setNightFastRedZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[nightFastRedArmedKey] = armed }
+    }
+
+    /** Whether the fast yellow zone can fire warning alerts during the night window. */
+    fun nightFastYellowZoneArmed(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightFastYellowArmedKey] ?: true }
+
+    suspend fun setNightFastYellowZoneArmed(armed: Boolean) {
+        context.dataStore.edit { it[nightFastYellowArmedKey] = armed }
     }
 
     /** Whether zone sirens ring on the alarm stream (even on vibrate/silent) at night. Default off. */

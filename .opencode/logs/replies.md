@@ -41322,3 +41322,322 @@ Forward-looking only, no old-key reads (beta).
 
 ## Wrap-up
 CHANGELOG `[Unreleased]` entries for all changes; verify with `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+## 17/08/2026, 13:21:46
+
+Now the icon set selector changes
+## 17/08/2026, 13:23:06
+
+Now add the animation-core import
+## 17/08/2026, 13:23:29
+
+Now the header emblem fix and connection
+## 17/08/2026, 13:23:45
+
+Now the retry fixes in AlertService and NeptunClient
+
+
+## 17/08/2026, 13:24:08
+
+
+
+
+## 17/08/2026, 13:24:25
+
+Now the CHANGELOG
+## 17/08/2026, 13:24:56
+
+Build OK. Now the unit tests (retry touched NeptunClient domain
+## 17/08/2026, 13:25:33
+
+All done.
+## 17/08/2026, 13:25:42
+
+Done. `:app:assembleDebug` + `:app:testDebugUnitTest` both pass.
+
+- **Settings** — dropped the duplicate "Additional settings" SectionHeader (`SettingsScreen.kt`); the collapsible card keeps its title+arrow. Icon tiles are now icon-only at 44dp with aligned grid heights; Army/Comic placeholders show a bobbing 🚀 + "Coming soon" pill + pack-name caption.
+- **Header** — `ConnectionStatus.kt:89`: emblem is red `neptun_red.png` whenever NEPTUN is down; amber tint only while NEPTUN is alive but on backup.
+- **Connection log** — timestamps now `MM/dd HH:mm:ss`.
+- **Retry** — `AlertService.kt` uses `PendingIntent.getForegroundService`; `NeptunClient.retryNow()` nulls the socket before closing, and `onClosed`/`onFailure` guard with a `ws === webSocket` identity check so a superseded socket can't clobber the manual retry.
+- CHANGELOG entries added under `## [Unreleased]`.
+## 17/08/2026, 13:28:47
+
+
+
+
+## 17/08/2026, 13:28:56
+
+Starting with ZonePrefs. Let me read
+## 17/08/2026, 13:29:20
+
+
+
+
+## 17/08/2026, 13:29:53
+
+Now the night-enabled default flip:
+
+
+## 17/08/2026, 13:30:24
+
+ZonePrefs done. Now NightMode.kt
+## 17/08/2026, 13:30:45
+
+NightMode done. Now MainViewModel — let me read the UiState and
+## 17/08/2026, 13:31:12
+
+Now the
+## 17/08/2026, 13:31:38
+
+
+
+
+## 17/08/2026, 13:31:54
+
+
+
+
+## 17/08/2026, 13:32:25
+
+Now the seedFlow prim
+## 17/08/2026, 13:32:41
+
+Now the uiState combine and `.copy` block
+## 17/08/2026, 13:33:11
+
+Now the setters
+
+
+## 17/08/2026, 13:33:50
+
+MainViewModel complete. Now AlertService —
+## 17/08/2026, 13:34:25
+
+
+
+
+## 17/08/2026, 13:34:38
+
+Now the per-group `alertTier`
+
+
+## 17/08/2026, 13:34:57
+
+
+
+
+## 17/08/2026, 13:35:19
+
+Now ZonesSheet.kt — the panel signature, rows, and caption icons
+## 17/08/2026, 13:35:47
+
+Now the SectionCaption composable and its
+## 17/08/2026, 13:36:17
+
+Now SettingsScreen. Let me check its
+## 17/08/2026, 13:36:38
+
+
+
+
+## 17/08/2026, 13:36:58
+
+Now the NightModeCard call site and definition. Let me read the current
+## 17/08/2026, 13:37:37
+
+Now the night custom-zone rows, captions, and the mute warning:
+## 17/08/2026, 13:37:47
+
+SettingsScreen done. Now MainScreen — let me check its imports
+## 17/08/2026, 13:38:32
+
+Now the MapScreen signature, call site, and ZonesPanel wiring
+## 17/08/2026, 13:38:59
+
+Now the `alertsOff` and `ZoneButtons` any-of-group logic
+## 17/08/2026, 13:39:34
+
+All production references clean. Now Strings.kt. Let me read the declaration block
+## 17/08/2026, 13:40:06
+
+Now the UA values:
+## 17/08/2026, 13:40:18
+
+Now the EN values:
+## 17/08/2026, 13:40:27
+
+Now the FeatureGuide night entry:
+## 17/08/2026, 13:40:40
+
+Now FeatureDiagrams — add NIGHT
+## 17/08/2026, 13:40:48
+
+Now add the `drawNight` function. Let me find a good spot after `drawUpdate`:
+## 17/08/2026, 13:41:40
+
+Now NightModeTest:
+## 17/08/2026, 13:42:02
+
+Tests done. Now the CHANGELOG:
+## 17/08/2026, 13:42:38
+
+Now update ARCHITECTURE.md to document the new invariant:
+## 17/08/2026, 13:43:47
+
+Build passes. Now the unit tests:
+## 17/08/2026, 13:44:04
+
+All done — build and tests pass.
+
+- **4 independent bells** (slow red / slow yellow / fast red / fast yellow), each stored for day + night (8 prefs keys, forward-only). Mirrored in `MainViewModel` and `AlertService` (`alertTier` now picks the bell by `FastThreatTypes` group), resolved per tick via `ZoneArmed`/`effectiveArmed` in NightMode.kt. `ZonesSheet` + night custom zones each wire the 4 bells.
+- **Icons**: 🐢/⚡ on the Slow/Fast section captions in the alert-zones panel and the night custom-zone section.
+- **Settings scroll**: `settingsListState` hoisted to MainScreen (position survives open/close); the threats-jump tick is consumed after the zones-sheet gear scrolls, so the header gear no longer inherits it.
+- **Night mode**: ON by default (`nightEnabled ?: true`), `nightModeDesc` reframed as the critical window, and muting a night bell shows the "may sleep through one" warning + the "Stop Monitoring & Exit" pointer.
+- **Feature guide**: new "Night mode" card (`guideNight*` UA/EN) with a moon + sliders `drawNight()` diagram.
+
+CHANGELOG and ARCHITECTURE.md updated; `assembleDebug` and `testDebugUnitTest` both green.
+## 17/08/2026, 13:47:34
+
+I can't view images (this model doesn't support image input), but the filenames encode the direction + type unambiguously. Let me check the remaining pieces I need for the import.
+## 17/08/2026, 13:49:10
+
+## Plan: import the "Army" icon set
+
+The 7 files in `iconpacks/army/drawable-nodpi/` are the raster "Army" threat icons. Each filename encodes the type + the baked-in facing direction (which the app needs to rotate markers to point along course). There's already a `ThreatIconSet.ARMY` placeholder in the Settings UI (Army/Comic "coming soon" tiles) and UA/EN labels (`Strings.kt:443/705`).
+
+**1. Rename files** → app convention `threat_army_<type>.png` (keeps direction info for step 3):
+- `top_drone.png` → `threat_army_shahed.png`
+- `top_right_ballistic.png` → `threat_army_ballistic.png`
+- `right_cruise.png` → `threat_army_cruise.png`
+- `bottom_fpv.png` → `threat_army_fpv.png`
+- `bottom_left_guided.png` → `threat_army_kab.png`
+- `bottom_left_recon.png` → `threat_army_recon.png`
+- `left_aviation.png` → `threat_army_aviation.png`
+
+**2. `app/build.gradle.kts:78`** — add `"src/main/iconpacks/army"` to `res.srcDirs`.
+
+**3. `ZonePrefs.kt:23`** — `enum class ThreatIconSet { CLASSIC, PHOTO, ARMY }` (deserialization is already generic via `values()`).
+
+**4. `IconCatalog.kt`** — `armyRes(type)` mapping (UNKNOWN → null), add `ARMY` branch to `res()`, and `armyBaseDeg(type)`:
+- SHAHED 0° / BALLISTIC 45° / CRUISE 90° / FPV 180° / KAB 225° / RECON 225° / AVIATION 270°.
+
+Add a `baseDeg(type, set)` helper and use it in `MapView.kt` (lines 559, 683, 729 — currently `if (iconSet == PHOTO) photoBaseDeg else 0f`) so army markers rotate correctly. Also update `ThreatIcon` letterboxing (IconCatalog.kt:94) to letterbox ARMY like PHOTO.
+
+**5. `SettingsScreen.kt`** — replace the Army `ComingSoonTile` (line 1296) with a real `IconSetTile(set = ThreatIconSet.ARMY, ...)`.
+
+**6. Docs/changelog** — update `ARCHITECTURE.md` IconCatalog row (iconpacks/army path + rotation base) and add a CHANGELOG entry under `## [Unreleased]`.
+
+**7. Verify** — `.\gradlew.bat :app:assembleDebug`.
+
+Default icon set stays PHOTO (no change to `MainViewModel`). One question before I execute
+## 17/08/2026, 13:52:11
+
+Plan confirmed — keep Photos as the default; Army becomes selectable in Settings. Ready to execute once you switch out of plan mode.
+## 17/08/2026, 13:53:11
+
+Now I'll implement. Starting with `ZonePrefs` (new keys for #13, #16, #18):
+## 17/08/2026, 13:53:39
+
+Now IconCatalog.kt — add the army set, direction bases, and a shared rotation helper:
+## 17/08/2026, 13:53:48
+
+Now creating `AlertHistory.kt` (the #18 ring buffer, mirroring `ConnectionLog`'s persistence pattern):
+## 17/08/2026, 13:53:58
+
+Now update `ThreatIcon` letterboxing to include ARMY:
+## 17/08/2026, 13:54:15
+
+Now the strings. Adding to `Strings.kt` — first the `StringSet` fields:
+## 17/08/2026, 13:54:21
+
+Now MapView rotation — replace the three PHOTO checks with `baseDeg
+## 17/08/2026, 13:54:51
+
+Now adding the `formatDateTime` helper at the end of `Strings.kt`:
+
+
+## 17/08/2026, 13:54:53
+
+Now Settings — promote the Army tile from "coming soon" to a real set
+## 17/08/2026, 13:55:04
+
+Now docs/ch
+## 17/08/2026, 13:55:55
+
+Now #12 — `MainActivity` permission sequencing:
+
+
+## 17/08/2026, 13:56:15
+
+Build passed. Verifying the army assets are actually packaged:
+## 17/08/2026, 13:56:27
+
+Done. Army icon set imported and packaged (`app-debug.apk` contains all 7 `threat_army_*.png`).
+
+- Renamed to `threat_army_<type>.png` (direction info preserved in `armyBaseDeg`), wired into `res.srcDirs` (build.gradle.kts:78), `ThreatIconSet.ARMY` (ZonePrefs.kt:23)
+- `IconCatalog`: `armyRes`, `armyBaseDeg`, `res()` ARMY branch, `baseDeg(type, set)` shared rotation helper; MapView.kt:559/683/729 now rotate via `baseDeg`
+- Settings: Army tile promoted from "Coming soon" to a selectable set (Comic remains a placeholder)
+- `ThreatIcon` letterboxes army like photos; default set stays Photos
+- ARCHITECTURE.md + CHANGELOG updated; `assembleDebug` green (only pre-existing warnings)
+## 17/08/2026, 13:56:33
+
+Now `MainViewModel` threading. UiState fields:
+## 17/08/2026, 13:57:00
+
+Now the prefsSnapshot combine:
+## 17/08/2026, 13:57:20
+
+Now the uiState `.copy(...)` additions and seedFlow:
+## 17/08/2026, 13:57:58
+
+Now `SettingsScreen` — add params and the vibration slider UI:
+## 17/08/2026, 13:58:52
+
+Now `MainScreen` — thread the Settings params and add the battery onboarding dialog. First the SettingsScreen call:
+## 17/08/2026, 13:59:30
+
+Now the battery onboarding dialog in `MainScreen`:
+## 17/08/2026, 14:00:10
+
+Now `AlertService` — history recording + vibration. First, `onCreate` attach:
+## 17/08/2026, 14:00:29
+
+Now the combine — add the vibration-levels flow:
+## 17/08/2026, 14:00:51
+
+Now the zone post/close recording in `handleState`:
+## 17/08/2026, 14:01:24
+
+Now the grace-reset path:
+## 17/08/2026, 14:01:56
+
+Now `postAlert` / `buildAlertNotification` + the helper:
+## 17/08/2026, 14:02:33
+
+Now `ConnectionStatus` — add `lang`/`iconSet`, the datetime helper, and the history section:
+## 17/08/2026, 14:03:32
+
+Now append the alert-history section to `ConnectionStatus.kt`:
+## 17/08/2026, 14:03:42
+
+Now update the `ConnectionStatus` call site in `MainScreen`:
+## 17/08/2026, 14:03:50
+
+Now #17 — check for an existing ROADMAP:
+## 17/08/2026, 14:04:18
+
+Now refactor `AlertHistory` so serialize/parse are pure and testable:
+## 17/08/2026, 14:05:00
+
+Now let me look at the existing test structure:
+## 17/08/2026, 14:05:36
+
+Now the tests — `AlertHistoryTest`, `VibrationTest`, and `StringsFormatTest`:
+## 17/08/2026, 14:09:10
+
+Now build
+## 17/08/2026, 14:09:47
+
+Two issues: `combine` supports max 5 typed flows (I added a 6th), and a lambda param order mistake in MainViewModel. Fix
+## 17/08/2026, 14:11:17
+
+Now fix the MainViewModel combine lambda order:

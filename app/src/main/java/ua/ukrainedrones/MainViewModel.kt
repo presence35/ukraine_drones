@@ -40,14 +40,18 @@ data class UiState(
     val slowYellowKm: Int = 50,  // slow threats: distance to the yellow (outer) zone, km
     val fastRedMin: Int = 5,     // fast threats: ETA to the red (inner) zone, minutes
     val fastYellowMin: Int = 20,  // fast threats: ETA to the yellow (outer) zone, minutes
-    val redArmed: Boolean = true,
-    val yellowArmed: Boolean = true,
+    val slowRedArmed: Boolean = true,
+    val slowYellowArmed: Boolean = true,
+    val fastRedArmed: Boolean = true,
+    val fastYellowArmed: Boolean = true,
     val activeZoneParams: ZoneParams = ZoneParams(20, 50, 5, 20), // effective (night-aware) thresholds
-    val activeRedArmed: Boolean = true,
-    val activeYellowArmed: Boolean = true,
+    val activeSlowRedArmed: Boolean = true,
+    val activeSlowYellowArmed: Boolean = true,
+    val activeFastRedArmed: Boolean = true,
+    val activeFastYellowArmed: Boolean = true,
     val nightActive: Boolean = false,                    // night window currently in effect
     val nightWindowText: String = "",                    // localized "22:00–07:00" when configured
-    val nightEnabled: Boolean = false,
+    val nightEnabled: Boolean = true,
     val nightStartMin: Int = 22 * 60,
     val nightEndMin: Int = 7 * 60,
     val nightUseCustomZones: Boolean = false,
@@ -55,8 +59,10 @@ data class UiState(
     val nightSlowYellowKm: Int = 50,
     val nightFastRedMin: Int = 5,
     val nightFastYellowMin: Int = 20,
-    val nightRedArmed: Boolean = true,
-    val nightYellowArmed: Boolean = true,
+    val nightSlowRedArmed: Boolean = true,
+    val nightSlowYellowArmed: Boolean = true,
+    val nightFastRedArmed: Boolean = true,
+    val nightFastYellowArmed: Boolean = true,
     val nightZoneSirenOverride: Boolean = false,
     val nightOfficialSirenOverride: Boolean = false,
     val officialAlertsEnabled: Boolean = true,
@@ -83,11 +89,14 @@ data class UiState(
     val needsInstallPermission: Boolean = false,
     val latestVersion: String? = null,
     val languageChosen: Boolean = false,
+    val batteryOnboardShown: Boolean = false,
     val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
     val iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     val showMapScale: Boolean = true,
     val fastGroupCollapsed: Boolean = false,
-    val slowGroupCollapsed: Boolean = false
+    val slowGroupCollapsed: Boolean = false,
+    val fastVibrationLevel: Int = 3,
+    val slowVibrationLevel: Int = 3
 )
 
 /** One-shot request from a notification tap to bring the camera onto a threat. */
@@ -166,6 +175,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private data class PrefsQuad(
         val pinnedCity: String?,
         val languageChosen: Boolean,
+        val batteryOnboardShown: Boolean,
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet
     )
@@ -184,8 +194,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val slowYellowKm: Int,
         val fastRedMin: Int,
         val fastYellowMin: Int,
-        val redArmed: Boolean,
-        val yellowArmed: Boolean,
+        val slowRedArmed: Boolean,
+        val slowYellowArmed: Boolean,
+        val fastRedArmed: Boolean,
+        val fastYellowArmed: Boolean,
         val zoneSirenOverride: Boolean,
         val officialSirenOverride: Boolean
     )
@@ -201,18 +213,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val language: AppLanguage,
         val disclaimerCollapsed: Boolean,
         val disclaimerReadCount: Int,
-        val redArmed: Boolean,
-        val yellowArmed: Boolean,
+        val slowRedArmed: Boolean,
+        val slowYellowArmed: Boolean,
+        val fastRedArmed: Boolean,
+        val fastYellowArmed: Boolean,
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
         val pinnedCity: String?,
         val languageChosen: Boolean,
+        val batteryOnboardShown: Boolean,
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet,
         val showMapScale: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
+        val fastVibrationLevel: Int,
+        val slowVibrationLevel: Int,
         val night: NightPrefs
     )
 
@@ -237,8 +254,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     private data class AlertConfig(
-        val redArmed: Boolean,
-        val yellowArmed: Boolean,
+        val slowRedArmed: Boolean,
+        val slowYellowArmed: Boolean,
+        val fastRedArmed: Boolean,
+        val fastYellowArmed: Boolean,
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
@@ -281,8 +300,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ThreatPrefs(map, alert, lang, disclaimer, readCount)
         },
         combine(
-            prefs.redZoneArmed(),
-            prefs.yellowZoneArmed(),
+            prefs.slowRedZoneArmed(),
+            prefs.slowYellowZoneArmed(),
+            prefs.fastRedZoneArmed(),
+            prefs.fastYellowZoneArmed(),
             prefs.officialAlertsEnabled(),
             prefs.sirenOverride(),
             prefs.followMe(),
@@ -290,16 +311,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.fastGroupCollapsed(),
             prefs.slowGroupCollapsed()
         ) { flags: Array<Boolean> ->
-            AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6], flags[7])
+            AlertConfig(
+                flags[0], flags[1], flags[2], flags[3], flags[4],
+                flags[5], flags[6], flags[7], flags[8], flags[9]
+            )
         },
         combine(
             prefs.pinnedCity(),
             prefs.languageChosen(),
+            prefs.batteryOnboardShown(),
             prefs.threatCardSize(),
             prefs.threatIconSet()
-        ) { pinned, chosen, card, iconSet ->
-            PrefsQuad(pinned, chosen, card, iconSet)
+        ) { pinned, chosen, batteryShown, card, iconSet ->
+            PrefsQuad(pinned, chosen, batteryShown, card, iconSet)
         },
+        combine(
+            prefs.fastVibrationLevel(),
+            prefs.slowVibrationLevel()
+        ) { fast, slow -> fast to slow },
         combine(
             combine(
                 prefs.nightEnabled(), prefs.nightStartMin(), prefs.nightEndMin(),
@@ -312,42 +341,50 @@ combine(
                         prefs.nightSlowRedKm(), prefs.nightSlowYellowKm(), prefs.nightFastRedMin(),
                         prefs.nightFastYellowMin()
                     ) { sr, sy, fr, fy ->
-                        NightZonesPrefs(sr, sy, fr, fy, true, true, false, false)
+                        NightZonesPrefs(sr, sy, fr, fy, true, true, true, true, false, false)
                     },
                     combine(
-                        prefs.nightRedZoneArmed(), prefs.nightYellowZoneArmed(),
+                        prefs.nightSlowRedZoneArmed(), prefs.nightSlowYellowZoneArmed(),
+                        prefs.nightFastRedZoneArmed(), prefs.nightFastYellowZoneArmed(),
                         prefs.nightZoneSirenOverride(), prefs.nightOfficialSirenOverride()
                     ) { flags: Array<Boolean> ->
                         flags
                     }
                 ) { zones, flags ->
                     zones.copy(
-                        redArmed = flags[0],
-                        yellowArmed = flags[1],
-                        zoneSirenOverride = flags[2],
-                        officialSirenOverride = flags[3]
+                        slowRedArmed = flags[0],
+                        slowYellowArmed = flags[1],
+                        fastRedArmed = flags[2],
+                        fastYellowArmed = flags[3],
+                        zoneSirenOverride = flags[4],
+                        officialSirenOverride = flags[5]
                     )
                 }
         ) { window, zones -> NightPrefs(window, zones) }
-    ) { a, b, c, d ->
+    ) { a, b, c, d, vib ->
         PrefsSnapshot(
             mapEnabled = a.map,
             alertEnabled = a.alert,
             language = a.lang,
             disclaimerCollapsed = a.disclaimer,
             disclaimerReadCount = a.disclaimerReadCount,
-            redArmed = b.redArmed,
-            yellowArmed = b.yellowArmed,
+            slowRedArmed = b.slowRedArmed,
+            slowYellowArmed = b.slowYellowArmed,
+            fastRedArmed = b.fastRedArmed,
+            fastYellowArmed = b.fastYellowArmed,
             officialAlertsEnabled = b.officialAlertsEnabled,
             sirenOverride = b.sirenOverride,
             followMe = b.followMe,
             pinnedCity = c.pinnedCity,
             languageChosen = c.languageChosen,
+            batteryOnboardShown = c.batteryOnboardShown,
             cardSize = c.cardSize,
             iconSet = c.iconSet,
             showMapScale = b.showMapScale,
             fastGroupCollapsed = b.fastGroupCollapsed,
             slowGroupCollapsed = b.slowGroupCollapsed,
+            fastVibrationLevel = vib.first,
+            slowVibrationLevel = vib.second,
             night = d
         )
     }
@@ -371,9 +408,16 @@ combine(
         prefs.slowYellowKm().first()
         prefs.fastRedMin().first()
         prefs.fastYellowMin().first()
+        prefs.slowRedZoneArmed().first()
+        prefs.slowYellowZoneArmed().first()
+        prefs.fastRedZoneArmed().first()
+        prefs.fastYellowZoneArmed().first()
         prefs.followMe().first()
         prefs.pinnedCity().first()
         prefs.languageChosen().first()
+        prefs.batteryOnboardShown().first()
+        prefs.fastVibrationLevel().first()
+        prefs.slowVibrationLevel().first()
         prefs.nightEnabled().first()
         prefs.nightStartMin().first()
         prefs.nightEndMin().first()
@@ -382,8 +426,10 @@ combine(
         prefs.nightSlowYellowKm().first()
         prefs.nightFastRedMin().first()
         prefs.nightFastYellowMin().first()
-        prefs.nightRedZoneArmed().first()
-        prefs.nightYellowZoneArmed().first()
+        prefs.nightSlowRedZoneArmed().first()
+        prefs.nightSlowYellowZoneArmed().first()
+        prefs.nightFastRedZoneArmed().first()
+        prefs.nightFastYellowZoneArmed().first()
         prefs.nightZoneSirenOverride().first()
         prefs.nightOfficialSirenOverride().first()
         emit(Unit)
@@ -402,14 +448,19 @@ val uiState: StateFlow<UiState> = combine(
         val nightZones = NightZones(
             prefs.night.zones.slowRedKm, prefs.night.zones.slowYellowKm,
             prefs.night.zones.fastRedMin, prefs.night.zones.fastYellowMin,
-            prefs.night.zones.redArmed, prefs.night.zones.yellowArmed
+            prefs.night.zones.slowRedArmed, prefs.night.zones.slowYellowArmed,
+            prefs.night.zones.fastRedArmed, prefs.night.zones.fastYellowArmed
         )
         val effectiveParams = effectiveZoneParams(
             ZoneParams(live.slowRedKm, live.slowYellowKm, live.fastRedMin, live.fastYellowMin),
             nightZones, prefs.night.window.useCustomZones, nightActive
         )
-        val (activeRedArmed, activeYellowArmed) = effectiveArmed(
-            prefs.redArmed, prefs.yellowArmed, nightZones, prefs.night.window.useCustomZones, nightActive
+        val activeArmed = effectiveArmed(
+            ZoneArmed(
+                prefs.slowRedArmed, prefs.slowYellowArmed,
+                prefs.fastRedArmed, prefs.fastYellowArmed
+            ),
+            nightZones, prefs.night.window.useCustomZones, nightActive
         )
         buildUiState(
             neptun = live.neptun,
@@ -436,13 +487,17 @@ val uiState: StateFlow<UiState> = combine(
             latestVersion = updateUi.latestVersion,
             disclaimerCollapsed = prefs.disclaimerCollapsed,
             disclaimerReadCount = prefs.disclaimerReadCount,
-            redArmed = prefs.redArmed,
-            yellowArmed = prefs.yellowArmed,
+            slowRedArmed = prefs.slowRedArmed,
+            slowYellowArmed = prefs.slowYellowArmed,
+            fastRedArmed = prefs.fastRedArmed,
+            fastYellowArmed = prefs.fastYellowArmed,
             officialAlertsEnabled = prefs.officialAlertsEnabled,
             sirenOverride = prefs.sirenOverride,
             activeZoneParams = effectiveParams,
-            activeRedArmed = activeRedArmed,
-            activeYellowArmed = activeYellowArmed,
+            activeSlowRedArmed = activeArmed.slowRed,
+            activeSlowYellowArmed = activeArmed.slowYellow,
+            activeFastRedArmed = activeArmed.fastRed,
+            activeFastYellowArmed = activeArmed.fastYellow,
             nightActive = nightActive,
             nightWindowText = if (prefs.night.window.enabled) {
                 nightWindowText(prefs.night.window.startMin, prefs.night.window.endMin)
@@ -455,16 +510,21 @@ val uiState: StateFlow<UiState> = combine(
             nightSlowYellowKm = prefs.night.zones.slowYellowKm,
             nightFastRedMin = prefs.night.zones.fastRedMin,
             nightFastYellowMin = prefs.night.zones.fastYellowMin,
-            nightRedArmed = prefs.night.zones.redArmed,
-            nightYellowArmed = prefs.night.zones.yellowArmed,
+            nightSlowRedArmed = prefs.night.zones.slowRedArmed,
+            nightSlowYellowArmed = prefs.night.zones.slowYellowArmed,
+            nightFastRedArmed = prefs.night.zones.fastRedArmed,
+            nightFastYellowArmed = prefs.night.zones.fastYellowArmed,
             nightZoneSirenOverride = prefs.night.zones.zoneSirenOverride,
             nightOfficialSirenOverride = prefs.night.zones.officialSirenOverride,
             languageChosen = prefs.languageChosen,
+            batteryOnboardShown = prefs.batteryOnboardShown,
             threatCardSize = prefs.cardSize,
             iconSet = prefs.iconSet,
             showMapScale = prefs.showMapScale,
             fastGroupCollapsed = prefs.fastGroupCollapsed,
-            slowGroupCollapsed = prefs.slowGroupCollapsed
+            slowGroupCollapsed = prefs.slowGroupCollapsed,
+            fastVibrationLevel = prefs.fastVibrationLevel,
+            slowVibrationLevel = prefs.slowVibrationLevel
         )
     }.stateIn(
         viewModelScope,
@@ -669,19 +729,29 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setFastYellowMin(min) }
     }
 
-    fun setRedArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setRedZoneArmed(armed) }
+    fun setSlowRedArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setSlowRedZoneArmed(armed) }
     }
 
-    fun setYellowArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setYellowZoneArmed(armed) }
+    fun setSlowYellowArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setSlowYellowZoneArmed(armed) }
     }
 
-    /** Master alarm switch: arms or silences both zone tiers together. */
+    fun setFastRedArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setFastRedZoneArmed(armed) }
+    }
+
+    fun setFastYellowArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setFastYellowZoneArmed(armed) }
+    }
+
+    /** Master alarm switch: arms or silences all four zone bells together. */
     fun setAlertsArmed(armed: Boolean) {
         viewModelScope.launch {
-            prefs.setRedZoneArmed(armed)
-            prefs.setYellowZoneArmed(armed)
+            prefs.setSlowRedZoneArmed(armed)
+            prefs.setSlowYellowZoneArmed(armed)
+            prefs.setFastRedZoneArmed(armed)
+            prefs.setFastYellowZoneArmed(armed)
         }
     }
 
@@ -691,6 +761,18 @@ val uiState: StateFlow<UiState> = combine(
 
     fun setSirenOverride(override: Boolean) {
         viewModelScope.launch { prefs.setSirenOverride(override) }
+    }
+
+    fun setFastVibrationLevel(level: Int) {
+        viewModelScope.launch { prefs.setFastVibrationLevel(level) }
+    }
+
+    fun setSlowVibrationLevel(level: Int) {
+        viewModelScope.launch { prefs.setSlowVibrationLevel(level) }
+    }
+
+    fun setBatteryOnboardShown(shown: Boolean) {
+        viewModelScope.launch { prefs.setBatteryOnboardShown(shown) }
     }
 
     fun setNightEnabled(enabled: Boolean) {
@@ -725,12 +807,20 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setNightFastYellowMin(min) }
     }
 
-    fun setNightRedArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setNightRedZoneArmed(armed) }
+    fun setNightSlowRedArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setNightSlowRedZoneArmed(armed) }
     }
 
-    fun setNightYellowArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setNightYellowZoneArmed(armed) }
+    fun setNightSlowYellowArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setNightSlowYellowZoneArmed(armed) }
+    }
+
+    fun setNightFastRedArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setNightFastRedZoneArmed(armed) }
+    }
+
+    fun setNightFastYellowArmed(armed: Boolean) {
+        viewModelScope.launch { prefs.setNightFastYellowZoneArmed(armed) }
     }
 
     fun setNightZoneSirenOverride(override: Boolean) {

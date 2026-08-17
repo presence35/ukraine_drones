@@ -552,11 +552,11 @@ fun NeptunMapView(
                         snippet = regionLabel
                         // Rotate to show course, mirroring NEPTUN's predict().heading: velocity
                         // bearing while live, else reported heading, else their A(id) pseudo-course.
-                        // The classic icons face up at 0°; the photo set has a baked-in facing
-                        // angle, so its rotation is the course minus that base (kept in 0..360).
+                        // The classic icons face up at 0°; the photo/army sets have a baked-in
+                        // facing angle, so their rotation is the course minus that base (0..360).
                         rotation = if (t.areaOnly) 0f else {
                             val course = t.courseDeg.toFloat()
-                            val base = if (iconSet == ThreatIconSet.PHOTO) IconCatalog.photoBaseDeg(t.type) else 0f
+                            val base = IconCatalog.baseDeg(t.type, iconSet)
                             (course - base + 360f) % 360f
                         }
                         setOnMarkerClickListener { _, _ ->
@@ -680,7 +680,7 @@ fun NeptunMapView(
                 if (r.type !in hiddenTypesState) {
                     val marker = markerRefs.value[r.id]
                     val anchor = marker?.position ?: GeoPoint(r.lat, r.lon)
-                    val base = if (iconSetState == ThreatIconSet.PHOTO) IconCatalog.photoBaseDeg(r.type) else 0f
+                    val base = IconCatalog.baseDeg(r.type, iconSetState)
                     val rotation = marker?.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
                     val icon = marker?.icon ?: threatIcon(context, r.type, iconSetState)
                     val origin = focusLocationState ?: LocationTracker.location.value
@@ -726,7 +726,7 @@ fun NeptunMapView(
                 }
                 val targetRot = if (t.areaOnly) 0f else {
                     val course = t.courseDeg.toFloat()
-                    val base = if (iconSetState == ThreatIconSet.PHOTO) IconCatalog.photoBaseDeg(t.type) else 0f
+                    val base = IconCatalog.baseDeg(t.type, iconSetState)
                     (course - base + 360f) % 360f
                 }
                 if (marker.rotation != targetRot) {

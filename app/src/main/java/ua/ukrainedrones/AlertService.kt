@@ -51,6 +51,8 @@ class AlertService : Service() {
         private const val NOTIF_ALLCLEAR = 3
         private const val NOTIF_OFFLINE = 4
         private const val CENTRE_ALERT_GRACE_MS = 60_000L
+        /** Vibration level used for official alerts with no known reason threat (fixed, urgent). */
+        private const val VIBRATION_STRONG = 4
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, AlertService::class.java))
@@ -91,23 +93,39 @@ class AlertService : Service() {
             val zoneThreats: Map<String, ThreatZone>,
             val params: ZoneParams,
             val lang: AppLanguage,
-            val redArmed: Boolean,
-            val yellowArmed: Boolean,
+            val slowRedArmed: Boolean,
+            val slowYellowArmed: Boolean,
+            val fastRedArmed: Boolean,
+            val fastYellowArmed: Boolean,
             val officialAlertsEnabled: Boolean,
             val zoneSirenOverride: Boolean,
             val officialSirenOverride: Boolean,
             val connected: Boolean,
-            val offlineElapsedSec: Long?
+            val offlineElapsedSec: Long?,
+            val fastVibrationLevel: Int,
+            val slowVibrationLevel: Int,
+            val focusLocation: LatLng?
         ) : MonitorEvent()
     }
 
     /** Toggle + follow state used to gate zone/official alert tiering. */
     private data class AlertConfig(
-        val redArmed: Boolean,
-        val yellowArmed: Boolean,
+        val slowRedArmed: Boolean,
+        val slowYellowArmed: Boolean,
+        val fastRedArmed: Boolean,
+        val fastYellowArmed: Boolean,
         val officialAlertsEnabled: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean
+    )
+
+    /** Per-tick inputs merged with the threat-alert toggles: language, pin and vibration strengths. */
+    private data class TailPrefs(
+        val enabled: Set<ThreatType>,
+        val lang: AppLanguage,
+        val pinned: String?,
+        val fastVibrationLevel: Int,
+        val slowVibrationLevel: Int
     )
 
     /** Night-mode window prefs (raw, day values untouched). */
@@ -132,6 +150,7 @@ class AlertService : Service() {
         super.onCreate()
         createChannels()
         ConnectionLog.attach(applicationContext)
+        AlertHistory.attach(applicationContext)
         NeptunClient.start()
         scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
         scope.launch {
@@ -200,19 +219,25 @@ class AlertService : Service() {
                     ZoneParams(slowRed, slowYellow, fastRed, fastYellow)
                 },
                 combine(
-                    prefs.redZoneArmed(),
-                    prefs.yellowZoneArmed(),
+                    prefs.slowRedZoneArmed(),
+                    prefs.slowYellowZoneArmed(),
+                    prefs.fastRedZoneArmed(),
+                    prefs.fastYellowZoneArmed(),
                     prefs.officialAlertsEnabled(),
                     prefs.sirenOverride(),
                     prefs.followMe()
                 ) { flags: Array<Boolean> ->
-                    AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4])
+                    AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6])
                 },
                 combine(
                     threatAlertFlow(prefs),
                     prefs.language(),
-                    prefs.pinnedCity()
-                ) { enabled, lang, pinned -> Triple(enabled, lang, pinned) },
+                    prefs.pinnedCity(),
+                    prefs.fastVibrationLevel(),
+                    prefs.slowVibrationLevel()
+                ) { enabled, lang, pinned, fastVib, slowVib ->
+                    TailPrefs(enabled, lang, pinned, fastVib, slowVib)
+                },
                 combine(
                     combine(
                         prefs.nightEnabled(), prefs.nightStartMin(), prefs.nightEndMin(),
@@ -225,12 +250,22 @@ class AlertService : Service() {
                             prefs.nightSlowRedKm(), prefs.nightSlowYellowKm(), prefs.nightFastRedMin(),
                             prefs.nightFastYellowMin()
                         ) { sr, sy, fr, fy ->
-                            NightZones(sr, sy, fr, fy, redArmed = true, yellowArmed = true)
+                            NightZones(sr, sy, fr, fy, slowRedArmed = true, slowYellowArmed = true, fastRedArmed = true, fastYellowArmed = true)
                         },
                         combine(
-                            prefs.nightRedZoneArmed(), prefs.nightYellowZoneArmed()
-                        ) { ra, ya -> ra to ya }
-                    ) { zones, armed -> zones.copy(redArmed = armed.first, yellowArmed = armed.second) },
+                            prefs.nightSlowRedZoneArmed(), prefs.nightSlowYellowZoneArmed(),
+                            prefs.nightFastRedZoneArmed(), prefs.nightFastYellowZoneArmed()
+                        ) { flags: Array<Boolean> ->
+                            flags
+                        }
+                    ) { zones, flags ->
+                        zones.copy(
+                            slowRedArmed = flags[0],
+                            slowYellowArmed = flags[1],
+                            fastRedArmed = flags[2],
+                            fastYellowArmed = flags[3]
+                        )
+                    },
                     combine(
                         prefs.nightZoneSirenOverride(), prefs.nightOfficialSirenOverride()
                     ) { zoneOv, officialOv -> zoneOv to officialOv }
@@ -242,8 +277,8 @@ class AlertService : Service() {
                 val gps = core.second
                 val now = core.third
                 val followMe = config.followMe
-                val lang = tail.second
-                val pinned = tail.third?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
+                val lang = tail.lang
+                val pinned = tail.pinned?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
                 val focus = if (followMe) gps else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
                 val nightActive = isNightActive(
                     NightConfig(night.window.enabled, night.window.startMin, night.window.endMin),
@@ -252,8 +287,12 @@ class AlertService : Service() {
                 val effectiveParams = effectiveZoneParams(
                     params, night.zones, night.window.useCustomZones, nightActive
                 )
-                val (redArmed, yellowArmed) = effectiveArmed(
-                    config.redArmed, config.yellowArmed, night.zones, night.window.useCustomZones, nightActive
+                val armed = effectiveArmed(
+                    ZoneArmed(
+                        config.slowRedArmed, config.slowYellowArmed,
+                        config.fastRedArmed, config.fastYellowArmed
+                    ),
+                    night.zones, night.window.useCustomZones, nightActive
                 )
                 val zoneSirenOverride = if (nightActive) night.zoneSirenOverride else config.sirenOverride
                 val officialSirenOverride = if (nightActive) night.officialSirenOverride else config.sirenOverride
@@ -265,7 +304,7 @@ class AlertService : Service() {
                     buildReason(
                         neptun, attribution.token, lang, focus,
                         effectiveParams, now,
-                        tail.first,
+                        tail.enabled,
                         focusRegionText(lang, followMe, pinned)
                     )
                 } else null to null
@@ -279,16 +318,21 @@ class AlertService : Service() {
                     focusPinned = !followMe && pinned != null,
                     officialReason = officialReason,
                     officialReasonThreatId = officialReasonThreatId,
-                    zoneThreats = zoneThreats(neptun, effectiveParams, focus, tail.first, now),
+                    zoneThreats = zoneThreats(neptun, effectiveParams, focus, tail.enabled, now),
                     params = effectiveParams,
                     lang = lang,
-                    redArmed = redArmed,
-                    yellowArmed = yellowArmed,
+                    slowRedArmed = armed.slowRed,
+                    slowYellowArmed = armed.slowYellow,
+                    fastRedArmed = armed.fastRed,
+                    fastYellowArmed = armed.fastYellow,
                     officialAlertsEnabled = config.officialAlertsEnabled,
                     zoneSirenOverride = zoneSirenOverride,
                     officialSirenOverride = officialSirenOverride,
                     connected = neptun.connected,
-                    offlineElapsedSec = neptun.offlineElapsedSec
+                    offlineElapsedSec = neptun.offlineElapsedSec,
+                    fastVibrationLevel = tail.fastVibrationLevel,
+                    slowVibrationLevel = tail.slowVibrationLevel,
+                    focusLocation = focus
                 )
             }.collect { handleState(it) }
         }
@@ -408,10 +452,15 @@ class AlertService : Service() {
         val all = NeptunClient.state.value.threats
 
         /** Channel tier after arming toggles are applied; null = no sound for this object. */
-        fun alertTier(id: String, spatial: ThreatZone): ThreatZone? = when (spatial) {
-            ThreatZone.INNER -> if (state.redArmed) ThreatZone.INNER
-            else if (state.yellowArmed) ThreatZone.OUTER else null
-            ThreatZone.OUTER -> if (state.yellowArmed) ThreatZone.OUTER else null
+        fun alertTier(id: String, spatial: ThreatZone): ThreatZone? {
+            val fast = FastThreatTypes.contains(all[id]?.type)
+            val red = if (fast) state.fastRedArmed else state.slowRedArmed
+            val yellow = if (fast) state.fastYellowArmed else state.slowYellowArmed
+            return when (spatial) {
+                ThreatZone.INNER -> if (red) ThreatZone.INNER
+                else if (yellow) ThreatZone.OUTER else null
+                ThreatZone.OUTER -> if (yellow) ThreatZone.OUTER else null
+            }
         }
 
         // Fire when a threat's alert tier changes (closest/urgent tier wins).
@@ -431,14 +480,28 @@ class AlertService : Service() {
             val (id, zone) = newEntries.first()
             val t = all[id]
             val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
-            postAlert(zone, bannerFor(zone, s), body, state.zoneSirenOverride, revealThreat = t)
+            postAlert(
+                zone, bannerFor(zone, s), body, state.zoneSirenOverride, revealThreat = t,
+                vibrationLevel = if (t?.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+            )
             posted = true
             knownZones = knownZones + (id to zone)
+            AlertHistory.openAlert(
+                "id:$id", zone, t?.type,
+                t?.let { it.locality ?: it.district ?: it.region },
+                distanceFromFocusKm(t, state),
+                System.currentTimeMillis()
+            )
         }
         // Drop ids that left zoneThreats entirely (resolved/expired/out of range) so a future
         // re-entry is treated as new; everything else keeps its value so the not-yet-fired
         // new entries are re-evaluated on the next tick.
+        val droppedZoneIds = knownZones.keys.filterNot { it in state.zoneThreats.keys }
         knownZones = knownZones.filterKeys { it in state.zoneThreats.keys }
+        if (droppedZoneIds.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            droppedZoneIds.forEach { AlertHistory.closeAlert("id:$it", now) }
+        }
 
         // Official oblast-level alert (independent of zone membership). Gated by the
         // Settings toggle — turning it off stops only official-alert notifications,
@@ -447,14 +510,24 @@ class AlertService : Service() {
         val officialBody = state.officialReason?.let { it + sourceTag(state.focusAlertSource, s) }
             ?: state.focusRegion + sourceTag(state.focusAlertSource, s)
         if (officialActive && !wasFocusAlertActive && !posted) {
+            val reasonThreat = state.officialReasonThreatId?.let { all[it] }
             postAlert(
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
                 state.officialSirenOverride,
-                revealThreat = state.officialReasonThreatId?.let { all[it] }
+                revealThreat = reasonThreat,
+                vibrationLevel = reasonThreat?.let {
+                    if (it.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+                } ?: VIBRATION_STRONG
             )
             currentReasonThreatId = state.officialReasonThreatId
+            AlertHistory.openAlert(
+                "official", null, reasonThreat?.type,
+                reasonThreat?.let { it.locality ?: it.district ?: it.region },
+                distanceFromFocusKm(reasonThreat, state),
+                System.currentTimeMillis()
+            )
         } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
             state.officialReasonThreatId != currentReasonThreatId
         ) {
@@ -464,12 +537,16 @@ class AlertService : Service() {
             // the threat behind the reason (not its text, which NEPTUN refreshes as
             // confirmations tick up) so the siren isn't re-triggered — and never clobbers a
             // ringing zone alert (alertable is non-empty then).
+            val reasonThreat = state.officialReasonThreatId?.let { all[it] }
             postAlert(
                 null,
                 String.format(s.alertBannerFormat, state.focusBannerCity),
                 officialBody,
                 state.officialSirenOverride,
-                revealThreat = state.officialReasonThreatId?.let { all[it] },
+                revealThreat = reasonThreat,
+                vibrationLevel = reasonThreat?.let {
+                    if (it.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+                } ?: VIBRATION_STRONG,
                 silent = true
             )
             currentReasonThreatId = state.officialReasonThreatId
@@ -483,6 +560,7 @@ class AlertService : Service() {
             if (alertable.isEmpty()) {
                 cancelAlert()
             }
+            AlertHistory.closeAlert("official", System.currentTimeMillis())
             postAllClear(s, state.focusBannerCity)
             currentReasonThreatId = null
         }
@@ -498,6 +576,7 @@ class AlertService : Service() {
             } else if (System.currentTimeMillis() - since >= CENTRE_ALERT_GRACE_MS) {
                 emptySince = null
                 cancelAlert()
+                AlertHistory.closeAllZoneAlerts(System.currentTimeMillis())
                 knownZones = emptyMap()
             }
         } else {
@@ -515,6 +594,13 @@ class AlertService : Service() {
         val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
         val where = t.locality ?: t.district ?: t.region
         return if (where != null) "$label — $where" else label
+    }
+
+    /** Approx. distance from the focus point (GPS/pin) to a threat, km — for the alert history. */
+    private fun distanceFromFocusKm(t: Threat?, state: MonitorEvent.State): Double? {
+        val focus = state.focusLocation ?: return null
+        if (t == null) return null
+        return distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
     }
 
     /**
@@ -613,7 +699,8 @@ class AlertService : Service() {
         body: String,
         sirenOverride: Boolean,
         revealThreat: Threat?,
-        silent: Boolean
+        silent: Boolean,
+        vibrationLevel: Int
     ): NotificationCompat.Builder {
         // Without the override, sirens follow the phone's ringer/vibrate mode via the
         // notification stream; with it, they ring on the alarm stream even in vibrate/silent.
@@ -632,6 +719,7 @@ class AlertService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent(revealThreat))
+            .setVibrate(vibrationPattern(vibrationLevel))
             .apply {
                 // Silent updates refresh the alert body without re-ringing the siren on the
                 // same notification (e.g. a reason text arriving after the initial alert).
@@ -645,12 +733,13 @@ class AlertService : Service() {
         body: String,
         sirenOverride: Boolean,
         revealThreat: Threat? = null,
-        silent: Boolean = false
+        silent: Boolean = false,
+        vibrationLevel: Int = 3
     ) {
         alertEpoch++
         safeNotify(
             NOTIF_ALERT,
-            buildAlertNotification(zone, title, body, sirenOverride, revealThreat, silent).build()
+            buildAlertNotification(zone, title, body, sirenOverride, revealThreat, silent, vibrationLevel).build()
         )
     }
 
@@ -734,7 +823,7 @@ class AlertService : Service() {
     /** "Retry" action on the offline notifications: forces an immediate reconnect attempt. */
     private fun retryPendingIntent(): PendingIntent {
         val intent = Intent(this, AlertService::class.java).setAction(ACTION_RETRY)
-        return PendingIntent.getService(
+        return PendingIntent.getForegroundService(
             this, 1, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -854,4 +943,17 @@ class AlertService : Service() {
         scope.cancel()
         super.onDestroy()
     }
+}
+
+/**
+ * Vibration pattern for a 0–4 strength level, applied per notification (overrides the channel
+ * default). Level 0 disables vibration; higher levels mean longer and more frequent pulses.
+ * Android notifications express "strength" only through the pattern — there is no amplitude.
+ */
+internal fun vibrationPattern(level: Int): LongArray = when (level) {
+    0 -> longArrayOf(0)
+    1 -> longArrayOf(0, 120, 60, 120)
+    2 -> longArrayOf(0, 200, 100, 200)
+    4 -> longArrayOf(0, 600, 100, 600, 100, 600)
+    else -> longArrayOf(0, 400, 120, 400)
 }

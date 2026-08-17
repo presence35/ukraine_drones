@@ -15311,3 +15311,17 @@ go
 ## 17/08/2026, 13:20:08
 
 go
+## 17/08/2026, 13:28:30
+
+go
+## 17/08/2026, 13:46:20
+
+D:\Desktop\drones\app\src\main\iconpacks\army\drawable-nodpi
+
+rename properly and import
+## 17/08/2026, 13:46:28
+
+go
+## 17/08/2026, 13:53:07
+
+go

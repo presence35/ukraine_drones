@@ -38,7 +38,7 @@ private val Green = Color(0xFF4CAF50)
 
 enum class GuideDiagram {
 LIVE, STRIP, CONN, ZONES, EDIT_ZONES, NOTIF, TOGGLES, FOLLOW, PIN,
-    CARD_SIZE, CARD_READ, LANG, THREAT_TOGGLES, UPDATE
+    CARD_SIZE, CARD_READ, LANG, THREAT_TOGGLES, UPDATE, NIGHT
 }
 
 /** Animated mini-illustration for one feature-guide card. */
@@ -77,6 +77,7 @@ fun FeatureDiagram(kind: GuideDiagram, modifier: Modifier = Modifier) {
             GuideDiagram.CARD_READ -> drawCardRead()
             GuideDiagram.THREAT_TOGGLES -> drawThreatToggles()
             GuideDiagram.UPDATE -> drawUpdate(t)
+            GuideDiagram.NIGHT -> drawNight()
         }
     }
 }
@@ -315,4 +316,27 @@ private fun DrawScope.drawUpdate(t: Float) {
     val bw = size.width * 0.5f
     drawRoundRect(DimGrey.copy(alpha = 0.4f), Offset(cx - bw / 2, size.height * 0.86f), Size(bw, 4.dp.toPx()), CornerRadius(2.dp.toPx()))
     drawRoundRect(Green, Offset(cx - bw / 2, size.height * 0.86f), Size(bw * (0.3f + 0.6f * t), 4.dp.toPx()), CornerRadius(2.dp.toPx()))
+}
+
+private fun DrawScope.drawNight() {
+    bg()
+    val mx = size.width * 0.72f
+    val my = size.height * 0.3f
+    val mr = size.width * 0.13f
+    drawCircle(White, mr, Offset(mx, my))
+    drawCircle(MapBlue, mr * 0.85f, Offset(mx + mr * 0.34f, my - mr * 0.14f))
+    drawCircle(White.copy(alpha = 0.55f), 1.5.dp.toPx(), Offset(size.width * 0.15f, size.height * 0.18f))
+    drawCircle(White.copy(alpha = 0.45f), 1.5.dp.toPx(), Offset(size.width * 0.34f, size.height * 0.4f))
+    drawCircle(White.copy(alpha = 0.55f), 1.5.dp.toPx(), Offset(size.width * 0.5f, size.height * 0.13f))
+    val y0 = size.height * 0.58f
+    val y1 = size.height * 0.9f
+    val sx = size.width * 0.3f
+    drawLine(DimGrey.copy(alpha = 0.5f), Offset(sx, y1), Offset(sx, y0), 3.dp.toPx(), StrokeCap.Round)
+    drawLine(Red, Offset(sx, y1), Offset(sx, y0 + (y1 - y0) * 0.45f), 3.dp.toPx(), StrokeCap.Round)
+    drawCircle(Red, 5.dp.toPx(), Offset(sx, y0 + (y1 - y0) * 0.45f))
+    val fx = size.width * 0.68f
+    drawLine(DimGrey.copy(alpha = 0.5f), Offset(fx, y1), Offset(fx, y0), 3.dp.toPx(), StrokeCap.Round)
+    drawLine(Yellow, Offset(fx, y1), Offset(fx, y0 + (y1 - y0) * 0.3f), 3.dp.toPx(), StrokeCap.Round)
+    drawCircle(Yellow, 5.dp.toPx(), Offset(fx, y0 + (y1 - y0) * 0.3f))
+    bell(size.width * 0.5f, size.height * 0.48f, Yellow)
 }

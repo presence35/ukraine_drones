@@ -46,9 +46,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 internal fun ConnectionStatus(
@@ -60,6 +58,8 @@ internal fun ConnectionStatus(
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
     s: Strings.StringSet,
+    lang: AppLanguage,
+    iconSet: ThreatIconSet,
     modifier: Modifier = Modifier
 ) {
     val online = !neptunDown && !backupActive
@@ -86,7 +86,7 @@ internal fun ConnectionStatus(
             painter = painterResource(if (online) R.drawable.neptun_green else R.drawable.neptun_red),
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            colorFilter = if (backupActive && !online) ColorFilter.tint(Color(0xFFF9A825)) else null,
+            colorFilter = if (backupActive && !neptunDown) ColorFilter.tint(Color(0xFFF9A825)) else null,
             modifier = Modifier.size(width = 14.dp, height = 14.dp)
         )
         Spacer(Modifier.width(6.dp))
@@ -177,7 +177,8 @@ internal fun ConnectionStatus(
                         Spacer(Modifier.width(8.dp))
                         Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
-                    ConnectionLogSection(s)
+                    ConnectionLogSection(s, lang)
+                    AlertHistorySection(s, lang, iconSet)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.clickable {
@@ -240,7 +241,7 @@ internal fun SourceStatusRow(color: Color, name: String, active: Boolean, active
  * ticking once a second while expanded); the completed entries follow, newest first.
  */
 @Composable
-private fun ConnectionLogSection(s: Strings.StringSet) {
+private fun ConnectionLogSection(s: Strings.StringSet, lang: AppLanguage) {
     var expanded by remember { mutableStateOf(false) }
     val entries by ConnectionLog.entries.collectAsState()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -285,7 +286,7 @@ private fun ConnectionLogSection(s: Strings.StringSet) {
                 )
             } else {
                 rows.take(10).forEach { entry ->
-                    ConnectionLogRow(entry, s)
+                    ConnectionLogRow(entry, s, lang)
                 }
             }
         }
@@ -293,10 +294,8 @@ private fun ConnectionLogSection(s: Strings.StringSet) {
 }
 
 @Composable
-private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet) {
-    val time = remember(entry.atMillis) {
-        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.atMillis))
-    }
+private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet, lang: AppLanguage) {
+    val time = remember(entry.atMillis) { formatDateTime(lang, entry.atMillis) }
     val color = when (entry.status) {
         ConnStatus.ONLINE -> Color(0xFF4CAF50)
         ConnStatus.OFFLINE -> Color(0xFFE57373)
@@ -326,6 +325,138 @@ private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet) {
                 String.format(s.connLogDurFormat, entry.durationSec / 60, entry.durationSec % 60),
                 style = MaterialTheme.typography.labelMedium,
                 color = color
+            )
+        }
+    }
+}
+
+/**
+ * Collapsible log of the last ~20 fired alerts (zone sirens + official alerts), newest first.
+ * Rows carry the threat icon, a tier dot, the type label, datetime, locality, distance and —
+ * once ended — the duration it rang.
+ */
+@Composable
+private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet: ThreatIconSet) {
+    var expanded by remember { mutableStateOf(false) }
+    val entries by AlertHistory.entries.collectAsState()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                s.alertHistoryTitle,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            if (entries.isEmpty()) {
+                Text(
+                    s.alertHistoryEmpty,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                entries.asReversed().forEach { entry ->
+                    AlertHistoryRow(entry, s, lang, iconSet)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlertHistoryRow(
+    entry: AlertHistoryEntry,
+    s: Strings.StringSet,
+    lang: AppLanguage,
+    iconSet: ThreatIconSet
+) {
+    val time = remember(entry.atMillis) { formatDateTime(lang, entry.atMillis) }
+    val isOfficial = entry.tier == null
+    val typeLabel = entry.threatType?.let { type ->
+        val info = ThreatTypeCatalog.INFO.getValue(type)
+        if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+    } ?: s.alertHistoryOfficialLabel
+    val dotColor = when (entry.tier) {
+        ThreatZone.INNER -> Color(0xFFE57373)
+        ThreatZone.OUTER -> Color(0xFFF9A825)
+        null -> Color(0xFF64B5F6)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            painter = if (isOfficial && entry.threatType == null) {
+                painterResource(R.drawable.ic_trident)
+            } else {
+                painterResource(IconCatalog.res(entry.threatType ?: ThreatType.UNKNOWN, iconSet))
+            },
+            contentDescription = null,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(dotColor)
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                typeLabel,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    time,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                entry.locality?.let { locality ->
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        locality,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        entry.distanceKm?.let { km ->
+            Spacer(Modifier.width(8.dp))
+            Text(
+                String.format(s.alertHistoryDistanceFormat, km.roundToInt()),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        entry.endMillis?.let { end ->
+            val durSec = ((end - entry.atMillis) / 1000).coerceAtLeast(0)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                String.format(s.connLogDurFormat, durSec / 60, durSec % 60),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

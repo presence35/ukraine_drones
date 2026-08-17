@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +72,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var guideFeatureId by remember { mutableStateOf<String?>(null) }
     var guideFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
+    val settingsListState = rememberLazyListState()
     LaunchedEffect(Unit) {
         settingsHintRemaining = prefs.settingsHintRemaining().first()
     }
@@ -108,8 +110,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onSlowYellowChange = { viewModel.setSlowYellowKm(it) },
             onFastRedChange = { viewModel.setFastRedMin(it) },
             onFastYellowChange = { viewModel.setFastYellowMin(it) },
-            onRedArmedChange = { viewModel.setRedArmed(it) },
-            onYellowArmedChange = { viewModel.setYellowArmed(it) },
+            onSlowRedArmedChange = { viewModel.setSlowRedArmed(it) },
+            onSlowYellowArmedChange = { viewModel.setSlowYellowArmed(it) },
+            onFastRedArmedChange = { viewModel.setFastRedArmed(it) },
+            onFastYellowArmedChange = { viewModel.setFastYellowArmed(it) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
             onTempNeutralize = { id -> viewModel.tempNeutralize(id) }
@@ -119,11 +123,15 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             BackHandler { screen = Screen.MAP }
             SettingsScreen(
                 lang = uiState.language,
+                listState = settingsListState,
+                onThreatsScrollHandled = { scrollToThreatsTick = 0 },
                 scrollToThreatsTick = scrollToThreatsTick,
                 hiddenTypes = uiState.hiddenTypes,
                 silencedTypes = uiState.silencedTypes,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
                 sirenOverride = uiState.sirenOverride,
+                fastVibrationLevel = uiState.fastVibrationLevel,
+                slowVibrationLevel = uiState.slowVibrationLevel,
                 nightEnabled = uiState.nightEnabled,
                 nightStartMin = uiState.nightStartMin,
                 nightEndMin = uiState.nightEndMin,
@@ -132,8 +140,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 nightSlowYellowKm = uiState.nightSlowYellowKm,
                 nightFastRedMin = uiState.nightFastRedMin,
                 nightFastYellowMin = uiState.nightFastYellowMin,
-                nightRedArmed = uiState.nightRedArmed,
-                nightYellowArmed = uiState.nightYellowArmed,
+                nightSlowRedArmed = uiState.nightSlowRedArmed,
+                nightSlowYellowArmed = uiState.nightSlowYellowArmed,
+                nightFastRedArmed = uiState.nightFastRedArmed,
+                nightFastYellowArmed = uiState.nightFastYellowArmed,
                 nightZoneSirenOverride = uiState.nightZoneSirenOverride,
                 nightOfficialSirenOverride = uiState.nightOfficialSirenOverride,
                 disclaimerCollapsed = uiState.disclaimerCollapsed,
@@ -156,6 +166,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
+                onFastVibrationChange = { viewModel.setFastVibrationLevel(it) },
+                onSlowVibrationChange = { viewModel.setSlowVibrationLevel(it) },
                 onNightEnabledChange = { viewModel.setNightEnabled(it) },
                 onNightStartChange = { viewModel.setNightStartMin(it) },
                 onNightEndChange = { viewModel.setNightEndMin(it) },
@@ -164,8 +176,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onNightSlowYellowChange = { viewModel.setNightSlowYellowKm(it) },
                 onNightFastRedChange = { viewModel.setNightFastRedMin(it) },
                 onNightFastYellowChange = { viewModel.setNightFastYellowMin(it) },
-                onNightRedArmedChange = { viewModel.setNightRedArmed(it) },
-                onNightYellowArmedChange = { viewModel.setNightYellowArmed(it) },
+                onNightSlowRedArmedChange = { viewModel.setNightSlowRedArmed(it) },
+                onNightSlowYellowArmedChange = { viewModel.setNightSlowYellowArmed(it) },
+                onNightFastRedArmedChange = { viewModel.setNightFastRedArmed(it) },
+                onNightFastYellowArmedChange = { viewModel.setNightFastYellowArmed(it) },
                 onNightZoneSirenOverrideChange = { viewModel.setNightZoneSirenOverride(it) },
                 onNightOfficialSirenOverrideChange = { viewModel.setNightOfficialSirenOverride(it) },
                 onFollowMeChange = { viewModel.setFollowMe(it) },
@@ -238,6 +252,26 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
             onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
             onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) }
+        )
+    }
+
+    // First-run battery prompt (also once for pre-onboarding installs): shown after the language
+    // picker, only while the OS still throttles the app. Already-exempt users are skipped
+    // silently so MainActivity's deferred permission requests can proceed.
+    val batteryExempt = remember { BatteryOptimization.isIgnoringBatteryOptimizations(context) }
+    LaunchedEffect(uiState.languageChosen, uiState.batteryOnboardShown, batteryExempt) {
+        if (uiState.languageChosen && !uiState.batteryOnboardShown && batteryExempt) {
+            viewModel.setBatteryOnboardShown(true)
+        }
+    }
+    if (uiState.languageChosen && !uiState.batteryOnboardShown && !batteryExempt) {
+        BatteryOnboardingDialog(
+            s = Strings.get(uiState.language),
+            onAllow = {
+                viewModel.setBatteryOnboardShown(true)
+                BatteryOptimization.requestExemption(context)
+            },
+            onLater = { viewModel.setBatteryOnboardShown(true) }
         )
     }
 }
@@ -330,6 +364,25 @@ private fun LanguageChooseDialog(
     )
 }
 
+/**
+ * First-run battery exemption. Appears once, right after the language picker (only when the OS
+ * still throttles this app), so MainActivity's deferred system permission dialogs come last.
+ */
+@Composable
+private fun BatteryOnboardingDialog(
+    s: Strings.StringSet,
+    onAllow: () -> Unit,
+    onLater: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onLater,
+        confirmButton = { TextButton(onClick = onAllow) { Text(s.batteryAllowButton) } },
+        dismissButton = { TextButton(onClick = onLater) { Text(s.batteryLater) } },
+        title = { Text(s.batteryTitle) },
+        text = { Text(s.batteryBody) }
+    )
+}
+
 @Composable
 private fun OnboardingTipRow(iconRes: Int, iconTint: Color, text: String) {
     Row(modifier = Modifier.padding(bottom = 8.dp)) {
@@ -364,8 +417,10 @@ private fun MapScreen(
     onSlowYellowChange: (Int) -> Unit,
     onFastRedChange: (Int) -> Unit,
     onFastYellowChange: (Int) -> Unit,
-    onRedArmedChange: (Boolean) -> Unit,
-    onYellowArmedChange: (Boolean) -> Unit,
+    onSlowRedArmedChange: (Boolean) -> Unit,
+    onSlowYellowArmedChange: (Boolean) -> Unit,
+    onFastRedArmedChange: (Boolean) -> Unit,
+    onFastYellowArmedChange: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit,
     onTempNeutralize: (String) -> Unit
@@ -458,6 +513,8 @@ private fun MapScreen(
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
                     s = s,
+                    lang = uiState.language,
+                    iconSet = uiState.iconSet,
                     modifier = Modifier.padding(end = 4.dp)
                 )
                 IconButton(onClick = openSettings, modifier = Modifier.size(32.dp)) {
@@ -502,7 +559,8 @@ private fun MapScreen(
                     if (!uiState.followMe) {
                         uiState.pinnedCity?.let { city ->
                             val cityName = if (uiState.language == AppLanguage.UA) city.nameUa else city.nameEn
-                            val alertsOff = !uiState.activeRedArmed && !uiState.activeYellowArmed
+                            val alertsOff = !uiState.activeSlowRedArmed && !uiState.activeSlowYellowArmed &&
+                                !uiState.activeFastRedArmed && !uiState.activeFastYellowArmed
                             PinnedPill(
                                 text = String.format(s.mapPillPinned, cityName),
                                 modifier = Modifier
@@ -512,8 +570,8 @@ private fun MapScreen(
                         }
                     }
                     ZoneButtons(
-                        redArmed = uiState.activeRedArmed,
-                        yellowArmed = uiState.activeYellowArmed,
+                        redArmed = uiState.activeSlowRedArmed || uiState.activeFastRedArmed,
+                        yellowArmed = uiState.activeSlowYellowArmed || uiState.activeFastYellowArmed,
                         lang = uiState.language,
                         onZoneTap = { zone ->
                             zoomZone = zone
@@ -691,8 +749,10 @@ private fun MapScreen(
                             slowYellowKm = uiState.slowYellowKm,
                             fastRedMin = uiState.fastRedMin,
                             fastYellowMin = uiState.fastYellowMin,
-                            redArmed = uiState.redArmed,
-                            yellowArmed = uiState.yellowArmed,
+                                                        slowRedArmed = uiState.slowRedArmed,
+                            slowYellowArmed = uiState.slowYellowArmed,
+                            fastRedArmed = uiState.fastRedArmed,
+                            fastYellowArmed = uiState.fastYellowArmed,
                             lang = uiState.language,
                             nightNote = if (uiState.nightActive) {
                                 String.format(s.nightDayZonesNote, uiState.nightWindowText)
@@ -701,8 +761,10 @@ private fun MapScreen(
                             onSlowYellowChange = onSlowYellowChange,
                             onFastRedChange = onFastRedChange,
                             onFastYellowChange = onFastYellowChange,
-                            onRedArmedChange = onRedArmedChange,
-                            onYellowArmedChange = onYellowArmedChange,
+                            onSlowRedArmedChange = onSlowRedArmedChange,
+                            onSlowYellowArmedChange = onSlowYellowArmedChange,
+                            onFastRedArmedChange = onFastRedArmedChange,
+                            onFastYellowArmedChange = onFastYellowArmedChange,
                             onOpenThreatSettings = openThreatSettings,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )

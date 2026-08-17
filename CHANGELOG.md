@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+- First run: the onboarding sequence is now ordered — language picker, then the "keep alerts running" battery prompt, and only after both the system location/notification dialogs appear (permission dialogs no longer jump the queue). Existing users get the battery prompt once too (skipped automatically when already exempt).
+- Settings → Alerts: new "Vibration" section — independent Fast (missiles) and Slow (drones) strength sliders (Off/Soft/Medium/Strong/Urgent). Android has no per-notification vibration amplitude, so strength is expressed as a pulse pattern; official alerts without a known reason threat always ring with the strongest pattern.
+- System status: new "Alerts" log below the connection log — the last 20 fired alerts (red/yellow zone sirens + official alerts), each row with the threat icon, tier dot, type, datetime, location, distance from your GPS/pin and how long it rang. Survives restarts.
+- Timestamps: absolute times (connection log, alert history) now follow the app language instead of the device locale (UA "17.08, 14:30", EN "Aug 17, 14:30").
+- Planned (not started): home-screen widget / lock-screen glance — see ROADMAP.md.
+
+- Settings → Additional: the "Army" icon set is here — a new drawn-style set of all seven threat icons, selectable in the "Threat icons" grid (the Comic placeholder remains). Army markers rotate along their course like the photo set.
+
+- Zones panel: slow/fast alerts are now independent — each of the four (slow red, slow yellow, fast red, fast yellow) has its own bell in the "Edit zones" sheet, so you can, e.g., mute slow yellow while keeping fast yellow. The night's custom zones get the same four independent bells.
+- Zones panel: the Slow/Fast section headers now carry their icons (turtle ⚡-free = slow, lightning = fast).
+- Settings: opens to the last scroll position instead of always jumping — only the "Edit zones" gear lands on the Threats section (the header gear no longer inherits that jump).
+- Night mode: now ON by default and reframed as the critical window — night is when attacks are most likely, so alerts stay on. Muting a night bell shows a warning plus a pointer to "Stop Monitoring & Exit" for total silence (so you don't forget to re-enable tomorrow).
+- Feature guide: a new "Night mode" card.
+
+- Header: the NEPTUN emblem is red whenever NEPTUN is actually down; it stays amber only while the feed is alive but on the backup source.
+- System status: the connection log timestamps now include the date ("MM/dd hh:mm:ss").
+- Notifications: the offline notification's "Retry" action reliably restarts the connection (fixed a race where a superseded socket could swallow the manual retry, and the retry now uses a foreground-service PendingIntent so it survives service restarts on newer Android).
+- Settings: the "Additional settings" section no longer shows a duplicate group header (the collapsible card keeps its own title + arrow). The icon-set tiles show just the icons (bigger), and the Army/Comic placeholders now show a gently bobbing rocket with a "Coming soon" badge instead of plain text.
+
 - Stability: the map no longer rebuilds itself on every threat position update — marker positions, course rotation and staleness dimming now update in place, so during an active alert the map stays smooth (fixes a force-close during the death animation and a significant battery drain).
 - Notifications: an official alert whose reason text arrives after the initial trigger now updates the same notification silently instead of re-ringing the siren.
 - Notifications: a connection drop that starts while the app's background service is killed (and restarted by the system) is now surfaced after the restart instead of being lost.
@@ -10,7 +29,7 @@
 
 - Photo threat icons: the cruise-missile photo now faces right (was top-right).
 
-- Settings → new "Night mode" section: a separate scenario for the night. Set on/off hours (overnight windows supported), decide whether zone sirens and official alerts still ring on vibrate/silent ("always sound") during the night, and optionally give the night its own zone thresholds + red/yellow armed bells (so you can sleep through everything). While the window is active, the map circles and zone tiers switch to the effective (night) values; the "Edit zones" sheet keeps editing the day ones and notes the night window. Alerts follow the same effective logic in the background service.
+- Settings → new "Night mode" section: a separate scenario for the night. Set on/off hours (overnight windows supported), decide whether zone sirens and official alerts still ring on vibrate/silent ("always sound") during the night, and optionally give the night its own zone thresholds + armed bells. While the window is active, the map circles and zone tiers switch to the effective (night) values; the "Edit zones" sheet keeps editing the day ones and notes the night window. Alerts follow the same effective logic in the background service.
 
 - Settings → Additional: the "Unrestricted in background" status now explains itself — once the app runs unrestricted, the card shows the same context as the request (Android won't pause it, so alerts keep ringing on very little power) instead of a bare status line.
 

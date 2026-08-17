@@ -2,6 +2,12 @@ package ua.ukrainedrones
 
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -12,8 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,7 +29,6 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -68,11 +73,15 @@ private val UkraineBlue = Color(0xFF005BBB)
 @Composable
 fun SettingsScreen(
     lang: AppLanguage,
+    listState: LazyListState,
+    onThreatsScrollHandled: () -> Unit,
     scrollToThreatsTick: Int,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     officialAlertsEnabled: Boolean,
     sirenOverride: Boolean,
+    fastVibrationLevel: Int,
+    slowVibrationLevel: Int,
     nightEnabled: Boolean,
     nightStartMin: Int,
     nightEndMin: Int,
@@ -81,8 +90,10 @@ fun SettingsScreen(
     nightSlowYellowKm: Int,
     nightFastRedMin: Int,
     nightFastYellowMin: Int,
-    nightRedArmed: Boolean,
-    nightYellowArmed: Boolean,
+    nightSlowRedArmed: Boolean,
+    nightSlowYellowArmed: Boolean,
+    nightFastRedArmed: Boolean,
+    nightFastYellowArmed: Boolean,
     nightZoneSirenOverride: Boolean,
     nightOfficialSirenOverride: Boolean,
     disclaimerCollapsed: Boolean,
@@ -105,6 +116,8 @@ fun SettingsScreen(
     onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
+    onFastVibrationChange: (Int) -> Unit,
+    onSlowVibrationChange: (Int) -> Unit,
     onNightEnabledChange: (Boolean) -> Unit,
     onNightStartChange: (Int) -> Unit,
     onNightEndChange: (Int) -> Unit,
@@ -113,8 +126,10 @@ fun SettingsScreen(
     onNightSlowYellowChange: (Int) -> Unit,
     onNightFastRedChange: (Int) -> Unit,
     onNightFastYellowChange: (Int) -> Unit,
-    onNightRedArmedChange: (Boolean) -> Unit,
-    onNightYellowArmedChange: (Boolean) -> Unit,
+    onNightSlowRedArmedChange: (Boolean) -> Unit,
+    onNightSlowYellowArmedChange: (Boolean) -> Unit,
+    onNightFastRedArmedChange: (Boolean) -> Unit,
+    onNightFastYellowArmedChange: (Boolean) -> Unit,
     onNightZoneSirenOverrideChange: (Boolean) -> Unit,
     onNightOfficialSirenOverrideChange: (Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
@@ -158,11 +173,14 @@ fun SettingsScreen(
         onDisclaimerCollapse(!disclaimerExpanded)
     }
 
-    val listState = rememberLazyListState()
     // The Threats section header is a fixed item index in this LazyColumn; scroll to it when
-    // the zones-sheet gear asks (ZonesSheet → Settings, landing on Threats).
+    // the zones-sheet gear asks (ZonesSheet → Settings, landing on Threats). The tick is
+    // consumed after the jump so a later plain open keeps the last scroll position.
     LaunchedEffect(scrollToThreatsTick) {
-        if (scrollToThreatsTick > 0) listState.animateScrollToItem(7)
+        if (scrollToThreatsTick > 0) {
+            listState.animateScrollToItem(7)
+            onThreatsScrollHandled()
+        }
     }
 
     Scaffold(
@@ -395,8 +413,10 @@ fun SettingsScreen(
                         slowYellowKm = nightSlowYellowKm,
                         fastRedMin = nightFastRedMin,
                         fastYellowMin = nightFastYellowMin,
-                        redArmed = nightRedArmed,
-                        yellowArmed = nightYellowArmed,
+                        slowRedArmed = nightSlowRedArmed,
+                        slowYellowArmed = nightSlowYellowArmed,
+                        fastRedArmed = nightFastRedArmed,
+                        fastYellowArmed = nightFastYellowArmed,
                         zoneSirenOverride = nightZoneSirenOverride,
                         officialSirenOverride = nightOfficialSirenOverride,
                         onEnabledChange = onNightEnabledChange,
@@ -407,8 +427,10 @@ fun SettingsScreen(
                         onSlowYellowChange = onNightSlowYellowChange,
                         onFastRedChange = onNightFastRedChange,
                         onFastYellowChange = onNightFastYellowChange,
-                        onRedArmedChange = onNightRedArmedChange,
-                        onYellowArmedChange = onNightYellowArmedChange,
+                        onSlowRedArmedChange = onNightSlowRedArmedChange,
+                        onSlowYellowArmedChange = onNightSlowYellowArmedChange,
+                        onFastRedArmedChange = onNightFastRedArmedChange,
+                        onFastYellowArmedChange = onNightFastYellowArmedChange,
                         onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
                         onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange
                     )
@@ -436,6 +458,35 @@ fun SettingsScreen(
                             icon = painterResource(R.drawable.ic_volume_up),
                             iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                            Text(
+                                s.vibrationTitle,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                s.vibrationDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            VibrationSliderRow(
+                                label = s.fastGroupLabel,
+                                level = fastVibrationLevel,
+                                accent = Color(0xFFE57373),
+                                levelName = { vibrationLevelName(s, it) },
+                                onLevelChange = onFastVibrationChange
+                            )
+                            VibrationSliderRow(
+                                label = s.slowGroupLabel,
+                                level = slowVibrationLevel,
+                                accent = Color(0xFFF9A825),
+                                levelName = { vibrationLevelName(s, it) },
+                                onLevelChange = onSlowVibrationChange
+                            )
+                        }
                     }
                 }
             }
@@ -644,8 +695,10 @@ private fun NightModeCard(
     slowYellowKm: Int,
     fastRedMin: Int,
     fastYellowMin: Int,
-    redArmed: Boolean,
-    yellowArmed: Boolean,
+    slowRedArmed: Boolean,
+    slowYellowArmed: Boolean,
+    fastRedArmed: Boolean,
+    fastYellowArmed: Boolean,
     zoneSirenOverride: Boolean,
     officialSirenOverride: Boolean,
     onEnabledChange: (Boolean) -> Unit,
@@ -656,8 +709,10 @@ private fun NightModeCard(
     onSlowYellowChange: (Int) -> Unit,
     onFastRedChange: (Int) -> Unit,
     onFastYellowChange: (Int) -> Unit,
-    onRedArmedChange: (Boolean) -> Unit,
-    onYellowArmedChange: (Boolean) -> Unit,
+    onSlowRedArmedChange: (Boolean) -> Unit,
+    onSlowYellowArmedChange: (Boolean) -> Unit,
+    onFastRedArmedChange: (Boolean) -> Unit,
+    onFastYellowArmedChange: (Boolean) -> Unit,
     onZoneSirenOverrideChange: (Boolean) -> Unit,
     onOfficialSirenOverrideChange: (Boolean) -> Unit
 ) {
@@ -724,15 +779,15 @@ private fun NightModeCard(
             if (useCustomZones) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
-                    SectionCaption(s.slowSectionLabel)
+                    SectionCaption(s.slowSectionLabel, leading = "\uD83D\uDC22", leadingDesc = s.slowGroupIconDesc)
                     ZoneRow(
                         value = slowRedKm,
                         range = 2f..20f,
                         unit = s.kmUnit,
                         accent = ZoneRedColor,
-                        armed = redArmed,
+                        armed = slowRedArmed,
                         bellDesc = s.alertsBellToggle,
-                        onArmedChange = onRedArmedChange,
+                        onArmedChange = onSlowRedArmedChange,
                         onCommit = onSlowRedChange
                     )
                     Spacer(Modifier.height(8.dp))
@@ -743,21 +798,21 @@ private fun NightModeCard(
                         range = 21f..50f,
                         unit = s.kmUnit,
                         accent = ZoneYellowColor,
-                        armed = yellowArmed,
+                        armed = slowYellowArmed,
                         bellDesc = s.alertsBellToggle,
-                        onArmedChange = onYellowArmedChange,
+                        onArmedChange = onSlowYellowArmedChange,
                         onCommit = onSlowYellowChange
                     )
                     Spacer(Modifier.height(12.dp))
-                    SectionCaption(s.fastSectionLabel)
+                    SectionCaption(s.fastSectionLabel, leading = "\u26A1", leadingDesc = s.fastGroupIconDesc)
                     ZoneRow(
                         value = fastRedMin,
                         range = 2f..5f,
                         unit = s.minUnit,
                         accent = ZoneRedColor,
-                        armed = redArmed,
+                        armed = fastRedArmed,
                         bellDesc = s.alertsBellToggle,
-                        onArmedChange = onRedArmedChange,
+                        onArmedChange = onFastRedArmedChange,
                         onCommit = onFastRedChange
                     )
                     Spacer(Modifier.height(8.dp))
@@ -768,11 +823,27 @@ private fun NightModeCard(
                         range = 6f..20f,
                         unit = s.minUnit,
                         accent = ZoneYellowColor,
-                        armed = yellowArmed,
+                        armed = fastYellowArmed,
                         bellDesc = s.alertsBellToggle,
-                        onArmedChange = onYellowArmedChange,
+                        onArmedChange = onFastYellowArmedChange,
                         onCommit = onFastYellowChange
                     )
+                    Spacer(Modifier.height(8.dp))
+                    if (!slowRedArmed || !slowYellowArmed || !fastRedArmed || !fastYellowArmed) {
+                        Text(
+                            s.nightMuteWarning,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = ZoneYellowColor,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                        )
+                        Text(
+                            s.nightMuteExitNote,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
                 }
             }
         }
@@ -890,6 +961,57 @@ private fun AlertToggleRow(
         }
         Spacer(Modifier.width(8.dp))
         Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+private fun vibrationLevelName(s: Strings.StringSet, level: Int): String = when (level) {
+    0 -> s.vibrationOff
+    1 -> s.vibrationSoft
+    2 -> s.vibrationMedium
+    4 -> s.vibrationUrgent
+    else -> s.vibrationStrong
+}
+
+/** One 0–4 vibration-strength slider (Fast/Slow), sized to fit the Alerts card. */
+@Composable
+private fun VibrationSliderRow(
+    label: String,
+    level: Int,
+    accent: Color,
+    levelName: (Int) -> String,
+    onLevelChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
+        Slider(
+            value = level.toFloat(),
+            onValueChange = { onLevelChange(it.roundToInt()) },
+            valueRange = 0f..4f,
+            steps = 3,
+            colors = SliderDefaults.colors(
+                thumbColor = accent,
+                activeTrackColor = accent
+            ),
+            modifier = Modifier.width(150.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            levelName(level),
+            color = accent,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.width(76.dp)
+        )
     }
 }
 
@@ -1222,8 +1344,14 @@ private fun CardSizeTile(
     }
 }
 
-/** Icon-style picker: a 2x2 grid of cards — the two real sets with all seven icons in a
- *  scrollable panel, plus two empty "coming soon" placeholders below. */
+/** Icon-slot size inside an icon-set tile (also sizes the "coming soon" placeholder slot). */
+private val IconTileSlot = 44.dp
+
+/** Shared min height so the 2x2 grid stays aligned (name-less top row vs named coming-soon row). */
+private val IconTileMinHeight = 120.dp
+
+/** Icon-style picker: a 2x2 grid of cards — the three real sets (Classic, Photos, Army) with
+ *  all seven icons in a scrollable panel, plus one "coming soon" placeholder (Comic). */
 @Composable
 private fun IconSetSelector(
     lang: AppLanguage,
@@ -1249,9 +1377,11 @@ private fun IconSetSelector(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ComingSoonTile(
+            IconSetTile(
+                set = ThreatIconSet.ARMY,
                 label = s.iconSetArmyLabel,
-                comingSoon = s.iconSetComingSoonLabel,
+                selected = selected == ThreatIconSet.ARMY,
+                onClick = { onChange(ThreatIconSet.ARMY) },
                 modifier = Modifier.weight(1f)
             )
             ComingSoonTile(
@@ -1285,8 +1415,10 @@ private fun IconSetTile(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = IconTileMinHeight)
                 .padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             // All 7 photo-backed threat types in a single row that scrolls horizontally
             // within the card; the photo set letterboxes each into its square slot.
@@ -1303,7 +1435,7 @@ private fun IconSetTile(
                         ThreatIcon(
                             type = type,
                             set = set,
-                            size = 38.dp,
+                            size = IconTileSlot,
                             contentDescription = label
                         )
                     }
@@ -1337,20 +1469,21 @@ private fun IconSetTile(
                     )
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
         }
     }
 }
 
 @Composable
 private fun ComingSoonTile(label: String, comingSoon: String, modifier: Modifier = Modifier) {
+    val rocketBob = rememberInfiniteTransition(label = "rocket-bob")
+    val bob by rocketBob.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        )
+    )
     Card(
         modifier = modifier.clip(RoundedCornerShape(14.dp)),
         shape = RoundedCornerShape(14.dp),
@@ -1359,21 +1492,38 @@ private fun ComingSoonTile(label: String, comingSoon: String, modifier: Modifier
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = IconTileMinHeight)
                 .padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            // Slot sized like the real cards' icon row so the grid lines up, showing the
-            // "coming soon" hint in place of icons.
+            // Slot sized like the real cards' icon row so the grid lines up; a bobbing
+            // rocket signals "launching soon" in place of icons.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp),
+                    .height(IconTileSlot),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
+                    text = "\uD83D\uDE80",
+                    fontSize = 22.sp,
+                    modifier = Modifier.graphicsLayer {
+                        translationY = (bob - 0.5f) * 4.dp.toPx()
+                    }
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+            ) {
+                Text(
                     comingSoon,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
             Spacer(Modifier.height(6.dp))

@@ -213,8 +213,11 @@ object NeptunClient {
         reconnectJob?.cancel()
         reconnectJob = null
         // Drop any half-open socket so a fresh one is created, then connect right away.
-        ws?.close(1001, "manual retry")
+        // Null the field BEFORE closing: the old socket's onClosed/onFailure must not clobber
+        // the fresh connection connect() is about to create (see the ws-identity guards below).
+        val old = ws
         ws = null
+        old?.close(1001, "manual retry")
         connect()
     }
 
@@ -346,6 +349,7 @@ object NeptunClient {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (ws !== webSocket) return // superseded by a manual retry — the new socket owns state
                 ws = null
                 connectInFlight.set(false)
                 _state.value = _state.value.copy(connected = false, offlineSince = System.currentTimeMillis())
@@ -353,6 +357,7 @@ object NeptunClient {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (ws !== webSocket) return // superseded by a manual retry — the new socket owns state
                 ws = null
                 connectInFlight.set(false)
                 _state.value = _state.value.copy(

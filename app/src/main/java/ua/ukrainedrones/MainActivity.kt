@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import java.io.File
 import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -51,8 +52,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         cleanLegacyOsmdroidCache()
         ConnectionLog.attach(applicationContext)
+        AlertHistory.attach(applicationContext)
         AlertService.start(this)
-        requestLocationAndNotifications()
         setContent {
             // Cap the system font scale so extreme accessibility sizes can't break the layout;
             // the popup/banner still wrap and scroll up to this ceiling.
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         handleReveal(intent)
+        deferPermissionRequests()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -130,6 +132,25 @@ class MainActivity : ComponentActivity() {
                 arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
                 REQUEST_LOCATION
             )
+        }
+    }
+
+    /**
+     * Permission dialogs must never beat the first-run onboarding — ask only after the language
+     * picker and (for new users) the battery prompt have resolved. Returning users who already
+     * finished onboarding get the request immediately.
+     */
+    private fun deferPermissionRequests() {
+        lifecycleScope.launch {
+            val prefs = ZonePrefs(applicationContext)
+            val langChosen = prefs.languageChosen().first()
+            val ready = if (langChosen && prefs.batteryOnboardShown().first()) {
+                true
+            } else {
+                combine(prefs.languageChosen(), prefs.batteryOnboardShown()) { l, b -> l && b }
+                    .first { it }
+            }
+            if (ready) requestLocationAndNotifications()
         }
     }
 

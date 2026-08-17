@@ -9,8 +9,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 private val RedZoneColor = Color(0xFFD32F2F)
@@ -32,16 +35,20 @@ fun ZonesPanel(
     slowYellowKm: Int,
     fastRedMin: Int,
     fastYellowMin: Int,
-    redArmed: Boolean,
-    yellowArmed: Boolean,
+    slowRedArmed: Boolean,
+    slowYellowArmed: Boolean,
+    fastRedArmed: Boolean,
+    fastYellowArmed: Boolean,
     lang: AppLanguage,
     nightNote: String? = null,
     onSlowRedChange: (Int) -> Unit,
     onSlowYellowChange: (Int) -> Unit,
     onFastRedChange: (Int) -> Unit,
     onFastYellowChange: (Int) -> Unit,
-    onRedArmedChange: (Boolean) -> Unit,
-    onYellowArmedChange: (Boolean) -> Unit,
+    onSlowRedArmedChange: (Boolean) -> Unit,
+    onSlowYellowArmedChange: (Boolean) -> Unit,
+    onFastRedArmedChange: (Boolean) -> Unit,
+    onFastYellowArmedChange: (Boolean) -> Unit,
     onOpenThreatSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -78,15 +85,15 @@ fun ZonesPanel(
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
-        SectionCaption(s.slowSectionLabel)
+        SectionCaption(s.slowSectionLabel, leading = "\uD83D\uDC22", leadingDesc = s.slowGroupIconDesc)
         ZoneRow(
             value = slowRedKm,
             range = 2f..20f,
             unit = s.kmUnit,
             accent = RedZoneColor,
-            armed = redArmed,
+            armed = slowRedArmed,
             bellDesc = s.alertsBellToggle,
-            onArmedChange = onRedArmedChange,
+            onArmedChange = onSlowRedArmedChange,
             onCommit = onSlowRedChange
         )
         Spacer(Modifier.height(8.dp))
@@ -97,21 +104,21 @@ fun ZonesPanel(
             range = 21f..50f,
             unit = s.kmUnit,
             accent = YellowZoneColor,
-            armed = yellowArmed,
+            armed = slowYellowArmed,
             bellDesc = s.alertsBellToggle,
-            onArmedChange = onYellowArmedChange,
+            onArmedChange = onSlowYellowArmedChange,
             onCommit = onSlowYellowChange
         )
         Spacer(Modifier.height(14.dp))
-        SectionCaption(s.fastSectionLabel)
+        SectionCaption(s.fastSectionLabel, leading = "\u26A1", leadingDesc = s.fastGroupIconDesc)
         ZoneRow(
             value = fastRedMin,
             range = 2f..5f,
             unit = s.minUnit,
             accent = RedZoneColor,
-            armed = redArmed,
+            armed = fastRedArmed,
             bellDesc = s.alertsBellToggle,
-            onArmedChange = onRedArmedChange,
+            onArmedChange = onFastRedArmedChange,
             onCommit = onFastRedChange
         )
         Spacer(Modifier.height(8.dp))
@@ -122,9 +129,9 @@ fun ZonesPanel(
             range = 6f..20f,
             unit = s.minUnit,
             accent = YellowZoneColor,
-            armed = yellowArmed,
+            armed = fastYellowArmed,
             bellDesc = s.alertsBellToggle,
-            onArmedChange = onYellowArmedChange,
+            onArmedChange = onFastYellowArmedChange,
             onCommit = onFastYellowChange
         )
         Spacer(Modifier.height(14.dp))
@@ -134,14 +141,34 @@ fun ZonesPanel(
 }
 
 @Composable
-internal fun SectionCaption(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 4.dp)
-    )
+internal fun SectionCaption(
+    text: String,
+    leading: String? = null,
+    leadingDesc: String? = null
+) {
+    Row(
+        modifier = Modifier.padding(bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (leading != null) {
+            Text(
+                leading,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .size(18.dp)
+                    .semantics {
+                        if (leadingDesc != null) contentDescription = leadingDesc
+                    }
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }
 
 @Composable
