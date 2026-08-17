@@ -27,7 +27,7 @@ internal fun fastAndSlowGroups(lang: AppLanguage): List<Triple<String, String, S
     val fast = FastThreatTypes
     val slow = ThreatType.values().toSet() - fast
     return listOf(
-        Triple("\u26A1", s.fastGroupLabel, fast),
+        Triple("\u26A1\uFE0F", s.fastGroupLabel, fast),
         Triple("\uD83D\uDC22", s.slowGroupLabel, slow)
     )
 }
@@ -127,16 +127,17 @@ fun SlimThreatToggles(
                     .padding(top = 6.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = groupIcon,
-                    fontSize = 14.sp,
+                Box(
                     modifier = Modifier
                         .size(18.dp)
                         .semantics {
                             contentDescription =
-                                if (groupIcon == "\u26A1") s.fastGroupIconDesc else s.slowGroupIconDesc
-                        }
-                )
+                                if (groupIcon == "\u26A1\uFE0F") s.fastGroupIconDesc else s.slowGroupIconDesc
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = groupIcon, fontSize = 16.sp)
+                }
                 Spacer(Modifier.width(8.dp))
                 Text(
                     groupTitle,

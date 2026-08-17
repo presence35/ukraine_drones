@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -195,13 +196,19 @@ fun SettingsScreen(
         disclaimerExpanded = !disclaimerExpanded
         onDisclaimerCollapse(!disclaimerExpanded)
     }
+    var languageExpanded by remember { mutableStateOf(true) }
+    var mapCenterExpanded by remember { mutableStateOf(true) }
+    var cardSizeExpanded by remember { mutableStateOf(true) }
+    var threatsExpanded by remember { mutableStateOf(true) }
+    var nightExpanded by remember { mutableStateOf(true) }
+    var alertsExpanded by remember { mutableStateOf(true) }
 
     // The Threats section header is a fixed item index in this LazyColumn; scroll to it when
     // the zones-sheet gear asks (ZonesSheet → Settings, landing on Threats). The tick is
     // consumed after the jump so a later plain open keeps the last scroll position.
     LaunchedEffect(scrollToThreatsTick) {
         if (scrollToThreatsTick > 0) {
-            listState.animateScrollToItem(7)
+            listState.animateScrollToItem(4)
             onThreatsScrollHandled()
         }
     }
@@ -270,55 +277,64 @@ fun SettingsScreen(
             item {
                 // Inverted like the flags: the header names the language you'd switch to,
                 // not the one currently active.
-                SectionHeader(
-                    Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA).languageLabel,
-                    painterResource(id = R.drawable.ic_language)
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                CollapsibleSectionCard(
+                    title = Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA).languageLabel,
+                    icon = painterResource(id = R.drawable.ic_language),
+                    expanded = languageExpanded,
+                    onToggle = { languageExpanded = !languageExpanded }
                 ) {
-                    LanguageFlag(
-                        emoji = "\uD83C\uDDFA\uD83C\uDDE6",
-                        active = lang == AppLanguage.UA,
-                        onClick = { onLanguageChange(AppLanguage.UA) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    LanguageFlag(
-                        emoji = "\uD83C\uDDE8\uD83C\uDDE6",
-                        active = lang == AppLanguage.EN,
-                        onClick = { onLanguageChange(AppLanguage.EN) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            item { SectionHeader(s.mapCenterLabel, rememberVectorPainter(Icons.Default.LocationOn)) }
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        AlertToggleRow(
-                            title = s.followMeTitle,
-                            description = s.followMeDesc,
-                            checked = followMe,
-                            onCheckedChange = { v -> showExplainer("followMe"); onFollowMeChange(v) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        LanguageFlag(
+                            emoji = "\uD83C\uDDFA\uD83C\uDDE6",
+                            active = lang == AppLanguage.UA,
+                            onClick = { onLanguageChange(AppLanguage.UA) },
+                            modifier = Modifier.weight(1f)
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        PinCityRow(
-                            lang = lang,
-                            followMe = followMe,
-                            pinnedCity = pinnedCity,
-                            onChange = onPinnedCityChange
+                        LanguageFlag(
+                            emoji = "\uD83C\uDDE8\uD83C\uDDE6",
+                            active = lang == AppLanguage.EN,
+                            onClick = { onLanguageChange(AppLanguage.EN) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
 
-            item { SectionHeader(s.cardSizeLabel, painterResource(R.drawable.ic_card_size)) }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                CollapsibleSectionCard(
+                    title = s.mapCenterLabel,
+                    icon = rememberVectorPainter(Icons.Default.LocationOn),
+                    expanded = mapCenterExpanded,
+                    onToggle = { mapCenterExpanded = !mapCenterExpanded }
+                ) {
+                    AlertToggleRow(
+                        title = s.followMeTitle,
+                        description = s.followMeDesc,
+                        checked = followMe,
+                        onCheckedChange = { v -> showExplainer("followMe"); onFollowMeChange(v) }
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    PinCityRow(
+                        lang = lang,
+                        followMe = followMe,
+                        pinnedCity = pinnedCity,
+                        onChange = onPinnedCityChange
+                    )
+                }
+            }
+
+            item {
+                CollapsibleSectionCard(
+                    title = s.cardSizeLabel,
+                    icon = painterResource(R.drawable.ic_card_size),
+                    expanded = cardSizeExpanded,
+                    onToggle = { cardSizeExpanded = !cardSizeExpanded }
+                ) {
                     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
                         ThreatCardSizeSelector(
                             lang = lang,
@@ -351,81 +367,100 @@ fun SettingsScreen(
                 }
             }
 
-            item { SectionHeader(s.threatsLabel, rememberVectorPainter(Icons.Default.Warning)) }
-            fastAndSlowGroups(lang).forEachIndexed { index, (groupIcon, groupTitle, types) ->
-                val groupMapOn = types.none { it in hiddenTypes }
-                val groupAlertsOn = types.none { it in silencedTypes }
-                val groupCollapsed = if (index == 0) fastGroupCollapsed else slowGroupCollapsed
-                item {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (index == 0) onFastGroupCollapse(!fastGroupCollapsed)
-                                else onSlowGroupCollapse(!slowGroupCollapsed)
-                            }
-                            .padding(top = 4.dp, bottom = 4.dp)
-                    ) {
-                        Text(
-                            text = groupIcon,
-                            fontSize = 16.sp,
+            item {
+                CollapsibleSectionCard(
+                    title = s.threatsLabel,
+                    icon = rememberVectorPainter(Icons.Default.Warning),
+                    expanded = threatsExpanded,
+                    onToggle = { threatsExpanded = !threatsExpanded }
+                ) {
+                    fastAndSlowGroups(lang).forEachIndexed { index, (groupIcon, groupTitle, types) ->
+                        val groupMapOn = types.none { it in hiddenTypes }
+                        val groupAlertsOn = types.none { it in silencedTypes }
+                        val groupCollapsed = if (index == 0) fastGroupCollapsed else slowGroupCollapsed
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .size(18.dp)
-                                .semantics { semanticsContentDescription = if (groupIcon == "\u26A1") s.fastGroupIconDesc else s.slowGroupIconDesc }
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            groupTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconToggle(
-                            icon = Icons.Filled.Place,
-                            contentDescription = s.threatMapLabel,
-                            on = groupMapOn,
-                            enabled = true,
-                            onClick = { onThreatMapToggleAll(types, !groupMapOn) }
-                        )
-                        IconToggle(
-                            icon = Icons.Filled.Notifications,
-                            contentDescription = s.threatAlertLabel,
-                            on = groupAlertsOn,
-                            enabled = true,
-                            onClick = { onThreatAlertToggleAll(types, !groupAlertsOn) }
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            imageVector = if (groupCollapsed) Icons.Default.KeyboardArrowDown
-                            else Icons.Default.KeyboardArrowUp,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                if (!groupCollapsed) {
-                    items(types.toList()) { type ->
-                        ThreatSettingsCard(
-                            type = type,
-                            lang = lang,
-                            iconSet = iconSet,
-                            expanded = expandedType == type,
-                            onExpandChange = { expandedType = if (expandedType == type) null else type },
-                            hiddenTypes = hiddenTypes,
-                            silencedTypes = silencedTypes,
-                            onThreatMapToggle = { t, v -> showExplainer("threatToggles"); onThreatMapToggle(t, v) },
-                            onThreatAlertToggle = { t, v -> showExplainer("threatToggles"); onThreatAlertToggle(t, v) }
-                        )
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (index == 0) onFastGroupCollapse(!fastGroupCollapsed)
+                                    else onSlowGroupCollapse(!slowGroupCollapsed)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .semantics { semanticsContentDescription = if (groupIcon == "\u26A1\uFE0F") s.fastGroupIconDesc else s.slowGroupIconDesc },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = groupIcon, fontSize = 16.sp)
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                groupTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconToggle(
+                                icon = Icons.Filled.Place,
+                                contentDescription = s.threatMapLabel,
+                                on = groupMapOn,
+                                enabled = true,
+                                onClick = { onThreatMapToggleAll(types, !groupMapOn) }
+                            )
+                            IconToggle(
+                                icon = Icons.Filled.Notifications,
+                                contentDescription = s.threatAlertLabel,
+                                on = groupAlertsOn,
+                                enabled = true,
+                                onClick = { onThreatAlertToggleAll(types, !groupAlertsOn) }
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                imageVector = if (groupCollapsed) Icons.Default.KeyboardArrowDown
+                                else Icons.Default.KeyboardArrowUp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        if (!groupCollapsed) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                types.forEach { type ->
+                                    ThreatSettingsCard(
+                                        type = type,
+                                        lang = lang,
+                                        iconSet = iconSet,
+                                        expanded = expandedType == type,
+                                        onExpandChange = { expandedType = if (expandedType == type) null else type },
+                                        hiddenTypes = hiddenTypes,
+                                        silencedTypes = silencedTypes,
+                                        onThreatMapToggle = { t, v -> showExplainer("threatToggles"); onThreatMapToggle(t, v) },
+                                        onThreatAlertToggle = { t, v -> showExplainer("threatToggles"); onThreatAlertToggle(t, v) }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            item { SectionHeader(s.nightModeLabel, painterResource(R.drawable.ic_moon)) }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                CollapsibleSectionCard(
+                    title = s.nightModeLabel,
+                    icon = painterResource(R.drawable.ic_moon),
+                    expanded = nightExpanded,
+                    onToggle = { nightExpanded = !nightExpanded }
+                ) {
                     NightModeCard(
                         lang = lang,
                         enabled = nightEnabled,
@@ -460,56 +495,58 @@ fun SettingsScreen(
                 }
             }
 
-            item { SectionHeader(s.alertsLabel, rememberVectorPainter(Icons.Default.Notifications)) }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        AlertToggleRow(
-                            title = s.officialAlertsTitle,
-                            description = s.officialAlertsDesc,
-                            checked = officialAlertsEnabled,
-                            onCheckedChange = { v -> showExplainer("officialAlerts"); onOfficialAlertsChange(v) },
-                            icon = painterResource(R.drawable.ic_trident),
-                            note = s.officialAlertsRedTridentNote
+                CollapsibleSectionCard(
+                    title = s.alertsLabel,
+                    icon = rememberVectorPainter(Icons.Default.Notifications),
+                    expanded = alertsExpanded,
+                    onToggle = { alertsExpanded = !alertsExpanded }
+                ) {
+                    AlertToggleRow(
+                        title = s.officialAlertsTitle,
+                        description = s.officialAlertsDesc,
+                        checked = officialAlertsEnabled,
+                        onCheckedChange = { v -> showExplainer("officialAlerts"); onOfficialAlertsChange(v) },
+                        icon = painterResource(R.drawable.ic_trident),
+                        note = s.officialAlertsRedTridentNote
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.sirenOverrideTitle,
+                        description = s.sirenOverrideDesc,
+                        checked = sirenOverride,
+                        onCheckedChange = { v -> showExplainer("sirenOverride"); onSirenOverrideChange(v) },
+                        icon = painterResource(R.drawable.ic_volume_up),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Text(
+                            s.vibrationTitle,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        AlertToggleRow(
-                            title = s.sirenOverrideTitle,
-                            description = s.sirenOverrideDesc,
-                            checked = sirenOverride,
-                            onCheckedChange = { v -> showExplainer("sirenOverride"); onSirenOverrideChange(v) },
-                            icon = painterResource(R.drawable.ic_volume_up),
-                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            s.vibrationDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                            Text(
-                                s.vibrationTitle,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                s.vibrationDesc,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            VibrationSliderRow(
-                                label = s.fastGroupLabel,
-                                level = fastVibrationLevel,
-                                accent = Color(0xFFE57373),
-                                levelName = { vibrationLevelName(s, it) },
-                                onLevelChange = onFastVibrationChange
-                            )
-                            VibrationSliderRow(
-                                label = s.slowGroupLabel,
-                                level = slowVibrationLevel,
-                                accent = Color(0xFFF9A825),
-                                levelName = { vibrationLevelName(s, it) },
-                                onLevelChange = onSlowVibrationChange
-                            )
-                        }
+                        Spacer(Modifier.height(4.dp))
+                        VibrationSliderRow(
+                            label = s.fastGroupLabel,
+                            level = fastVibrationLevel,
+                            accent = Color(0xFFE57373),
+                            levelName = { vibrationLevelName(s, it) },
+                            onLevelChange = onFastVibrationChange
+                        )
+                        VibrationSliderRow(
+                            label = s.slowGroupLabel,
+                            level = slowVibrationLevel,
+                            accent = Color(0xFFF9A825),
+                            levelName = { vibrationLevelName(s, it) },
+                            onLevelChange = onSlowVibrationChange
+                        )
                     }
                 }
             }
@@ -545,7 +582,7 @@ fun SettingsScreen(
                                     description = s.deathAnimationDesc,
                                     checked = deathAnimationEnabled,
                                     onCheckedChange = onDeathAnimationChange,
-                                    icon = painterResource(R.drawable.ic_skull),
+                                    icon = painterResource(R.drawable.ic_explosion),
                                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -626,18 +663,29 @@ fun SettingsScreen(
             }
 
             item {
-                OutlinedButton(
-                    onClick = onRelaunchSetup,
-                    enabled = !alertActive,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(s.relaunchSetupTitle, fontWeight = FontWeight.SemiBold)
+                Column {
+                    OutlinedButton(
+                        onClick = onRelaunchSetup,
+                        enabled = !alertActive,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(s.relaunchSetupTitle, fontWeight = FontWeight.SemiBold)
+                    }
+                    if (alertActive) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            s.disabledDuringAlarm,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    }
                 }
             }
 
@@ -655,49 +703,60 @@ fun SettingsScreen(
             }
 
             item {
-                if (isChecking) {
-                    Button(
-                        onClick = onCheckUpdate,
-                        enabled = false,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(s.updateButton, fontWeight = FontWeight.SemiBold)
+                Column {
+                    if (isChecking) {
+                        Button(
+                            onClick = onCheckUpdate,
+                            enabled = false,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(s.updateButton, fontWeight = FontWeight.SemiBold)
+                        }
+                    } else if (latestVersion != null) {
+                        Button(
+                            onClick = onCheckUpdate,
+                            enabled = !alertActive,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_download),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "${s.updateAvailableButton} · v$latestVersion",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onCheckUpdate,
+                            enabled = !alertActive,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = s.checkForUpdates,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(s.updateButton, fontWeight = FontWeight.SemiBold)
+                        }
                     }
-                } else if (latestVersion != null) {
-                    Button(
-                        onClick = onCheckUpdate,
-                        enabled = !alertActive,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.ic_download),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
+                    if (!isChecking && alertActive) {
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            "${s.updateAvailableButton} · v$latestVersion",
-                            fontWeight = FontWeight.SemiBold
+                            s.disabledDuringAlarm,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
                         )
-                    }
-                } else {
-                    OutlinedButton(
-                        onClick = onCheckUpdate,
-                        enabled = !alertActive,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = s.checkForUpdates,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(s.updateButton, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -834,55 +893,55 @@ private fun NightModeCard(
             if (useCustomZones) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
-                    SectionCaption(s.slowSectionLabel, leading = "\uD83D\uDC22", leadingDesc = s.slowGroupIconDesc)
-                    ZoneRow(
-                        value = slowRedKm,
-                        range = 2f..20f,
-                        unit = s.kmUnit,
-                        accent = ZoneRedColor,
-                        armed = slowRedArmed,
-                        bellDesc = s.alertsBellToggle,
-                        onArmedChange = onSlowRedArmedChange,
-                        onCommit = onSlowRedChange
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(Modifier.height(8.dp))
-                    ZoneRow(
-                        value = slowYellowKm,
-                        range = 21f..50f,
-                        unit = s.kmUnit,
-                        accent = ZoneYellowColor,
-                        armed = slowYellowArmed,
-                        bellDesc = s.alertsBellToggle,
-                        onArmedChange = onSlowYellowArmedChange,
-                        onCommit = onSlowYellowChange
-                    )
+                    GroupedZoneSection {
+                        SectionCaption(s.slowSectionLabel, leading = "\uD83D\uDC22", leadingDesc = s.slowGroupIconDesc)
+                        ZoneRow(
+                            value = slowRedKm,
+                            range = 2f..20f,
+                            unit = s.kmUnit,
+                            accent = ZoneRedColor,
+                            armed = slowRedArmed,
+                            bellDesc = s.alertsBellToggle,
+                            onArmedChange = onSlowRedArmedChange,
+                            onCommit = onSlowRedChange
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        ZoneRow(
+                            value = slowYellowKm,
+                            range = 21f..50f,
+                            unit = s.kmUnit,
+                            accent = ZoneYellowColor,
+                            armed = slowYellowArmed,
+                            bellDesc = s.alertsBellToggle,
+                            onArmedChange = onSlowYellowArmedChange,
+                            onCommit = onSlowYellowChange
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
-                    SectionCaption(s.fastSectionLabel, leading = "\u26A1", leadingDesc = s.fastGroupIconDesc)
-                    ZoneRow(
-                        value = fastRedMin,
-                        range = 2f..5f,
-                        unit = s.minUnit,
-                        accent = ZoneRedColor,
-                        armed = fastRedArmed,
-                        bellDesc = s.alertsBellToggle,
-                        onArmedChange = onFastRedArmedChange,
-                        onCommit = onFastRedChange
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(Modifier.height(8.dp))
-                    ZoneRow(
-                        value = fastYellowMin,
-                        range = 6f..20f,
-                        unit = s.minUnit,
-                        accent = ZoneYellowColor,
-                        armed = fastYellowArmed,
-                        bellDesc = s.alertsBellToggle,
-                        onArmedChange = onFastYellowArmedChange,
-                        onCommit = onFastYellowChange
-                    )
+                    GroupedZoneSection {
+                        SectionCaption(s.fastSectionLabel, leading = "\u26A1\uFE0F", leadingDesc = s.fastGroupIconDesc)
+                        ZoneRow(
+                            value = fastRedMin,
+                            range = 2f..5f,
+                            unit = s.minUnit,
+                            accent = ZoneRedColor,
+                            armed = fastRedArmed,
+                            bellDesc = s.alertsBellToggle,
+                            onArmedChange = onFastRedArmedChange,
+                            onCommit = onFastRedChange
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        ZoneRow(
+                            value = fastYellowMin,
+                            range = 6f..20f,
+                            unit = s.minUnit,
+                            accent = ZoneYellowColor,
+                            armed = fastYellowArmed,
+                            bellDesc = s.alertsBellToggle,
+                            onArmedChange = onFastYellowArmedChange,
+                            onCommit = onFastYellowChange
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     if (!slowRedArmed || !slowYellowArmed || !fastRedArmed || !fastYellowArmed) {
                         Text(
@@ -1025,6 +1084,20 @@ private fun vibrationLevelName(s: Strings.StringSet, level: Int): String = when 
     2 -> s.vibrationMedium
     4 -> s.vibrationUrgent
     else -> s.vibrationStrong
+}
+
+/** Bordered, rounded box that visually groups a set of zone slider rows (night custom zones). */
+@Composable
+private fun GroupedZoneSection(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        content = content
+    )
 }
 
 /** One 0–4 vibration-strength slider (Fast/Slow), sized to fit the Alerts card. */
@@ -1498,24 +1571,50 @@ internal fun IconSetTile(
 }
 
 @Composable
-private fun SectionHeader(text: String, icon: Painter) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 8.dp)
-    ) {
-        Icon(
-            painter = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+private fun CollapsibleSectionCard(
+    title: String,
+    icon: Painter,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp
+                    else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    content()
+                }
+            }
+        }
     }
 }
 

@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -72,6 +73,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var guideFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
     val settingsListState = rememberLazyListState()
+    // The zones sheet edits whatever the map is currently showing: night settings while the
+    // night window is active and separate night zones are enabled, day settings otherwise.
+    val editingNight = uiState.nightActive && uiState.nightUseCustomZones
     LaunchedEffect(Unit) {
         settingsHintRemaining = prefs.settingsHintRemaining().first()
     }
@@ -106,14 +110,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onThreatStripTap = { viewModel.panToThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
             onMapTapped = { viewModel.selectThreat(null) },
-            onSlowRedChange = { viewModel.setSlowRedKm(it) },
-            onSlowYellowChange = { viewModel.setSlowYellowKm(it) },
-            onFastRedChange = { viewModel.setFastRedMin(it) },
-            onFastYellowChange = { viewModel.setFastYellowMin(it) },
-            onSlowRedArmedChange = { viewModel.setSlowRedArmed(it) },
-            onSlowYellowArmedChange = { viewModel.setSlowYellowArmed(it) },
-            onFastRedArmedChange = { viewModel.setFastRedArmed(it) },
-            onFastYellowArmedChange = { viewModel.setFastYellowArmed(it) },
+            onSlowRedChange = { if (editingNight) viewModel.setNightSlowRedKm(it) else viewModel.setSlowRedKm(it) },
+            onSlowYellowChange = { if (editingNight) viewModel.setNightSlowYellowKm(it) else viewModel.setSlowYellowKm(it) },
+            onFastRedChange = { if (editingNight) viewModel.setNightFastRedMin(it) else viewModel.setFastRedMin(it) },
+            onFastYellowChange = { if (editingNight) viewModel.setNightFastYellowMin(it) else viewModel.setFastYellowMin(it) },
+            onSlowRedArmedChange = { if (editingNight) viewModel.setNightSlowRedArmed(it) else viewModel.setSlowRedArmed(it) },
+            onSlowYellowArmedChange = { if (editingNight) viewModel.setNightSlowYellowArmed(it) else viewModel.setSlowYellowArmed(it) },
+            onFastRedArmedChange = { if (editingNight) viewModel.setNightFastRedArmed(it) else viewModel.setFastRedArmed(it) },
+            onFastYellowArmedChange = { if (editingNight) viewModel.setNightFastYellowArmed(it) else viewModel.setFastYellowArmed(it) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
             onTempNeutralize = { id -> viewModel.tempNeutralize(id) }
@@ -582,6 +586,8 @@ private fun MapScreen(
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
+    // The zones sheet edits whatever the map is currently showing.
+    val editingNight = uiState.nightActive && uiState.nightUseCustomZones
 
     // Opening the panel also asks the map to centre + zoom to the full yellow zone.
     val openZonesPanel: () -> Unit = {
@@ -667,6 +673,16 @@ private fun MapScreen(
                     iconSet = uiState.iconSet,
                     modifier = Modifier.padding(end = 4.dp)
                 )
+                if (uiState.nightEnabled && uiState.nightActive) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_moon),
+                        contentDescription = s.nightModeHeaderDesc,
+                        tint = Color.Unspecified,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(end = 4.dp)
+                    )
+                }
                 IconButton(onClick = openSettings, modifier = Modifier.size(32.dp)) {
                     Icon(
                         painter = painterResource(R.drawable.ic_settings_ua),
@@ -874,7 +890,11 @@ private fun MapScreen(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth(),
                     color = Color(0xFF1E1E1E),
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    border = BorderStroke(
+                        width = 1.5.dp,
+                        color = if (editingNight) Color(0xFF5C6BC0) else Color(0xFF3A3A3A)
+                    )
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         val density = LocalDensity.current
@@ -909,18 +929,16 @@ private fun MapScreen(
                             )
                         }
                                                 ZonesPanel(
-                            slowRedKm = uiState.slowRedKm,
-                            slowYellowKm = uiState.slowYellowKm,
-                            fastRedMin = uiState.fastRedMin,
-                            fastYellowMin = uiState.fastYellowMin,
-                                                        slowRedArmed = uiState.slowRedArmed,
-                            slowYellowArmed = uiState.slowYellowArmed,
-                            fastRedArmed = uiState.fastRedArmed,
-                            fastYellowArmed = uiState.fastYellowArmed,
+                            slowRedKm = if (editingNight) uiState.nightSlowRedKm else uiState.slowRedKm,
+                            slowYellowKm = if (editingNight) uiState.nightSlowYellowKm else uiState.slowYellowKm,
+                            fastRedMin = if (editingNight) uiState.nightFastRedMin else uiState.fastRedMin,
+                            fastYellowMin = if (editingNight) uiState.nightFastYellowMin else uiState.fastYellowMin,
+                            slowRedArmed = if (editingNight) uiState.nightSlowRedArmed else uiState.slowRedArmed,
+                            slowYellowArmed = if (editingNight) uiState.nightSlowYellowArmed else uiState.slowYellowArmed,
+                            fastRedArmed = if (editingNight) uiState.nightFastRedArmed else uiState.fastRedArmed,
+                            fastYellowArmed = if (editingNight) uiState.nightFastYellowArmed else uiState.fastYellowArmed,
                             lang = uiState.language,
-                            nightNote = if (uiState.nightActive) {
-                                String.format(s.nightDayZonesNote, uiState.nightWindowText)
-                            } else null,
+                            nightActive = editingNight,
                             onSlowRedChange = onSlowRedChange,
                             onSlowYellowChange = onSlowYellowChange,
                             onFastRedChange = onFastRedChange,

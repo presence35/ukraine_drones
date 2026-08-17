@@ -1,12 +1,15 @@
 package ua.ukrainedrones
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -40,7 +43,7 @@ fun ZonesPanel(
     fastRedArmed: Boolean,
     fastYellowArmed: Boolean,
     lang: AppLanguage,
-    nightNote: String? = null,
+    nightActive: Boolean = false,
     onSlowRedChange: (Int) -> Unit,
     onSlowYellowChange: (Int) -> Unit,
     onFastRedChange: (Int) -> Unit,
@@ -59,7 +62,7 @@ fun ZonesPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                s.zonesLabel,
+                if (nightActive) "\uD83C\uDF19 ${s.nightZonesTitle} \uD83C\uDF19" else s.dayZonesTitle,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
@@ -77,66 +80,89 @@ fun ZonesPanel(
             }
         }
         Spacer(Modifier.height(6.dp))
-        nightNote?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 4.dp)
+        ZoneGroup(
+            caption = s.slowSectionLabel,
+            leading = "\uD83D\uDC22",
+            leadingDesc = s.slowGroupIconDesc
+        ) {
+            ZoneRow(
+                value = slowRedKm,
+                range = 2f..20f,
+                unit = s.kmUnit,
+                accent = RedZoneColor,
+                armed = slowRedArmed,
+                bellDesc = s.alertsBellToggle,
+                onArmedChange = onSlowRedArmedChange,
+                onCommit = onSlowRedChange
+            )
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(8.dp))
+            ZoneRow(
+                value = slowYellowKm,
+                range = 21f..50f,
+                unit = s.kmUnit,
+                accent = YellowZoneColor,
+                armed = slowYellowArmed,
+                bellDesc = s.alertsBellToggle,
+                onArmedChange = onSlowYellowArmedChange,
+                onCommit = onSlowYellowChange
             )
         }
-        SectionCaption(s.slowSectionLabel, leading = "\uD83D\uDC22", leadingDesc = s.slowGroupIconDesc)
-        ZoneRow(
-            value = slowRedKm,
-            range = 2f..20f,
-            unit = s.kmUnit,
-            accent = RedZoneColor,
-            armed = slowRedArmed,
-            bellDesc = s.alertsBellToggle,
-            onArmedChange = onSlowRedArmedChange,
-            onCommit = onSlowRedChange
-        )
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(8.dp))
-        ZoneRow(
-            value = slowYellowKm,
-            range = 21f..50f,
-            unit = s.kmUnit,
-            accent = YellowZoneColor,
-            armed = slowYellowArmed,
-            bellDesc = s.alertsBellToggle,
-            onArmedChange = onSlowYellowArmedChange,
-            onCommit = onSlowYellowChange
-        )
+        Spacer(Modifier.height(12.dp))
+        ZoneGroup(
+            caption = s.fastSectionLabel,
+            leading = "\u26A1\uFE0F",
+            leadingDesc = s.fastGroupIconDesc
+        ) {
+            ZoneRow(
+                value = fastRedMin,
+                range = 2f..5f,
+                unit = s.minUnit,
+                accent = RedZoneColor,
+                armed = fastRedArmed,
+                bellDesc = s.alertsBellToggle,
+                onArmedChange = onFastRedArmedChange,
+                onCommit = onFastRedChange
+            )
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(8.dp))
+            ZoneRow(
+                value = fastYellowMin,
+                range = 6f..20f,
+                unit = s.minUnit,
+                accent = YellowZoneColor,
+                armed = fastYellowArmed,
+                bellDesc = s.alertsBellToggle,
+                onArmedChange = onFastYellowArmedChange,
+                onCommit = onFastYellowChange
+            )
+        }
         Spacer(Modifier.height(14.dp))
-        SectionCaption(s.fastSectionLabel, leading = "\u26A1", leadingDesc = s.fastGroupIconDesc)
-        ZoneRow(
-            value = fastRedMin,
-            range = 2f..5f,
-            unit = s.minUnit,
-            accent = RedZoneColor,
-            armed = fastRedArmed,
-            bellDesc = s.alertsBellToggle,
-            onArmedChange = onFastRedArmedChange,
-            onCommit = onFastRedChange
-        )
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(8.dp))
-        ZoneRow(
-            value = fastYellowMin,
-            range = 6f..20f,
-            unit = s.minUnit,
-            accent = YellowZoneColor,
-            armed = fastYellowArmed,
-            bellDesc = s.alertsBellToggle,
-            onArmedChange = onFastYellowArmedChange,
-            onCommit = onFastYellowChange
-        )
-        Spacer(Modifier.height(14.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun ZoneGroup(
+    caption: String,
+    leading: String,
+    leadingDesc: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(12.dp)
+    ) {
+        SectionCaption(caption, leading = leading, leadingDesc = leadingDesc)
+        content()
     }
 }
 
@@ -151,15 +177,16 @@ internal fun SectionCaption(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leading != null) {
-            Text(
-                leading,
-                fontSize = 14.sp,
+            Box(
                 modifier = Modifier
                     .size(18.dp)
                     .semantics {
                         if (leadingDesc != null) contentDescription = leadingDesc
-                    }
-            )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(leading, fontSize = 16.sp)
+            }
             Spacer(Modifier.width(6.dp))
         }
         Text(

@@ -1,19 +1,24 @@
 package ua.ukrainedrones
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -43,12 +48,28 @@ internal fun AlertsOffBell(
     tint: Color = Color(0xFFE57373),
     contentDescription: String? = null
 ) {
-    Icon(
-        painter = painterResource(id = R.drawable.ic_notifications_off),
-        contentDescription = contentDescription,
-        tint = tint,
-        modifier = Modifier.size(size)
-    )
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size)) {
+        Icon(
+            imageVector = Icons.Filled.Notifications,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.fillMaxSize()
+        )
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = this.size.width
+            val h = this.size.height
+            val m = w * 0.18f
+            val stroke = w * 0.16f
+            drawLine(
+                Color(0xFFE53935), Offset(m, m), Offset(w - m, h - m),
+                strokeWidth = stroke, cap = StrokeCap.Round
+            )
+            drawLine(
+                Color(0xFFE53935), Offset(w - m, m), Offset(m, h - m),
+                strokeWidth = stroke, cap = StrokeCap.Round
+            )
+        }
+    }
 }
 
 /** System font scale, capped so extreme accessibility sizes can't break the layout. */
@@ -195,6 +216,7 @@ fun ThreatPopupCard(
                         }
                     }
                     Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.width(fontAware(20.dp)))
                     SummaryPills(
                         proximity = proximity,
                         pinnedCity = pinnedCity,
@@ -203,7 +225,7 @@ fun ThreatPopupCard(
                         singleLine = true
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Start) {
                         Text(
                             s.reliabilityShort,
                             fontWeight = FontWeight.Medium,
@@ -219,7 +241,11 @@ fun ThreatPopupCard(
                         Spacer(Modifier.width(16.dp))
                         LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
                         Spacer(Modifier.width(6.dp))
-                        HorizontalLevelBar(level = threatLevel, modifier = Modifier.width(fontAware(50.dp)))
+                        HorizontalLevelBar(level = threatLevel,
+                            modifier = Modifier
+                                .width(fontAware(80.dp))
+                                .padding(start = fontAware(20.dp))
+                        )
                     }
                 }
             }

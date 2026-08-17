@@ -33,6 +33,8 @@ data class NeptunState(
     val connected: Boolean = false,
     val lastError: String? = null,
     val offlineSince: Long? = null,
+    /** Epoch millis when reconnection attempts started (after NEPTUN connection drop). */
+    val reconnectStartMillis: Long = 0L,
     val lastFrameAt: Long = 0,     // epoch millis of the last frame (any type) from the stream
     val forceOffline: Boolean = false,   // TEMP test toggle — force backup as if NEPTUN were down
     val backupUp: Boolean = false,      // backup source has polled successfully recently
@@ -106,6 +108,9 @@ object NeptunClient {
      * ignore drops shorter than this, so random hiccups never alert or pollute the log.
      */
     const val OFFLINE_GRACE_MS = 30_000L
+
+    /** Fixed reconnect interval after initial drop (5s, lightweight). */
+    const val RECONNECT_INTERVAL_MS = 5_000L
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // keep socket open indefinitely
@@ -333,7 +338,8 @@ object NeptunClient {
                 lastFrameAt = System.currentTimeMillis()
                 _state.value = _state.value.copy(
                     connected = true, lastError = null, offlineSince = null,
-                    lastFrameAt = System.currentTimeMillis()
+                    lastFrameAt = System.currentTimeMillis(),
+                    reconnectStartMillis = 0L
                 )
                 refreshFromRest()
             }
@@ -352,7 +358,7 @@ object NeptunClient {
                 if (ws !== webSocket) return // superseded by a manual retry — the new socket owns state
                 ws = null
                 connectInFlight.set(false)
-                _state.value = _state.value.copy(connected = false, offlineSince = System.currentTimeMillis())
+                _state.value = _state.value.copy(connected = false, offlineSince = System.currentTimeMillis(), reconnectStartMillis = System.currentTimeMillis())
                 scheduleReconnect()
             }
 
@@ -363,7 +369,8 @@ object NeptunClient {
                 _state.value = _state.value.copy(
                     connected = false,
                     lastError = t.message,
-                    offlineSince = System.currentTimeMillis()
+                    offlineSince = System.currentTimeMillis(),
+                    reconnectStartMillis = System.currentTimeMillis()
                 )
                 scheduleReconnect()
             }
@@ -377,11 +384,13 @@ object NeptunClient {
         // a browser tab), with exponential backoff capped at 15s on repeated failures.
         if (openedAt > 0 && System.currentTimeMillis() - openedAt > 10_000) {
             reconnectAttempt = 0
+            // reconnectSince = 0L  // no longer tracked here; AlertService uses NeptunState.reconnectStartMillis
         }
+
         reconnectAttempt++
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            delay(reconnectDelayMs(reconnectAttempt))
+            delay(RECONNECT_INTERVAL_MS) // 5s fixed interval, lightweight
             if (!manuallyStopped) connect()
         }
     }

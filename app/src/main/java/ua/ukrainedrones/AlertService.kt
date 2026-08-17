@@ -74,10 +74,13 @@ class AlertService : Service() {
     private var lastMonitorTitle: String? = null
     private var lastMonitorText: String? = null
     private var lastMonitorRetry: String? = null
-    private var wasConnected = true
+private var wasConnected = true
     private var offlineNotifShown = false
-    private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
+    private var notif3minShown = false
+    private var notif6minShown = false
+    private var notif10minShown = false
+    private var notif20minShown = false
     private val speedTracker = ThreatSpeedTracker()
     private var alertEpoch = 0
 
@@ -439,7 +442,108 @@ class AlertService : Service() {
                 offlineNotifShown = true
             }
         }
-        wasConnected = state.connected
+wasConnected = state.connected
+
+        // Reconnection milestone notifications (3min, 6min, 10min, 20min)
+        val neptun = NeptunClient.state.value
+        val reconnectStart = neptun.reconnectStartMillis
+        val now = System.currentTimeMillis()
+        val elapsedSinceReconnect = if (reconnectStart > 0 && now > reconnectStart) now - reconnectStart else 0L
+        val threeMinMs = 3 * 60 * 1000L
+        val sixMinMs = 6 * 60 * 1000L
+        val tenMinMs = 10 * 60 * 1000L
+        val twentyMinMs = 20 * 60 * 1000L
+
+        if (state.connected && wasConnected == false) {
+            // Just connected - reset milestone flags
+            notif3minShown = false
+            notif6minShown = false
+            notif10minShown = false
+            notif20minShown = false
+        }
+
+        if (!state.connected && elapsedSinceReconnect > 0) {
+            // Show notification at 3 minutes
+            if (elapsedSinceReconnect >= threeMinMs && !notif3minShown) {
+                notif3minShown = true
+                val s = Strings.get(state.lang)
+                val msg = if (state.lang == AppLanguage.UA) {
+                    "Backup system is monitoring the alert feed. The app will keep trying to reconnect in the background."
+                } else {
+                    "Backup system is monitoring the alert feed. The app will keep trying to reconnect in the background."
+                }
+                val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
+                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setContentTitle(s.offlineStatusTitle)
+                    .setContentText(msg)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(openAppIntent())
+                    .build()
+                safeNotify(NOTIF_ONEMORE, notif)
+            }
+            // Show notification at 6 minutes
+            if (elapsedSinceReconnect >= sixMinMs && !notif6minShown) {
+                notif6minShown = true
+                val s = Strings.get(state.lang)
+                val backupStatus = if (neptun.backupUp) "active" : "inactive"
+                val msg = if (state.lang == AppLanguage.UA) {
+                    "Backup alerts from alerts.com.ua are currently $backupStatus. Official sirens may be limited."
+                } else {
+                    "Backup alerts from alerts.com.ua are currently $backupStatus. Official sirens may be limited."
+                }
+                val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
+                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setContentTitle(s.offlineStatusTitle)
+                    .setContentText(msg)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(openAppIntent())
+                    .build()
+                safeNotify(NOTIF_ONEMORE, notif)
+            }
+            // Show notification at 10 minutes
+            if (elapsedSinceReconnect >= tenMinMs && !notif10minShown) {
+                notif10minShown = true
+                val s = Strings.get(state.lang)
+                val msg = if (state.lang == AppLanguage.UA) {
+                    "No NEPTUN connection for 10 minutes. The app continues reconnecting every 5 seconds in the background."
+                } else {
+                    "No NEPTUN connection for 10 minutes. The app continues reconnecting every 5 seconds in the background."
+                }
+                val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
+                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setContentTitle(s.offlineStatusTitle)
+                    .setContentText(msg)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(openAppIntent())
+                    .build()
+                safeNotify(NOTIF_ONEMORE, notif)
+            }
+            // Show notification at 20 minutes and stop reconnection attempts
+            if (elapsedSinceReconnect >= twentyMinMs && !notif20minShown) {
+                notif20minShown = true
+                val s = Strings.get(state.lang)
+                val msg = if (state.lang == AppLanguage.UA) {
+                    "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it."
+                } else {
+                    "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it."
+                }
+                val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
+                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setContentTitle(s.offlineStatusTitle)
+                    .setContentText(msg)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(openAppIntent())
+                    .build()
+                safeNotify(NOTIF_ONEMORE, notif)
+                // After 20 minutes, cancel further auto-reconnect attempts
+                NeptunClient.reconnectJob?.cancel()
+                NeptunClient.reconnectJob = null
+            }
+        }
 
         notifyMonitor(
             title = if (offline != null) s.offlineStatusTitle else s.notifOngoingTitle,

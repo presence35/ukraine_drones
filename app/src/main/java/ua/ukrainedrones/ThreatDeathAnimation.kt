@@ -1,10 +1,12 @@
 package ua.ukrainedrones
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.os.SystemClock
@@ -104,9 +106,7 @@ class ThreatDeathOverlay : Overlay() {
     private val reuse = android.graphics.Point()
     private val reuseOrigin = android.graphics.Point()
 
-    /** Ukraine flag colors: the projectile is gold with a blue chevron. */
-    private val UkraineGold = Color.rgb(255, 215, 0)
-    private val UkraineBlue = Color.rgb(0, 87, 183)
+    private var bulletBitmap: Bitmap? = null
 
     override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
         if (shadow) return
@@ -229,8 +229,7 @@ class ThreatDeathOverlay : Overlay() {
                             canvas.drawCircle(ox, oy, 14f * density * lf, flashPaint)
                             flashPaint.shader = null
                         }
-                        // Bullet: glowing gold head + gold tail + a blue chevron along the heading
-                        // (Ukraine colors).
+                        // Bullet: the projectile PNG, rotated to the heading, over a gold flash.
                         canvas.save()
                         canvas.translate(bx, by)
                         canvas.rotate(Math.toDegrees(atan2(headY.toDouble(), headX.toDouble())).toFloat())
@@ -245,16 +244,18 @@ class ThreatDeathOverlay : Overlay() {
                         )
                         canvas.drawCircle(0f, 0f, 14f * density, flashPaint)
                         flashPaint.shader = null
-                        bulletPaint.color = UkraineGold
-                        canvas.drawCircle(-12f * density, 0f, 2f * density, bulletPaint)
-                        canvas.drawCircle(-6f * density, 0f, 3.4f * density, bulletPaint)
-                        bulletPaint.color = UkraineBlue
-                        val chevron = Path()
-                        chevron.moveTo(6f * density, 0f)
-                        chevron.lineTo(0f, -3.4f * density)
-                        chevron.lineTo(0f, 3.4f * density)
-                        chevron.close()
-                        canvas.drawPath(chevron, bulletPaint)
+                        val bitmap = bulletBitmap ?: run {
+                            BitmapFactory.decodeResource(mapView.context.resources, R.drawable.bullet)
+                                ?.also { bulletBitmap = it }
+                        }
+                        if (bitmap != null) {
+                            val half = 14f * density
+                            canvas.drawBitmap(
+                                bitmap, null,
+                                RectF(-half, -half, half, half),
+                                bulletPaint
+                            )
+                        }
                         canvas.restore()
                     }
                 }

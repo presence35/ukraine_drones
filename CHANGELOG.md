@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Zones panel: it now edits whatever the map is currently showing — during the night window it tunes the night zones/bells (moon-flanked "Night zones" title, subtle indigo panel border, moon in the header), otherwise the day ones ("Day zones"); sliders and bells always move the rings you see.
+- Zones panel: the Slow and Fast groups each sit in a subtle rounded border box; the turtle/lightning icons are vertically centered and the lightning now renders as a real emoji everywhere (no more half-bolt text glyph).
+- Settings: every section (Language, Map centre, Card size, Threats, Night mode, Alerts) is now collapsible from its header.
 - First-run setup is now a full-screen 4-step wizard: language + tips → icon pack → "What matters to you?" threat grid (tap a type to enable/disable its map markers and alerts together, all on by default) → a preview of the core features with a single Start button. A live alert force-closes the wizard without saving anything — it returns once the alert clears.
 - Settings: "Repeat first setup" moved next to the feature guide button and reworded to «Повторити початкове налаштування» / "Replay first launch"; both it and "Check for updates" are disabled while an alert is active.
 - Settings: advanced toggles (threat types, official alerts, siren override, follow me, card size, night mode) now show a one-time explainer — a visual example plus a real-life scenario — the first time they're flipped ("Got it" dismisses it forever).
@@ -16,6 +19,9 @@
 - Death animation: real NEPTUN resolutions no longer leave the live marker on the map during the flight — the overlay renders its own copy of the icon, so the icon can't flip or change direction mid-flight.
 - Death animation: threats that resolve while the map isn't visible (Settings open or the app backgrounded) no longer fire stale or "bullet to nowhere" animations on return.
 - Settings → Additional: new "Neutralizing animation" toggle — turn off the projectile/explosion flourish entirely (the resolved card no longer flips to "Neutralized" and stays put until you close it). When on, the map vibrates briefly the moment the projectile detonates. If the server re-sends a resolution for an already-destroyed threat, the follow-up projectile just flies off-screen instead of exploding where the threat used to be.
+- Death animation: the projectile now flies as the new bullet sprite; Settings → Additional's "Neutralizing animation" row uses an explosion icon (was a skull).
+- Settings: the night-zone sliders are grouped in subtle bordered boxes (Slow and Fast), matching the map's zones panel.
+- Zone bells: the muted "alerts off" crossed-bell icon now renders reliably on the map pills and in the zones panel (it was invisible before).
 
 - First run: the onboarding sequence is now ordered — language picker, then the "keep alerts running" battery prompt, and only after both the system location/notification dialogs appear (permission dialogs no longer jump the queue). Existing users get the battery prompt once too (skipped automatically when already exempt).
 - Settings → Alerts: new "Vibration" section — independent Fast (missiles) and Slow (drones) strength sliders (Off/Soft/Medium/Strong/Urgent). Android has no per-notification vibration amplitude, so strength is expressed as a pulse pattern; official alerts without a known reason threat always ring with the strongest pattern.

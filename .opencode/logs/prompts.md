@@ -15608,3 +15608,118 @@ Continue if you have next steps, or stop and ask for clarification if you are un
 ## 17/08/2026, 23:55:03
 
 go
+## 17/08/2026, 23:55:53
+
+what would the daily tips be, tell me before i approve.
+## 18/08/2026, 00:00:26
+
+neptun goes down a lot for me.  but their webiste is up.  I don't trust our connection anymore.  Status has been offline for 30min, how has it not re-connected??
+
+tell me what files are relevant, and a prompt I can give claude to dbl check
+## 18/08/2026, 00:00:34
+
+Explore the codebase at D:\Desktop\drones to understand its structure. I need to know:
+1. The overall project structure (main directories, build system)
+2. What files are related to connection status, reconnection, network monitoring
+3. What files relate to "neptun" or connection status checking
+4. The CHANGELOG.md content (especially [Unreleased] section)
+5. The app/version.properties file
+6. Any files related to network status, reconnection logic, or offline/online detection
+
+Please return a comprehensive summary of the file structure and the relevant files found, including their paths and brief descriptions of what they do. Also read the CHANGELOG.md and app/version.properties files.
+## 18/08/2026, 00:09:04
+
+the netrualizing animation in settings should not be a skull. IT should be the explsion.
+use the new d:\desktop\drones\bullet.png as the bullet icon.
+the nigth zone sliders in settings need grouping borders, they're difficult to organize in my brain as is.  And the alert off icon is completely hidden, but i can tap it to get the red or yellow bell back.
+the "replay first lunahc" and "update" buttons are disabled even tho there's no alarm rn.  They should also get "disabled during alarm" notes.
+## 18/08/2026, 00:10:27
+
+did you anzlyze too?
+## 18/08/2026, 00:12:57
+
+so make it keep trying every few seconds, it's lightweight anyway, ya?
+if after 10min, give a new android notif, again after 10min, remind them the backup system are on (or off if the case), tell them they might have to force close the app, or reboot, or check internet, etc.
+## 18/08/2026, 00:12:58
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 00:16:28
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 00:18:50
+
+done?
+## 18/08/2026, 00:23:17
+
+would using precise gps vs coarse change anythign, battery specifcailly? 
+## 18/08/2026, 00:27:32
+
+it's not th eedge filter, it's the blue dot.  what's the pros/cons of using your middle ground?  gimme a table.
+## 18/08/2026, 00:28:04
+
+after 3min (remind about backup), then 6min (backup status), 10min, then 20min, then stop.
+## 18/08/2026, 00:31:04
+
+what about using a more precise when alarm comes on, just grab it once and go back to network_provider, and a most accurate possible when tapping "go to shelter" (that feature might not be aware to you, but you can infer precision matters the most here).  what's tradeoffs
+## 18/08/2026, 00:33:42
+
+the small threat card looks bad.  The 2 bars "r,skull" should be wider, and not start from under the threat icon.  same w the pills, move them over, to better align
+## 18/08/2026, 00:33:47
+
+Explore the codebase at D:\Desktop\drones to understand the structure. I need to find:
+1. The "small threat card" UI component
+2. Files related to threat card layout, especially anything with "r,skull" or pill bars
+3. The ARCHITECTURE.md file
+
+Please return:
+- The directory structure (top-level and key subdirectories)
+- The content of ARCHITECTURE.md
+- Any files that mention "threat card", "small threat", "skull", "pill" in their content
+- The relevant XML/layout files and Kotlin files related to the threat card UI
+
+Be very thorough - search for patterns like "skull", "pill", "threat_card", "threatcard" across the codebase.
+## 18/08/2026, 00:38:03
+
+we don't need updates as walk.  The user will be snet to GMaps for the real naviagatoin to shelter.  no reinvetn wheel.
+
+1 when alarm sounds
+2. just make a note somewhere smart that shelter will use pricse gps once when needed.
+## 18/08/2026, 00:39:04
+
+go
+## 18/08/2026, 00:39:21
+
+i thogyout the global agent file said to list the files you'd be changing at the end of each reply?
+## 18/08/2026, 00:42:01
+
+C:\Users\Bodi\.config\opencode\agents.md at the bottom!
+## 18/08/2026, 00:42:49
+
+but it's already in there, why are you not showing me what file would change in any of my sessions
+## 18/08/2026, 00:43:12
+
+go
+## 18/08/2026, 00:43:53
+
+it says "about to edit", not "actually editin"G.  how do i get what i want in the bottom of the plan mode before i build?
+## 18/08/2026, 00:45:32
+
+git push
+## 18/08/2026, 00:45:36
+
+git push
+## 18/08/2026, 00:45:39
+
+git push
+## 18/08/2026, 00:45:42
+
+git push
+## 18/08/2026, 00:45:46
+
+git push
+## 18/08/2026, 00:45:48
+
+git push
+## 18/08/2026, 00:45:52
+
+git push

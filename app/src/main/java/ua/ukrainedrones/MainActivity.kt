@@ -121,15 +121,19 @@ class MainActivity : ComponentActivity() {
      */
     private fun requestLocationAndNotifications() {
         val locationGranted =
-            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
         if (locationGranted) {
             LocationTracker.start(this)
             requestNotificationPermission()
         } else {
+            // FINE so precise one-shots (alert / future shelter handoff) are available; the
+            // dialog lets the user pick "approximate" — which still grants COARSE for the map.
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
                 REQUEST_LOCATION
             )
         }

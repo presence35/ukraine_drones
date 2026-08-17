@@ -31,7 +31,9 @@ object Strings {
     )
 
     data class Settings(
-        val zonesLabel: String,
+        val dayZonesTitle: String,
+        val nightZonesTitle: String,
+        val nightModeHeaderDesc: String,
         val redZoneLabel: String,
         val yellowZoneLabel: String,
         val alertsLabel: String,
@@ -44,6 +46,7 @@ object Strings {
         val officialAlertsRedTridentNote: String,
         val sirenOverrideTitle: String,
         val sirenOverrideDesc: String,
+        val disabledDuringAlarm: String,
         val nightModeLabel: String,
         val nightModeDesc: String,
         val nightStartTimeLabel: String,
@@ -55,7 +58,6 @@ object Strings {
         val nightOfficialSirenOverrideDesc: String,
         val nightCustomZonesTitle: String,
         val nightCustomZonesDesc: String,
-        val nightDayZonesNote: String,
         val nightMuteWarning: String,
         val nightMuteExitNote: String,
         val allAlertsOffLabel: String,
@@ -347,7 +349,9 @@ object Strings {
         val wizardCareOn: String get() = onboarding.wizardCareOn
         val wizardCareOff: String get() = onboarding.wizardCareOff
         val wizardStartButton: String get() = onboarding.wizardStartButton
-        val zonesLabel: String get() = settings.zonesLabel
+        val dayZonesTitle: String get() = settings.dayZonesTitle
+        val nightZonesTitle: String get() = settings.nightZonesTitle
+        val nightModeHeaderDesc: String get() = settings.nightModeHeaderDesc
         val redZoneLabel: String get() = settings.redZoneLabel
         val yellowZoneLabel: String get() = settings.yellowZoneLabel
         val alertsLabel: String get() = settings.alertsLabel
@@ -360,6 +364,7 @@ object Strings {
         val officialAlertsRedTridentNote: String get() = settings.officialAlertsRedTridentNote
         val sirenOverrideTitle: String get() = settings.sirenOverrideTitle
         val sirenOverrideDesc: String get() = settings.sirenOverrideDesc
+        val disabledDuringAlarm: String get() = settings.disabledDuringAlarm
         val nightModeLabel: String get() = settings.nightModeLabel
         val nightModeDesc: String get() = settings.nightModeDesc
         val nightStartTimeLabel: String get() = settings.nightStartTimeLabel
@@ -371,7 +376,6 @@ object Strings {
         val nightOfficialSirenOverrideDesc: String get() = settings.nightOfficialSirenOverrideDesc
         val nightCustomZonesTitle: String get() = settings.nightCustomZonesTitle
         val nightCustomZonesDesc: String get() = settings.nightCustomZonesDesc
-        val nightDayZonesNote: String get() = settings.nightDayZonesNote
         val nightMuteWarning: String get() = settings.nightMuteWarning
         val nightMuteExitNote: String get() = settings.nightMuteExitNote
         val allAlertsOffLabel: String get() = settings.allAlertsOffLabel
@@ -636,7 +640,9 @@ object Strings {
     )
 
     private fun uaSettings() = Settings(
-        zonesLabel = "Зони тривог",
+        dayZonesTitle = "Денні зони",
+        nightZonesTitle = "Нічні зони",
+        nightModeHeaderDesc = "Нічний режим активний",
         redZoneLabel = "Червона зона",
         yellowZoneLabel = "Жовта зона",
         alertsLabel = "Оповіщення",
@@ -649,6 +655,7 @@ object Strings {
         officialAlertsRedTridentNote = "Червоний тризуб у шапці означає, що офіційна тривога активна.",
         sirenOverrideTitle = "Сирена звучить завжди",
         sirenOverrideDesc = "Сигнал тривоги звучить, навіть коли телефон у вібро- чи беззвучному режимі. За замовчуванням вимкнено — звук слідує за налаштуваннями телефону.",
+        disabledDuringAlarm = "Недоступно під час тривоги",
         nightModeLabel = "Нічний режим",
         nightModeDesc = "Уночі атаки найбільш імовірні — ти мусиш прокинутися. Власний розклад, звук і зони для нічного вікна: тримай оповіщення увімкненими.",
         nightStartTimeLabel = "Початок",
@@ -660,7 +667,6 @@ object Strings {
         nightOfficialSirenOverrideDesc = "Офіційна тривога вночі дзвонить навіть у вібро- чи беззвучному режимі.",
         nightCustomZonesTitle = "Окремі нічні зони",
         nightCustomZonesDesc = "Власні відстані/час і червона/жовта зони на час нічного вікна.",
-        nightDayZonesNote = "Редагуєш денні зони — уночі (%1\$s) діють окремі.",
         nightMuteWarning = "Вночі атаки найбільш імовірні — ти можеш проспати одну.",
         nightMuteExitNote = "Якщо справді хочеш повної тиші — скористайся кнопкою «Зупинити моніторинг і вийти» нижче; інакше легко забути повернути налаштування вранці.",
         allAlertsOffLabel = "Усі сповіщення вимкнено",
@@ -986,7 +992,9 @@ object Strings {
     )
 
     private fun enSettings() = Settings(
-        zonesLabel = "Alert zones",
+        dayZonesTitle = "Day zones",
+        nightZonesTitle = "Night zones",
+        nightModeHeaderDesc = "Night mode active",
         redZoneLabel = "Red zone",
         yellowZoneLabel = "Yellow zone",
         alertsLabel = "Alerts",
@@ -999,6 +1007,7 @@ object Strings {
         officialAlertsRedTridentNote = "A red trident in the header means the official alert is on.",
         sirenOverrideTitle = "Sirens always sound",
         sirenOverrideDesc = "Ring the siren even when the phone is on vibrate or silent. Off by default — alerts follow your phone's sound settings.",
+        disabledDuringAlarm = "Disabled while an alarm is active",
         nightModeLabel = "Night mode",
         nightModeDesc = "Attacks are most likely at night — you must wake up. Own schedule, sound and zones for the night window: keep alerts on.",
         nightStartTimeLabel = "Start",
@@ -1010,7 +1019,6 @@ object Strings {
         nightOfficialSirenOverrideDesc = "Official oblast alerts ring at night even on vibrate/silent.",
         nightCustomZonesTitle = "Separate night zones",
         nightCustomZonesDesc = "Own distances/times and red/yellow zones for the night window.",
-        nightDayZonesNote = "Editing day zones — at night (%1\$s) separate ones apply.",
         nightMuteWarning = "Attacks are most common at night — you may sleep through one.",
         nightMuteExitNote = "If you truly want total silence, use \"Stop Monitoring & Exit\" below instead — otherwise you may forget to switch alerts back on tomorrow.",
         allAlertsOffLabel = "All alerts are off",
