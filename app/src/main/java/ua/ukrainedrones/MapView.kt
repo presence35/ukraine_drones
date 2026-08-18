@@ -11,6 +11,7 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.SystemClock
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -105,6 +106,27 @@ private fun threatIcon(context: Context, type: ThreatType, iconSet: ThreatIconSe
     }
     val src = ContextCompat.getDrawable(context, res)!!
     val targetW = (32 * context.resources.displayMetrics.density).toInt()
+    val iw = src.intrinsicWidth.coerceAtLeast(1)
+    val ih = src.intrinsicHeight.coerceAtLeast(1)
+    val w = targetW
+    val h = (ih.toFloat() * targetW / iw).toInt().coerceAtLeast(1)
+    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    src.setBounds(0, 0, w, h)
+    src.draw(canvas)
+    return BitmapDrawable(context.resources, bmp)
+}
+
+/** Same marker icon, rendered `scale`× larger — used to grow the selected threat's icon. */
+private fun scaledThreatIcon(
+    context: Context,
+    type: ThreatType,
+    iconSet: ThreatIconSet,
+    scale: Float
+): Drawable {
+    val src = ContextCompat.getDrawable(context, IconCatalog.res(type, iconSet))!!
+    val density = context.resources.displayMetrics.density
+    val targetW = (32 * density * scale).toInt().coerceAtLeast(2)
     val iw = src.intrinsicWidth.coerceAtLeast(1)
     val ih = src.intrinsicHeight.coerceAtLeast(1)
     val w = targetW
@@ -278,7 +300,8 @@ fun NeptunMapView(
     fitZonesTick: Int = 0,
     revealRequest: RevealRequest? = null,
     paused: Boolean = false,
-    onTempNeutralize: (String) -> Unit = {},
+    onNeutralize: (String) -> Unit = {},
+    popupCoverPx: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -318,27 +341,40 @@ fun NeptunMapView(
     val iconSetState by rememberUpdatedState(uiState.iconSet)
     val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
     val focusLocationState by rememberUpdatedState(uiState.focusLocation)
+    val lastSelectedId = remember { mutableStateOf<String?>(null) }
     val deathAnimationEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)
     val followBulletState by rememberUpdatedState(uiState.followBullet)
+    val popupCoverPxState by rememberUpdatedState(popupCoverPx)
     val mapScope = rememberCoroutineScope()
     val deathFx = remember { ThreatDeathOverlay() }
     val vibrator = remember { context.getSystemService(Vibrator::class.java) }
 
-    // Follow-the-bullet: glide the camera onto an off-screen strike, then, when the setting is
-    // on, return it to where it was 0.3s after the explosion finishes — unless the user has
-    // panned somewhere else while the strike played.
-    val followStrike: (MapView, GeoPoint) -> Unit = { mapView, geo ->
+    // Follow-the-bullet: with the setting on, the camera tours a strike — it pans to the
+    // launching city (nearest major city to the target) first, glides onto the target during
+    // the flight, then returns to the focus (GPS/pinned) 0.3s after the explosion finishes —
+    // unless the user has panned somewhere else while the strike played.
+    val followStrike: (MapView, GeoPoint, GeoPoint?) -> Unit = { mapView, geo, origin ->
         if (mapView.width > 0 && mapView.height > 0) {
-            val preCenter = mapView.mapCenter
-            if (keepThreatOnScreen(mapView, geo) && followBulletState) {
+            val preFocus = focusLocationState?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
+            if (followBulletState) {
                 mapScope.launch {
-                    delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
+                    origin?.let { mapView.controller.animateTo(it) }
+                    delay(700)
+                    mapView.controller.animateTo(geo)
+                    delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L - 700)
                     val mv = mapViewRef.value ?: return@launch
                     if (distanceMeters(mv.mapCenter.latitude, mv.mapCenter.longitude, geo.latitude, geo.longitude) > 2000.0) return@launch
-                    mv.controller.animateTo(preCenter)
+                    mv.controller.animateTo(preFocus)
                 }
             }
         }
+    }
+
+    // Where the death-bullet takes off from: the nearest major city to the target, else the
+    // focus point (GPS or pinned city) when no city is close enough.
+    val strikeOrigin: (GeoPoint) -> GeoPoint? = { target ->
+        Cities.nearestCity(target.latitude, target.longitude)?.let { GeoPoint(it.lat, it.lon) }
+            ?: (focusLocationState ?: LocationTracker.location.value)?.let { GeoPoint(it.lat, it.lon) }
     }
 
     AndroidView(
@@ -679,9 +715,8 @@ fun NeptunMapView(
 
                 // Top-most touch overlay: markers swallow their own long-presses, so a
                 // separate overlay gets them first. Taps fall through to the map/markers.
-                // TEMP debug: long-press a threat marker (or empty map) to fire the death
-                // animation on demand instead of waiting for a real resolution. Remove the
-                // long-press handling here before release.
+                // Long-pressing a threat marker fires the death animation on demand — the
+                // same flourish a real resolution plays. Empty-ground long-presses are ignored.
                 mapView.overlays.add(
                     MapEventsOverlay(object : MapEventsReceiver {
                         override fun singleTapConfirmedHelper(p: GeoPoint): Boolean = false
@@ -706,7 +741,7 @@ fun NeptunMapView(
                                 }
                             }
                             if (nearest != null) {
-                                // TEMP: if the pressed threat is the selected one, self-destruct
+                                // If the pressed threat is the selected one, self-destruct
                                 // its card too (reuses the real neutralized-card flow).
                                 val pressedId = markerRefs.value.entries
                                     .firstOrNull { it.value === nearest }?.key
@@ -717,24 +752,21 @@ fun NeptunMapView(
                                 markerRefs.value.entries.removeAll { it.value === nearest }
                                 mapView.invalidate()
                                 if (pressedId != null && pressedId == selectedThreatIdState) {
-                                    onTempNeutralize(pressedId)
+                                    onNeutralize(pressedId)
                                 }
                                 if (deathAnimationEnabledState) {
-                                    val origin = focusLocationState ?: LocationTracker.location.value
                                     val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
+                                    val origin = strikeOrigin(target)
                                     if (deathFx.isActiveFor(pressedId)) {
                                         // Already being struck — a follow-up projectile just
                                         // flies off-screen instead of exploding twice.
-                                        deathFx.spawnDud(
-                                            pressedId, target,
-                                            origin = origin?.let { GeoPoint(it.lat, it.lon) }
-                                        )
+                                        deathFx.spawnDud(pressedId, target, origin)
                                     } else {
-                                        followStrike(mapView, target)
+                                        followStrike(mapView, target, origin)
                                         deathFx.spawn(
                                             id = pressedId,
                                             geo = target,
-                                            origin = origin?.let { GeoPoint(it.lat, it.lon) },
+                                            origin = origin,
                                             icon = nearest.icon,
                                             rotationDeg = nearest.rotation,
                                             alpha = nearest.alpha,
@@ -771,13 +803,13 @@ fun NeptunMapView(
                 if (pausedState || lifecycle.currentState < Lifecycle.State.STARTED) return@collect
                 if (r.type in hiddenTypesState || !deathAnimationEnabledState) return@collect
                 val marker = markerRefs.value[r.id]
-                val origin = (focusLocationState ?: LocationTracker.location.value)
-                    ?.let { GeoPoint(it.lat, it.lon) }
+                val anchor0 = GeoPoint(r.lat, r.lon)
+                val origin = strikeOrigin(anchor0)
                 if (marker == null || deathFx.isActiveFor(r.id)) {
                     // Already destroyed — a prior bullet landed (the server re-sent the
                     // resolution), so don't explode where the threat used to be: a follow-up
                     // projectile just streaks across and off-screen, then is dropped.
-                    deathFx.spawnDud(r.id, GeoPoint(r.lat, r.lon), origin)
+                    deathFx.spawnDud(r.id, anchor0, origin)
                 } else {
                     // Unhook the real marker right away — the overlay draws its own copy of the
                     // icon, so keeping the shared marker would render the same drawable twice
@@ -785,14 +817,15 @@ fun NeptunMapView(
                     // back, making the icon flip or change direction mid-flight).
                     mapViewRef.value?.overlays?.remove(marker)
                     markerRefs.value.entries.removeAll { it.value === marker }
-                    val anchor = marker.position ?: GeoPoint(r.lat, r.lon)
+                    val anchor = marker.position ?: anchor0
                     val base = IconCatalog.baseDeg(r.type, iconSetState)
                     val rotation = marker.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
                     // A fresh copy, not the marker's shared drawable.
                     val icon = threatIcon(context, r.type, iconSetState)
-                    // If the resolved threat is off-screen, glide it into view so the strike
-                    // is actually seen (never fights the user's own panning — one-time pan).
-                    mapViewRef.value?.let { followStrike(it, anchor) }
+                    // With follow-the-bullet on, the camera tours the strike: launching city →
+                    // target → back to the focus; otherwise it just glides onto the target when
+                    // it's off-screen so the strike is actually seen.
+                    mapViewRef.value?.let { followStrike(it, anchor, origin) }
                     mapViewRef.value?.invalidate()
                     deathFx.spawn(
                         id = r.id,
@@ -827,6 +860,42 @@ fun NeptunMapView(
                 }
             }
         }
+
+    // Select → zoom & grow: when a marker is selected (tap / popup opened), pan + zoom the
+    // camera so the threat sits centred in the visible band below the popup and animate its
+    // icon ~1.8× bigger so the detail is actually readable. Notification reveals already frame
+    // the threat themselves, so they skip the pan (the icon still grows). Restores the previous
+    // selection's icon to normal size.
+    LaunchedEffect(uiState.selectedThreat?.id) {
+        val sel = uiState.selectedThreat
+        val prevId = lastSelectedId.value
+        if (prevId != null && prevId != sel?.id) {
+            uiState.mapThreats.firstOrNull { it.id == prevId }?.let { t ->
+                markerRefs.value[prevId]?.icon = threatIcon(context, t.type, iconSetState)
+            }
+        }
+        lastSelectedId.value = sel?.id
+        if (sel == null || pausedState) return@LaunchedEffect
+        delay(120) // let the popup compose and report its height via popupCoverPx
+        val mapView = mapViewRef.value ?: return@LaunchedEffect
+        if (uiState.revealRequest?.id != sel.id) {
+            centerAndZoomOnThreat(mapView, GeoPoint(sel.lat, sel.lon), popupCoverPxState)
+        }
+        mapScope.launch {
+            val marker = markerRefs.value[sel.id] ?: return@launch
+            val start = SystemClock.elapsedRealtime()
+            val dur = 250L
+            while (SystemClock.elapsedRealtime() - start < dur) {
+                val t = ((SystemClock.elapsedRealtime() - start).toFloat() / dur).coerceIn(0f, 1f)
+                val eased = 1f - (1f - t) * (1f - t)
+                marker.icon = scaledThreatIcon(context, sel.type, iconSetState, 1f + 0.8f * eased)
+                mapView.invalidate()
+                delay(16)
+            }
+            marker.icon = scaledThreatIcon(context, sel.type, iconSetState, 1.8f)
+            mapView.invalidate()
+        }
+    }
 
     // Smoothly advance markers between the (sparse) server fixes: predict each threat's
     // current position from its heading + estimated speed and move the marker in-place,
@@ -908,18 +977,20 @@ fun NeptunMapView(
     }
 }
 
-/** Glide the camera onto [geo] when it's outside the viewport, so a death strike is actually
- *  seen. One-time nudge at spawn — deliberately never chases the target later, so it never
- *  fights the user's own panning. */
-private fun keepThreatOnScreen(mapView: MapView, geo: GeoPoint): Boolean {
+/** Centre the camera on [geo] at the vertical middle of the viewport below the popup, zooming
+ *  in to a detail level so the threat's icon (and any strike) is actually readable. */
+private fun centerAndZoomOnThreat(mapView: MapView, geo: GeoPoint, coverPx: Int) {
+    if (mapView.width <= 0 || mapView.height <= 0) return
     val p = Point()
     mapView.projection.toPixels(geo, p)
-    val margin = 48f * mapView.context.resources.displayMetrics.density
-    if (p.x < -margin || p.x > mapView.width + margin ||
-        p.y < -margin || p.y > mapView.height + margin
-    ) {
-        mapView.controller.animateTo(geo)
-        return true
-    }
-    return false
+    val w = mapView.width.toFloat()
+    val h = mapView.height.toFloat()
+    val targetX = w / 2f
+    val targetY = (coverPx + h) / 2f
+    val center = mapView.projection.fromPixels(
+        (p.x - (targetX - p.x)).toInt(),
+        (p.y - (targetY - p.y)).toInt()
+    )
+    val targetZoom = maxOf(mapView.zoomLevelDouble, 11.0)
+    mapView.controller.animateTo(center, targetZoom, 450L)
 }

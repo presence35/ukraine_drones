@@ -96,9 +96,9 @@ object IconCatalog {
         ThreatType.BALLISTIC -> 45f      // _top_right
         ThreatType.CRUISE_MISSILE -> 90f // _right
         ThreatType.FPV_LOITERING -> 180f // _bottom_middle
-        ThreatType.KAB -> 225f           // _bottom_left
-        ThreatType.AVIATION -> 270f      // _left
-        ThreatType.RECON -> 225f         // _bottom_left
+        ThreatType.KAB -> 240f           // _bottom_left
+        ThreatType.AVIATION -> 265f      // _left
+        ThreatType.RECON -> 247f         // _bottom_left
         ThreatType.SHAHED -> 0f          // _top_middle
         ThreatType.UNKNOWN -> 0f
     }
@@ -111,9 +111,9 @@ object IconCatalog {
         ThreatType.BALLISTIC -> 45f       // _top_right
         ThreatType.CRUISE_MISSILE -> 90f  // _right
         ThreatType.FPV_LOITERING -> 180f  // _bottom
-        ThreatType.KAB -> 225f            // _bottom_left
-        ThreatType.AVIATION -> 270f       // _left
-        ThreatType.RECON -> 225f          // _bottom_left
+        ThreatType.KAB -> 240f            // _bottom_left
+        ThreatType.AVIATION -> 265f       // _left
+        ThreatType.RECON -> 247f          // _bottom_left
         ThreatType.SHAHED -> 0f           // _top
         ThreatType.UNKNOWN -> 0f
     }

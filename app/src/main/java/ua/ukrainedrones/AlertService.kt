@@ -97,6 +97,7 @@ class AlertService : Service() {
             val focusOblastAlertActive: Boolean,
             val focusAlertSource: AlertSource?,
             val focusBannerCity: String,
+            val focusCityUa: String?,
             val focusRegion: String,
             val focusPinned: Boolean,
             val officialReason: String?,
@@ -218,7 +219,7 @@ class AlertService : Service() {
     private fun startMonitoring() {
         if (monitoringJob != null) return
         val prefs = ZonePrefs(applicationContext)
-        // Server-driven resolutions/removals only — the TEMP map long-press never touches this
+        // Server-driven resolutions/removals only — the map long-press never touches this
         // flow, so the tally excludes manual test triggers.
         scope.launch {
             NeptunClient.removedThreats.collect { removed ->
@@ -359,6 +360,7 @@ class AlertService : Service() {
                     focusBannerCity = (
                         if (lang == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
                     ).ifBlank { Strings.get(lang).unknownLocation },
+                    focusCityUa = attribution.bannerCityUa.takeIf { it.isNotBlank() },
                     focusRegion = focusRegionText(lang, followMe, pinned),
                     focusPinned = !followMe && pinned != null,
                     officialReason = officialReason,
@@ -674,7 +676,7 @@ notifyMonitor(
             currentReasonThreatId = state.officialReasonThreatId
             AlertHistory.openAlert(
                 "official", null, reasonThreat?.type,
-                reasonThreat?.let { it.locality ?: it.district ?: it.region },
+                reasonThreat?.let { it.locality ?: it.district ?: it.region } ?: state.focusCityUa,
                 distanceFromFocusKm(reasonThreat, state),
                 System.currentTimeMillis()
             )
@@ -876,6 +878,9 @@ notifyMonitor(
                 // Silent updates refresh the alert body without re-ringing the siren on the
                 // same notification (e.g. a reason text arriving after the initial alert).
                 if (silent) setOnlyAlertOnce(true)
+                // Override alerts ring on the alarm stream and launch the app full-screen over
+                // DND too, so a genuinely missed siren still lands in front of the user.
+                if (sirenOverride) setFullScreenIntent(openAppIntent(revealThreat), true)
             }
     }
 

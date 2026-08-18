@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -65,6 +66,26 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val context = LocalContext.current
     var screen by remember { mutableStateOf(Screen.MAP) }
     var showConnectionInfo by remember { mutableStateOf(false) }
+    var showZonesSheet by remember { mutableStateOf(false) }
+    var activeExplainer by remember { mutableStateOf<Explainer?>(null) }
+
+    // Only one overlay can be up at a time: opening any of them closes the others (and the
+    // threat popup), and an arriving update dialog outranks everything.
+    LaunchedEffect(showConnectionInfo, showZonesSheet, uiState.update) {
+        if (showConnectionInfo || showZonesSheet || uiState.update !is UpdateState.Idle) {
+            viewModel.selectThreat(null)
+        }
+        if (showConnectionInfo) {
+            showZonesSheet = false
+            activeExplainer = null
+        }
+        if (showZonesSheet) showConnectionInfo = false
+        if (uiState.update !is UpdateState.Idle) {
+            showConnectionInfo = false
+            showZonesSheet = false
+            activeExplainer = null
+        }
+    }
 
     // The System-status sheet never lingers over the map: it closes when an alert starts and
     // whenever the user navigates to Settings/Guide, so returning to the map is always clean.
@@ -82,6 +103,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var guideFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
     var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
+    var wizardSettleDeadline by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(3000); wizardSettleDeadline = true }
     val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     var settingsCollapse by rememberSaveable(stateSaver = SettingsCollapseState.Saver) { mutableStateOf(SettingsCollapseState()) }
     // The zones sheet edits whatever the map is currently showing: night settings while the
@@ -122,7 +145,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 openSettings()
                 scrollToThreatsTick++
             },
-            onThreatTapped = { viewModel.selectThreat(it) },
+            onThreatTapped = { showConnectionInfo = false; showZonesSheet = false; viewModel.selectThreat(it) },
             onThreatStripTap = { viewModel.panToThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
             onMapTapped = { viewModel.selectThreat(null) },
@@ -136,9 +159,11 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onFastYellowArmedChange = { if (editingNight) viewModel.setNightFastYellowArmed(it) else viewModel.setFastYellowArmed(it) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
-            onTempNeutralize = { id -> viewModel.tempNeutralize(id) },
+            onNeutralize = { id -> viewModel.neutralizeThreat(id) },
             showConnectionInfo = showConnectionInfo,
-            onShowConnectionInfoChange = { showConnectionInfo = it }
+            onShowConnectionInfoChange = { showConnectionInfo = it },
+            showZonesSheet = showZonesSheet,
+            onShowZonesSheetChange = { showZonesSheet = it }
         )
         if (screen == Screen.SETTINGS) {
             // Composed after MapScreen, so its handler is checked first on Back.
@@ -195,6 +220,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 isChecking = uiState.update is UpdateState.Checking,
                 latestVersion = uiState.latestVersion,
                 onBack = { screen = Screen.MAP },
+                activeExplainer = activeExplainer,
+                onExplainerChange = { activeExplainer = it },
                 onLanguageChange = { viewModel.setLanguage(it) },
                 onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },
                 onThreatAlertToggle = { type, enabled -> viewModel.setThreatAlertsEnabled(type, enabled) },
@@ -294,7 +321,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     LaunchedEffect(uiState.alertActive) {
         if (!uiState.alertActive) wizardOpenedDuringAlert = false
     }
-    if (!uiState.languageChosen && (!uiState.alertActive || wizardOpenedDuringAlert)) {
+    if (!uiState.languageChosen &&
+        (uiState.lastFrameAt > 0 || wizardSettleDeadline) &&
+        (!uiState.alertActive || wizardOpenedDuringAlert)
+    ) {
         FirstLaunchWizard(
             current = uiState.language,
             iconSet = uiState.iconSet,
@@ -303,7 +333,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onChoose = { viewModel.setLanguage(it) },
             onIconSetChange = { viewModel.setThreatIconSet(it) },
             onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
-            onComplete = { viewModel.skipLanguageChoose() }
+            onComplete = { viewModel.skipLanguageChoose() },
+            onLater = { viewModel.laterLanguageChoose() }
         )
     }
 
@@ -337,15 +368,16 @@ private fun FirstLaunchWizard(
     onChoose: (AppLanguage) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onThreatEnabledToggle: (ThreatType, Boolean) -> Unit,
-    onComplete: () -> Unit
+    onComplete: () -> Unit,
+    onLater: () -> Unit
 ) {
     val s = Strings.get(current)
+    val other = if (current == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA
     var step by remember { mutableStateOf(0) }
     BackHandler(enabled = step > 0) { step-- }
     val stepTitle = when (step) {
-        0 -> s.languageChooseTitle
-        1 -> s.iconSetTitle
-        2 -> s.wizardCareTitle
+        0 -> Strings.get(other).languageChooseTitle
+        1 -> s.wizardCareTitle
         else -> s.onboardingFeaturesTitle
     }
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -362,7 +394,7 @@ private fun FirstLaunchWizard(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    "${step + 1}/4",
+                    "${step + 1}/3",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -377,10 +409,16 @@ private fun FirstLaunchWizard(
                     0 -> {
                         SetupLanguageStep(current, onChoose)
                         Spacer(Modifier.height(16.dp))
+                        Text(
+                            s.onboardingIntro,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(16.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Spacer(Modifier.height(12.dp))
                         OnboardingTipRow(
-                            iconRes = R.drawable.ic_threat_shahed,
+                            iconRes = IconCatalog.photoRes(ThreatType.SHAHED) ?: R.drawable.ic_threat_shahed,
                             iconTint = Color.Unspecified,
                             text = s.onboardingTipTap
                         )
@@ -394,9 +432,24 @@ private fun FirstLaunchWizard(
                             iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                             text = s.onboardingTipSiren
                         )
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(24.dp))
+                        Text(
+                            s.iconSetTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        IconSetSelector(
+                            lang = current,
+                            selected = iconSet,
+                            onChange = onIconSetChange,
+                            slot = 28.dp
+                        )
                     }
-                    1 -> SetupIconPackStep(current, iconSet, onIconSetChange)
-                    2 -> WizardThreatGrid(current, iconSet, hiddenTypes, silencedTypes, onThreatEnabledToggle)
+                    1 -> WizardThreatGrid(current, iconSet, hiddenTypes, silencedTypes, onThreatEnabledToggle)
                     else -> SetupFeaturesStep(s)
                 }
             }
@@ -409,13 +462,13 @@ private fun FirstLaunchWizard(
                 if (step > 0) {
                     OutlinedButton(onClick = { step-- }) { Text(s.backButton) }
                 } else {
-                    OutlinedButton(onClick = onComplete) { Text(s.languageChooseLater) }
+                    OutlinedButton(onClick = onLater) { Text(s.languageChooseLater) }
                 }
                 Button(
-                    onClick = { if (step < 3) step++ else onComplete() },
+                    onClick = { if (step < 2) step++ else onComplete() },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(if (step < 3) s.nextButton else s.wizardStartButton, fontWeight = FontWeight.SemiBold)
+                    Text(if (step < 2) s.nextButton else s.wizardStartButton, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -446,16 +499,6 @@ private fun SetupLanguageStep(current: AppLanguage, onChoose: (AppLanguage) -> U
 }
 
 @Composable
-private fun SetupIconPackStep(lang: AppLanguage, iconSet: ThreatIconSet, onIconSetChange: (ThreatIconSet) -> Unit) {
-    IconSetSelector(
-        lang = lang,
-        selected = iconSet,
-        onChange = onIconSetChange,
-        slot = 28.dp
-    )
-}
-
-@Composable
 private fun WizardThreatGrid(
     lang: AppLanguage,
     iconSet: ThreatIconSet,
@@ -471,55 +514,71 @@ private fun WizardThreatGrid(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(14.dp))
-        ThreatType.values().toList().chunked(2).forEach { pair ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                pair.forEach { type ->
-                    val on = type !in hiddenTypes && type !in silencedTypes
-                    val info = ThreatTypeCatalog.INFO.getValue(type)
-                    val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
-                    val onColor = MaterialTheme.colorScheme.onSurface
-                    val offColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(
-                                width = 1.5.dp,
-                                color = if (on) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant,
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .clickable { onThreatEnabledToggle(type, !on) }
-                            .padding(vertical = 14.dp, horizontal = 8.dp)
-                    ) {
-                        ThreatIcon(
-                            type = type,
-                            set = iconSet,
-                            size = 40.dp,
-                            tint = if (on) onColor else offColor
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (on) onColor else offColor,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (on) s.wizardCareOn else s.wizardCareOff,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (on) MaterialTheme.colorScheme.primary else offColor
-                        )
-                    }
-                }
+        fastAndSlowGroups(lang).forEachIndexed { i, (groupIcon, groupLabel, types) ->
+            if (i > 0) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(10.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    groupIcon,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    groupLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Spacer(Modifier.height(10.dp))
+            types.toList().chunked(2).forEach { pair ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    pair.forEach { type ->
+                        val on = type !in hiddenTypes && type !in silencedTypes
+                        val info = ThreatTypeCatalog.INFO.getValue(type)
+                        val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+                        val onColor = MaterialTheme.colorScheme.onSurface
+                        val offColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(
+                                    width = 1.5.dp,
+                                    color = if (on) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable { onThreatEnabledToggle(type, !on) }
+                                .padding(vertical = 14.dp, horizontal = 8.dp)
+                        ) {
+                            ThreatIcon(
+                                type = type,
+                                set = iconSet,
+                                size = 40.dp,
+                                tint = if (on) Color.Unspecified else offColor
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (on) onColor else offColor,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
         }
     }
 }
@@ -527,9 +586,9 @@ private fun WizardThreatGrid(
 @Composable
 private fun SetupFeaturesStep(s: Strings.StringSet) {
     val features = remember(s) {
-        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "lang") }
+        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "night", "follow") }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         features.forEach { f ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -545,14 +604,14 @@ private fun SetupFeaturesStep(s: Strings.StringSet) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         f.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         f.summary,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -589,12 +648,12 @@ private fun OnboardingTipRow(iconRes: Int, iconTint: Color, text: String) {
             tint = iconTint,
             modifier = Modifier
                 .padding(top = 1.dp)
-                .size(16.dp)
+                .size(20.dp)
         )
         Spacer(Modifier.width(10.dp))
         Text(
             text,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -621,17 +680,21 @@ private fun MapScreen(
     onFastYellowArmedChange: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit,
-    onTempNeutralize: (String) -> Unit,
+    onNeutralize: (String) -> Unit,
     showConnectionInfo: Boolean,
-    onShowConnectionInfoChange: (Boolean) -> Unit
+    onShowConnectionInfoChange: (Boolean) -> Unit,
+    showZonesSheet: Boolean,
+    onShowZonesSheetChange: (Boolean) -> Unit
 ) {
     val s = Strings.get(uiState.language)
     var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
-    var showZonesSheet by remember { mutableStateOf(false) }
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
+    // Height (px) of the threat popup overlay — the map keeps selected/struck threats centred
+    // in the viewport that stays visible below it.
+    var popupHeightPx by remember { mutableStateOf(0) }
     // Last strip-tapped threat id per type, so repeated taps cycle through each of that type.
     val stripCycle = remember { mutableStateMapOf<ThreatType, String>() }
     // The zones sheet edits whatever the map is currently showing.
@@ -639,23 +702,23 @@ private fun MapScreen(
 
     // Opening the panel also asks the map to centre + zoom to the full yellow zone.
     val openZonesPanel: () -> Unit = {
-        showZonesSheet = true
+        onShowZonesSheetChange(true)
         fitZonesTick++
     }
 
     val openSettings: () -> Unit = {
-        showZonesSheet = false
+        onShowZonesSheetChange(false)
         onOpenSettings()
     }
 
     val openThreatSettings: () -> Unit = {
-        showZonesSheet = false
+        onShowZonesSheetChange(false)
         onOpenThreatSettings()
     }
 
     // Back closes the popup first, then exits — fixes "back stuck on home page".
     BackHandler(enabled = uiState.selectedThreat != null) { onDismissPopup() }
-    BackHandler(enabled = showZonesSheet) { showZonesSheet = false }
+    BackHandler(enabled = showZonesSheet) { onShowZonesSheetChange(false) }
 
     Scaffold(
         topBar = {
@@ -760,7 +823,8 @@ private fun MapScreen(
                         fitZonesTick = fitZonesTick,
                         revealRequest = uiState.revealRequest,
                         paused = settingsOpen,
-                        onTempNeutralize = onTempNeutralize,
+                        onNeutralize = onNeutralize,
+                        popupCoverPx = popupHeightPx,
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -866,6 +930,10 @@ private fun MapScreen(
             // Threat popup: the full interactive card while a threat is selected, crossfading
             // into the compact neutralized card the instant it resolves (so the popup never pops
             // out), which then fades out across the map explosion, clearing the selection.
+            // The small card hugs the top-left corner and stays narrow; the large card is
+            // top-centred and full-width. The measured height feeds the map so a selected or
+            // struck threat is centred in the viewport left visible below the card.
+            val smallCard = uiState.threatCardSize == ThreatCardSize.SMALL
             Crossfade(
                 targetState = when {
                     uiState.selectedThreat != null -> 1
@@ -875,8 +943,9 @@ private fun MapScreen(
                 animationSpec = tween(300),
                 label = "threatCardSwap",
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
+                    .align(if (smallCard) Alignment.TopStart else Alignment.TopCenter)
                     .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                    .onSizeChanged { popupHeightPx = it.height }
             ) { state ->
                 when (state) {
                     1 -> uiState.selectedThreat?.let { threat ->
@@ -891,11 +960,11 @@ private fun MapScreen(
                                 cardSize = uiState.threatCardSize,
                                 alertsOff = threat.type in uiState.silencedTypes,
                                 onDismiss = onDismissPopup,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                                horizontalArrangement = if (smallCard) Arrangement.Start else Arrangement.End
                             ) {
                                 ThreatCardSizeControl(
                                     current = uiState.threatCardSize,
@@ -914,7 +983,16 @@ private fun MapScreen(
                         LaunchedEffect(Unit) {
                             delay(DEATH_EXPLOSION_START_MS)
                             neutralizing = false
-                            fade.animateTo(0f, tween(DEATH_EXPLOSION_LEN_MS.toInt()))
+                        }
+                        // A short readable hold, then one smooth, clearly visible alpha ramp that
+                        // runs across the whole death window — never a hard hide at impact.
+                        LaunchedEffect(Unit) {
+                            val holdMs = 700L
+                            delay(holdMs)
+                            fade.animateTo(
+                                0f,
+                                tween((DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS - holdMs).toInt())
+                            )
                             onDismissPopup()
                         }
                         Box(modifier = Modifier.graphicsLayer { alpha = fade.value }) {
@@ -930,7 +1008,7 @@ private fun MapScreen(
                                 neutralized = true,
                                 neutralizing = neutralizing,
                                 onDismiss = onDismissPopup,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
                             )
                         }
                     }
@@ -956,7 +1034,7 @@ private fun MapScreen(
                         val density = LocalDensity.current
                         val dismissThresholdPx = with(density) { 80.dp.toPx() }
                         var dragAccum by remember { mutableFloatStateOf(0f) }
-                        val closeSheet = { showZonesSheet = false }
+                        val closeSheet = { onShowZonesSheetChange(false) }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

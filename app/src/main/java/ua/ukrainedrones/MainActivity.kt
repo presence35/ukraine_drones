@@ -147,12 +147,17 @@ class MainActivity : ComponentActivity() {
     private fun deferPermissionRequests() {
         lifecycleScope.launch {
             val prefs = ZonePrefs(applicationContext)
+            // Re-arm for this session — a previous "Later" deferral only lasts one launch.
+            prefs.setPermissionPromptDeferred(false)
             val langChosen = prefs.languageChosen().first()
             val ready = if (langChosen && prefs.batteryOnboardShown().first()) {
-                true
+                !prefs.permissionPromptDeferred().first()
             } else {
-                combine(prefs.languageChosen(), prefs.batteryOnboardShown()) { l, b -> l && b }
-                    .first { it }
+                combine(
+                    prefs.languageChosen(),
+                    prefs.batteryOnboardShown(),
+                    prefs.permissionPromptDeferred()
+                ) { l, b, d -> l && b && !d }.first { it }
             }
             if (ready) requestLocationAndNotifications()
         }

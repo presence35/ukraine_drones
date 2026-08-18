@@ -20,11 +20,10 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Total length of the death animation: lead-in lock-on + projectile flight + explosion. */
+/** Total length of the death animation: projectile flight + explosion. */
 private const val DEATH_DURATION_MS = 5000L
 
-/** The projectile hits and the explosion begins this many ms into the animation (0.5s lock-on +
- *  1.5s flight). */
+/** The projectile hits and the explosion begins this many ms into the animation (1.5s flight). */
 const val DEATH_EXPLOSION_START_MS = 2000L
 
 /** Explosion window ends this many ms after it starts (5.0s - 2.0s); the neutralized card
@@ -34,10 +33,11 @@ const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
 /**
  * A dying threat. For real server removals [icon] is the marker's own drawable, so the icon
  * keeps rendering here for the full [DEATH_DURATION_MS] and is hidden forever the moment the
- * animation completes. Temp test triggers pass [icon] = the same marker drawable but with
+ * animation completes. Long-pressed test triggers pass [icon] = the same marker drawable but with
  * [hideAtBoom] = true, so the icon vanishes when the explosion starts instead (the threat
- * re-draws on the next overlay rebuild). [origin] is where the projectile takes off from —
- * your GPS position (or pinned city) at spawn time; null skips the flight visuals.
+ * re-draws on the next overlay rebuild). [origin] is where the projectile takes off from — the
+ * nearest major city to the target (else your GPS position / pinned city) at spawn time; null
+ * skips the flight visuals.
  *
  * A [dud] carries no icon and never explodes: it's a follow-up projectile fired when the
  * threat turned out to be already destroyed (e.g. the server re-sent the resolution), so it
@@ -56,12 +56,13 @@ private class ActiveDeath(
 )
 
 /**
- * Playful "neutralized" flourish drawn on the map at a threat's last position: a small fixed
- * lock-on dot marking the target, then a small projectile flies in — from your GPS position
- * (or pinned city) when it's on screen, else from just outside the screen edge — and explodes
- * on impact. Rendered as an osmdroid overlay so the map's own projection places it exactly at
- * the geo points (tracking pan/zoom) and `draw()` is re-invoked on every invalidate — a
- * per-frame ticker in the map view keeps it animating for [DEATH_DURATION_MS].
+ * Playful "neutralized" flourish drawn on the map at a threat's last position: a small
+ * projectile flies in — from the nearest major city (else your GPS position or pinned city)
+ * when it's on screen, else from just outside the screen edge — and explodes on impact.
+ * Rendered as an osmdroid overlay so the map's own
+ * projection places it exactly at the geo points (tracking pan/zoom) and `draw()` is re-invoked
+ * on every invalidate — a per-frame ticker in the map view keeps it animating for
+ * [DEATH_DURATION_MS].
  */
 class ThreatDeathOverlay : Overlay() {
 
@@ -129,7 +130,7 @@ class ThreatDeathOverlay : Overlay() {
             val y = reuse.y.toFloat()
             val t = ((now - d.start).toFloat() / DEATH_DURATION_MS).coerceIn(0f, 1f)
 
-            // The threat's own icon lingers here through the flight. Temp test triggers
+            // The threat's own icon lingers here through the flight. Long-pressed test triggers
             // (hideAtBoom) drop it the instant the explosion starts; real removals keep it
             // until the prune above ends the animation (hidden forever at 5s).
             d.icon?.let { icon ->
@@ -149,22 +150,10 @@ class ThreatDeathOverlay : Overlay() {
                 canvas.restore()
             }
 
-            // Lead-in lock-on (0-0.5s): a small fixed dot marks the hit point. Deliberately
-            // small and non-explosive so it never reads as a detonation before the bullet.
-            // Duds skip it: the target is already gone, so nothing marks where it used to be.
-            if (t < 0.10f && !d.dud) {
-                val ping = t / 0.10f
-                flashPaint.color = Color.argb((200 * ping).toInt(), 255, 213, 0)
-                canvas.drawCircle(x, y, 5f * density, flashPaint)
-                ringPaint.color = Color.argb((150 * ping).toInt(), 255, 213, 0)
-                ringPaint.strokeWidth = 1.5f * density
-                canvas.drawCircle(x, y, 13f * density, ringPaint)
-            }
-
-            // Flight (0.5s-impact): a small projectile flies in from the origin (GPS position or
-            // pinned city) when it's on screen, else from just outside the screen edge along
-            // the line of travel, and detonates on impact — which lands at p=1 exactly when
-            // the explosion below starts.
+            // Flight (0.5s-impact): a small projectile flies in from the origin (the nearest major city,
+            // else GPS position or pinned city) when it's on screen, else from just outside the
+            // screen edge along the line of travel, and detonates on impact — which lands at p=1
+            // exactly when the explosion below starts.
             if (t in 0.10f..boomT && d.origin != null) {
                 mapView.projection.toPixels(d.origin, reuseOrigin)
                 val ox = reuseOrigin.x.toFloat()

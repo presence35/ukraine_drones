@@ -20,12 +20,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
@@ -92,10 +90,16 @@ internal fun ConnectionStatus(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Image(
-            painter = painterResource(if (online) R.drawable.neptun_green else R.drawable.neptun_red),
+            painter = painterResource(R.drawable.neptun),
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            colorFilter = if (backupActive && !neptunDown) ColorFilter.tint(Color(0xFFF9A825)) else null,
+            colorFilter = ColorFilter.tint(
+                when {
+                    neptunDown -> Color(0xFFE57373) // red — NEPTUN offline (real or simulated)
+                    backupActive -> Color(0xFFF9A825) // amber — NEPTUN alive but on the backup source
+                    else -> Color(0xFF4CAF50)
+                }
+            ),
             modifier = Modifier.size(width = 14.dp, height = 14.dp)
         )
         Spacer(Modifier.width(6.dp))
@@ -156,13 +160,6 @@ internal fun ConnectionStatus(
                             )
                         }
                     )
-                    IconButton(onClick = { onShowInfoChange(false) }) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = s.backButton,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SourceStatusRow(
@@ -221,8 +218,8 @@ internal fun ConnectionStatus(
                         Spacer(Modifier.width(8.dp))
                         Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
-                    ConnectionLogSection(s, lang)
                     AlertHistorySection(s, lang, iconSet)
+                    ConnectionLogSection(s, lang)
                 }
             }
         }
@@ -353,10 +350,11 @@ private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet, lang: Ap
 
 /**
  * Collapsible log of the last ~20 fired alerts (zone sirens + official alerts), newest first.
- * Rows carry the threat icon, the tier-colored type label, datetime, locality and distance.
- * Consecutive entries within [WAVE_GAP_MS] cluster into a rough "wave" group.
+ * Rows carry the threat icon, the tier-colored type label, a relative age, locality and distance.
+ * Entries cluster into age buckets (seconds / minutes / hours) with a divider between them.
  */
-private val WAVE_GAP_MS = 30L * 60 * 1000
+private const val ALERT_AGE_MIN_MS = 60L * 1000
+private const val ALERT_AGE_HR_MS = 60L * 60 * 1000
 
 @Composable
 private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet: ThreatIconSet) {
@@ -394,16 +392,23 @@ private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                var prevAt = entries.asReversed().first().atMillis
+                val now = System.currentTimeMillis()
+                var prevBucket = -1
                 entries.asReversed().forEach { entry ->
-                    if (prevAt - entry.atMillis > WAVE_GAP_MS) {
+                    val age = now - entry.atMillis
+                    val bucket = when {
+                        age < ALERT_AGE_MIN_MS -> 0
+                        age < ALERT_AGE_HR_MS -> 1
+                        else -> 2
+                    }
+                    if (prevBucket != -1 && bucket != prevBucket) {
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outlineVariant,
                             modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
-                    AlertHistoryRow(entry, s, lang, iconSet)
-                    prevAt = entry.atMillis
+                    AlertHistoryRow(entry, s, lang, iconSet, now)
+                    prevBucket = bucket
                 }
                 Spacer(Modifier.height(8.dp))
                 TextButton(
@@ -430,9 +435,10 @@ private fun AlertHistoryRow(
     entry: AlertHistoryEntry,
     s: Strings.StringSet,
     lang: AppLanguage,
-    iconSet: ThreatIconSet
+    iconSet: ThreatIconSet,
+    now: Long
 ) {
-    val time = remember(entry.atMillis) { formatDateTime(lang, entry.atMillis) }
+    val time = formatAlertAge(now, entry.atMillis, s)
     val isOfficial = entry.tier == null
     val typeLabel = entry.threatType?.let { type ->
         val info = ThreatTypeCatalog.INFO.getValue(type)

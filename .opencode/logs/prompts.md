@@ -16012,3 +16012,80 @@ The flourish text should be changed, suggestions?
 ## 18/08/2026, 21:24:39
 
 Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 21:35:12
+
+later.
+## 18/08/2026, 21:52:09
+
+Alert history should really only be for 6 hours.  AFter that who cares.  So the time should be "1-59 sec", "1-59min", "1-6hrs".  group appropateily.  Is it possible to update the "reason" of something that's resolved? Hows' neptun deal with that? Sometimes in the telegram groups they say we're waiting to see what hapapned after that explsoin, im guessing there' no way (accurate or otherwise) to link specific threats to actual events?  our flourish makes it seem somewhat real, and some users will actually think a bullet is hitting a drone.
+
+bullets should originate from the closest major city, not gps, so pan to the city to start the bullet, and follow it to the threat, then retunr immediately to gps/pinned city.
+
+connection log should be on the bottom.
+Remove the "x" next to the neptun url, amke the close function the same as the alertzone modal.
+
+only one modal can be up at a time, if they open on top of another, clse the previous.
+
+im getting official alerts for my gps but they're false. Another phone got them too.  in the alert history log "Official alert" needs the city. another phone is getting audible alerts fo fast objects, but no notifiaction.
+## 18/08/2026, 21:55:35
+
+1. snap it to top of screen, if you can do a small border flash of the row they just pressed, but keep it subtle.
+2. after: if you can organize it better, it seems confusing doesn't it?
+6. small cards need 'seen ago", bottom left corner, under uav
+## 18/08/2026, 22:08:32
+
+i still see a small circle after long press on threat.
+
+on the wizard, put more space between threat icons section and its above card.  reword to "Chose your favourite threat icons!"
+
+move "this setup is improtant' to under the flags.
+the 2nd item, "...feature guid, and other advanced settings - check it out!"
+
+on the 2nd wizrd page, remove "off" words, amke sure the images match what the user just selected. I think it's trying to but the iamges seem all b&w.  The text should say "... for. Every threat is shown on the map by default; toggle alerts here, andgo to [gear icon] settings to change anytime".
+
+wizrda page 3 can be larger font.
+
+i dont' see time-to-arrival cards.
+the guided bomb changed direction when i longress on it.
+
+only one should be visible at a time: modal or threat card, never both.
+## 18/08/2026, 22:10:42
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 22:16:07
+
+3. stop calling it TEMP long-press, it's perm now, update the comments.
+
+ignore the "no notif" bug for now
+## 18/08/2026, 22:19:33
+
+go
+## 18/08/2026, 22:25:21
+
+can new version check every time the settings opens again, just give a toast: "New Version "X" can download, scroll to bottom" (reowrd that if it's clunky).
+## 18/08/2026, 22:30:54
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 22:35:46
+
+D:\Desktop\drones\app\src\main\res\drawable\neptun.svg i put an SVG of the neptun trident.  let's use it everywhe, colored properly.
+## 18/08/2026, 22:36:07
+
+go
+## 18/08/2026, 22:42:44
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 22:48:37
+
+tapping the toast should bring up the download screen so they don't have to hunt.
+
+small card looks bad.  the pills are in the asme column as the threat icon. the vertical bars aren't under their "R" or [skull]. remind me what the gray bell next to the title is? I thought that was when alerts are off, but my alerts are all on.  keep the "size toggle" on the bototm left corner for the big card too.  on the big card, the reliablity row and the "x sources" pill share the same top, but i want the r+bar to be vertically centered.  
+## 18/08/2026, 22:49:07
+
+go
+## 18/08/2026, 22:49:15
+
+go
+## 18/08/2026, 22:49:38
+
+continue

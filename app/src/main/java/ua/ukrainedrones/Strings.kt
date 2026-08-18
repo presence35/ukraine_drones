@@ -22,6 +22,7 @@ object Strings {
         val onboardingTipSettings: String,
         val onboardingTipSiren: String,
         val onboardingFeaturesTitle: String,
+        val onboardingIntro: String,
         val relaunchSetupTitle: String,
         val wizardCareTitle: String,
         val wizardCareSubtitle: String,
@@ -213,6 +214,9 @@ object Strings {
         val alertHistoryOfficialLabel: String,
         val alertHistoryClear: String,
         val alertHistoryAutoClearNote: String,
+        val alertAgeSecSuffix: String,
+        val alertAgeMinSuffix: String,
+        val alertAgeHrSuffix: String,
         val cardSizeLabel: String,
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
@@ -354,6 +358,7 @@ object Strings {
         val onboardingTipSettings: String get() = onboarding.onboardingTipSettings
         val onboardingTipSiren: String get() = onboarding.onboardingTipSiren
         val onboardingFeaturesTitle: String get() = onboarding.onboardingFeaturesTitle
+        val onboardingIntro: String get() = onboarding.onboardingIntro
         val relaunchSetupTitle: String get() = onboarding.relaunchSetupTitle
         val wizardCareTitle: String get() = onboarding.wizardCareTitle
         val wizardCareSubtitle: String get() = onboarding.wizardCareSubtitle
@@ -530,6 +535,9 @@ object Strings {
         val alertHistoryOfficialLabel: String get() = misc.alertHistoryOfficialLabel
         val alertHistoryClear: String get() = misc.alertHistoryClear
         val alertHistoryAutoClearNote: String get() = misc.alertHistoryAutoClearNote
+        val alertAgeSecSuffix: String get() = misc.alertAgeSecSuffix
+        val alertAgeMinSuffix: String get() = misc.alertAgeMinSuffix
+        val alertAgeHrSuffix: String get() = misc.alertAgeHrSuffix
         val cardSizeLabel: String get() = misc.cardSizeLabel
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
@@ -650,12 +658,13 @@ object Strings {
         nextButton = "Далі",
         onboardingTipsTitle = "Кілька підказок",
         onboardingTipTap = "Натисни будь-який дрон на мапі, щоб відкрити його картку.",
-        onboardingTipSettings = "У Налаштуваннях (шестерня) — зони тривог, мова та путівник по функціях.",
+        onboardingTipSettings = "У Налаштуваннях — путівник по функціях та інші просунуті налаштування. Зазирни туди!",
         onboardingTipSiren = "Сирена за замовчуванням слідує за режимом звуку телефона — увімкни «Сирена звучить завжди», щоб змінити.",
         onboardingFeaturesTitle = "Основні можливості",
+        onboardingIntro = "Це налаштування важливе — у застосунку є просунуті функції безпеки, про які варто знати. Виділи 30 секунд і ознайомся зараз, щоб бути готовим, коли це важливо.",
         relaunchSetupTitle = "Повторити початкове налаштування",
         wizardCareTitle = "Що для вас важливо?",
-        wizardCareSubtitle = "Оберіть типи загроз, про які сповіщати та показувати на мапі. Усе увімкнено за замовчуванням.",
+        wizardCareSubtitle = "Усі загрози показано на мапі за замовчуванням; увімкніть сповіщення тут, а в ⚙ налаштуваннях зможете змінити будь-коли.",
         wizardCareOn = "Сповіщати",
         wizardCareOff = "Вимкнено",
         wizardStartButton = "Почати",
@@ -843,7 +852,10 @@ object Strings {
         alertHistoryDistanceFormat = "≈%1\$d км",
         alertHistoryOfficialLabel = "Офіційна тривога",
         alertHistoryClear = "Очистити",
-        alertHistoryAutoClearNote = "Автоматично очищається через 3 дні",
+        alertHistoryAutoClearNote = "Автоматично очищається через 6 годин",
+        alertAgeSecSuffix = "сек",
+        alertAgeMinSuffix = "хв",
+        alertAgeHrSuffix = "год",
         cardSizeLabel = "Розмір і деталізація картки загрози",
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
@@ -853,10 +865,10 @@ object Strings {
         deathAnimationTitle = "Анімація завершення загрози",
         deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу перестають відстежувати. Просто для розваги.",
         followBulletTitle = "Слідувати за снарядом",
-        followBulletDesc = "Камера летить за снарядом до цілі, а потім повертається туди, де ти був.",
+        followBulletDesc = "Снаряд летить з найближчого великого міста до цілі, а камера повертається на твоє місце (GPS або закріплене місто).",
         neutralizedTallyTitle = "Лічильник завершених загроз",
         neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, завершених поблизу тебе, доки працює моніторинг.",
-        iconSetTitle = "Іконки загроз",
+        iconSetTitle = "Оберіть свої улюблені іконки загроз!",
         iconSetClassicLabel = "Класичні",
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
@@ -945,10 +957,10 @@ object Strings {
         guideUpdateD2 = "Завантажуй і встановлюй просто з діалогу.",
         guideUpdateD3 = "Можна також натиснути «Перевірити оновлення» в Налаштуваннях.",
         lastSeenAgoFormat = "Востаннє %1\$s тому",
-        neutralizedLabel = "Завершено",
-        neutralizedNote = "Просто анімація — цю загрозу більше не відстежують, з будь-якої причини.",
-        neutralizingLabel = "Завершення загрози…",
-        neutralizingNote = "Просто анімація — загрозу більше не відстежують, з будь-якої причини.",
+        neutralizedLabel = "Загрозу знешкоджено",
+        neutralizedNote = "Більше не відстежується мережею.",
+        neutralizingLabel = "Знешкодження…",
+        neutralizingNote = "Більше не відстежується мережею.",
     )
 
     private fun uaExplainers() = ExplainerStrings(
@@ -1013,12 +1025,13 @@ object Strings {
         nextButton = "Next",
         onboardingTipsTitle = "A few tips",
         onboardingTipTap = "Tap any drone on the map to open its details card.",
-        onboardingTipSettings = "Settings (gear icon) holds alert zones, language and the feature guide.",
+        onboardingTipSettings = "Settings holds the feature guide and other advanced settings — check it out!",
         onboardingTipSiren = "Sirens follow your phone's sound mode by default — turn on \"Sirens always sound\" to change it.",
         onboardingFeaturesTitle = "Core features",
+        onboardingIntro = "This setup is important — this app has advanced safety features you should know about. Take 30 seconds to get familiar now, so you're ready when it matters.",
         relaunchSetupTitle = "Replay first launch",
         wizardCareTitle = "What matters to you?",
-        wizardCareSubtitle = "Choose the threat types you want alerts and map markers for. Everything is on by default.",
+        wizardCareSubtitle = "Every threat is shown on the map by default; toggle alerts here, and go to ⚙ settings to change anytime.",
         wizardCareOn = "Alert",
         wizardCareOff = "Off",
         wizardStartButton = "Start",
@@ -1206,7 +1219,10 @@ object Strings {
         alertHistoryDistanceFormat = "≈%1\$d km",
         alertHistoryOfficialLabel = "Official alert",
         alertHistoryClear = "Clear",
-        alertHistoryAutoClearNote = "Auto-clears after 3 days",
+        alertHistoryAutoClearNote = "Auto-clears after 6 hours",
+        alertAgeSecSuffix = "sec",
+        alertAgeMinSuffix = "min",
+        alertAgeHrSuffix = "hr",
         cardSizeLabel = "Threat card size and detail",
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
@@ -1216,10 +1232,10 @@ object Strings {
         deathAnimationTitle = "Resolved-threat animation",
         deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is no longer tracked. Just for fun.",
         followBulletTitle = "Follow the bullet",
-        followBulletDesc = "The camera rides the projectile to the target, then returns to where you were.",
+        followBulletDesc = "The projectile launches from the nearest major city toward the target, and the camera returns to your GPS/pinned city.",
         neutralizedTallyTitle = "Resolved-threats tally",
         neutralizedTallyDesc = "Show a notification counting threats resolved near you while monitoring is running.",
-        iconSetTitle = "Threat icons",
+        iconSetTitle = "Choose your favourite threat icons!",
         iconSetClassicLabel = "Classic",
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",
@@ -1308,10 +1324,10 @@ object Strings {
         guideUpdateD2 = "Download and install straight from the dialog.",
         guideUpdateD3 = "You can also tap Check for updates in Settings.",
         lastSeenAgoFormat = "Last seen %1\$s ago",
-        neutralizedLabel = "Resolved",
-        neutralizedNote = "Just a visual flourish — that threat is no longer tracked, for whatever reason.",
-        neutralizingLabel = "Resolving threat…",
-        neutralizingNote = "Just a visual flourish — that threat is no longer tracked, for whatever reason.",
+        neutralizedLabel = "Threat neutralized",
+        neutralizedNote = "No longer tracked by the network.",
+        neutralizingLabel = "Neutralizing threat…",
+        neutralizingNote = "No longer tracked by the network.",
     )
 
     private fun enExplainers() = ExplainerStrings(
@@ -1434,6 +1450,19 @@ fun formatRelativeTime(updatedAtIso: String?, lang: AppLanguage): String {
         }
     } catch (e: Exception) {
         Strings.get(lang).justNow
+    }
+}
+
+/**
+ * Age of an alert-history entry in compact buckets: "1-59 sec", "1-59 min", "1-6 hr"
+ * (older entries are pruned at 6 hours). Rendered per the selected language.
+ */
+fun formatAlertAge(nowMillis: Long, atMillis: Long, s: Strings.StringSet): String {
+    val secs = ((nowMillis - atMillis) / 1000).coerceAtLeast(1)
+    return when {
+        secs < 60 -> "$secs ${s.alertAgeSecSuffix}"
+        secs < 3600 -> "${secs / 60} ${s.alertAgeMinSuffix}"
+        else -> "${secs / 3600} ${s.alertAgeHrSuffix}"
     }
 }
 

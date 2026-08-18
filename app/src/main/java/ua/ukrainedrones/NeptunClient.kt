@@ -69,13 +69,22 @@ data class NeptunState(
         get() = neptunDown || (lastFrameAt > 0 &&
             System.currentTimeMillis() - lastFrameAt > NeptunClient.BACKUP_FALLBACK_MS)
 
-    /** Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. */
+    /**
+     * Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. While the
+     * socket is actually down, NEPTUN's last snapshot can be stale (alerts it reported before the
+     * drop are never re-confirmed), so the backup alone is the authoritative live source then;
+     * the merge only applies while the stream is alive but merely silent.
+     */
     val oblastAlerts: List<OblastAlert>
-        get() = if (backupActive) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
+        get() = when {
+            !connected -> backupAlerts
+            backupActive -> mergeAlerts(neptunAlerts, backupAlerts)
+            else -> neptunAlerts
+        }
 
     /** Which source(s) report an active official alert for the given oblast stem [token]. */
     fun alertSourceFor(token: String): AlertSource? {
-        val n = neptunAlerts.any { it.inOblast(token) }
+        val n = connected && neptunAlerts.any { it.inOblast(token) }
         val b = backupActive && backupAlerts.any { it.inOblast(token) }
         return when {
             n && b -> AlertSource.BOTH
@@ -104,10 +113,10 @@ object NeptunClient {
     const val BACKUP_HEALTHY_MS = 90_000L
 
     /**
-     * Shared "off" grace window: the offline notification and the connection-status log both
-     * ignore drops shorter than this, so random hiccups never alert or pollute the log.
+     * Shared "off" grace window. Zero: every drop is logged and alerted immediately — the
+     * connection log and offline notification never swallow a lost connection, however brief.
      */
-    const val OFFLINE_GRACE_MS = 30_000L
+    const val OFFLINE_GRACE_MS = 0L
 
     /** Fixed reconnect interval after initial drop (5s, lightweight). */
     const val RECONNECT_INTERVAL_MS = 5_000L

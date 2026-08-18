@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -63,32 +65,32 @@ import androidx.compose.ui.unit.sp
 
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val UkraineBlue = Color(0xFF005BBB)
 
-/** Collapse state of the Settings sections, hoisted to MainScreen and saved across switches. */
+/** Collapse state of the Settings sections, hoisted to MainScreen and saved across switches.
+ *  Night mode is part of the Alerts section, so it has no collapse flag of its own. */
 data class SettingsCollapseState(
     val language: Boolean = true,
     val mapCenter: Boolean = true,
     val cardSize: Boolean = true,
     val threats: Boolean = true,
-    val night: Boolean = true,
     val alerts: Boolean = true,
     val additional: Boolean = true
 ) {
     companion object {
         val Saver = Saver<SettingsCollapseState, BooleanArray>(
-            save = { it.let { s -> BooleanArray(7).apply {
+            save = { it.let { s -> BooleanArray(6).apply {
                 this[0] = s.language; this[1] = s.mapCenter; this[2] = s.cardSize
-                this[3] = s.threats; this[4] = s.night; this[5] = s.alerts
-                this[6] = s.additional
+                this[3] = s.threats; this[4] = s.alerts; this[5] = s.additional
             } } },
             restore = { b -> SettingsCollapseState(
                 language = b[0], mapCenter = b[1], cardSize = b[2], threats = b[3],
-                night = b[4], alerts = b[5], additional = b[6]
+                alerts = b[4], additional = b[5]
             ) }
         )
     }
@@ -148,6 +150,8 @@ fun SettingsScreen(
     isChecking: Boolean,
     latestVersion: String?,
     onBack: () -> Unit,
+    activeExplainer: Explainer?,
+    onExplainerChange: (Explainer?) -> Unit,
     onLanguageChange: (AppLanguage) -> Unit,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
     onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
@@ -211,7 +215,6 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val explainerList = remember(s) { explainers(s) }
     var seenExplainers by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var activeExplainer by remember { mutableStateOf<Explainer?>(null) }
     LaunchedEffect(Unit) {
         seenExplainers = explainerList.map { it.id }
             .filter { explainerPrefs.explainerSeen(it).first() }
@@ -222,7 +225,29 @@ fun SettingsScreen(
             if (exp.id !in seenExplainers) {
                 seenExplainers = seenExplainers + exp.id
                 scope.launch { explainerPrefs.setExplainerSeen(exp.id, true) }
-                activeExplainer = exp
+                onExplainerChange(exp)
+            }
+        }
+    }
+    // One-time explainer dismissal: the dialog covers the list, so on close the eye is lost.
+    // Snap back to the top of the section the user was tapping and give that row a subtle
+    // border pulse so they re-anchor where they were.
+    var flashId by remember { mutableStateOf<String?>(null) }
+    val sectionOfExplainer: (String) -> Int = { id -> when (id) {
+        "followMe" -> 2          // Map centre
+        "cardSize" -> 3          // Card size
+        "threatToggles" -> 4     // Threats
+        else -> 5                // Alerts (officialAlerts, sirenOverride, nightMode)
+    } }
+    val dismissExplainer: () -> Unit = {
+        val exp = activeExplainer
+        if (exp != null) {
+            onExplainerChange(null)
+            flashId = exp.id
+            scope.launch {
+                listState.animateScrollToItem(sectionOfExplainer(exp.id))
+                delay(900)
+                flashId = null
             }
         }
     }
@@ -237,10 +262,10 @@ fun SettingsScreen(
         onDisclaimerCollapse(!disclaimerExpanded)
     }
 
-    // The Threats/Night-mode section headers are fixed item indices in this LazyColumn; scroll
-    // to one when the zones-sheet gear asks (ZonesSheet → Settings). Night mode (index 5) when
-    // the night window is active, Threats (index 4) otherwise. The tick is consumed after the
-    // jump so a later plain open keeps the last scroll position.
+    // The Threats/Alerts section headers are fixed item indices in this LazyColumn; scroll
+    // to one when the zones-sheet gear asks (ZonesSheet → Settings). Alerts (index 5, which
+    // now holds night mode) when the night window is active, Threats (index 4) otherwise.
+    // The tick is consumed after the jump so a later plain open keeps the last scroll position.
     LaunchedEffect(scrollToThreatsTick) {
         if (scrollToThreatsTick > 0) {
             listState.animateScrollToItem(if (scrollToNightMode) 5 else 4)
@@ -351,7 +376,8 @@ expanded = collapse.mapCenter,
                         title = s.followMeTitle,
                         description = s.followMeDesc,
                         checked = followMe,
-                        onCheckedChange = { v -> showExplainer("followMe"); onFollowMeChange(v) }
+                        onCheckedChange = { v -> showExplainer("followMe"); onFollowMeChange(v) },
+                        flash = flashId == "followMe"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     PinCityRow(
@@ -370,7 +396,7 @@ expanded = collapse.mapCenter,
 expanded = collapse.cardSize,
                 onToggle = { onCollapseChange(collapse.copy(cardSize = !collapse.cardSize)) }
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp).explainerFlash(flashId == "cardSize")) {
                         ThreatCardSizeSelector(
                             lang = lang,
                             selected = threatCardSize,
@@ -486,7 +512,8 @@ expanded = collapse.threats,
                                         hiddenTypes = hiddenTypes,
                                         silencedTypes = silencedTypes,
                                         onThreatMapToggle = { t, v -> showExplainer("threatToggles"); onThreatMapToggle(t, v) },
-                                        onThreatAlertToggle = { t, v -> showExplainer("threatToggles"); onThreatAlertToggle(t, v) }
+                                        onThreatAlertToggle = { t, v -> showExplainer("threatToggles"); onThreatAlertToggle(t, v) },
+                                        flash = flashId == "threatToggles"
                                     )
                                 }
                             }
@@ -495,58 +522,7 @@ expanded = collapse.threats,
                 }
             }
 
-            item {
-                CollapsibleSectionCard(
-                    title = s.nightModeLabel,
-                    icon = painterResource(R.drawable.ic_moon),
-expanded = collapse.night,
-                onToggle = { onCollapseChange(collapse.copy(night = !collapse.night)) }
-                ) {
-                    NightModeCard(
-                        lang = lang,
-                        enabled = nightEnabled,
-                        startMin = nightStartMin,
-                        endMin = nightEndMin,
-                        useCustomZones = nightUseCustomZones,
-                        slowRedKm = nightSlowRedKm,
-                        slowYellowKm = nightSlowYellowKm,
-                        fastRedMin = nightFastRedMin,
-                        fastYellowMin = nightFastYellowMin,
-                        slowRedArmed = nightSlowRedArmed,
-                        slowYellowArmed = nightSlowYellowArmed,
-                        fastRedArmed = nightFastRedArmed,
-                        fastYellowArmed = nightFastYellowArmed,
-                        zoneSirenOverride = nightZoneSirenOverride,
-                        officialSirenOverride = nightOfficialSirenOverride,
-                        vibrationEnabled = nightVibrationEnabled,
-                        fastVibrationLevel = nightFastVibrationLevel,
-                        slowVibrationLevel = nightSlowVibrationLevel,
-                        daySlowRedKm = slowRedKm,
-                        daySlowYellowKm = slowYellowKm,
-                        dayFastRedMin = fastRedMin,
-                        dayFastYellowMin = fastYellowMin,
-                        onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
-                        onStartChange = onNightStartChange,
-                        onEndChange = onNightEndChange,
-                        onUseCustomZonesChange = onNightUseCustomZonesChange,
-                        onSlowRedChange = onNightSlowRedChange,
-                        onSlowYellowChange = onNightSlowYellowChange,
-                        onFastRedChange = onNightFastRedChange,
-                        onFastYellowChange = onNightFastYellowChange,
-                        onSlowRedArmedChange = onNightSlowRedArmedChange,
-                        onSlowYellowArmedChange = onNightSlowYellowArmedChange,
-                        onFastRedArmedChange = onNightFastRedArmedChange,
-                        onFastYellowArmedChange = onNightFastYellowArmedChange,
-                        onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
-                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
-                        onVibrationEnabledChange = onNightVibrationEnabledChange,
-                        onFastVibrationChange = onNightFastVibrationChange,
-                        onSlowVibrationChange = onNightSlowVibrationChange
-                    )
-                }
-            }
-
-            item {
+item {
                 CollapsibleSectionCard(
                     title = s.alertsLabel,
                     icon = rememberVectorPainter(Icons.Default.Notifications),
@@ -559,7 +535,8 @@ expanded = collapse.alerts,
                         checked = officialAlertsEnabled,
                         onCheckedChange = { v -> showExplainer("officialAlerts"); onOfficialAlertsChange(v) },
                         icon = painterResource(R.drawable.ic_trident),
-                        note = s.officialAlertsRedTridentNote
+                        note = s.officialAlertsRedTridentNote,
+                        flash = flashId == "officialAlerts"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     AlertToggleRow(
@@ -568,7 +545,8 @@ expanded = collapse.alerts,
                         checked = sirenOverride,
                         onCheckedChange = { v -> showExplainer("sirenOverride"); onSirenOverrideChange(v) },
                         icon = painterResource(R.drawable.ic_volume_up),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        flash = flashId == "sirenOverride"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     AlertToggleRow(
@@ -608,6 +586,49 @@ expanded = collapse.alerts,
                             onLevelChange = onSlowVibrationChange
                         )
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    NightModeCard(
+                        lang = lang,
+                        enabled = nightEnabled,
+                        startMin = nightStartMin,
+                        endMin = nightEndMin,
+                        useCustomZones = nightUseCustomZones,
+                        slowRedKm = nightSlowRedKm,
+                        slowYellowKm = nightSlowYellowKm,
+                        fastRedMin = nightFastRedMin,
+                        fastYellowMin = nightFastYellowMin,
+                        slowRedArmed = nightSlowRedArmed,
+                        slowYellowArmed = nightSlowYellowArmed,
+                        fastRedArmed = nightFastRedArmed,
+                        fastYellowArmed = nightFastYellowArmed,
+                        zoneSirenOverride = nightZoneSirenOverride,
+                        officialSirenOverride = nightOfficialSirenOverride,
+                        vibrationEnabled = nightVibrationEnabled,
+                        fastVibrationLevel = nightFastVibrationLevel,
+                        slowVibrationLevel = nightSlowVibrationLevel,
+                        daySlowRedKm = slowRedKm,
+                        daySlowYellowKm = slowYellowKm,
+                        dayFastRedMin = fastRedMin,
+                        dayFastYellowMin = fastYellowMin,
+                        onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
+                        onStartChange = onNightStartChange,
+                        onEndChange = onNightEndChange,
+                        onUseCustomZonesChange = onNightUseCustomZonesChange,
+                        onSlowRedChange = onNightSlowRedChange,
+                        onSlowYellowChange = onNightSlowYellowChange,
+                        onFastRedChange = onNightFastRedChange,
+                        onFastYellowChange = onNightFastYellowChange,
+                        onSlowRedArmedChange = onNightSlowRedArmedChange,
+                        onSlowYellowArmedChange = onNightSlowYellowArmedChange,
+                        onFastRedArmedChange = onNightFastRedArmedChange,
+                        onFastYellowArmedChange = onNightFastYellowArmedChange,
+                        onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
+                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
+                        onVibrationEnabledChange = onNightVibrationEnabledChange,
+                        onFastVibrationChange = onNightFastVibrationChange,
+                        onSlowVibrationChange = onNightSlowVibrationChange,
+                        flash = flashId == "nightMode"
+                    )
                 }
             }
 
@@ -845,7 +866,7 @@ expanded = collapse.alerts,
     }
 
     activeExplainer?.let { exp ->
-        FeatureExplainerDialog(explainer = exp, s = s, onDismiss = { activeExplainer = null })
+        FeatureExplainerDialog(explainer = exp, s = s, onDismiss = dismissExplainer)
     }
 
     }
@@ -894,7 +915,8 @@ private fun NightModeCard(
     onOfficialSirenOverrideChange: (Boolean) -> Unit,
     onVibrationEnabledChange: (Boolean) -> Unit,
     onFastVibrationChange: (Int) -> Unit,
-    onSlowVibrationChange: (Int) -> Unit
+    onSlowVibrationChange: (Int) -> Unit,
+    flash: Boolean = false
 ) {
     val s = Strings.get(lang)
     var editing by remember { mutableStateOf<String?>(null) }  // "start" | "end" | null
@@ -904,7 +926,8 @@ private fun NightModeCard(
             title = s.nightModeLabel,
             description = s.nightModeDesc,
             checked = enabled,
-            onCheckedChange = onEnabledChange
+            onCheckedChange = onEnabledChange,
+            flash = flash
         )
         if (enabled) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1118,11 +1141,13 @@ private fun AlertToggleRow(
     icon: Painter? = null,
     iconTint: Color? = null,
     emoji: String? = null,
-    note: String? = null
+    note: String? = null,
+    flash: Boolean = false
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .explainerFlash(flash)
             .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1253,7 +1278,8 @@ private fun ThreatSettingsCard(
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
-    onThreatAlertToggle: (ThreatType, Boolean) -> Unit
+    onThreatAlertToggle: (ThreatType, Boolean) -> Unit,
+    flash: Boolean = false
 ) {
     val s = Strings.get(lang)
     val info = ThreatTypeCatalog.INFO.getValue(type)
@@ -1265,7 +1291,7 @@ private fun ThreatSettingsCard(
     val onAlerts = type !in silencedTypes
     val typicalSpeed = typicalSpeedKmh(type)?.roundToInt()
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = Modifier.fillMaxWidth().explainerFlash(flash)) {
         Column {
             Row(
                 modifier = Modifier
@@ -1646,6 +1672,22 @@ internal fun IconSetTile(
             }
         }
     }
+}
+
+/** Subtle one-shot blue border pulse around the row whose one-time explainer just closed. */
+@Composable
+private fun Modifier.explainerFlash(active: Boolean): Modifier {
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(active) {
+        if (active) {
+            alpha.snapTo(0f)
+            alpha.animateTo(0.45f, tween(180))
+            alpha.animateTo(0f, tween(520))
+        }
+    }
+    return if (active) then(
+        border(2.dp, UkraineBlue.copy(alpha = alpha.value), RoundedCornerShape(12.dp))
+    ) else this
 }
 
 @Composable

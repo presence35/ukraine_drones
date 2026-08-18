@@ -38,6 +38,14 @@ private val DistUserAmber = Color(0xFFFFD54F)
 private val DistUserGreen = Color(0xFF81C784)
 private val GpsDot = Color(0xFF4FC3F7)
 
+/** One stacked metric pill on the small card: number + unit + optional dot/label. */
+private data class PillSpec(
+    val number: String,
+    val unit: String,
+    val dotColor: Color?,
+    val contentDescription: String?
+)
+
 /** Grey bell marking a type whose alerts are switched off in Settings. */
 @Composable
 internal fun AlertsOffBell(
@@ -170,64 +178,145 @@ fun ThreatPopupCard(
         tonalElevation = 8.dp
     ) {
         when (cardSize) {
-            // Three rows: icon + title, pills, then the reliability and skull bars.
+            // Narrow, top-left card: icon + title with "R"/skull on the title row, the first
+            // metric pill flanked by two same-height vertical gauges (reliability + 0-10 level),
+            // the remaining metrics stacked below, and "seen ago" in the bottom-left corner.
             ThreatCardSize.SMALL -> {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.Top) {
-                        ThreatIcon(
-                            type = threat.type,
-                            set = iconSet,
-                            size = 40.dp,
-                            contentDescription = typeLabel
+                val distUser = proximity?.distToUserKm
+                if (distUser != null) {
+                    val cityName = pinnedCity?.let { if (lang == AppLanguage.UA) it.nameUa else it.nameEn }
+                    val distCd = if (cityName != null) {
+                        String.format(s.pillDistanceCd, cityName, formatKm(distUser))
+                    } else null
+                    // The metric trio (ETA / distance / speed) in display order.
+                    val pillSpecs = buildList {
+                        proximity?.etaToUserMin?.let { eta ->
+                            add(PillSpec(formatEtaMinutes(eta), s.etaUnit, GpsDot, null))
+                        }
+                        add(PillSpec(formatKm(distUser), s.kmUnit, null, distCd))
+                        proximity?.takeIf { it.speedSource == SpeedSource.RECORDED }?.speedKmh?.let { speed ->
+                            add(PillSpec(speed.roundToInt().toString(), s.speedUnit, null, null))
+                        }
+                    }
+                    // Stacked metrics can't wrap — cap the font scale like the old single-line pills.
+                    val density = LocalDensity.current
+                    CompositionLocalProvider(
+                        LocalDensity provides Density(
+                            density = density.density,
+                            fontScale = min(density.fontScale, 1.25f)
                         )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                ThreatIcon(
+                                    type = threat.type,
+                                    set = iconSet,
+                                    size = 40.dp,
+                                    contentDescription = typeLabel
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        typeLabel,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = Color.White
+                                    )
+                                    if (alertsOff) {
+                                        Spacer(Modifier.width(6.dp))
+                                        AlertsOffBell(size = fontAware(14.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    s.reliabilityShort,
+                                    fontWeight = FontWeight.Medium,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color(0xFF9E9E9E)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            val barHeight = fontAware(56.dp)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                pillSpecs.forEachIndexed { index, p ->
+                                    if (index == 0) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            MetricPill(
+                                                number = p.number,
+                                                unit = p.unit,
+                                                contentDescription = p.contentDescription,
+                                                dotColor = p.dotColor
+                                            )
+                                            Spacer(Modifier.width(14.dp))
+                                            VerticalReliabilityBar(reliability = threat.reliability, height = barHeight)
+                                            Spacer(Modifier.width(6.dp))
+                                            VerticalLevelBar(level = threatLevel, height = barHeight)
+                                        }
+                                    } else {
+                                        MetricPill(
+                                            number = p.number,
+                                            unit = p.unit,
+                                            contentDescription = p.contentDescription,
+                                            dotColor = p.dotColor
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                elapsedText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (stale) AdvisoryAmber else Color(0xFF9E9E9E)
+                            )
+                        }
+                    }
+                } else {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ThreatIcon(
+                                type = threat.type,
+                                set = iconSet,
+                                size = 40.dp,
+                                contentDescription = typeLabel
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
                                     typeLabel,
                                     fontWeight = FontWeight.SemiBold,
                                     style = MaterialTheme.typography.titleMedium,
                                     color = Color.White
                                 )
-                                if (alertsOff) {
-                                        Spacer(Modifier.width(6.dp))
-                                        AlertsOffBell(size = fontAware(14.dp))
-                                    }
                             }
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                s.reliabilityShort,
+                                fontWeight = FontWeight.Medium,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF9E9E9E)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
                         }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    SummaryPills(
-                        proximity = proximity,
-                        pinnedCity = pinnedCity,
-                        s = s,
-                        lang = lang,
-                        singleLine = true,
-                        modifier = Modifier.padding(start = 52.dp)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.padding(start = 52.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Start
-                    ) {
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            s.reliabilityShort,
-                            fontWeight = FontWeight.Medium,
-                            style = MaterialTheme.typography.labelMedium,
+                            s.gpsOffLabel,
+                            style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF9E9E9E)
                         )
-                        Spacer(Modifier.width(6.dp))
-                        ReliabilityBar(
-                            reliability = threat.reliability,
-                            s = s,
-                            compact = true
-                        )
-                        Spacer(Modifier.width(16.dp))
-                        LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
-                        Spacer(Modifier.width(6.dp))
-                        HorizontalLevelBar(level = threatLevel,
-                            modifier = Modifier.width(fontAware(80.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            elapsedText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (stale) AdvisoryAmber else Color(0xFF9E9E9E)
                         )
                     }
                 }
@@ -390,26 +479,62 @@ private fun LevelSkullIcon(level: Double, size: Dp = 30.dp) {
     )
 }
 
-/** Compact horizontal 0–10 level bar; `modifier` controls its width (fixed or expanded). */
+/** Compact vertical 0–10 level bar, filled from the bottom (the small card's right gauge). */
 @Composable
-private fun HorizontalLevelBar(level: Double, modifier: Modifier = Modifier) {
+private fun VerticalLevelBar(level: Double, height: Dp) {
     val fraction = (level / 10.0).coerceIn(0.0, 1.0)
-    val barHeight = fontAware(8.dp)
+    val barWidth = fontAware(8.dp)
     Box(
-        modifier = modifier
-            .height(barHeight)
+        modifier = Modifier
+            .width(barWidth)
+            .height(height)
             .clip(RoundedCornerShape(4.dp))
             .background(Color(0xFF3A3A3A))
     ) {
         Box(
             modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxHeight()
-                .fillMaxWidth(fraction.toFloat())
-                .widthIn(min = fontAware(6.dp))
+                .align(Alignment.BottomCenter)
+                .width(barWidth)
+                .fillMaxHeight(fraction.toFloat().coerceAtLeast(0.02f))
                 .clip(RoundedCornerShape(4.dp))
                 .background(levelColor(level))
         )
+    }
+}
+
+/** Compact vertical reliability bar: 3 segments, filled from the bottom, LOW → HIGH. */
+@Composable
+private fun VerticalReliabilityBar(reliability: Reliability, height: Dp) {
+    val level = when (reliability) {
+        Reliability.HIGH -> 3
+        Reliability.MEDIUM -> 2
+        Reliability.LOW -> 1
+        Reliability.UNKNOWN -> 0
+    }
+    val color = when (reliability) {
+        Reliability.HIGH -> DistUserGreen
+        Reliability.MEDIUM -> DistUserAmber
+        Reliability.LOW -> ReliabilityRed
+        Reliability.UNKNOWN -> Color(0xFF9E9E9E)
+    }
+    val barWidth = fontAware(8.dp)
+    Column(
+        modifier = Modifier
+            .width(barWidth)
+            .height(height),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        // Render top segment first; a segment is filled when `level` reaches up to it.
+        repeat(3) { i ->
+            val segFromBottom = 2 - i
+            Box(
+                modifier = Modifier
+                    .width(barWidth)
+                    .weight(1f)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (level > segFromBottom) color else UncertaintyEmpty)
+            )
+        }
     }
 }
 

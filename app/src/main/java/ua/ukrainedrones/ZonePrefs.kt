@@ -58,6 +58,7 @@ class ZonePrefs(private val context: Context) {
     private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
     private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
     private val batteryOnboardShownKey = booleanPreferencesKey("battery_onboard_shown")
+    private val permissionPromptDeferredKey = booleanPreferencesKey("permission_prompt_deferred")
     private val fastVibrationLevelKey = intPreferencesKey("fast_vibration_level")
     private val slowVibrationLevelKey = intPreferencesKey("slow_vibration_level")
     private val alertHistoryKey = stringPreferencesKey("alert_history")
@@ -310,9 +311,9 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[showMapScaleKey] = show }
     }
 
-    /** Whether fast-threat time-to-arrival course lines render on the map — default off. */
+    /** Whether fast-threat time-to-arrival course lines render on the map — default on. */
     fun showTtaLines(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[showTtaLinesKey] ?: false }
+        context.dataStore.data.map { prefs -> prefs[showTtaLinesKey] ?: true }
 
     suspend fun setShowTtaLines(show: Boolean) {
         context.dataStore.edit { it[showTtaLinesKey] = show }
@@ -404,6 +405,15 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setBatteryOnboardShown(shown: Boolean) {
         context.dataStore.edit { it[batteryOnboardShownKey] = shown }
+    }
+
+    /** Whether the current launch skipped the location/notification prompts (tapped "Later").
+     *  Reset on each cold start so the request re-arms for the next session. */
+    fun permissionPromptDeferred(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[permissionPromptDeferredKey] ?: false }
+
+    suspend fun setPermissionPromptDeferred(deferred: Boolean) {
+        context.dataStore.edit { it[permissionPromptDeferredKey] = deferred }
     }
 
     /** Vibration strength 0–4 for fast (missile) zone alerts — default 3 (strong). */

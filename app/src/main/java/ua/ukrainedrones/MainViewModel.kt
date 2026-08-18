@@ -104,7 +104,8 @@ data class UiState(
     val fastVibrationLevel: Int = 3,
     val slowVibrationLevel: Int = 3,
     val showTtaLines: Boolean = false,
-    val alertActive: Boolean = false        // any threat or official alert live right now
+    val alertActive: Boolean = false,        // any threat or official alert live right now
+    val lastFrameAt: Long = 0                // epoch millis of the last live frame — 0 until the feed settles
 )
 
 /** One-shot request from a notification tap to bring the camera onto a threat. */
@@ -136,9 +137,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val updateManager = UpdateManager(app.applicationContext)
 
     private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
-    // TEMP: a threat id long-pressed on the map is treated as neutralized so the card
+    // A threat id long-pressed on the map is treated as neutralized so the card
     // self-destructs like a real resolution. Cleared on every selection change.
-    private val tempNeutralizedFlow = MutableStateFlow<String?>(null)
+    private val neutralizedFlow = MutableStateFlow<String?>(null)
     private val revealFlow = MutableStateFlow<RevealRequest?>(null)
     private var revealTick = 0
     private val updateStateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -258,7 +259,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val selected: Threat?,
         val now: Long,
         val reveal: RevealRequest?,
-        val tempNeutralizedId: String?
+        val neutralizedId: String?
     )
 
     private data class UpdateUi(
@@ -291,7 +292,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selectedThreatFlow,
         nowFlow,
         revealFlow,
-        tempNeutralizedFlow
+        neutralizedFlow
     ) { values: Array<Any?> ->
         val neptun = values[0] as NeptunState
         val radii = values[1] as ZoneParams
@@ -299,11 +300,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val selected = values[3] as Threat?
         val now = values[4] as Long
         val reveal = values[5] as RevealRequest?
-        val tempNeutralizedId = values[6] as String?
+        val neutralizedId = values[6] as String?
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, selected, now, reveal, tempNeutralizedId
+            location, selected, now, reveal, neutralizedId
         )
     }
 
@@ -519,7 +520,7 @@ val uiState: StateFlow<UiState> = combine(
             selected = live.selected,
             now = live.now,
             reveal = live.reveal,
-            tempNeutralizedId = live.tempNeutralizedId,
+            neutralizedId = live.neutralizedId,
             deathAnimationEnabled = prefs.deathAnimationEnabled
         ).copy(
             update = updateUi.update,
@@ -595,7 +596,7 @@ val uiState: StateFlow<UiState> = combine(
         selected: Threat?,
         now: Long,
         reveal: RevealRequest?,
-        tempNeutralizedId: String?,
+        neutralizedId: String?,
         deathAnimationEnabled: Boolean
     ): UiState {
         val animOn = deathAnimationEnabled
@@ -680,12 +681,12 @@ val uiState: StateFlow<UiState> = combine(
         // keep the selected threat pointer fresh (position/status may have updated)
         val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
         // The selected threat is gone (removed by the server, marked resolved/area-only, a ghost
-        // past the hard cap, or TEMP long-pressed) — show a brief neutralized card, then drop
+        // past the hard cap, or long-pressed) — show a brief neutralized card, then drop
         // the selection.
         val selectedGone = selected != null && (
             (refreshedSelected?.let { t ->
                 t.status == "resolved" || t.areaOnly || t.isGhost(now)
-            } ?: true) || selected.id == tempNeutralizedId
+            } ?: true) || selected.id == neutralizedId
             )
         // With the death animation disabled the card never flips to the "Neutralized" compact
         // form nor auto-dismisses: it stays open on the last-known snapshot until the user
@@ -731,6 +732,7 @@ val uiState: StateFlow<UiState> = combine(
             backupActive = neptun.backupActive,
             backupUp = neptun.backupUp,
             backupSeen = neptun.backupLastOkAt > 0,
+            lastFrameAt = neptun.lastFrameAt,
             backupOfflineElapsedSec = neptun.backupOfflineElapsedSec,
             backupError = neptun.backupError,
             threatsInner = inInner,
@@ -1029,23 +1031,35 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setLanguageChosen(true) }
     }
 
+    /** Tapped "Later" on the first-run wizard — exit all setup chrome for this session:
+     *  mark language chosen, skip the battery prompt, and defer the location/notification
+     *  permission requests until the next cold start. */
+    fun laterLanguageChoose() {
+        viewModelScope.launch {
+            prefs.setLanguageChosen(true)
+            prefs.setBatteryOnboardShown(true)
+            prefs.setPermissionPromptDeferred(true)
+        }
+    }
+
     /** Re-open the first-run setup (language, icon pack, alert groups, feature tour + battery
      *  prompt). Only flips the onboarding-completed flags — no setting is reset. */
     fun relaunchSetup() {
         viewModelScope.launch {
             prefs.setLanguageChosen(false)
             prefs.setBatteryOnboardShown(false)
+            prefs.setPermissionPromptDeferred(false)
         }
     }
 
     fun selectThreat(threat: Threat?) {
-        tempNeutralizedFlow.value = null
+        neutralizedFlow.value = null
         selectedThreatFlow.value = threat
     }
 
-    /** TEMP: treat [id] as neutralized so its card self-destructs (map long-press test trigger). */
-    fun tempNeutralize(id: String) {
-        tempNeutralizedFlow.value = id
+    /** Treat [id] as neutralized so its card self-destructs (map long-press trigger). */
+    fun neutralizeThreat(id: String) {
+        neutralizedFlow.value = id
     }
 
     /**
@@ -1057,7 +1071,7 @@ val uiState: StateFlow<UiState> = combine(
      */
     fun revealThreat(id: String?, lat: Double, lon: Double, select: Boolean = true) {
         revealTick++
-        tempNeutralizedFlow.value = null
+        neutralizedFlow.value = null
         if (select && id != null) {
             selectedThreatFlow.value = NeptunClient.state.value.threats[id]
         }

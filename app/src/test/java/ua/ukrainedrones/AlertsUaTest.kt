@@ -66,13 +66,13 @@ class AlertsUaTest {
     }
 
     @Test
-    fun `source is BOTH when both report the oblast`() {
+    fun `backup is authoritative for an oblast while the socket is down even if NEPTUN reported it`() {
         val st = NeptunState(
             connected = false,
             neptunAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null)),
             backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
         )
-        assertEquals(AlertSource.BOTH, st.alertSourceFor("Одеськ"))
+        assertEquals(AlertSource.BACKUP, st.alertSourceFor("Одеськ"))
     }
 
     @Test

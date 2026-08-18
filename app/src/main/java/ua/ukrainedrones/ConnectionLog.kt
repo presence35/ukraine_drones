@@ -25,8 +25,8 @@ data class ConnLogEntry(
  * Ring buffer of the last [MAX_ENTRIES] connection statuses, persisted to DataStore so the log
  * survives app/service restarts. Fed by [NeptunClient]'s watchdog tick. The currently
  * in-progress off/backup episode is kept separately (see [currentEpisode]) so the popup can show
- * a live running duration, and is only committed to the log once it has lasted
- * [NeptunClient.OFFLINE_GRACE_MS] — transient blips are ignored.
+ * a live running duration, and is committed to the log the moment the status changes again —
+ * every drop is recorded, however brief (the shared grace is zero).
  */
 object ConnectionLog {
 
@@ -69,8 +69,9 @@ object ConnectionLog {
     }
 
     /**
-     * Called every watchdog tick with the current status. Only commits a completed episode once
-     * it outlasted the grace window, and brackets it with a recovery row when it recovers.
+     * Called every watchdog tick with the current status. Commits the completed off/backup
+     * episode as soon as the status changes (no grace — every drop counts), bracketing it with
+     * a recovery row when it returns online.
      */
     fun observe(status: ConnStatus, now: Long) {
         val prev = lastStatus
@@ -128,9 +129,10 @@ internal data class LogTransition(
 /**
  * Pure episode-commit decision for [ConnectionLog.observe] (extracted so the grace-window and
  * ring-buffer rules are unit-testable without DataStore). Returns null when the status didn't
- * actually change. A completed off/backup episode is committed to the ring buffer only once it
- * has outlasted [graceMs]; a recovery to [ConnStatus.ONLINE] adds a bracketing row when the
- * episode was committed. [maxEntries] caps the ring buffer.
+ * actually change. A completed off/backup episode is committed to the ring buffer once it has
+ * outlasted [graceMs] (the production call passes zero, so every episode is recorded); a
+ * recovery to [ConnStatus.ONLINE] adds a bracketing row when the episode was committed.
+ * [maxEntries] caps the ring buffer.
  */
 internal fun commitLogState(
     prevStatus: ConnStatus?,

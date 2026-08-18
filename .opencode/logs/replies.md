@@ -48417,3 +48417,1052 @@ All four fixes implemented; `:app:assembleDebug` and `:app:testDebugUnitTest` pa
 - **Follow-bullet** — `MapView.kt` `followStrike` guards against an unlaid-out view and skips the return-pan if you panned away during the strike.
 
 Also updated the ARCHITECTURE.md zone-tiering invariant/data-flow/module rows and added four `[Unreleased]` CHANGELOG entries. Note: "follow the bullet" still only pans for **off-screen** strikes by design — if it still feels intermittent on-device, tell me the exact case and I'll dig further.
+## 18/08/2026, 21:35:22
+
+Building now. Let me set up tasks and start with Strings
+## 18/08/2026, 21:35:53
+
+
+
+
+## 18/08/2026, 21:36:04
+
+Strings done. Now ZonePrefs — let me see the battery key block and add the flag
+
+
+## 18/08/2026, 21:36:09
+
+All questions answered. Here's the plan.
+
+## Plan
+
+### 1. Settings — snap to the section after the explainer closes
+- **Why it's lost:** `FeatureExplainerDialog` (the one-time helper) opens over the list; when dismissed, there's no anchor. 
+- **Fix** (`SettingsScreen.kt`): capture which section the tapped control lives in (`explainers` ids → section index: `followMe`→Map centre, `cardSize`→Card size, `threatToggles`→Threats, `officialAlerts`/`sirenOverride`/`nightMode`→Alerts), and on dismiss run `listState.animateScrollToItem(index)`. Uses the already-hoisted `listState`, no new plumbing.
+- Also updates the two existing scroll cases (ZonesSheet gear, threat-settings gear) to the new indices below.
+
+### 2. Merge Night mode into the Alerts section
+- Remove the standalone `item { Night mode }` from `SettingsScreen.kt`; render `NightModeCard` inside the Alerts `CollapsibleSectionCard` (below the vibration sliders). Section order becomes: Disclaimer(0) / Language(1) / Map centre(2) / Card size(3) / Threats(4) / **Alerts(5, now incl. night)** / Additional(6).
+- Drop `night` from `SettingsCollapseState` + its `Saver` (7→6 booleans) in `SettingsScreen.kt` and `MainScreen.kt`.
+- Update the fixed scroll indices (Threats=4, Alerts=5) and the ZonesSheet-gear mapping (night active → 5, else 4). ZonesSheet itself is unchanged (flag `scrollToNightMode` is reused).
+
+### 3. Popup no longer blocks the explosion
+- Add "popup region" awareness to `MapView.kt`: `MainScreen` reports the popup card's height (px) to `NeptunMapView`.
+- New helper: pan the camera so a given geo lands at the **vertical center of the visible band below the popup** (via `projection.fromPixels` offset math — keeps zoom).
+- Apply it (a) when a threat is selected, (b) in `followStrike`/`keepThreatOnScreen` so a struck threat is centered in the visible band instead of merely "barely on-screen". This guarantees the death explosion is never hidden behind the card.
+
+### 4. Night alerts & DND
+- **Answer to your granularity question:** yes — night zones already replicate day's full granularity (separate sliders: slow red/yellow **km** + fast red/yellow **min**, plus the same 4 per-zone bells), and add night-only extras: zone/official always-sound overrides + night vibration (toggle + fast/slow strengths). See `NightZones` (`NightMode.kt:23`) and the `night*` prefs.
+- "Just stronger" overrides: the override channels already ring on the alarm stream (`USAGE_ALARM`), which bypasses DND sound. To strengthen: add `setFullScreenIntent` on override-channel alerts (`AlertService.kt` `buildAlertNotification`) + declare `android.permission.USE_FULL_SCREEN_INTENT` in `AndroidManifest.xml` (graceful fallback where the OS denies it on Android 14+). No change to `NightMode.kt`.
+
+### 5. Select → zoom & grow icon
+- `MapView.kt`: on selection, animate the camera to center the threat in the visible band at a detail zoom, and animate the selected marker's icon to a scaled-up bitmap (~1.8×, regenerated each ~30ms for ~250ms), restoring the normal icon on deselect. Rotation/staleness handling is unaffected (icon is drawn by the marker, not the bitmap).
+
+### 6. Small card redesign → top-left, narrower
+- `ThreatPopupCard.kt` SMALL layout becomes:
+  - Row 1: icon | title | `R`/`Д` | skull (skull moves up beside the title)
+  - Row 2: first metric pill (ETA) + **vertical reliability bar** + **vertical 0–10 gauge**, both the **same height**
+  - Rows 3–4: the remaining two metrics (distance, speed) stacked below
+- `MainScreen.kt`: the small card moves from `Alignment.TopCenter` full-width to `Alignment.TopStart` with a narrower max width (~300dp); the size-toggle control follows it. Large card stays top-center full-width.
+
+### 7. Neutralized card — real fade
+- You report a hard hide at impact; the fade code exists (`MainScreen.kt:911-919`) but isn't visible. I'll debug it and rebuild it robustly: begin the alpha fade as soon as the threat is neutralized (short ~700ms readable hold for "Neutralizing…", then a smooth fade across the death window), ending with `onDismissPopup()`. No hard cut anywhere.
+
+### 8. Flourish text — suggestions
+- **EN:** "Neutralizing threat…" → **"Threat neutralized"**; note becomes "That threat is no longer tracked by the network." (drops the flippant "for whatever reason").
+- **UA:** "Знешкодження…" → **"Загрозу знешкоджено"**; note «Цю загрозу мережа більше не відстежує.»
+- Alternatives: "Strike confirmed / Strike confirmed"? — pick in the poll below.
+
+### 9. Housekeeping
+- Update `Strings.kt` (flourish copy), `ARCHITECTURE.md` (SettingsScreen/ThreatPopupCard/MapView/AlertService descriptions + section indices), append `CHANGELOG.md` entries.
+- Verify: `.\gradlew.bat :app:assembleDebug` (UI-only; no domain-logic change → unit suite unaffected, still run `testDebugUnitTest` if any touching of Zones/NightMode happens).
+
+Files to change, in edit order:
+1. `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`
+2. `app/src/main/java/ua/ukrainedrones/MainScreen.kt`
+3. `app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt`
+4. `app/src/main/java/ua/ukrainedrones/MapView.kt`
+5. `app/src/main/java/ua/ukrainedrones/AlertService.kt`
+6. `app/src/main/AndroidManifest.xml`
+7. `app/src/main/java/ua/ukrainedrones/Strings.kt`
+8. `ARCHITECTURE.md`
+9. `CHANGELOG.md`
+
+Two small open choices — pick the flourish copy:
+
+
+## 18/08/2026, 21:36:29
+
+Now MainViewModel. Let me read the UiState and buildUiState regions
+## 18/08/2026, 21:36:54
+
+Now MainActivity — re-arm and gate the permission request
+## 18/08/2026, 21:37:12
+
+Now the big MainScreen changes. Let me check `fastAndSlowGroups` signature and the current grid body
+## 18/08/2026, 21:37:20
+
+Plan finalized. Summary:
+
+1. **Settings snap** — after the one-time explainer closes, `animateScrollToItem` to the section containing the just-tapped control (`SettingsScreen.kt`).
+2. **Merge Night mode into Alerts** — drop the standalone section, embed `NightModeCard` in the Alerts card; update collapse state (7→6) and scroll indices.
+3. **Explosion never blocked** — `MapView` pans selected/struck threats to the vertical center of the viewport below the popup.
+4. **Night DND stronger** — `setFullScreenIntent` on override-channel alerts + `USE_FULL_SCREEN_INTENT` permission (manual overrides kept). Answer to your granularity question: yes, night zones already mirror day's 4 sliders + 4 bells, plus always-sound + vibration extras.
+5. **Select → zoom & grow** — camera zooms onto the selected threat in the visible band; its icon animates to ~1.8×.
+6. **Small card** — title row with `R` + skull, ETA pill + vertical reliability & 0–10 gauges (same height), distance/speed stacked below; top-left, ~300dp wide.
+7. **Neutralized fade** — debug + rebuild as a visible fade starting at neutralization (~700ms hold), no hard hide.
+8. **Flourish** — "Neutralizing threat…" / "Threat neutralized" (UA: "Знешкодження…" / "Загрозу знешкоджено"), note = no longer tracked by the network.
+9. **Housekeeping** — Strings, ARCHITECTURE.md, CHANGELOG.md; verify with `assembleDebug`.
+
+Files, in order: `SettingsScreen.kt`, `MainScreen.kt`, `ThreatPopupCard.kt`, `MapView.kt`, `AlertService.kt`, `AndroidManifest.xml`, `Strings.kt`, `ARCHITECTURE.md`, `CHANGELOG.md`.
+
+Ready to implement on your go.
+## 18/08/2026, 21:37:53
+
+`delay` and `sp` are imported. Let me see the state declaration area
+## 18/08/2026, 21:38:19
+
+Now the wizard gate + onLater wiring
+## 18/08/2026, 21:38:46
+
+Now restructure the wizard compos
+## 18/08/2026, 21:38:57
+
+Now remove `SetupIconPackStep`, regroup the grid, change preview filter, and bump the tip font
+## 18/08/2026, 21:39:36
+
+Let me verify the guide feature ids `night` and
+## 18/08/2026, 21:39:57
+
+All ids valid. Now CHANGELOG + ARCHITECTURE updates
+## 18/08/2026, 21:40:35
+
+
+
+
+## 18/08/2026, 21:41:07
+
+Docs updated. Now building
+## 18/08/2026, 21:42:05
+
+BUILD SUCCESSFUL — `assembleDebug` + `testDebugUnitTest` pass (only pre-existing deprecation warnings).
+
+Done. Summary of what changed:
+
+- **"Later" now exits all setup chrome**: `laterLanguageChoose()` (MainViewModel) marks language chosen, skips the battery prompt, and sets a new `permission_prompt_deferred` flag (ZonePrefs). `MainActivity.deferPermissionRequests` re-arms the flag each cold start and gates the system dialogs on it — so "Later" stays clean this session, and location/notifications re-ask on the next launch until granted.
+- **No more wizard flash**: `UiState` now exposes `lastFrameAt`; the wizard only mounts once the live feed has settled (or after a 3s offline grace), so it can never mount-then-vanish when your area is already on alert.
+- **Wizard rebuilt to 3 steps**: reverse-language title + intro paragraph + bigger tips (photo drone icon) + icon picker at bottom → threat grid with ⚡/🐢 group headers + divider → preview (`live/zones/notif/night/follow`) + Start.
+- CHANGELOG.md + ARCHITECTURE.md kept in sync.
+## 18/08/2026, 21:52:50
+
+Let me research the relevant code before planning. Starting with the
+## 18/08/2026, 21:53:17
+
+
+
+
+## 18/08/2026, 21:53:44
+
+
+
+
+## 18/08/2026, 21:55:41
+
+
+
+
+## 18/08/2026, 21:56:06
+
+
+
+
+## 18/08/2026, 21:56:45
+
+
+
+
+## 18/08/2026, 21:57:19
+
+
+
+
+## 18/08/2026, 21:57:44
+
+
+
+
+## 18/08/2026, 21:57:56
+
+Now I'll implement. Starting with `SettingsScreen.kt` — collapse state (remove `night`), scroll comment, explainer snap + flash
+## 18/08/2026, 21:58:30
+
+
+
+
+## 18/08/2026, 21:58:35
+
+
+
+
+## 18/08/2026, 21:59:14
+
+Now add the flash helper and wire it into `AlertToggleRow`:
+
+
+## 18/08/2026, 21:59:31
+
+Now wire the flash into the specific rows. Follow-me
+## 18/08/2026, 21:59:53
+
+Now the threat-toggles flash — pass into `ThreatSettingsCard`:
+## 18/08/2026, 22:00:28
+
+Now the merge: remove the standalone Night section and embed `NightModeCard` into the Alerts section. Let me re-read the current block
+## 18/08/2026, 22:00:38
+
+I've mapped the codebase. Before finalizing the plan, a few decisions that change
+## 18/08/2026, 22:00:58
+
+
+
+
+## 18/08/2026, 22:01:09
+
+
+
+
+## 18/08/2026, 22:01:13
+
+
+
+
+## 18/08/2026, 22:01:19
+
+
+
+
+## 18/08/2026, 22:01:36
+
+SettingsScreen done (items 1–2). Moving to the small
+## 18/08/2026, 22:02:47
+
+Now the small-card redesign in `ThreatPopup
+## 18/08/2026, 22:03:19
+
+Now replace `HorizontalLevelBar` with the two
+## 18/08/2026, 22:03:38
+
+
+
+
+## 18/08/2026, 22:04:53
+
+Now MainScreen — small card top-left/narrower, popup-height tracking, robust fade
+
+
+## 18/08/2026, 22:05:28
+
+
+
+
+## 18/08/2026, 22:06:08
+
+Now wire `popupHeightPx` into MapScreen and pass it to the
+## 18/08/2026, 22:06:43
+
+Now the MapView changes. Let me look at the icon helper and the threat-removal handler to plan
+## 18/08/2026, 22:08:00
+
+Now the MapView edits — popup-aware centering, select→zoom & grow. First the signature and helpers
+
+
+## 18/08/2026, 22:09:26
+
+
+
+
+## 18/08/2026, 22:09:37
+
+
+
+
+## 18/08/2026, 22:10:17
+
+
+
+
+## 18/08/2026, 22:10:35
+
+The answers clarify things, and they add a requirement: remove the 30s connection grace. Let me check the connection-log/offline plumbing
+## 18/08/2026, 22:10:39
+
+## Objective
+- Implement a batch of Ukraine Drones app UI/UX improvements: settings snap-to-section + row flash after one-time explainers; merge Night mode into the Alerts section; keep threats centered in the map's visible viewport so popups never block explosions; select→zoom & grow threat icon; redesign the small threat card (top-left, narrower, stacked metrics, seen-ago); make the neutralized-card fade visibly animate; make night-sound overrides break DND; change the flourish text to "Neutralized".
+
+## Important Details
+- Section indices after the Night→Alerts merge: 0 Disclaimer, 1 Language, 2 Map centre, 3 Card size, 4 Threats, 5 Alerts (holds night now), 6 Additional. Scroll code `if (scrollToNightMode) 5 else 4` stays numerically identical; only comments referenced "Night mode".
+- Explainer→section map: `followMe`→2, `cardSize`→3, `threatToggles`→4, else (`officialAlerts`,`sirenOverride`,`nightMode`)→5.
+- User decisions (via questions): small-card vertical bars = reliability + 0–10 gauge ("r"/skull stay on title row); night DND = keep manual overrides "just stronger"; pinch-zoom = select→zoom & grow icon; fade = user reports "never see any fade, hides immediately on impact"; flourish = "Neutralized" (EN "Neutralizing threat…"/"Threat neutralized", UA "Знешкодження…"/"Загрозу знешкоджено", note = "no longer tracked by the network").
+- Night-granularity answer: night zones already replicate day's full granularity (`nightSlowRedKm/nightSlowYellowKm/nightFastRedMin/nightFastYellowMin` + 4 bells) plus night extras (zone/official siren override toggles, night vibration toggle + fast/slow strengths).
+- Death animation constants: `DEATH_DURATION_MS=5000`, `DEATH_EXPLOSION_START_MS=2000`, `DEATH_EXPLOSION_LEN_MS=3000`.
+- AlertService: alarm-stream channels (`CHANNEL_ALERTS_ALARM`, `CHANNEL_ALERTS_OUTER_ALARM`, USAGE_ALARM) already bypass DND sound; "stronger" = add `setFullScreenIntent` + `USE_FULL_SCREEN_INTENT` permission. `buildAlertNotification` (~line 848, `AlertService.kt:848`) picks the channel; `sirenOverride` channels picked at lines 860-865.
+- Centering math planned: `targetY=(popupCoverPx+mapH)/2`, `targetX=mapW/2`; `newCenterGeo = projection.fromPixels(p.x-(targetX-w/2), p.y-(targetY-h/2))`; `controller.animateTo(centerGeo, max(currentZoom,~10.5), 400L)`; wait ~100-120ms before panning so popup is measured.
+- `threatIcon(context,type,iconSet)` (MapView.kt:101): CLASSIC returns drawable directly; others scale to 32dp bitmap → can generate scaled variants for the "grow" effect.
+- Popup crossfade now `onSizeChanged { popupHeightPx = it.height }`; small card = `TopStart` + `widthIn(max=300.dp)`; size-control row aligned Start for small.
+- `SettingsCollapseState()` default still compiles in MainScreen (night field removed; no `.night` refs remain).
+
+## Work State
+### Completed
+- SettingsScreen.kt: removed `night` from `SettingsCollapseState` + Saver (7→6); added imports `Animatable`, `tween`, `kotlinx.coroutines.delay`; added `flashId`, `sectionOfExplainer`, `dismissExplainer` (snap + flash then `delay(900)`); `FeatureExplainerDialog` onDismiss → `dismissExplainer`; added `Modifier.explainerFlash(active)` (2dp UkraineBlue pulse, 180ms up/520ms down) before `CollapsibleSectionCard`.
+- SettingsScreen.kt: `AlertToggleRow` gained `flash: Boolean=false`; flashes wired for `followMe`, `cardSize`, `threatToggles` (ThreatSettingsCard param), `officialAlerts`, `sirenOverride`, `nightMode` (new `flash` param on `NightModeCard`, applied to its enabled row).
+- SettingsScreen.kt: standalone Night section `item {}` removed; `NightModeCard` embedded at end of Alerts card after vibration sliders; Alerts order now: officialAlerts, sirenOverride, neutralizedTally, day vibration, NightModeCard.
+- ThreatPopupCard.kt: added `PillSpec` data class; small card redesigned (title row: icon+title+"R"/skull; first pizza pill flanked by same-height `VerticalReliabilityBar` + `VerticalLevelBar` (~56dp); distance/speed stacked below with 6dp spacing; `elapsedText` bottom-left; 1.25 font-scale cap via `CompositionLocalProvider(LocalDensity)`; `gpsOffLabel` fallback branch); `HorizontalLevelBar` replaced by `VerticalLevelBar` + `VerticalReliabilityBar`.
+- MainScreen.kt: added `androidx.compose.ui.layout.onSizeChanged` import; Crossfade alignment TopStart/TopCenter + `.onSizeChanged { popupHeightPx = it.height }`; state-1 and state-2 card modifiers use `widthIn(max=300.dp)` for small; size-control row Start/End; state-2 fade rewritten (700ms hold, then fade 1→0 over `(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS - 700)` ms, flip text at `DEATH_EXPLOSION_START_MS`, then `onDismissPopup()`).
+- MainScreen.kt: added `var popupHeightPx by remember { mutableStateOf(0) }` in MapScreen; `NeptunMapView(... popupCoverPx = popupHeightPx ...)` passed.
+
+### Active
+- MapView.kt: not yet edited. `popupCoverPx = popupHeightPx` is already passed from MainScreen, so NeptunMapView must accept the new param or the build fails. Just read `threatIcon` helper (MapView.kt:96-117).
+
+### Blocked
+- Build currently broken until `NeptunMapView` gains `popupCoverPx: Int = 0` param.
+
+## Next Move
+1. MapView.kt: add `popupCoverPx: Int = 0` to `NeptunMapView` signature; implement centering helper (visible band below popup) using `projection.fromPixels` offset math; on selection change (track last selected id) delay ~120ms, then `controller.animateTo(centerGeo, max(zoom, ~10.5), 400L)`; animate selected marker icon scale up (~250ms, ~1.8×) and restore on deselect; extend `followStrike`/`keepThreatOnScreen` to center struck threats in the visible band.
+2. AlertService.kt `buildAlertNotification`: add `setFullScreenIntent(fullScreenPoi, true)` when an alarm (override) channel is used; add `android.permission.USE_FULL_SCREEN_INTENT` to AndroidManifest.xml.
+3. Strings.kt: change `neutralizingLabel`/`neutralizedLabel`/`neutralizedNote`/`neutralizingNote` for EN (UA table line ~948-951, EN table ~1312-1314) to Neutralized copy.
+4. Update ARCHITECTURE.md (SettingsScreen, ThreatPopupCard, MapView, AlertService lines; section list) + CHANGELOG.md.
+5. Run `.\gradlew.bat :app:assembleDebug` (+ `testDebugUnitTest`); fix any compile fallout.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: merged Night→Alerts, snap/flash after explainers, collapse state 7→6 — done.
+- `app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt`: small-card redesign + vertical gauges + `PillSpec` — done.
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: popup position/width, popupHeightPx tracking, new fade, passes `popupCoverPx` — done (awaiting MapView param).
+- `app/src/main/java/ua/ukrainedrones/MapView.kt`: **active** — popupCoverPx param, centering in visible band, select→zoom & grow icon, followStrike band-centering.
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt`: line ~848 `buildAlertNotification` + channel selection (860-865) — add full-screen intent.
+- `app/src/main/AndroidManifest.xml`: add `USE_FULL_SCREEN_INTENT`.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: `neutralizedLabel`~948-951 (UA), ~1312-1314 (EN); `reliabilityShort` = "Д"/"R".
+- `app/src/main/java/ua/ukrainedrones/NightMode.kt`: `NightZones` (line 23) — no change; documents night granularity.
+- `ARCHITECTURE.md`, `CHANGELOG.md`: docs update pending.
+
+## 18/08/2026, 22:10:42
+
+
+
+
+## 18/08/2026, 22:11:05
+
+Now verify `overlayKey` won't reset the grown icon during the zoom animation.
+## 18/08/2026, 22:11:32
+
+`overlayKey` excludes zoom and only flips on staleness — the grown icon survives. Now the Strings flourish text. Let me check current values
+## 18/08/2026, 22:11:57
+
+Now the AlertService full-screen intent. Let me read the notification
+## 18/08/2026, 22:12:38
+
+Now the manifest permission. Let me check current
+## 18/08/2026, 22:12:51
+
+Now the changelog and architecture docs
+
+
+## 18/08/2026, 22:13:01
+
+Research complete. Here's the plan.
+
+## Plan
+
+### 1. Alert history → 6-hour window, relative time, bucketed groups
+- `AlertHistory.kt:39` — `AUTO_CLEAR_AGE_MS` 3 days → 6 hours (`6L * 60 * 60 * 1000`). Doc comment update. (Serialization/prune logic unchanged; the `AlertHistoryTest` uses the constant relatively, so it still passes.)
+- `Strings.kt` — `alertHistoryAutoClearNote`: UA `"Автоматично очищається через 6 годин"`, EN `"Auto-clears after 6 hours"`. Add relative-age suffixes + `formatAlertAge(now, atMillis, lang)` → `"5 сек"/"5 sec"`, `"23 хв"/"23 min"`, `"3 год"/"3 hr"` (new sec/min/hr buckets, 1–59 / 1–59 / 1–6).
+- `ConnectionStatus.kt` `AlertHistorySection` — row time switches from `formatDateTime` to `formatAlertAge`; the 30-min `WAVE_GAP_MS` dividers are replaced with sec/min/hr bucket dividers (newest first). Connection log keeps absolute timestamps.
+
+### 2. "Reason" of a resolved threat / realism
+- Answer to the question: **NEPTUN can't link it** — the stream only sends `upsert`/`snapshot` (active), `remove` (resolved, no cause field), and `alerts` frames. There is no incident/event feed, so there's no accurate way to link a removal to an explosion, and the "reason" can't be updated because NEPTUN provides none.
+- The neutralizing card already carries `"Just a visual flourish — that threat is no longer tracked, for whatever reason."` (`Strings.kt:1316/1318`). No copy change unless you want the flourish toned down — you chose to keep bullets, so I'll leave it.
+
+### 3. Bullets launch from the closest major city (camera tour)
+- `MapView.kt` — compute `originCity = Cities.nearestCity(threat.lat, threat.lon)` (majors within 70km) at both spawn sites (`:723` TEMP long-press, `:774` real removals) and pass the city's `GeoPoint` as the projectile `origin`; fall back to GPS/pin when no major city is near. `ThreatDeathAnimation.kt` needs no code change (origin is already a `GeoPoint`; launch flash + flight work off any origin) — just its doc comments.
+- `MapView.kt:330` `followStrike` — when `followBullet` is on, always do the tour: pan to the origin city at spawn → glide to the threat during the flight → **after the explosion finishes** (keep the existing `+300L`), return to `uiState.focusLocation` (GPS/pinned) instead of `preCenter`. Keep the "don't fight the user's pan" guard.
+- `Strings.kt` — update `followBulletDesc` (UA `:859`, EN) to describe the city-launch + return-to-position behavior.
+
+### 4. Connection log → bottom of the status popup
+- `ConnectionStatus.kt:224-225` — swap: `AlertHistorySection` first, `ConnectionLogSection` last.
+
+### 5. Remove the "x" next to neptun.in.ua
+- `ConnectionStatus.kt:159-165` — delete the `IconButton`. The `ModalBottomSheet` already closes via swipe-down + scrim tap (same dismiss gestures as the zones panel).
+
+### 6. One modal at a time
+- Hoist `showZonesSheet` (currently `MainScreen.kt:671`, inside `MapScreen`) and `activeExplainer` (currently `SettingsScreen.kt:214`) up to `MainScreen`, then cross-close centrally:
+  - connection info opens → close zones sheet, explainer, update dialog
+  - zones sheet opens → close connection info
+  - update dialog appears (`uiState.update` non-idle) → close connection info, zones sheet, explainer
+  - explainer opens → close connection info
+- Wizard/battery already gate each other by flow.
+
+### 7. Bug reports
+- **"Official alert needs the city"** — `AlertService.kt:675` `openAlert("official", …)` passes `null` locality when there's no reason threat. Add `focusCityUa` to `MonitorEvent.State` (from `attribution.bannerCityUa`, `:359`) and fall back to it so the history row always shows the city (transliterated to EN in EN mode).
+- **False official alerts** — primary hypothesis: on a NEPTUN drop, stale `neptunAlerts` persist (`NeptunState` keeps the last frame's alerts) and `oblastAlerts` (`NeptunClient.kt:73-74`) merges them with the backup, so an oblast alert stays "on" after it actually ended during the outage — both phones saw it. Fix: when `!connected`, gate official alerts on `backupAlerts` alone (the backup is the authoritative live source during an outage) instead of the stale NEPTUN union. Needs live confirmation next time the connection drops.
+- **Audible fast-object alert, no notification** — the notification is genuinely posted (that's how the sound plays); the likely cause on that device is siren-override sending fast alerts on the **alarm-stream** channels, which Android shows poorly (hidden/no heads-up in DND). Plan: verify the other phone's siren-override setting + OS; the alert already lands in `AlertHistory`, so the new city+time rows will let you confirm it fired. I'll need that phone's specifics to go further.
+- **Connection log more sensitive — remove the 30s grace** (from your answer): `NeptunClient.kt:110` `OFFLINE_GRACE_MS = 30_000L` → `0L`. This makes `ConnectionLog` commit every drop immediately and fires the offline notification on every lost connection (dedup still prevents spam within one outage). Update the `ConnectionLog.kt` doc comments and `ARCHITECTURE.md` (AlertService + ConnectionLog rows currently describe the grace).
+
+### Housekeeping
+- `CHANGELOG.md` — append entries under `[Unreleased]`.
+- `ARCHITECTURE.md` — update the module map for the 6h window, grace removal, city-launch bullets/camera tour, popup reorder, official-alert city fallback.
+- Build + unit tests: `.\gradlew.bat :app:assembleDebug`, `.\gradlew.bat :app:testDebugUnitTest`; add a `formatAlertAge` test in `StringsFormatTest`.
+
+### Files (edit order)
+1. `app/src/main/java/ua/ukrainedrones/NeptunClient.kt`
+2. `app/src/main/java/ua/ukrainedrones/ConnectionLog.kt`
+3. `app/src/main/java/ua/ukrainedrones/AlertHistory.kt`
+4. `app/src/main/java/ua/ukrainedrones/Strings.kt`
+5. `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`
+6. `app/src/main/java/ua/ukrainedrones/AlertService.kt`
+7. `app/src/main/java/ua/ukrainedrones/MapView.kt`
+8. `app/src/main/java/ua/ukrainedrones/ThreatDeathAnimation.kt`
+9. `app/src/main/java/ua/ukrainedrones/MainScreen.kt`
+10. `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`
+11. `app/src/test/java/ua/ukrainedrones/StringsFormatTest.kt`
+12. `ARCHITECTURE.md`
+13. `CHANGELOG.md`
+
+One open item: the fast-object "no notification" needs the other phone's Android version / siren-override state — the rest I can implement now. Want me to proceed with this plan?
+## 18/08/2026, 22:13:21
+
+
+
+
+## 18/08/2026, 22:13:50
+
+
+
+
+## 18/08/2026, 22:14:31
+
+Docs updated. Now build to verify.
+
+
+## 18/08/2026, 22:14:32
+
+
+
+
+## 18/08/2026, 22:15:18
+
+Done — all tasks complete, `assembleDebug` green (only pre-existing warnings).
+
+This session shipped:
+- **MapView.kt**: `popupCoverPx` param; `centerInVisibleBand`/`centerAndZoomOnThreat` keep threats in the viewport below the popup; select → pan+zoom (~11) + icon grows to 1.8× (`scaledThreatIcon`), restored on deselect, skips pan for notification reveals; strikes under the popup now pan into the band.
+- **AlertService.kt + manifest**: override sirens set a full-screen launch intent (`USE_FULL_SCREEN_INTENT`) so they surface over DND.
+- **Strings.kt**: flourish now "Neutralizing threat…"/"Threat neutralized" (UA "Знешкодження…"/"Загрозу знешкоджено"), note "No longer tracked by the network".
+- **ARCHITECTURE.md / CHANGELOG.md** updated.
+
+Previously finished: SettingsScreen night→Alerts merge + explainer snap/flash, ThreatPopupCard small-card redesign + vertical gauges, MainScreen popup width/position/height + visible fade.
+
+Worth a manual check: the 120ms `popupCoverPx` race (first selection may pan before the card measures), and the full-screen intent permission prompt on Android 14+.
+## 18/08/2026, 22:16:22
+
+
+
+
+## 18/08/2026, 22:16:32
+
+
+
+
+## 18/08/2026, 22:17:05
+
+Updated plan incorporating your two changes.
+
+## Revised plan
+
+### New item — long-press is permanent (no more "TEMP")
+Stop calling the map long-press a TEMP/test feature. Update all comments + rename the `temp*` identifiers (they literally spell "temp"):
+- `MapView.kt:708,735` — "TEMP debug: long-press…" → permanent long-press wording; fix the stale "or empty map" phrasing (empty-ground presses are already ignored); `:723` comment about "test triggers".
+- `MainViewModel.kt:140,684,1060-1062` — `tempNeutralizedFlow`/`tempNeutralizedId` → `neutralizedFlow`/`neutralizedId`, `tempNeutralize(id)` → `neutralizeThreat(id)`, drop "TEMP" comments.
+- `MainScreen.kt:142` — `onTempNeutralize` → `onNeutralize`.
+- `AlertService.kt:221` — "the TEMP map long-press" → "the map long-press".
+- `ThreatDeathAnimation.kt` — "Temp test triggers" / "on demand for testing" doc comments → permanent wording.
+- `ARCHITECTURE.md:44,68,76,82` — same.
+- The `forceOffline`/`temp_force_offline` test toggle keeps its "TEMP" label (that's a separate feature you didn't ask to change).
+
+### Dropped
+- The "audible fast-object alert, no notification" bug (item 7c) — ignoring for now, per your note.
+
+### Everything else unchanged from the previous plan
+1. Alert history → 6-hour window + relative `1-59 sec / 1-59 min / 1-6 hr` times, grouped into sec/min/hr buckets (`AlertHistory.kt`, `Strings.kt` `formatAlertAge` + `alertHistoryAutoClearNote`, `ConnectionStatus.kt`).
+2. NEPTUN resolution "reason" — informational answer only (no code): no cause field, no event feed, nothing to link.
+3. Bullets launch from the **closest major city to the threat** (`Cities.nearestCity`), camera tour = pan to city → glide to threat → return to GPS/pinned after the explosion finishes (`MapView.kt`, `ThreatDeathAnimation.kt` doc comments, `followBulletDesc` strings).
+4. Connection log moves below the alert history in the status popup (`ConnectionStatus.kt`).
+5. Remove the "x" IconButton next to neptun.in.ua; dismissal already matches the zones sheet (swipe/scrim) (`ConnectionStatus.kt`).
+6. One modal at a time — hoist `showZonesSheet` + `activeExplainer` to `MainScreen`, cross-close connection/zones/update/explainer.
+7. Bug fixes: "Official alert needs the city" (add `focusCityUa` to `MonitorEvent.State`, fallback in `AlertService.kt:675`); false official alerts (stop gating on stale `neptunAlerts` during a NEPTUN drop — use `backupAlerts` alone while `!connected`); connection log sensitivity = `OFFLINE_GRACE_MS` 30s → 0 (`NeptunClient.kt:110`, `ConnectionLog.kt` doc comments).
+8. Housekeeping: `CHANGELOG.md` Unreleased entries, `ARCHITECTURE.md` updates, `formatAlertAge` test, `:app:assembleDebug` + `:app:testDebugUnitTest`.
+
+### Files (edit order)
+1. `app/src/main/java/ua/ukrainedrones/NeptunClient.kt`
+2. `app/src/main/java/ua/ukrainedrones/ConnectionLog.kt`
+3. `app/src/main/java/ua/ukrainedrones/AlertHistory.kt`
+4. `app/src/main/java/ua/ukrainedrones/Strings.kt`
+5. `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`
+6. `app/src/main/java/ua/ukrainedrones/AlertService.kt`
+7. `app/src/main/java/ua/ukrainedrones/MapView.kt`
+8. `app/src/main/java/ua/ukrainedrones/ThreatDeathAnimation.kt`
+9. `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`
+10. `app/src/main/java/ua/ukrainedrones/MainScreen.kt`
+11. `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`
+12. `app/src/test/java/ua/ukrainedrones/StringsFormatTest.kt`
+13. `ARCHITECTURE.md`
+14. `CHANGELOG.md`
+
+Ready to implement when you switch out of plan mode.
+## 18/08/2026, 22:19:53
+
+Starting with NeptunClient — grace to 0 and stale-al
+## 18/08/2026, 22:20:30
+
+
+
+
+## 18/08/2026, 22:20:36
+
+A few items are unambiguous and I have the code pinned down; two need clarification before I finalize the
+## 18/08/2026, 22:20:43
+
+
+
+
+## 18/08/2026, 22:21:07
+
+Now AlertHistory — 6-hour
+## 18/08/2026, 22:21:29
+
+Now Strings.kt. Let me look at the string-set structure for the relative-time fields.
+## 18/08/2026, 22:22:06
+
+Now the StringSet getters. Let me find the Misc getter
+## 18/08/2026, 22:22:18
+
+
+
+
+## 18/08/2026, 22:22:34
+
+
+
+
+## 18/08/2026, 22:22:51
+
+Now add `formatAlertAge` next to `formatRelativeTime
+## 18/08/2026, 22:23:32
+
+
+
+
+## 18/08/2026, 22:23:47
+
+
+
+
+## 18/08/2026, 22:24:01
+
+
+
+
+## 18/08/2026, 22:24:36
+
+
+
+
+## 18/08/2026, 22:24:51
+
+Now AlertService — add `focusCityUa` and use it as the official-alert locality fallback.
+## 18/08/2026, 22:25:28
+
+
+
+
+## 18/08/2026, 22:25:34
+
+Now MapView — bullet origin from nearest major city + the camera tour
+## 18/08/2026, 22:25:41
+
+
+
+
+## 18/08/2026, 22:25:56
+
+
+
+
+## 18/08/2026, 22:26:01
+
+The working tree is newer than my earlier read (there's `centerInVisibleBand`, `popupCoverPxState`). Let me re-locate the spawn
+## 18/08/2026, 22:26:13
+
+
+
+
+## 18/08/2026, 22:26:37
+
+Now the real-removal
+## 18/08/2026, 22:26:44
+
+
+
+
+## 18/08/2026, 22:26:53
+
+
+
+
+## 18/08/2026, 22:26:57
+
+
+
+
+## 18/08/2026, 22:27:17
+
+Now rename the MapView param `onTempNeutralize` → `onNeutralize
+## 18/08/2026, 22:27:33
+
+Plan is clear. Here it is:
+
+## Plan: update check + toast every time Settings opens
+
+**Trigger:** every `openSettings()` (header gear, zone-panel gear, threat-settings gear — all funnel through `MainScreen.kt:103`). Currently it calls `autoCheckForUpdates(allowPopup=false)`, which is **daily-gated** (`MainViewModel.kt:1096`) and silent. Startup keeps its own daily-gated call (unchanged).
+
+### Changes
+
+1. **`Strings.kt`** — add `updateAvailableOnOpen` (format string, `%s` = version) to the updates block:
+   - interface ~L150, getter ~L477, UA ~L789, EN ~L1156
+   - EN: `Update v%s is available — scroll to the bottom of Settings to download`
+   - UA: `Доступне оновлення v%s — прокрутіть униз, щоб завантажити`
+
+2. **`MainViewModel.kt`** — `checkForUpdates(..., toastOnAvailable: Boolean = false)`; in the `UpdateState.Available` branch (~L1117), if `toastOnAvailable` → `Toast.makeText(app, String.format(s.updateAvailableOnOpen, "v"+versionName), LENGTH_LONG)`. New method `checkForUpdatesOnSettingsOpen()` = `checkForUpdates(notify=false, popupAvailable=false, toastOnAvailable=true)` — **no daily gate**, always runs. Existing `isChecking`/Downloading/Downloaded guards still apply (no double-check or double-toast).
+
+3. **`MainScreen.kt:109`** — replace `viewModel.autoCheckForUpdates(allowPopup = false)` with `viewModel.checkForUpdatesOnSettingsOpen()`.
+
+4. **`CHANGELOG.md`** + **`ARCHITECTURE.md`** (MainViewModel/MainScreen lines) — note the on-open check + toast.
+
+**Side effect (good):** the silent Available also sets `latestVersionFlow`, so the bottom-of-Settings "Update" button already flips to the green "Update available · vX" download button (SettingsScreen.kt:808) — the toast's "scroll to bottom" lands on a ready download affordance.
+
+**Verify:** `.\gradlew.bat :app:assembleDebug`.
+
+One decision before I start
+## 18/08/2026, 22:27:34
+
+
+
+
+## 18/08/2026, 22:27:42
+
+Now ThreatDeathAnimation doc comments
+
+
+## 18/08/2026, 22:27:57
+
+
+
+
+## 18/08/2026, 22:28:21
+
+Locked in — remind-only when known. Final plan:
+
+## Final plan: update toast on every Settings open
+
+1. **`Strings.kt`** — add `updateAvailableOnOpen` (format, `%s` = `v<versionName>`) to the updates block (interface ~L150, getter ~L477, UA ~L789, EN ~L1156):
+   - EN: `Update v%s is available — scroll to the bottom of Settings to download`
+   - UA: `Доступне оновлення v%s — прокрутіть униз, щоб завантажити`
+
+2. **`MainViewModel.kt`**
+   - `checkForUpdates(..., toastOnAvailable: Boolean = false)` — in the `Available` branch (~L1117), if `toastOnAvailable` show `Toast(LENGTH_LONG)` with the formatted string.
+   - New `checkForUpdatesOnSettingsOpen()`:
+     - if `latestVersionFlow.value != null` → toast again immediately, no network (remind-only).
+     - else → `checkForUpdates(notify=false, popupAvailable=false, toastOnAvailable=true)` (no daily gate). Existing `isChecking`/Downloading/Downloaded guards prevent double-checks.
+
+3. **`MainScreen.kt:109`** — `openSettings` calls `viewModel.checkForUpdatesOnSettingsOpen()` instead of the daily-gated `autoCheckForUpdates(false)`. Startup path untouched.
+
+4. **`CHANGELOG.md`** + **`ARCHITECTURE.md`** — note the on-open check/toast and remind-only behavior.
+
+Side effect: the Available also sets `latestVersionFlow`, so the bottom "Update" button flips to the green "Update available · vX" download button — the toast's "scroll to bottom" lands on it.
+
+Verify with `.\gradlew.bat :app:assembleDebug`. Ready to implement on your go.
+## 18/08/2026, 22:28:28
+
+Now MainViewModel — rename `tempNeutralize` → `neutralizeThreat` and drop the TEMP language
+
+## 18/08/2026, 22:29:10
+
+The rename worked (encoding intact). Let me clean the remaining "TEMP" comment on `neutralizeThreat` and any others in MainViewModel.
+## 18/08/2026, 22:29:26
+
+Both clarifications are clear now. Here's the plan.
+
+## Findings
+
+- **Lock-on dot** — still renders a 5dp dot + 13dp ring for the first 0.5s (`ThreatDeathAnimation.kt:155-162`). You want it gone entirely.
+- **Wizard copy/layout** — all in `MainScreen.kt` step 0/1/2 + `Strings.kt`; the page-2 icons are tinted to the surface color (`ThreatIcon(tint = onColor)`), which flattens every icon to b&w even when on.
+- **TTA lines** — the feature works, but `show_tta_lines` defaults to **off** (`ZonePrefs.kt:316`), so you never see them. They render only for fast threats with a bearing.
+- **Bomb direction** — verified the death overlay and the osmdroid marker use *identical* rotation math (same angle, same pivot; I decompiled the osmdroid `Marker.onDraw` to confirm the rotation sign). The real culprit is the baked-facing table: `baseDeg` says KAB=225° / AVIATION=270° / RECON=225°, but you observed the art facing ~8:00 (240°) / 8:50 (265°) / 8:15 (247°). With the wrong base, the bomb points off its true course both on the map and in the animation.
+- **Modal vs threat card** — the connection sheet (ModalBottomSheet) and the zones panel can both open while `ThreatPopupCard` is up; nothing dismisses the popup when a sheet opens, and opening a threat doesn't close the sheets.
+
+## Changes (edit order)
+
+1. **`ThreatDeathAnimation.kt`** — delete the 0–0.5s lock-on block entirely (bullet + explosion only); update its doc comments ("lead-in lock-on", "0.5s lock-on").
+2. **`Strings.kt`** (EN + UA):
+   - `iconSetTitle` → "Choose your favourite threat icons!" / «Оберіть свої улюблені іконки загроз!» (shared with Settings — fine).
+   - `onboardingTipSettings` (2nd tip) → "Settings holds the feature guide and other advanced settings — check it out!" (+UA).
+   - `wizardCareSubtitle` → "Every threat is shown on the map by default; toggle alerts here, and go to ⚙ settings to change anytime." (+UA).
+3. **`MainScreen.kt`**:
+   - Step 0: move `onboardingIntro` below the flags; bump the spacer above the icon section (~14→24dp).
+   - `WizardThreatGrid`: drop the "Alert"/"Off" captions (symmetric cards, state shown by border+tint); tint on-icons with `Color.Unspecified` so the selected pack renders in color.
+   - `SetupFeaturesStep`: title `titleSmall`→`titleMedium`, summary `bodySmall`→`bodyMedium`, slightly more row spacing.
+   - Modal exclusivity: `onThreatTapped` also closes the connection sheet; opening the connection sheet or zones panel dismisses the popup; strip/map threat taps close the zones panel.
+4. **`IconCatalog.kt`** — correct `photoBaseDeg`/`armyBaseDeg` (comic inherits army): KAB 225→240, AVIATION 270→265, RECON 225→247 (your observed facings). Fixes both map markers and the animation.
+5. **`ZonePrefs.kt`** — `show_tta_lines` default `false` → `true` so TTA lines appear for fast threats out of the box.
+6. **`ARCHITECTURE.md`** + **`CHANGELOG.md`** — update the death-animation row, TTA default, and add entries.
+
+Verify: `.\gradlew.bat :app:assembleDebug` + `:app:testDebugUnitTest`.
+
+Two notes before I implement: (a) I used **"Choose"** (you wrote "Chose" — flag if you want the typo kept); (b) the base-facing values come from your eyeball readings — after the change, long-press the KAB again and tell me if it still looks off, and I'll fine-tune. Want me to go ahead?
+## 18/08/2026, 22:29:42
+
+Now MainScreen — hoist the zones-sheet + explainer flags and cross-close modals. Let me re-read the current state of the
+## 18/08/2026, 22:30:53
+
+## Objective
+- Implement the user's batch of UI/logic changes for the Ukraine Drones Android app: 6-hour alert history with sec/min/hr relative times, bullets launching from the nearest major city with a follow-bullet camera tour, connection log at bottom, remove the X on the NEPTUN URL, one-modal-at-a-time, official-alert city in history, stale-official-alert fix, 30s connection grace removed, and renaming the long-press feature from "TEMP" to permanent.
+
+## Important Details
+- User decisions from Q&A: bullet origin = **closest major city to the threat**; camera return = **after the explosion finishes** (keep ~5.3s timing), returning to GPS/pinned focus (not preCenter); false official alerts possibly while NEPTUN is down — user wants the **30s connection grace removed entirely** ("if it ever loses a connection i wanna know").
+- User follow-ups: **stop calling it "TEMP long-press" — it's permanent now, update comments** (rename tempNeutralize identifiers too); **ignore the "no notif" bug for now**.
+- "Make close function same as alertzone modal" = remove the X IconButton; the ModalBottomSheet already dismisses via swipe-down + scrim tap.
+- Alert history relative format: "1-59 sec" / "1-59min" / "1-6hrs", grouped into sec/min/hr buckets (newest first). Connection log keeps absolute timestamps. Entries pruned at 6h.
+- NEPTUN resolution "reason" was informational only (no code): the stream sends upsert/snapshot/remove/alerts frames, no cause/event feed — nothing to link.
+- Keep the `forceOffline`/`temp_force_offline` TEMP comments as-is (separate feature, user didn't ask to change).
+- Build: `.\gradlew.bat :app:assembleDebug`, `.\gradlew.bat :app:testDebugUnitTest`. Per AGENTS.md: append to CHANGELOG.md `[Unreleased]`; keep ARCHITECTURE.md current.
+- NOTE: the MapView.kt working tree is newer than earlier reads (1014 lines; has `centerInVisibleBand`, `popupCoverPxState`, `lastSelectedId`) — edit against current file content.
+
+## Work State
+### Completed
+- `NeptunClient.kt`: `OFFLINE_GRACE_MS` 30_000L → 0L + comment; stale-alert fix: `oblastAlerts` getter now `when { !connected -> backupAlerts; backupActive -> mergeAlerts(neptunAlerts, backupAlerts); else -> neptunAlerts }`; `alertSourceFor` now `val n = connected && neptunAlerts.any { it.inOblast(token) }`.
+- `ConnectionLog.kt`: 3 doc comments updated (no grace, every drop recorded).
+- `AlertHistory.kt`: `AUTO_CLEAR_AGE_MS = 6L * 60 * 60 * 1000`; pruneExpiredEntries doc comment.
+- `Strings.kt`: `alertHistoryAutoClearNote` UA "Автоматично очищається через 6 годин" / EN "Auto-clears after 6 hours"; added Misc fields `alertAgeSecSuffix/MinSuffix/HrSuffix` + StringSet getters + UA ("сек"/"хв"/"год") and EN ("sec"/"min"/"hr") values; `followBulletDesc` UA/EN rewritten (launches from nearest major city, camera returns to GPS/pinned); added `formatAlertAge(nowMillis, atMillis, s: Strings.StringSet)` before `formatDateTime` (coerceAtLeast(1), buckets <60s/<3600s/else).
+- `ConnectionStatus.kt`: sections swapped (AlertHistorySection first, ConnectionLogSection last); removed X IconButton next to neptun.in.ua + removed unused imports (`Icons.Default.Close`, `IconButton`); replaced `WAVE_GAP_MS` wave grouping with `ALERT_AGE_MIN_MS`/`ALERT_AGE_HR_MS` bucket dividers; `AlertHistoryRow` now takes `now: Long` and renders `formatAlertAge`.
+- `AlertService.kt`: added `focusCityUa: String?` to `MonitorEvent.State`; set from `attribution.bannerCityUa.takeIf { it.isNotBlank() }`; official `openAlert` locality falls back to `state.focusCityUa` when no reason threat.
+- `MapView.kt`: new `followStrike: (MapView, GeoPoint, GeoPoint?) -> Unit` (pan to origin → delay(700) → animateTo(geo) → delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L - 700) → return to `focusLocationState ?: mapView.mapCenter` unless user panned >2000m away); added `strikeOrigin: (GeoPoint) -> GeoPoint?` lambda (`Cities.nearestCity` to target, fallback focusLocation/GPS); long-press handler comments updated to permanent wording; long-press spawn site updated (`onNeutralize(pressedId)`, `val target`, `val origin = strikeOrigin(target)`, `followStrike(mapView, target, origin)`).
+- Todo items 1–7 marked completed; item 8 (MapView) in progress.
+
+### Active
+- `MapView.kt` real-removal site still needs updating: `LaunchedEffect(Unit) { NeptunClient.removedThreats.collect { r -> ... } }` (~lines 795–826). Currently `val origin = (focusLocationState ?: LocationTracker.location.value)?.let { GeoPoint(it.lat, it.lon) }` at ~line 806 — must become `val origin = strikeOrigin(GeoPoint(r.lat, r.lon))`; `followStrike(it, anchor)` call needs the third `origin` arg; the `spawnDud`/`spawn` calls pass `origin` (already parameterized).
+- MapView composable signature still has `onTempNeutralize: (String) -> Unit` parameter — must rename to `onNeutralize` (the handler body already calls `onNeutralize`).
+- Old `centerInVisibleBand(...)` + `popupCoverPxState` may now be unused dead code (only old followStrike used them) — verify and remove if so.
+
+### Blocked
+- (none)
+
+## Next Move
+1. Finish `MapView.kt` real-removal site: `val origin = strikeOrigin(GeoPoint(r.lat, r.lon))`, pass `origin` to `followStrike(it, anchor, origin)` and to `deathFx.spawnDud`/`spawn`; rename MapView's `onTempNeutralize` parameter to `onNeutralize`; remove dead `centerInVisibleBand`/`popupCoverPxState` if unused.
+2. `MainViewModel.kt`: rename `tempNeutralizedFlow`→`neutralizedFlow`, `tempNeutralizedId`→`neutralizedId`, `tempNeutralize(id)`→`neutralizeThreat(id)`, drop "TEMP" comments (lines ~140–142, 262, 295, 303, 523, 599, 684, 689, 1056, 1060–1062, 1074); keep `forceOffline` TEMP comments (line 912).
+3. `MainScreen.kt`: update `onTempNeutralize = viewModel::tempNeutralize` call site to `onNeutralize = viewModel::neutralizeThreat`; hoist `showZonesSheet` (currently local in MapScreen ~line 671) and `activeExplainer` (from SettingsScreen ~line 214) to MainScreen; cross-close modals (connection info ↔ zones sheet ↔ update dialog ↔ explainer).
+4. `SettingsScreen.kt`: hoist `activeExplainer` (currently `var activeExplainer by remember { mutableStateOf<Explainer?>(null) }` ~line 214, rendered ~847–849).
+5. `ThreatDeathAnimation.kt`: update doc comments — "Temp test triggers"/"on demand for testing" → permanent; origin doc ("your GPS position (or pinned city)") → nearest major city.
+6. `AlertService.kt:221`: change "the TEMP map long-press never touches this flow" comment.
+7. Add `formatAlertAge` test in `app/src/test/java/ua/ukrainedrones/StringsFormatTest.kt`; run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+8. Update `ARCHITECTURE.md` (TEMP refs at lines ~44/67/68/76/82; 6h window; grace removal; city-launch bullets/camera tour; popup reorder; official-alert city fallback) and `CHANGELOG.md` `[Unreleased]`.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/MapView.kt`: bullet origin + camera tour (in progress); followStrike/strikeOrigin added; real-removal site + `onNeutralize` param rename remain.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: `tempNeutralize`→`neutralizeThreat` rename + TEMP comment cleanup.
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: `onTempNeutralize` call site (~line 142); hoist `showZonesSheet` (~line 671) + cross-close modals; UpdateDialog (~1376), BatteryOnboardingDialog (~326/609).
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: hoist `activeExplainer` (~214, rendered ~847).
+- `app/src/main/java/ua/ukrainedrones/ThreatDeathAnimation.kt`: doc comments (origin + perm long-press).
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt`: focusCityUa done; line 221 TEMP comment.
+- `app/src/main/java/ua/ukrainedrones/NeptunClient.kt`, `ConnectionLog.kt`, `AlertHistory.kt`, `Strings.kt`, `ConnectionStatus.kt`: done.
+- `app/src/test/java/ua/ukrainedrones/StringsFormatTest.kt`: add formatAlertAge test.
+- `ARCHITECTURE.md`, `CHANGELOG.md`: housekeeping updates pending.
+## 18/08/2026, 22:31:15
+
+Now the SettingsScreen call site — pass the hoisted explainer state
+
+
+## 18/08/2026, 22:31:30
+
+Now update MapScreen to accept the hoisted zones-sheet state and rename `onTemp
+## 18/08/2026, 22:32:04
+
+That edit wrongly dropped the Surface modifier — restoring it
+
+
+## 18/08/2026, 22:32:28
+
+Now SettingsScreen — hoist `activeExplainer
+## 18/08/2026, 22:32:35
+
+
+
+
+## 18/08/2026, 22:33:01
+
+Now the formatAlertAge unit test. Let me look at
+## 18/08/2026, 22:33:14
+
+Now docs. Check CHANGELOG and ARCHITECTURE
+
+
+## 18/08/2026, 22:33:30
+
+
+
+
+## 18/08/2026, 22:33:45
+
+Now ARCHITECTURE.md — check the TEMP references and behavior descriptions
+## 18/08/2026, 22:34:11
+
+
+
+
+## 18/08/2026, 22:34:39
+
+The long line defeated exact match. Let me target shorter unique sub
+## 18/08/2026, 22:34:46
+
+Now line 76 (ThreatDeathAnimation) and line 82 (AlertService)
+
+
+## 18/08/2026, 22:35:09
+
+Let me verify the new `formatAlertAge`/`followStrike`/`strikeOrigin` code before building
+
+
+## 18/08/2026, 22:35:37
+
+Now build and test
+## 18/08/2026, 22:36:15
+
+
+
+
+## 18/08/2026, 22:36:18
+
+
+
+
+## 18/08/2026, 22:36:32
+
+The build is blocked by a stray, untracked `app/src/main/res/drawable/neptun.svg` (pre-existing, not from my changes) — AAPT rejects `.svg` files, but `ConnectionStatus.kt:137` references `R.drawable.neptun`, so the icon needs a working draw
+## 18/08/2026, 22:36:47
+
+I can't view images (no image input support), so I'll rely on the path data and code references. Let me check the Neptun brand/logo and how the current assets are structured
+## 18/08/2026, 22:36:53
+
+Now update the doc comments in ThreatDeath
+## 18/08/2026, 22:37:35
+
+
+
+
+## 18/08/2026, 22:37:44
+
+The path spans x −149..151, so I'll wrap it in a translated group. Let me check how the logo is used first
+
+
+## 18/08/2026, 22:37:56
+
+I'll generate the vector drawable programmatically so the 4.2 KB path is copied exactly
+
+
+## 18/08/2026, 22:37:58
+
+Now the Strings edits
+## 18/08/2026, 22:39:09
+
+
+
+
+## 18/08/2026, 22:39:28
+
+
+
+
+## 18/08/2026, 22:40:03
+
+
+
+
+## 18/08/2026, 22:40:27
+
+The user appears to have already converted the SVG to a VectorDrawable (`neptun.xml`) — let me read it fully.
+## 18/08/2026, 22:40:35
+
+
+
+
+## 18/08/2026, 22:40:57
+
+
+
+
+## 18/08/2026, 22:41:04
+
+Let me verify the actual rendered bounds of the vector path (control points can exceed the drawn shape), to check whether it's centered in the 300×322 viewport.
+## 18/08/2026, 22:41:33
+
+The emblem fills the full 300×322 canvas (X: -149..151 after translate → 0..300), so `neptun.xml` is correctly normalized. Let me check the `AlertToggleRow` icon tint default.
+
+
+## 18/08/2026, 22:42:07
+
+I have the full picture. One thing to note: the `.svg` was already converted to a working Android VectorDrawable at `res/drawable/neptun.xml` (white silhouette, correct bounds — raw `.svg` files aren't usable in Android res anyway). The emblem currently appears in 6 places, all using either the old Ukraine trident (`ic_trident.xml`) or old NEPTUN PNGs (`neptun*.png`).
+
+Two color questions before I final
+## 18/08/2026, 22:42:43
+
+## Objective
+- Fix the user's reported issues in the Ukraine Drones Android app: (1) force-close when tapping threats while pinned to a city (follow-me off), (2) premature explosion/ping at the threat before the bullet flies in the death animation, (3) "follow the bullet" camera works only sometimes, (4) slow-threat (UAV/Shahed) alerts/chimes fire for threats outside the yellow km zone. Plus a second-round set of wizard copy/layout, TTA-lines visibility, icon-facings, and modal-vs-card exclusivity fixes.
+
+## Important Details
+- **Bug 1 fix confirmed & applied:** `ThreatPopupCard.kt:472` crashed because `String.format(s.pillDistanceCd, cityName, formatKm(distUser))` passed a String into a `%2$d` specifier (`IllegalFormatConversionException`) whenever the popup rendered with `pinnedCity != null`. Fixed by passing `distUser.roundToInt()`.
+- **Bug 4 semantics confirmed by user:** "4 yes only confirmed" → slow threats tier on the **confirmed raw fix** (`t.lat`/`t.lon`), not the dead-reckoned `predictPosition`; fast threats keep predicted-ETA. Applied in BOTH `MainViewModel.kt` and `AlertService.kt` (ARCHITECTURE.md mirror rule).
+- **Bug 2 final decision:** user saw a small circle even after the lock-on replacement → the 0–0.5s lead-in marker was **removed entirely** from `ThreatDeathAnimation.kt` (bullet + explosion only). Doc comments updated ("projectile flight + explosion"; `DEATH_EXPLOSION_START_MS` = "1.5s flight").
+- **Bug 3 fix applied:** `followStrike` in `MapView.kt` now guards against an unlaid-out view (`if (mapView.width > 0 && mapView.height > 0)`) and skips the 5.3s return-pan if the user panned away (skips when current map center >2000m from the strike geo). First attempt used `return@followStrike` — Kotlin couldn't resolve the implicit label for a lambda with an explicit type annotation — rewrote as a nested `if` block. Compiles.
+- **TTA lines ("time-to-arrival cards"):** user clarified they mean the map's red/yellow time-to-arrival lines. Feature works but `show_tta_lines` defaults **off** (`ZonePrefs.kt`, `prefs[...] ?: false`) and only renders for `FastThreatTypes` with bearing + speed. Plan: flip default to `true`.
+- **KAB direction on long-press:** user is on photo/army/comic packs. Verified by decompiling osmdroid `Marker.onDraw` (javap) that osmdroid draws with `canvas.rotate(+mRotation, px, py)` — identical to the death overlay's `canvas.rotate(rotationDeg)`; no flip. Root cause = baked-facing table mismatch. User's observed art facings: "dron up, fpv down, cruise right, balssltic 1:30, bomb 8p, mig 8:50, recon 8:15". Current `IconCatalog` baseDeg: SHAHED 0, FPV 180, CRUISE 90, BALLISTIC 45, KAB 225, AVIATION 270, RECON 225. Planned corrections: KAB→240, AVIATION→265, RECON→247 (photo + army; comic inherits army). Values are user eyeball estimates — needs on-device re-verification.
+- **Wizard changes (all Strings/MainScreen edits done):** step 0 intro "This setup is important…" moved below the language flags; spacer above icon section 14→24dp; `iconSetTitle` → EN "Choose your favourite threat icons!" / UA "Оберіть свої улюблені іконки загроз!" (used "Choose", not the user's "Chose" — flagged); 2nd tip → EN "Settings holds the feature guide and other advanced settings — check it out!" / UA "У Налаштуваннях — путівник по функціях та інші просунуті налаштування. Зазирни туди!"; page-2 subtitle → EN "Every threat is shown on the map by default; toggle alerts here, and go to ⚙ settings to change anytime." / UA "Усі загрози показано на мапі за замовчуванням; увімкніть сповіщення тут, а в ⚙ налаштуваннях зможете змінити будь-коли."; `WizardThreatGrid` "Alert"/"Off" captions removed (state shown by border+tint) and icon tint changed to `if (on) Color.Unspecified else offColor` (fixes all-b&w icons); `SetupFeaturesStep` fonts bumped `titleSmall`→`titleMedium`, `bodySmall`→`bodyMedium`, row spacing 10→14dp.
+- **Modal exclusivity (NOT yet applied):** `showConnectionInfo` (ConnectionStatus `ModalBottomSheet`) and `showZonesSheet` (local state in `MainScreenMapContent`) can each coexist with the `ThreatPopupCard`. Planned: `onThreatTapped` also closes connection sheet; opening connection sheet or zones panel dismisses the popup (`viewModel.selectThreat(null)` / `onDismissPopup()`); strip/map threat taps close the zones panel (wrap in `MainScreenMapContent`).
+- Working tree is dirty (HEAD = `fecf8bf "fix some bugs"`); `ThreatDeathAnimation.kt` now has new origin logic ("from the nearest major city, else GPS position or pinned city") from a later session — edits must target **current working-tree content** (re-read before editing; line numbers in older notes are stale).
+- Current Strings.kt locations: UA `iconSetTitle` ~871, EN `iconSetTitle` ~1238, UA onboarding ~655-669, EN onboarding ~1016-1038.
+- `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest` passed after the first-round fixes (only pre-existing warnings).
+
+## Work State
+### Completed
+- First round: crash fix (`ThreatPopupCard.kt`), slow-tier raw-fix in `MainViewModel.kt` + `AlertService.kt`, follow-bullet robustness (`MapView.kt`), ARCHITECTURE.md + CHANGELOG.md entries, build + unit tests pass.
+- Second round so far: lock-on dot fully removed (`ThreatDeathAnimation.kt` + comments); all 6 wizard string edits (`Strings.kt` EN+UA); `MainScreen.kt` step-0 reorder/spacing, grid caption removal + icon tint fix, page-3 font bumps.
+- Decompiled osmdroid `Marker.onDraw` — confirmed overlay and marker rotation math are identical.
+
+### Active
+- Remaining second-round todos: (1) modal-vs-card exclusivity in `MainScreen.kt`; (2) `IconCatalog.kt` baseDeg corrections (KAB 240, AVIATION 265, RECON 247); (3) `ZonePrefs.kt` TTA default `true`; (4) ARCHITECTURE.md + CHANGELOG.md updates; (5) rebuild + unit tests.
+
+### Blocked
+- (none)
+
+## Next Move
+1. Apply modal exclusivity in `MainScreen.kt`: `onThreatTapped` closes `showConnectionInfo`; `onShowConnectionInfoChange(true)` dismisses popup; `openZonesPanel` calls `onDismissPopup()`; wrap `onThreatTapped`/`onThreatStripTap` inside `MainScreenMapContent` to close `showZonesSheet`.
+2. Edit `IconCatalog.kt` `photoBaseDeg`/`armyBaseDeg` (comic inherits army): KAB 225→240, AVIATION 270→265, RECON 225→247.
+3. Flip `show_tta_lines` default to `true` in `ZonePrefs.kt`.
+4. Update ARCHITECTURE.md (death-animation row "lock-on dot" already partly reworded; add TTA default-on, baseDeg note) and CHANGELOG.md [Unreleased] entries for wizard copy/spacing, lock-on removal, TTA default, icon facings, modal exclusivity.
+5. Run `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`; then ask user to re-verify the KAB long-press facing (baseDeg values are eyeball estimates) and TTA lines visibility.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: wizard steps (step 0 ~line 405, `WizardThreatGrid` ~498, `SetupFeaturesStep` ~583), modal state (`showConnectionInfo` ~68, `showZonesSheet` ~672), `openZonesPanel` ~685, `onThreatTapped` wiring ~128.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: `iconSetTitle` (UA ~871, EN ~1238), `onboardingTipSettings`, `wizardCareSubtitle`, `wizardCareOn/Off` (now unused in UI).
+- `app/src/main/java/ua/ukrainedrones/ThreatDeathAnimation.kt`: lock-on block removed; doc comments updated; new "nearest major city" origin behavior.
+- `app/src/main/java/ua/ukrainedrones/IconCatalog.kt`: `photoBaseDeg` (~95) / `armyBaseDeg` (~110) / `comicBaseDeg` (~125) — baseDeg corrections pending.
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: `showTtaLines()` default `false` — flip to `true` (~line 316).
+- `app/src/main/java/ua/ukrainedrones/MapView.kt`: `followStrike` (~329) hardened; TTA line rendering (~653), `destinationPoint` (~230) verified correct.
+- `app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt`: crash fixed at ~472 (now `distUser.roundToInt()`); `formatKm` still defined at ~583.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt` + `AlertService.kt`: slow tiers use raw fix (tierLat/tierLon conditional on `t.type in FastThreatTypes`).
+- `D:\Desktop\drones\ARCHITECTURE.md`, `D:\Desktop\drones\CHANGELOG.md`: docs updates pending for round two.
+## 18/08/2026, 22:43:15
+
+
+
+
+## 18/08/2026, 22:43:22
+
+Now the build +
+## 18/08/2026, 22:44:06
+
+
+
+
+## 18/08/2026, 22:44:09
+
+Understood — narrow scope: replace the old `neptun.png` / `neptun_green.png` / `neptun_red.png` assets with the SVG-derived emblem. Let me confirm nothing else references those PNG
+## 18/08/2026, 22:45:15
+
+
+
+
+## 18/08/2026, 22:45:47
+
+
+
+
+## 18/08/2026, 22:45:56
+
+
+
+
+## 18/08/2026, 22:46:01
+
+
+
+
+## 18/08/2026, 22:46:09
+
+Scope confirmed: only `ConnectionStatus.kt` references those PNGs. The popup-header logo (line 137) already uses `R.drawable.neptun`, so once the PNGs are deleted it resolves to the new vector automatically.
+
+## Plan
+
+**1. `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt` (line ~92–98)** — swap the pill image from the `neptun_green`/`neptun_red` PNGs to the new vector with a `ColorFilter.tint`, preserving current behavior exactly:
+- online → green `0xFF4CAF50`
+- `neptunDown` → red `0xFFE57373`
+- backup active (NEPTUN up) → amber `0xFFF9A825`
+
+**2. Delete old assets** — `drawable-nodpi/neptun.png`, `neptun_green.png`, `neptun_red.png`. `R.drawable.neptun` then resolves to the vector `drawable/neptun.xml` (already exists, white silhouette, correct 300×322 bounds).
+
+**3. `CHANGELOG.md`** — add an `[Unreleased]` entry (app icon via `R.drawable.neptun` now the NEPTUN emblem).
+
+**4. Verify** — `.\gradlew.bat :app:assembleDebug`.
+
+Untouched: the Ukraine trident (`ic_trident.xml` header/settings/launcher stays).
+
+Ready to implement when you say go.
+## 18/08/2026, 22:47:22
+
+
+
+
+## 18/08/2026, 22:47:41
+
+The tests are stale (written by the prior session, never run). Fixing expectations to match the current intended
+## 18/08/2026, 22:48:06
+
+All second-round todos done, build + tests green.
+
+Applied: modal-vs-card exclusivity (`MainScreen.kt` — popup dismisses when any sheet opens, threat tap closes sheets), `IconCatalog.kt` facings (KAB 240, AVIATION 265, RECON 247), `ZonePrefs.kt` TTA default on, docs updated. Also fixed three pre-existing breakages in the working tree: `MapView.kt:358` `preFocus` type clash (`LatLng ?: IGeoPoint` → `Any`), and two stale tests (wrong age-bucket expectations; `alertSourceFor` BOTH→BACKUP under the "backup authoritative while socket down" rule).
+
+Two things need your on-device check: the guided-bomb long-press facing (baseDeg values are your eyeball estimates — fine-tune in `IconCatalog.kt`), and TTA lines now visible by default.
+## 18/08/2026, 22:49:00
+
+Let me read the relevant UI code before planning
+## 18/08/2026, 22:49:25
+
+
+
+
+## 18/08/2026, 22:49:42
+
+
+
+
+## 18/08/2026, 22:49:53
+
+Done. Build passes (`app-debug.apk` just rebuilt).
+
+- `ConnectionStatus.kt:92` — pill now uses `R.drawable.neptun` (the vector emblem), tinted green/red/amber per state.
+- Deleted `drawable-nodpi/neptun.png`, `neptun_green.png`, `neptun_red.png` — the popup-header logo (`R.drawable.neptun`, line 137) now resolves to the vector.
+- `CHANGELOG.md` `[Unreleased]` entry added.
+## 18/08/2026, 22:50:12
+
+All feature work is done. Summary:
+
+**Completed:** 6h alert history with sec/min/hr buckets, connection log on the bottom, X removed from the NEPTUN header, city-launch bullets with follow-bullet camera tour, official-alert city fallback, zero connection grace, stale-alert fix, permanent long-press (`tempNeutralize`→`neutralizeThreat`), one-modal-at-a-time (hoisted `showZonesSheet`/`activeExplainer`, cross-close effect in `MainScreen.kt:73`), `formatAlertAge` test, CHANGELOG + ARCHITECTURE updated.
+
+**Also fixed a build blocker:** the untracked `neptun.svg` (AAPT rejects `.svg`) is converted to a vector `neptun.xml` so `R.drawable.neptun` resolves.
+
+**Unverified:** `assembleDebug`/`testDebugUnitTest` — you aborted the run after I fixed the SVG. Run `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest` when ready; the new `StringsFormatTest` covers `formatAlertAge` buckets.
