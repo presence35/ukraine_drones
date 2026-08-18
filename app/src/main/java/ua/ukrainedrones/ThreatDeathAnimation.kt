@@ -20,10 +20,10 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Total length of the death animation: lead-in ping + projectile flight + explosion. */
+/** Total length of the death animation: lead-in lock-on + projectile flight + explosion. */
 private const val DEATH_DURATION_MS = 5000L
 
-/** The projectile hits and the explosion begins this many ms into the animation (0.5s ping +
+/** The projectile hits and the explosion begins this many ms into the animation (0.5s lock-on +
  *  1.5s flight). */
 const val DEATH_EXPLOSION_START_MS = 2000L
 
@@ -56,10 +56,10 @@ private class ActiveDeath(
 )
 
 /**
- * Playful "neutralized" flourish drawn on the map at a threat's last position: a soft ping
- * marking the target, then a small projectile flies in — from your GPS position (or pinned
- * city) when it's on screen, else from just outside the screen edge — and explodes on
- * impact. Rendered as an osmdroid overlay so the map's own projection places it exactly at
+ * Playful "neutralized" flourish drawn on the map at a threat's last position: a small fixed
+ * lock-on dot marking the target, then a small projectile flies in — from your GPS position
+ * (or pinned city) when it's on screen, else from just outside the screen edge — and explodes
+ * on impact. Rendered as an osmdroid overlay so the map's own projection places it exactly at
  * the geo points (tracking pan/zoom) and `draw()` is re-invoked on every invalidate — a
  * per-frame ticker in the map view keeps it animating for [DEATH_DURATION_MS].
  */
@@ -149,13 +149,16 @@ class ThreatDeathOverlay : Overlay() {
                 canvas.restore()
             }
 
-            // Lead-in ping (0-0.5s) — a soft ring marks the hit point. Duds skip it: the
-            // target is already gone, so nothing marks where it used to be.
+            // Lead-in lock-on (0-0.5s): a small fixed dot marks the hit point. Deliberately
+            // small and non-explosive so it never reads as a detonation before the bullet.
+            // Duds skip it: the target is already gone, so nothing marks where it used to be.
             if (t < 0.10f && !d.dud) {
                 val ping = t / 0.10f
-                ringPaint.color = Color.argb((0.8f * (1f - ping) * 255).toInt(), 255, 213, 0)
-                ringPaint.strokeWidth = 3f * density
-                canvas.drawCircle(x, y, 56f * density * ping, ringPaint)
+                flashPaint.color = Color.argb((200 * ping).toInt(), 255, 213, 0)
+                canvas.drawCircle(x, y, 5f * density, flashPaint)
+                ringPaint.color = Color.argb((150 * ping).toInt(), 255, 213, 0)
+                ringPaint.strokeWidth = 1.5f * density
+                canvas.drawCircle(x, y, 13f * density, ringPaint)
             }
 
             // Flight (0.5s-impact): a small projectile flies in from the origin (GPS position or

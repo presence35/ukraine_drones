@@ -15953,9 +15953,62 @@ in settings, threats, "Unknown" should have the shrodingerscat pic, not the icon
 ## 18/08/2026, 15:48:03
 
 in settings, threats, "Unknown" should have the shrodingerscat pic, not the icon pack.
-## 18/08/2026, 15:48:31
+## 18/08/2026, 15:55:18
 
-when clicking "Later" in firsth launch it still shows the android permission screens.  skip those too.
-## 18/08/2026, 15:51:30
+in settings, threats, "Unknown" should have the shrodingerscat pic, not the icon pack.
+## 18/08/2026, 15:58:36
 
-when clicking "Later" in firsth launch it still shows the android permission screens.  skip those too.
+in settings, threats, "Unknown" should have the shrodingerscat pic, not the icon pack.
+and we need a "reset tips" button at the bottom of settings so they can see the first-tap tips again.
+## 18/08/2026, 17:34:06
+
+in settings, threats, "Unknown" should have the shrodingerscat pic, not the icon pack.
+and we need a "reset tips" button at the bottom of settings so they can see the first-tap tips again.
+## 18/08/2026, 17:34:11
+
+and, when clicking "Later" in firsth launch it still shows the android permission screens.  skip those too.  There's also a flash of the wizrad sometimes.  that shouldn't happen.
+## 18/08/2026, 17:35:10
+
+im getting fore close tapping on threats that are outside my zone.
+i'm getting explosions just before a bullet is sent, then the animation works as intened.
+following the bullet doesn't work.
+I'm getting notifs for alerts that are WAY outside my yellow zone, and are slow.
+## 18/08/2026, 20:53:14
+
+and, when clicking "Later" in firsth launch it still shows the android permission screens.  skip those too.  There's also a flash of the wizrad sometimes.  that shouldn't happen.
+## 18/08/2026, 21:09:27
+
+and, when clicking "Later" in firsth launch it still shows the android permission screens.  skip those too.  There's also a flash of the wizrad sometimes.  that shouldn't happen.
+## 18/08/2026, 21:10:57
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 21:13:26
+
+go
+## 18/08/2026, 21:20:37
+
+in settings we hsould snap to the appropriate section as intellingetnly as possible. One other time is whne the first-time hel[er msgbox is closed, the eye loses track of where it was, it would be more helpfup to scroll the settings to the top of what section they just tapped. 
+
+combine dark mode into the Alerts section, for beter orgzniation.
+
+map modals bloc kthe explosion.  The fix is always have the threat in the centre of the map's visible viewport .
+
+night alerts should override DND setting, and individual zone alerts.  Are the current night zone seprate sliders distance and time? ie, is the granulatiry of day settings exactly repeated and added-to in night time?
+
+Possible to pinhc-zoom on threats, to make the threat animate bigger, to see the explosion or detail on the icon?
+
+Small card: redesign again!
+[threat   [title]  "r" [skull]
+icon       [pill1]  [vertical bar] [vertical bar] (make them the same height.
+              [2]
+]             [3]
+And then make the card stay in the top left corner and narrower.
+
+the card should *start* fading away once the threat is neutralized, but it should fade out, not just hide.
+The flourish text should be changed, suggestions?
+## 18/08/2026, 21:22:50
+
+4 yes only confirmed
+## 18/08/2026, 21:24:39
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.

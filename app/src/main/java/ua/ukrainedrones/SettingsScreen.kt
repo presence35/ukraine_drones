@@ -1369,7 +1369,10 @@ private fun ThreatSettingsCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
-                            painter = painterResource(IconCatalog.res(type, iconSet)),
+                            painter = painterResource(
+                                if (type == ThreatType.UNKNOWN) R.drawable.ic_unknown_cat
+                                else IconCatalog.res(type, iconSet)
+                            ),
                             contentDescription = label,
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()

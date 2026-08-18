@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Fixed a force-close when tapping a threat while a city is pinned (or while turning "follow me" off with the threat card open) — the distance pill passed a string where the format expected a number.
+- Slow (UAV/Shahed) alerts now fire on the threat's confirmed fix only — a drone gliding ahead of its fix can no longer trigger a chime while it's still far outside your zone; the drawn circles and the alerts now always agree.
+- Death-strike animation: the expanding "ping" ring at the target is now a small fixed lock-on dot, so nothing at the target looks like an explosion before the projectile arrives.
+- "Follow the bullet": the camera only returns to where you were if you haven't panned away while the strike played, and the pan no longer misfires before the map is laid out.
+
+- Settings → Threats: the expanded "Unknown" card's large preview now shows a Schrödinger's-cat image (the small row icon, map markers and alert history keep the question-mark icon).
+
 - Map: the death-strike animation now vibrates the phone once, right at the explosion, with an alarm-class haptic pulse so it's felt even when the system "touch feedback" vibration is off — and the projectile no longer has a glowing halo around it.
 - Notifications: the "Resolved threats" tally now shows only the running count plus the last threat type — the extra body line is gone.
 - Settings → Threats: the Fast and Slow group sections are separated by a divider, and each expanded type card shows the selected icon pack large and full-width.

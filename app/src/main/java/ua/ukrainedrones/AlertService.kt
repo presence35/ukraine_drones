@@ -419,8 +419,8 @@ class AlertService : Service() {
             speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
             val estimate = speedTracker.estimate(t.id, t)
             val p = estimate?.let { predictPosition(t, it, now) }
-            val lat = p?.latitude ?: t.lat
-            val lon = p?.longitude ?: t.lon
+            val lat = if (t.type in FastThreatTypes) (p?.latitude ?: t.lat) else t.lat
+            val lon = if (t.type in FastThreatTypes) (p?.longitude ?: t.lon) else t.lon
             val distKm = distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0
             val speedKmh = estimate?.times(3.6)
             val zone = zoneTier(t, distKm, speedKmh, params) ?: continue

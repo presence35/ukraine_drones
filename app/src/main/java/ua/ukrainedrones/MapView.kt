@@ -325,13 +325,18 @@ fun NeptunMapView(
     val vibrator = remember { context.getSystemService(Vibrator::class.java) }
 
     // Follow-the-bullet: glide the camera onto an off-screen strike, then, when the setting is
-    // on, return it to where it was 0.3s after the explosion finishes.
+    // on, return it to where it was 0.3s after the explosion finishes — unless the user has
+    // panned somewhere else while the strike played.
     val followStrike: (MapView, GeoPoint) -> Unit = { mapView, geo ->
-        val preCenter = mapView.mapCenter
-        if (keepThreatOnScreen(mapView, geo) && followBulletState) {
-            mapScope.launch {
-                delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
-                mapViewRef.value?.controller?.animateTo(preCenter)
+        if (mapView.width > 0 && mapView.height > 0) {
+            val preCenter = mapView.mapCenter
+            if (keepThreatOnScreen(mapView, geo) && followBulletState) {
+                mapScope.launch {
+                    delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
+                    val mv = mapViewRef.value ?: return@launch
+                    if (distanceMeters(mv.mapCenter.latitude, mv.mapCenter.longitude, geo.latitude, geo.longitude) > 2000.0) return@launch
+                    mv.controller.animateTo(preCenter)
+                }
             }
         }
     }

@@ -654,8 +654,10 @@ val uiState: StateFlow<UiState> = combine(
             if (stale || focusLocation == null) continue
             // Advisory = NEPTUN observation, never an alert — shown on the map only.
             if (t.advisory) continue
+            val tierLat = if (t.type in FastThreatTypes) predicted.latitude else t.lat
+            val tierLon = if (t.type in FastThreatTypes) predicted.longitude else t.lon
             val distKm = distanceMeters(
-                focusLocation.lat, focusLocation.lon, predicted.latitude, predicted.longitude
+                focusLocation.lat, focusLocation.lon, tierLat, tierLon
             ) / 1000.0
             val speedKmh = speedTracker.estimate(t.id, t)?.times(3.6)
             val tier = zoneTier(t, distKm, speedKmh, params)

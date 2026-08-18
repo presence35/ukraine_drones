@@ -469,7 +469,7 @@ private fun SummaryPills(
     }
     val cityName = pinnedCity?.let { if (lang == AppLanguage.UA) it.nameUa else it.nameEn }
     val distCd = if (cityName != null) {
-        String.format(s.pillDistanceCd, cityName, formatKm(distUser))
+        String.format(s.pillDistanceCd, cityName, distUser.roundToInt())
     } else null
     if (singleLine) {
         // Single-line pills can't wrap — cap the font scale so extreme accessibility

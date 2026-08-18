@@ -48096,3 +48096,324 @@ Two quick choices before I build:
 ## 18/08/2026, 15:45:10
 
 Preview = all 5 (live, zones, notif, night, follow). Proceeding with label headers + divider for the grid. Let me implement.
+## 18/08/2026, 15:45:39
+
+Right — I'm in plan mode, so no edits yet. Here's the finalized plan for your approval:
+
+## Wizard rebuild (3 steps)
+
+**Step 1 — Language (title reversed)** + intro + tips + icon picker:
+- Title = the *other* language's `languageChooseTitle` (mirrors Settings header pattern), flips live on tap.
+- New intro paragraph (new `onboardingIntro` string, larger font):
+  - EN: *"This setup is important — this app has advanced safety features you should know about. Take 30 seconds to get familiar now, so you're ready when it matters."*
+  - UA: *«Це налаштування важливе — у застосунку є просунуті функції безпеки, про які варто знати. Виділи 30 секунд і ознайомся зараз, щоб бути готовим, коли це важливо.»*
+- Tips: `bodySmall` → `bodyMedium`, icons 16→20dp; tip 1 drone icon → `IconCatalog.photoRes(SHAHED)` (photo asset).
+- `IconSetSelector` at the bottom under an `iconSetTitle` label.
+
+**Step 2 — Threat grid:**
+- Icons reflect the set chosen on step 1.
+- Fast/slow split via `fastAndSlowGroups(lang)`: tiny ⚡/🐢 group labels + thin divider between groups.
+
+**Step 3 — Preview + Start:** `live`, `zones`, `notif`, `night`, `follow` (all 5), Start button.
+
+Counter becomes `x/3`; `Next` logic uses `step < 2`.
+
+## Files
+1. `app/src/main/java/ua/ukrainedrones/MainScreen.kt` — restructure, tip font/icon, grid grouping, preview filter; delete `SetupIconPackStep`.
+2. `app/src/main/java/ua/ukrainedrones/Strings.kt` — add `onboardingIntro` (UA+EN) + getter.
+3. `CHANGELOG.md` — [Unreleased] note.
+
+Verify: `.\gradlew.bat :app:assembleDebug` (if the file-lock from the concurrent build recurs, `--stop` the daemon first).
+
+Approve to build?
+## 18/08/2026, 21:09:54
+
+Two new items. Let me investigate the permission flow and the startup state before planning
+## 18/08/2026, 21:10:22
+
+The image exists (71 KB webp). Checking where the Settings card's expanded preview + the ARCHITECTURE doc currently describe it, so the plan's edits are exact
+## 18/08/2026, 21:10:47
+
+## Plan
+
+**1. Move the asset**
+- `git mv app/src/unknown.webp` → `app/src/main/res/drawable/ic_unknown_cat.webp` (rename to a valid resource name; `res/drawable` exists, drawable is standard and keeps it out of the icon-pack system since it's a Settings-only preview).
+
+**2. SettingsScreen.kt** — `ThreatSettingsCard`, expanded preview (lines 1365–1377)
+- Choose the painter: `if (type == ThreatType.UNKNOWN) R.drawable.ic_unknown_cat else IconCatalog.res(type, iconSet)` — the cat shows only in the large 160dp preview; the collapsed 36dp row icon stays the current question-mark, and map markers / alert history are untouched. `IconCatalog` stays the single source of truth for real icons.
+
+**3. Docs** — `ARCHITECTURE.md:69` ("large icon-pack preview…" clause): note that the Unknown card's preview instead shows a Schrödinger's-cat image; add a `CHANGELOG.md` `[Unreleased]` entry.
+
+**4. Verify** — `.\gradlew.bat :app:assembleDebug` (compiles the new resource + code).
+
+Files to change, in edit order:
+1. `app/src/main/res/drawable/ic_unknown_cat.webp` (moved from `app/src/unknown.webp`)
+2. `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`
+3. `ARCHITECTURE.md`
+4. `CHANGELOG.md`
+## 18/08/2026, 21:10:54
+
+## Objective
+- Finish the first-launch wizard according to the user's latest feedback: restructure to 3 steps (language + intro + bigger tips + icon selection at the bottom → "What do you care about" threat grid → feature preview + Start), reverse-language step title, photo drone icon, fast/slow separator, better preview features.
+- Verify the already-applied alert-scoping fix builds (`assembleDebug` + `testDebugUnitTest`).
+
+## Important Details
+- User feedback is the current spec: (1) "Choose language" step TITLE should be reverse language (the language you'd switch TO, like Settings header at SettingsScreen.kt:313-316); (2) the 3 helper tips need bigger font; (3) add a larger intro paragraph: "This setup is important. This app has advanced features that you should be aware of. Take the 30 seconds to familiarize yourself" ("maybe better wording" ok); (4) the drone icon in tips should be the `threat_photo` asset; (5) threat-grid icons must use the icon set chosen on the previous step (already wired via `iconSet` param — verify); (6) add a small fast/slow separator in the grid; (7) remove "lang" from preview features ("language is not a core feature lol. try harder."); (8) move threat-icon selection into the FIRST step at the bottom — the standalone icon-pack step is then not needed → wizard becomes 3 steps, counter "x/3".
+- Wizard force-close on alarm stays: gate `if (!uiState.languageChosen && !uiState.alertActive)` — on alarm the wizard drops WITHOUT saving; returns after alert clears. No `setLanguageChosen(true)` on the alarm path.
+- `alertActive` is now location-scoped (FIXED): `alertActive = activeZone != null || focusOblastAlertActive` (MainViewModel.kt:758) — was country-wide `mapThreats.isNotEmpty() || redCities.isNotEmpty()` which blocked the wizard everywhere while any oblast was on alert (the reported bug: "calm city, no wizard" + "half load then map opens" at startup flash). User chose scoping-only fix (no flash suppression).
+- Fast group = `FastThreatTypes` (ThreatTogglePanel.kt); slow = `ThreatType.values().toSet() - fast`; labels `s.fastGroupLabel` / `s.slowGroupLabel` (⚡/🐢). Grid currently renders `ThreatType.values().toList().chunked(2)`.
+- `LanguageFlag` (SettingsScreen.kt:1724-1758) is inverted: `active=true` → blue background + emoji alpha 0.3 (current language faded); alternate flag bright.
+- Strings convention: `Strings.get(lang)` → `StringSet` with sub-tables; wizard fields already added to `Onboarding` (+ getters + UA/EN): `wizardCareTitle`, `wizardCareSubtitle`, `wizardCareOn`, `wizardCareOff`, `wizardStartButton`; `relaunchSetupTitle` reworded («Повторити початкове налаштування» / "Replay first launch").
+- Daily tips + Help section: deferred feature; proposal (pool of ~18-22 tips + once-a-day banner gated on `!alertActive`) presented, user's answers to the 4 clarifying questions still pending.
+- Build context: last `assembleDebug :app:testDebugUnitTest` run was aborted by the user's message (unverified). Earlier failure chain: `dexBuilderDebug` "Failed to create MD5 hash... does not exist" (stale incremental dex) → `clean` failed with locked `app/build/intermediates/compile_and_runtime_not_namespaced_r_class_jar/release/...` (possibly a concurrent build) → `--stop` (1 daemon stopped), stale dex out dir absent. Windows file-lock issues may recur.
+- Build commands: `.\gradlew.bat :app:assembleDebug` and `:app:testDebugUnitTest`.
+
+## Work State
+### Completed
+- Wizard v1 built: `FirstLaunchWizard` (MainScreen.kt ~331) with 4 steps — language+3 tips / `SetupIconPackStep` / `WizardThreatGrid` / `SetupFeaturesStep`; gate at MainScreen.kt ~248: `if (!uiState.languageChosen && !uiState.alertActive)`; footer Back/Later + Next/`wizardStartButton`; `BackHandler(enabled = step > 0)`. (To be restructured per new feedback.)
+- `alertActive` scoping fix applied: MainViewModel.kt:758 `alertActive = activeZone != null || focusOblastAlertActive`; CHANGELOG [Unreleased] entry added.
+- SettingsScreen.kt: `alertActive` param added; replay button moved next to guide button; replay + check-update disabled when `alertActive`; `import androidx.compose.runtime.saveable.Saver` added to fix pre-existing drift (`SettingsCollapseState.Saver` at SettingsScreen.kt:82 — unresolved reference).
+- FeatureExplainer.kt created: `Explainer` model, `explainers(s)` catalog (ids: threatToggles/officialAlerts/sirenOverride/followMe/cardSize/nightMode), `FeatureExplainerDialog` (FeatureDiagram visual + scenario + "Got it"); wired into Settings toggles via `ZonePrefs.explainerSeen`.
+- Strings.kt: wizard strings + `ExplainerStrings` sub-table (visualLabel/scenarioLabel/gotIt/items) added to `StringSet` + UA/EN factories.
+- MainViewModel.kt: `uiState.alertActive` default false, `setThreatEnabled(type, enabled)` (map+alerts together), `hasActiveAlert()` reads `uiState.alertActive`.
+- CHANGELOG.md + ARCHITECTURE.md updated (module map: MainScreen wizard, FeatureExplainer.kt, Strings explainers, ZonePrefs explainer_seen).
+- `assembleDebug` + `testDebugUnitTest` passed for the wizard/explainer/Settings work before the alertActive edit.
+- Git push reply delivered (git-push skill one-liner): `git commit -m "Add full-screen first-run wizard, alert gating, on-toggle explainers"`.
+
+### Active
+- Wizard restructure per latest user feedback — not yet implemented.
+- Build verification of the `alertActive` + Saver-import changes — pending (last run aborted).
+
+### Blocked
+- None hard. (Windows file locks on `app/build` can recur during concurrent builds; resolved once via `gradlew --stop`.)
+
+## Next Move
+1. Restructure `FirstLaunchWizard` to 3 steps: step 0 = reverse-language title (`Strings.get(if (current == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA).languageChooseTitle`) + intro paragraph (larger) + language flags + 3 tips (bigger font) + icon-set selector at the bottom; step 1 = `WizardThreatGrid` (chosen `iconSet`, fast/slow separator using `FastThreatTypes`); step 2 = `SetupFeaturesStep` preview + Start. Update counter "x/4" → "x/3" and remove the now-unneeded icon-pack step.
+2. Make the 3 `OnboardingTipRow` texts bigger (currently `bodySmall` at MainScreen.kt ~536); change the drone tip icon from `R.drawable.ic_threat_shahed` to the photo asset (e.g. `IconCatalog.photoRes(ThreatType.SHAHED)`).
+3. Remove `"lang"` from the preview filter (currently `guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "lang") }`) — pick stronger core features (e.g. night/follow/cardRead) per "try harder".
+4. Add the intro paragraph + any remaining strings (UA + EN) to `Strings.kt` `Onboarding`.
+5. Run `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`; if file locks recur, `.\gradlew.bat --stop` and retry before touching anything else.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: `FirstLaunchWizard` (~331-470), `SetupLanguageStep` (~425+), `SetupIconPackStep`, `WizardThreatGrid`, `SetupFeaturesStep` (preview filter ~490), `OnboardingTipRow` (~536), wizard gate (~248).
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: `alertActive` at buildUiState (~758), `setThreatEnabled`, `skipLanguageChoose`, `relaunchSetup`.
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: reverse-language header pattern (313-316), inverted `LanguageFlag` (1724-1758), `SettingsCollapseState.Saver` (82), replay/guide/update buttons, explainer wiring.
+- `app/src/main/java/ua/ukrainedrones/ThreatTogglePanel.kt`: `FastThreatTypes`, `fastAndSlowGroups` (25-33) — source for the grid separator.
+- `app/src/main/java/ua/ukrainedrones/IconCatalog.kt`: `ThreatIcon`, `res`, `photoRes` — photo drone icon.
+- `app/src/main/java/ua/ukrainedrones/FeatureExplainer.kt`: explainer model/catalog/dialog (new file).
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: `Onboarding`/`ExplainerStrings` tables + UA/EN factories.
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: `explainerSeen(id)` keys, `languageChosen`.
+- `CHANGELOG.md`, `ARCHITECTURE.md`: keep in sync with the wizard restructure.
+## 18/08/2026, 21:11:37
+
+Let me check how the live feed / connection state surfaces in `UiState`, to design the flash fix
+## 18/08/2026, 21:12:52
+
+
+
+
+## 18/08/2026, 21:13:15
+
+The answers reframe things. Bug 1 is now clearer (crash only while pinned to a city). Let me check the pinned-specific format strings and popup path
+## 18/08/2026, 21:13:52
+
+Untracked, so plain move:
+## 18/08/2026, 21:14:03
+
+Now the Settings preview:
+## 18/08/2026, 21:15:31
+
+All the pieces are clear now. Here's the consolidated plan covering the pending wizard restructure **plus** the two new fixes.
+
+## Fix 1 — "Later" also skips the Android permission screens
+
+Today both wizard exits call `skipLanguageChoose()` → sets `languageChosen=true`, then `deferPermissionRequests()` (MainActivity.kt:147) fires the system location+notification dialogs once `languageChosen && batteryOnboardShown`. Tapping "Later" does not suppress them.
+
+Plan:
+- **MainScreen.kt**: give `FirstLaunchWizard` a separate `onLater` callback; the step-0 "Later" button calls it, the final "Start" keeps `onComplete`.
+- **ZonePrefs.kt**: new `permissionPromptDeferred` boolean flag + key.
+- **MainViewModel.kt**: new `laterLanguageChoose()` → `setLanguageChosen(true)` + `setBatteryOnboardShown(true)` (skip the battery prompt too) + `setPermissionPromptDeferred(true)`. `relaunchSetup()` also resets the deferral flag to false.
+- **MainActivity.kt**: in `deferPermissionRequests`, reset the flag at launch (re-arm for next run) and gate readiness on `languageChosen && batteryOnboardShown && !permissionPromptDeferred` — so a "Later" session stays clean, and a later launch re-asks until granted. Returning users (already onboarded) are unaffected.
+
+## Fix 2 — no wizard flash at startup
+
+At cold start, frame 1 has `alertActive=false` → the wizard mounts; the first live frame then sets `alertActive=true` (your region is on alert) → wizard unmounts → flash. The scoping fix narrowed *when* it's active but not this race.
+
+Plan:
+- **MainViewModel.kt**: expose `lastFrameAt` on `UiState` (copy `neptun.lastFrameAt` in `buildUiState`).
+- **MainScreen.kt**: only mount the wizard once the feed has settled — `uiState.lastFrameAt > 0` OR a ~3s startup deadline (covers fully-offline first runs). The map already renders behind the gate, so during the brief unsettled window the user just sees the map; the wizard never mounts-then-vanishes.
+
+## Wizard restructure (already agreed)
+
+3 steps — (1) reverse-language title + intro paragraph + bigger tips + photo drone icon + `IconSetSelector` at the bottom; (2) "What do you care about" grid grouped ⚡ Fast / 🐢 Slow with a thin divider, icons from the chosen set; (3) preview of `live/zones/notif/night/follow` + Start. Counter `x/3`; delete `SetupIconPackStep`. Files: `MainScreen.kt`, `Strings.kt` (new `onboardingIntro`), `CHANGELOG.md` + `ARCHITECTURE.md`.
+
+Verify: `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`.
+
+Two choices
+## 18/08/2026, 21:16:36
+
+
+
+
+## 18/08/2026, 21:18:26
+
+Investigation done. Root causes identified for three of the four; the fourth (follow-bullet) gets a robustness fix + needs re-verification after the crash fix. Here's the plan.
+
+## Root causes
+
+**1. Force-close while pinned** — confirmed crash bug. `ThreatPopupCard.kt:472` calls `String.format(s.pillDistanceCd, cityName, formatKm(distUser))` but the UA/EN format strings are `"…%2$d км"` / `"…%2$d km"` (`%d`), while `formatKm()` returns a **String** → `IllegalFormatConversionException`. This only runs when `pinnedCity != null` (i.e. pinned), so:
+- tapping any threat while pinned → popup renders → crash,
+- toggling "follow me" off with a popup open → popup re-renders with the pin → crash.
+Matches your report exactly.
+
+**2. Explosion before the bullet** — the 0–0.5s "target lock" ping in `ThreatDeathAnimation.kt:152-159` draws a large **expanding ring** at the threat's position; it reads as a premature explosion, then the bullet flies and the real impact explosion plays.
+
+**3. Follow-bullet "sometimes"** — the pan only fires when the strike is off-screen; when it does fire, osmdroid's slow `animateTo` glide can outlast the 1.5s flight, and there's no guard against a not-yet-laid-out map view. Needs re-verification after the crash fix.
+
+**4. Slow-threat alerts way outside the yellow zone** — `zoneThreats` (`AlertService.kt:419-426`) and `buildUiState` (`MainViewModel.kt:650-661`) tier **slow** threats on the *dead-reckoned* `predictPosition`, which pulls a Shahed up to ~15 km toward its heading. Yellow is capped at 50 km, so a drone whose confirmed fix is 60–66 km out is "predicted" inside 50 km → chime fires, notification names the far locality. The drawn circle and the alert then disagree about the confirmed position.
+
+## Proposed changes (edit order)
+
+1. **`ThreatPopupCard.kt`** — pass `distUser.roundToInt()` (Int) to the `%2$d` specifier instead of the String from `formatKm()`. Fixes the pinned crash.
+2. **`ThreatDeathAnimation.kt`** — replace the expanding ping ring with a small, fixed, non-explosive "lock-on" marker (small fading dot/crosshair at the target, ~20 dp max) so nothing at the target looks like a detonation before the bullet arrives.
+3. **`MapView.kt`** — make follow-bullet reliable: guard the pan until the view is laid out (`mapViewRef.value?.let { if (it.width > 0) followStrike(...) }`), and skip the scheduled return-pan if the user manually panned after spawn (capture the map center right at spawn and compare at return time).
+4. **`MainViewModel.kt` + `AlertService.kt`** (mirror rule, both or nothing) — tier **slow** threats on the distance to the **confirmed raw fix** (not the dead-reckoned position), so the yellow/red circles are honest: a slow threat only chimes when its actual fix is inside the zone. Fast threats keep predicted-ETA tiering unchanged.
+5. **`ARCHITECTURE.md`** — update the "Zone tiering" invariant (slow tiers use the confirmed fix; prediction remains for fast ETA + map gliding) and the `ThreatDeathAnimation`/`MapView` rows (lock-on marker, follow-bullet behavior).
+6. **`CHANGELOG.md`** — `[Unreleased]` entries for all four fixes.
+
+Verification after implementation: `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest` (Prediction/Zones touched).
+
+One thing to confirm before I start: for **#4**, are you happy making slow-threat alerts fire only when the drone's *confirmed* fix is inside your km circle (fast threats unchanged)? That's the honest-circles behavior; the alternative is keeping predicted tiering but shrinking the dead-reckon cap.
+## 18/08/2026, 21:21:08
+
+This is a multi-part UI/UX request. Let me explore the relevant files first.
+## 18/08/2026, 21:23:42
+
+
+
+
+## 18/08/2026, 21:24:31
+
+## Objective
+- Fix 4 bugs in the Ukraine Drones Android app reported by the user: (1) force-close when tapping threats while pinned to a city, (2) explosion visual appears at the threat before the bullet flies, (3) "follow the bullet" camera works only sometimes, (4) notifications/chimes fire for slow threats (UAV/Shahed) far outside the yellow zone.
+
+## Important Details
+- User clarifications (from Q&A): premature explosion appears **at the threat's position**; follow-bullet **only works sometimes**; notifs are **zone chime for a slow threat (UAV/Shahed)** and "slow" = slow threats, not late/lingering notifications; crash: **"force close when toggling off 'follow me'... if I'm on a pinned city and tap a threat, force close. have to be on follow me to be able to click a threat."**
+- **Bug 1 root cause confirmed (static):** `ThreatPopupCard.kt:472` calls `String.format(s.pillDistanceCd, cityName, formatKm(distUser))` where `formatKm` returns a `String` but the format string uses `%2$d` → `IllegalFormatConversionException: d != java.lang.String` → app crash. Only happens when a popup renders with `pinnedCity != null` (i.e., follow-me off). Explainsexactly: crash when toggling off follow-me with the popup open, and crash tapping any threat while pinned. Fix: pass `distUser.roundToInt()` (Int) or change `pillDistanceCd` format to `%2$s`.
+- **Bug 2 hypothesis:** `ThreatDeathAnimation.kt` lead-in "ping" (t < 0.10, i.e., 0–0.5s) draws an expanding stroked ring (radius grows to 56dp) at the target — reads as a premature explosion before the 1.5s bullet flight (t 0.10–0.40). "Then the animation works as intended" → flight + impact explosion are fine. Fix: replace/remove the expanding ping ring with a subtle non-explosive lock-on (small fixed dot/fading crosshair) or remove it.
+- **Bug 3:** `followStrike` (MapView.kt) pans once at spawn via `keepThreatOnScreen` if the anchor is off-screen (+48dp margin), then returns to `preCenter` after `DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L` (5.3s) when `followBullet` is on. Root cause of "only sometimes" not definitively found; candidates: osmdroid `animateTo` glide is slow vs the 1.5s flight, pan can be preempted by other camera work, behavior only triggers for clearly off-screen strikes. May need a user example or logcat.
+- **Bug 4 hypothesis:** Alert tiering (both `AlertService.zoneThreats` and `MainViewModel.buildUiState`) uses `predictPosition` (dead-reckoned, Shahed up to ~15–16km/300s horizon, 18km ghost cap), so a slow threat whose raw fix is outside `slowYellowKm` can be predicted inside and chime; the 60s `CENTRE_ALERT_GRACE_MS` also keeps the siren up after the threat leaves. Proposed fix: tier slow threats on the **raw confirmed fix** (not predicted) in BOTH places (mirror rule — ARCHITECTURE.md says zone-tier changes must be applied in both or UI/notifs drift), and update ARCHITECTURE.md + CHANGELOG.md. Confirm with user before finalizing.
+- Repo root `D:\Desktop\drones`, AGENTS.md mandates reading ARCHITECTURE.md before exploring; both files read.
+- Recent commits: `0d8f934` "almost final changes" (last commit; AlertService/MainViewModel/MapView/ThreatDeathAnimation touched), `96bdc33` added follow-the-bullet camera + saved settings state.
+- Key constants: `DEATH_DURATION_MS = 5000`, `DEATH_EXPLOSION_START_MS = 2000`, `DEATH_EXPLOSION_LEN_MS = 3000`; `FastThreatTypes = {BALLISTIC, CRUISE_MISSILE, AVIATION, KAB}`; `ZoneParams` defaults slowRed 20km / slowYellow 50km / fastRed 5min / fastYellow 20min; `reachKm`: KAB 70, FPV 40, RECON 50, SHAHED 1000, else 1500.
+- `LatLng` is a data class → `lastFollow.value != focus` in MapView compares by value, so the pinned-city 1s re-animate hypothesis was ruled out.
+
+## Work State
+### Completed
+- Read ARCHITECTURE.md, MapView.kt, ThreatDeathAnimation.kt, AlertService.kt, Zones.kt, MainViewModel.kt, Prediction.kt, ThreatPopupCard.kt, IconCatalog.kt, Threat.kt (ThreatType enum + catalog).
+- Ran `git log`/`git show` on the two most recent commits (`0d8f934`, `96bdc33`) — no obvious regression found for bugs 2–4.
+- Confirmed `ThreatType`/`ThreatTypeCatalog.INFO` covers all 8 types incl. UNKNOWN (no `getValue` crash); `IconCatalog.res` falls back to classic (no null-crash).
+- Ruled out: pinned-city `lastFollow` re-animate (LatLng value equality), `getValue` NSEE, icon nulls.
+- Confirmed crash mechanism (format-string mismatch) at `ThreatPopupCard.kt:472`.
+- Asked and received user clarifications (see Important Details).
+
+### Active
+- (none — investigation phase complete; no code changes made, plan mode)
+
+### Blocked
+- Bug 3 (follow-bullet intermittent) exact root cause not pinned down; may need a concrete failing example or logcat from the user.
+- Bug 4 exact distance/mechanism not empirically confirmed; fix proposed but needs user confirmation of the semantic change (slow tiering on raw fix).
+
+## Next Move
+1. Present the plan (plan mode) with the confirmed Bug 1 fix, Bug 2 ping rework, Bug 4 raw-fix tiering + mirror changes, and a robustness improvement for Bug 3; ask user to confirm Bug 4 semantics (raw-fix tiering for slow threats) and any follow-bullet specifics.
+2. After approval, implement: fix `String.format` in `ThreatPopupCard.kt:472`; rework ping in `ThreatDeathAnimation.kt`; change slow-threat distance to raw fix in `MainViewModel.kt` and `AlertService.kt` (+ ARCHITECTURE.md/CHANGELOG.md per AGENTS.md); harden `followStrike` in `MapView.kt`.
+
+## Relevant Files
+- `app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt` (~line 472): confirmed crash — `String.format(s.pillDistanceCd, cityName, formatKm(distUser))` String into `%2$d`.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: `pillDistanceCd` format strings (UA/EN) — the `%2$d` specifier to change if not switching the arg to Int.
+- `app/src/main/java/ua/ukrainedrones/ThreatDeathAnimation.kt`: ping ring (t<0.10) draws expanding 56dp ring at target — premature "explosion"; constants `DEATH_DURATION_MS`/`DEATH_EXPLOSION_START_MS`/`DEATH_EXPLOSION_LEN_MS`.
+- `app/src/main/java/ua/ukrainedrones/MapView.kt`: `followStrike` + `keepThreatOnScreen` (off-screen pan + 5.3s return), `removedThreats` collector, long-press test trigger, marker rotation/death handling.
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt`: `zoneThreats` (predicted-position tiering), `effectiveZoneParams`, 60s `CENTRE_ALERT_GRACE_MS` linger, notification posting.
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: `buildUiState` zone tiering + `focusLocation` (mirror of AlertService).
+- `app/src/main/java/ua/ukrainedrones/Prediction.kt`: `predictPosition` (dead-reckon, horizonSec/maxGhostMeters caps) — the mechanism pulling slow threats inside the zone.
+- `app/src/main/java/ua/ukrainedrones/Zones.kt`: `ZoneParams`, `FastThreatTypes`, `zoneTier`, `reachKm`, `etaMinutes`.
+- `app/src/main/java/ua/ukrainedrones/ARCHITECTURE.md`: mirror-rule invariant — zone-tier changes must be applied in both MainViewModel and AlertService and documented here.
+- `app/CHANGELOG.md`: add entries per AGENTS.md when implementing.
+## 18/08/2026, 21:24:42
+
+**Recommendation: re-ask on next launch.** A "later" user told you "not now" — pinging them with a system dialog a few minutes later in the same session contradicts that and is the exact nagging we're removing. Android also flips permission requests to auto-deny after two denials, so repeated in-session prompting is counterproductive anyway. Next launch is simple, predictable, and a fresh install is typically reopened soon. (If you ever want a stronger nudge, a non-dialog in-app reminder is the safer shape.)
+
+## Final plan
+
+### 1. "Later" = clean exit from setup chrome
+- **MainScreen.kt** — `FirstLaunchWizard` gains `onLater`; the step-0 "Later" button → `onLater`, the final "Start" keeps `onComplete`.
+- **ZonePrefs.kt** — add `permissionPromptDeferred` flag (flow + setter + key).
+- **MainViewModel.kt** — new `laterLanguageChoose()`: `setLanguageChosen(true)` + `setBatteryOnboardShown(true)` + `setPermissionPromptDeferred(true)`; `relaunchSetup()` also resets deferral to false.
+- **MainActivity.kt** — `deferPermissionRequests` re-arms the flag at launch, gates readiness on `languageChosen && batteryOnboardShown && !permissionPromptDeferred`.
+
+### 2. No wizard flash at startup
+- **MainViewModel.kt** — expose `lastFrameAt` on `UiState`.
+- **MainScreen.kt** — wizard mounts only when `lastFrameAt > 0` OR a 3s startup deadline (offline-safe); map renders behind meanwhile.
+
+### 3. Wizard restructure (3 steps)
+- Step 1: reverse-language title, intro paragraph (new `onboardingIntro` string), bigger tips, photo drone icon, `IconSetSelector` at bottom.
+- Step 2: threat grid, ⚡/🐢 groups with divider, icons from chosen set.
+- Step 3: preview (`live/zones/notif/night/follow`) + Start; counter `x/3`; delete `SetupIconPackStep`.
+
+### Files
+1. `app/src/main/java/ua/ukrainedrones/MainScreen.kt`
+2. `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`
+3. `app/src/main/java/ua/ukrainedrones/MainActivity.kt`
+4. `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`
+5. `app/src/main/java/ua/ukrainedrones/Strings.kt`
+6. `CHANGELOG.md`, `ARCHITECTURE.md`
+
+Verify: `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest` (stop the daemon first if file locks recur).
+
+Approve to build?
+## 18/08/2026, 21:25:46
+
+Done. The webp is now `app/src/main/res/drawable/ic_unknown_cat.webp`, the Unknown card's expanded preview in `SettingsScreen.kt:1371` renders it (row icon/map/alerts untouched), docs updated, and `:app:assembleDebug` passes.
+## 18/08/2026, 21:26:08
+
+
+
+
+## 18/08/2026, 21:27:18
+
+
+
+
+## 18/08/2026, 21:27:38
+
+
+
+
+## 18/08/2026, 21:27:54
+
+
+
+
+## 18/08/2026, 21:28:43
+
+I've mapped all the relevant code. Before writing the plan, I need to resolve a few ambiguities in your requests
+## 18/08/2026, 21:30:12
+
+
+
+
+## 18/08/2026, 21:32:18
+
+
+
+
+## 18/08/2026, 21:33:21
+
+All four fixes implemented; `:app:assembleDebug` and `:app:testDebugUnitTest` pass.
+
+- **Pinned-city crash** — `ThreatPopupCard.kt:472` now passes an Int to the `%2$d` format specifier instead of `formatKm()`'s String.
+- **Slow-zone alerts** — both `MainViewModel.kt:657-662` and `AlertService.kt:422-424` (mirror rule) now tier slow threats on the confirmed raw fix; fast threats keep predicted-ETA.
+- **Premature "explosion"** — `ThreatDeathAnimation.kt` lock-on is now a small fixed dot + thin ring (no expanding burst) and its doc comments updated.
+- **Follow-bullet** — `MapView.kt` `followStrike` guards against an unlaid-out view and skips the return-pan if you panned away during the strike.
+
+Also updated the ARCHITECTURE.md zone-tiering invariant/data-flow/module rows and added four `[Unreleased]` CHANGELOG entries. Note: "follow the bullet" still only pans for **off-screen** strikes by design — if it still feels intermittent on-device, tell me the exact case and I'll dig further.
