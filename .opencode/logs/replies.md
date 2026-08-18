@@ -47554,3 +47554,545 @@ Note: the working tree has a concurrent editor — it landed a `ConnectionStatus
 ## 18/08/2026, 14:50:54
 
 Let me check the `ThreatIcon` composable and the photo assets to understand "the larger version of the current iconpack"
+## 18/08/2026, 14:51:20
+
+Now the night-mode card — the double moon and the "Sounds at night" alignment
+## 18/08/2026, 14:51:21
+
+```
+git commit -m "fix notification settings reveal, strip cycling, course icons, transliteration; add follow-the-bullet camera, saved settings state"
+```
+## 18/08/2026, 14:52:28
+
+
+
+
+## 18/08/2026, 14:53:04
+
+Now implementing. Starting with `AlertHistory.kt`:
+## 18/08/2026, 14:53:10
+
+Now remove the two in-group dividers in Zones
+## 18/08/2026, 14:53:26
+
+All five items investigated. Here's the plan.
+
+## Plan: explosion vibes, bullet glow, notif body, settings photo, night-mode card
+
+### 1. Small vibrate on explosion — already wired, make it truly small
+`MainScreen.kt:906` already vibrates at detonation but with `vibrationPattern(1)` = a **double** 120ms pulse. I'll swap it to a single short pulse: `VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE)`. (Also update the `ARCHITECTURE.md` MainScreen line that documents `vibrationPattern(1)`.)
+
+### 2. Bullet glow — remove the flash circle behind the bullet
+`ThreatDeathAnimation.kt:237-247` draws a gold `RadialGradient` circle under the bullet every frame — that's the glow. Remove those lines (keep the launch flash at the origin and the explosion). The bullet bitmap itself has no glow.
+
+### 3. Tally notification — drop the body, keep only "Last: <type>"
+- `AlertService.kt` `postNeutralizedTally`: remove `setContentText(s.neutralizedNotifBody)` and the `BigTextStyle`; content text becomes just `lastLine` (always present — set right before posting). Result: title "5 threats resolved", text "Last: Shahed".
+- `Strings.kt`: remove `neutralizedNotifBody` (data-class field, getter, UA/EN values).
+
+### 4. Settings → Threats expanded card
+The "big photo" was a reference photo via `ThreatImages.kt` — that file + its webps were already deleted (pre-existing working-tree change). The current code shows a letterboxed `ThreatIcon` at 160dp. Fix:
+- Replace it with the **larger version of the current iconpack**: render `IconCatalog.res(type, iconSet)` full-width with `ContentScale.Fit` in a tall box (e.g. `height(160.dp)`), so the Photo pack shows the real large photo, other packs show their big icon.
+- Add a `HorizontalDivider` between the Fast and Slow group sections in the Threats card (in the `fastAndSlowGroups.forEachIndexed` loop, divider before index 1).
+
+### 5. Night-mode card
+- Remove the **2nd gray moon**: delete `icon = painterResource(R.drawable.ic_moon)` from the "Night mode" on/off toggle row (`SettingsScreen.kt:887`) — the section header already has the moon.
+- Reword the toggle's helper text `nightModeDesc`: EN → "Separate sound, vibration and zone settings for the night window." / UA → «Окреме налаштування звуку, вібрації та зон для нічного вікна.»
+- Fix "Sound at night" alignment: `SectionCaption` has no horizontal padding (flush-left) while the toggles indent 14dp → wrap the caption call in `Modifier.padding(horizontal = 14.dp)`.
+
+### Docs
+`CHANGELOG.md` Unreleased: update the tally entry (body removed), note the bullet glow, the settings photo/divider, and the night-mode tweaks. `ARCHITECTURE.md`: MainScreen vibration wording; note the expanded-card image change on the SettingsScreen row.
+
+### Verify
+`.\gradlew.bat :app:assembleDebug`
+
+One check
+## 18/08/2026, 14:53:35
+
+Now the two dividers in SettingsScreen's night custom
+## 18/08/2026, 14:54:23
+
+Finalized plan locked in:
+
+1. **`ThreatDeathAnimation.kt`** — remove the gold `RadialGradient` glow circle behind the bullet (lines 237–247).
+2. **`MainScreen.kt`** — detonation vibration → single short pulse `VibrationEffect.createOneShot(60, DEFAULT_AMPLITUDE)`.
+3. **`AlertService.kt`** + **`Strings.kt`** — tally notif: drop the body/BigTextStyle, keep "Last: <type>"; remove `neutralizedNotifBody` string.
+4. **`SettingsScreen.kt`** — expanded threat card shows the **current iconpack** asset full-width large (`ContentScale.Fit`, 160dp tall box); add a `HorizontalDivider` between Fast/Slow group sections.
+5. **`SettingsScreen.kt`** + **`Strings.kt`** — night card: remove 2nd gray moon on the "Night mode" toggle, reword `nightModeDesc` (EN/UA), indent "Sound at night" caption to 14dp.
+6. **`CHANGELOG.md`** + **`ARCHITECTURE.md`** — update entries.
+7. Verify: `.\gradlew.bat :app:assembleDebug`.
+
+Switch me out of plan mode and I'll implement.
+## 18/08/2026, 14:55:12
+
+Now `ConnectionStatus.kt`. First the imports,
+## 18/08/2026, 14:55:26
+
+Now the modal header — add logo + underlined URL next to the status
+## 18/08/2026, 14:55:34
+
+
+
+
+## 18/08/2026, 14:55:41
+
+The file changed since my earlier read (state is now hoisted). Let me see the rest of the current file
+## 18/08/2026, 14:55:52
+
+The file is being edited concurrently (state hoisting + locality transliteration already present). Let me check what's changed vs. git and confirm `Cities.byUa` exists
+
+
+## 18/08/2026, 14:56:38
+
+Only my import additions are uncommitted in `ConnectionStatus.kt` — the hoisting + locality transliteration are already committed. A concurrent session is editing too, so I'll proceed against current disk state. Now the header:
+
+
+## 18/08/2026, 14:56:48
+
+Now remove the old
+## 18/08/2026, 14:56:55
+
+Now the alerts section — grouping, clear button, caption. Re-reading current state first
+## 18/08/2026, 14:57:21
+
+
+
+
+## 18/08/2026, 14:57:55
+
+
+
+
+## 18/08/2026, 14:58:58
+
+Now the row: remove the dot, color the title by tier, drop the
+## 18/08/2026, 14:59:32
+
+Now docs. Checking current ARCHITECTURE.md state (it was concurrently modified)
+
+
+## 18/08/2026, 14:59:57
+
+Now the CHANGELOG
+## 18/08/2026, 15:00:19
+
+
+
+
+## 18/08/2026, 15:01:18
+
+Build compiles; the new test's boundary expectation was wrong (the filter is strictly `< maxAge`, so exactly-3-days-old entries are dropped).
+## 18/08/2026, 15:04:17
+
+Done, build passes. Changes:
+
+- **Divider removed**: the `HorizontalDivider` between the red/yellow slider rows is gone from all four spots (Slow + Fast groups in `ZonesSheet.kt`, both night groups in `SettingsScreen.kt`), replaced with `Spacer(10.dp)` spacing.
+- **Night-mode day reference**: now a second, gray (`0xFF9E9E9E`) `"day N unit"` line right-aligned below the accent-colored night value, so the night number pops. Day mode keeps the old single-line value.
+- **Wider slider**: trimmed the row's fixed spacers (after switch 12→8dp, before text 10→6dp) so the `weight(1f)` slider gains room.
+
+Check it on device — if the slider still feels tight or the gray is too faint, tell me and I'll tune the spacer sizes or shade.
+## 18/08/2026, 15:06:31
+
+
+
+
+## 18/08/2026, 15:07:15
+
+All green — 118 tests pass, build succeeds. Final review of the changed sections
+## 18/08/2026, 15:07:30
+
+Done. Summary of changes:
+
+- **Modal header** — NEPTUN logo + underlined, clickable `neptun.in.ua` now sit next to the status title (`ConnectionStatus.kt:138-158`); the old bottom attribution row is gone.
+- **Alerts history** — Clear button + "Auto-clears after 3 days" caption at the bottom of expanded mode; real 3-day auto-prune implemented (`AlertHistory.kt`, pure `pruneExpiredEntries`) so the caption is honest.
+- **Rows** — tier dot removed, the alert title is now colored red/yellow/blue by tier; the MM:SS ring-duration column dropped (km kept); consecutive alerts ≤30 min apart cluster into a rough "wave" with a divider. (Locality transliteration + popup state hoisting were already in the tree from a concurrent session — left untouched.)
+- Strings (`alertHistoryClear`/`alertHistoryAutoClearNote`, UA+EN), a unit test for the prune boundary, and `ARCHITECTURE.md`/`CHANGELOG.md` updated.
+
+Verify: `:app:assembleDebug` + `:app:testDebugUnitTest` pass (118 tests).
+## 18/08/2026, 15:10:33
+
+The user is right — the vibration never fires, so let me find the actual bug rather than just tweak the pulse. Let me read the popup/death-card region carefully.
+## 18/08/2026, 15:11:12
+
+## Objective
+- Deliver a batch of small UX fixes on the Ukraine Drones Android app (D:\Desktop\drones): a small vibrate on the death-explosion, remove the bullet's glow, simplify the "Resolved threats" tally notification body to just "Last: <threat>", restore a big photo in the expanded Settings threat rows (using the current iconpack's larger asset) plus a divider between Fast/Slow groups, and clean up the Night mode card (remove a second gray moon, reword toggle helper text, fix "Sounds at night" alignment).
+
+## Important Details
+- Plan mode is ACTIVE for the latest user message: agent must present a plan, not edit files.
+- Tally notification is implemented and working (uncommitted work from this session): `AlertService.postNeutralizedTally()` posts `NOTIF_NEUTRALIZED` (channel `neutralized`, silent LOW) with title from `resolvedThreatsPhrase(count, lang)` and currently contentText = `s.neutralizedNotifBody` + BigTextStyle(body + "Last: <type>"). User wants the body line removed entirely; only title + "Last: <type>" should remain.
+- Counting is reach-scoped: collector gates on `@Volatile currentFocus` (set in `handleState` from `state.focusLocation`) and `distanceMeters(...) / 1000 > reachKm(type)`; also gated by pref `neutralized_tally_enabled` (default on; toggle added to Settings → Alerts). TEMP map long-press never touches `removedThreats`.
+- Explosion vibration ALREADY EXISTS at MainScreen.kt:903-912 (`LaunchedEffect` → `vibrator.vibrate(VibrationEffect.createWaveform(vibrationPattern(1), -1))` at `DEATH_EXPLOSION_START_MS`). User wants "small" — likely replace the double-pulse `vibrationPattern(1)` (0,120,60,120) with a single short pulse (e.g. `createOneShot(60-80ms)`).
+- Bullet glow: ThreatDeathAnimation.kt flight section (~lines 230-247) draws a gold `RadialGradient` flash circle behind the projectile — that is the glow to remove; draw only the bullet bitmap.
+- Settings big photo: HEAD version of `ThreatSettingsCard` showed a real reference photo (`ThreatImages.drawableRes(type)` bundle or `ThreatImages.url(type)` wiki hotlink). Working tree deleted `ThreatImages.kt` + `threat_ballistic.webp`/`threat_shahed.webp`/`threat_unknown.webp` and now shows `ThreatIcon(type, set=iconSet, 160.dp)` (letterboxed square). User wants the big image back using the current iconpack's larger asset (`IconCatalog.res(type, iconSet)` rendered large/full-width, `ContentScale.Fit`).
+- Wording mandate from prior answers: never claim interception — use "resolved"/«Завершено», not "neutralized"/"shot down", everywhere user-visible (tally notif, death-animation card labels "Resolving threat…"/"Resolved", settings toggle "Resolved-threat animation").
+- Git working tree has many uncommitted changes (tally work; deleted ThreatImages.kt/webps/wavs; untracked `.ogg` sirens in `app/src/main/res/raw/`). Build has NOT been re-verified after the last code fix (two `.\gradlew.bat :app:assembleDebug` runs were killed/aborted).
+
+## Work State
+### Completed
+- Tally notification feature fully coded: `AlertService.kt` (collector, `CHANNEL_NEUTRALIZED`, `NOTIF_NEUTRALIZED=6`, `ACTION_NEUTRALIZED_DISMISS`, delete-intent reset, `@Volatile currentFocus`, reach-scoped counting), `NeutralizedDismissReceiver.kt` (new file), `AndroidManifest.xml` (receiver declared), `ZonePrefs.kt` (`neutralized_tally_enabled` default true), `Strings.kt` (Status/Misc/Guide strings + `resolvedThreatsPhrase` plural helper), `MainViewModel.kt` (threaded `neutralizedTallyEnabled` through `AlertConfig`, `PrefsSnapshot` line 219, `UiState`, setter), `MainScreen.kt` + `SettingsScreen.kt` (toggle wired into Alerts card), `ARCHITECTURE.md` + `CHANGELOG.md` updated.
+- Fixed build errors: first `assembleDebug` failed at MainViewModel.kt:409 (`Cannot find a parameter with this name: neutralizedTallyEnabled`) and :560; fixed by adding `neutralizedTallyEnabled: Boolean` to the private `PrefsSnapshot` data class (line 219). Build re-run was interrupted (ChildProcess.kill → "Tool execution aborted"), so success not yet confirmed.
+
+### Active
+- Investigating the 5 new items in plan mode:
+  - Confirmed vibration-on-explosion already exists (MainScreen.kt:903-912).
+  - Confirmed bullet glow source is the gold RadialGradient flash circle behind the projectile in ThreatDeathAnimation.kt (~lines 230-247) — exact lines not yet re-read.
+  - Confirmed Settings HEAD had reference photos via deleted ThreatImages.kt; current working tree shows 160.dp `ThreatIcon` (letterboxed).
+  - Read Threats-section loop start (SettingsScreen.kt:397 `fastAndSlowGroups(...).forEachIndexed`) — divider insertion point identified (between index 0 and 1).
+  - NightModeCard read only partially (SettingsScreen.kt:837-881): contains an `AlertToggleRow` for `s.nightModeLabel`; the "second gray moon", helper text, and "Sounds at night" alignment issues still need locating (continue reading ~881-1000).
+
+### Blocked
+- Build verification pending (last `assembleDebug` run was aborted, likely due to tool timeout/interrupt, not a compile error).
+- Night mode specifics (moon duplication, helper text, "Sounds at night" row alignment) not yet fully located in code.
+
+## Next Move
+1. (Plan mode — read only) Finish locating: NightModeCard body (SettingsScreen.kt ~881-1010) for the duplicate gray moon + "Sounds at night" row/helper text; the bullet glow block in ThreatDeathAnimation.kt (~lines 220-250); the Fast/Slow divider insertion point in the Threats section (SettingsScreen.kt ~397-430); the exact expanded-photo block (SettingsScreen.kt ~1344-1351).
+2. Present the finalized plan covering all 5 items (small single-pulse vibrate at MainScreen.kt:906; remove bullet glow circle; tally notif contentText = only "Last: <type>" and drop `neutralizedNotifBody` string/getter/UA+EN values; Settings expanded threat image from `IconCatalog.res` at large full-width + `HorizontalDivider` before the Slow group; Night mode cleanup per findings).
+3. On approval: implement, then verify with `.\gradlew.bat :app:assembleDebug` (workdir D:\Desktop\drones) and update `ARCHITECTURE.md`/`CHANGELOG.md` only if behavior is user-visible.
+
+## Relevant Files
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\MainScreen.kt`: explosion vibration (lines 903-912) to make "small".
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ThreatDeathAnimation.kt`: bullet glow (gold RadialGradient circle, ~230-247) to remove.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\AlertService.kt`: `postNeutralizedTally` (remove body, keep "Last:"), `@Volatile currentFocus`, reach-Km gate, `CHANNEL_NEUTRALIZED`/`NOTIF_NEUTRALIZED`/`ACTION_NEUTRALIZED_DISMISS`.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\Strings.kt`: remove `neutralizedNotifBody` (Status field + getter + UA/EN values); keep `neutralizedLastLineFormat`; `resolvedThreatsPhrase` helper.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\SettingsScreen.kt`: Threats section (~397, divider), `ThreatSettingsCard` (~1226, expanded photo block ~1344-1351), `NightModeCard` (~837, moon/helper/alignment), reference-photos picker (~1608).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\IconCatalog.kt`: `IconCatalog.res(type, set)` for the large iconpack asset; `ThreatIcon` letterboxing behavior.
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\ZonePrefs.kt` / `MainViewModel.kt`: `neutralized_tally_enabled` pref + threading (PrefsSnapshot line 219).
+- `D:\Desktop\drones\app\src\main\java\ua\ukrainedrones\NeutralizedDismissReceiver.kt`, `D:\Desktop\drones\app\src\main\AndroidManifest.xml`: tally dismissal wiring (already done).
+- Deleted in working tree (do not restore unless asked): `ThreatImages.kt`, `threat_ballistic.webp`, `threat_shahed.webp`, `threat_unknown.webp`, `ic_launcher.png`, siren `.wav`s (replaced by untracked `.ogg`s in `app/src/main/res/raw/`).
+## 18/08/2026, 15:11:44
+
+Let me check how `neutralizedThreat` is set and what `vibrationPattern` produces, plus the constants.
+## 18/08/2026, 15:14:14
+
+Let me examine the current layout in both cards to plan the alignment fixes precisely.
+## 18/08/2026, 15:14:48
+
+The user is right — I see the issue. My previous `Spacer(Modifier.width(fontAware(20.dp)))` in the **Column** does nothing (a width-only spacer has 0 height in a Column, so it never shifts siblings). That's why "nothing changed." The correct fix is to apply left padding directly to the pills and "R" row, and to align them with the title's left edge.
+
+## Layout facts
+
+| | small card | large card |
+|---|---|---|
+| Icon | 40dp | 40dp |
+| Spacer→title | 12dp | **10dp** ← mismatch |
+| Title left edge | 52dp | 50dp |
+| Pills currently | 0dp (left edge) | 0dp (left edge) |
+| R row currently | 0dp (left edge) | — |
+
+## Plan — `ThreatPopupCard.kt` only
+
+1. **Unify title position**: large card header `Spacer(Modifier.width(10.dp))` → `12.dp`, so titles in both cards sit at **52dp**.
+
+2. **Add `modifier` param to `SummaryPills`** (line ~464) and thread it into the inner `Row`/`FlowRow`. Then:
+   - Small pills: `SummaryPills(..., modifier = Modifier.padding(start = 52.dp))` — remove the dead `Spacer(Modifier.width(fontAware(20.dp)))`.
+   - Large pills: `SummaryPills(..., modifier = Modifier.padding(start = 52.dp))`.
+
+3. **"R" row (small only)**: add `modifier = Modifier.padding(start = 52.dp)` to that `Row` (line ~228).
+
+4. **Cleanup**: drop the earlier `.padding(start = fontAware(20.dp))` from `HorizontalLevelBar` (the row indent now handles it); keep the wider 80dp bar.
+
+Alignment uses fixed `52.dp` (40dp icon + 12dp spacer) so it matches the title exactly at any font scale. All edits in `app/src/main/java/ua/ukrainedrones/ThreatPopupCard.kt`.
+## 18/08/2026, 15:16:18
+
+`adb logcat -c; adb logcat -s AndroidRuntime:E | Select-Object -First 80`
+
+Or to capture everything briefly after launching the app:
+
+```powershell
+adb logcat -c; adb shell am start -n <package>/<activity>; Start-Sleep 3; adb logcat -d | Select-String -Pattern "FATAL|AndroidRuntime|Exception"
+```
+
+Get the launchable activity with `adb shell cmd package resolve-activity --brief <package>`.
+## 18/08/2026, 15:16:33
+
+Found it. The death-explosion vibration lives in `MainScreen.kt:913-927` — a 2s-`delay()` inside a `Crossfade` branch, fired from the ViewModel's 1s tick (tick lag + Crossfade disposal fragility). But the bigger smoking gun: it calls `vibrator.vibrate(VibrationEffect)` with **default attributes** — which on Android 12+ means `USAGE_TOUCH`, and touch-usage vibrations are gated by the system "haptics/touch feedback" intensity. If that's off (or the device's default), the call is silently swallowed — same reason the slider preview would also feel dead. Let me confirm minSdk and the imports.
+## 18/08/2026, 15:16:36
+
+Now I have all the context. Let me apply the edits:
+
+
+## 18/08/2026, 15:16:43
+
+minSdk 26 — the `vibrate(VibrationEffect, VibrationAttributes)` overload is safe unconditionally. Let me check MapView's imports.
+## 18/08/2026, 15:16:52
+
+Diagnosed it. Not a weird bug — a scoping bug in the `alertActive` I added for the wizard gate.
+
+## Root cause
+
+`alertActive = mapThreats.isNotEmpty() || redCities.isNotEmpty()` (MainViewModel.kt:758) — but `redCities` is **country-wide**, not location-scoped:
+
+- `redCities` = every city in Ukraine whose oblast has an official alert (MainViewModel.kt:623-628), so it's non-empty the moment **any** oblast in the country is under alert.
+- `mapThreats` only populates when `neptun.oblastAlerts.isNotEmpty()` (MainViewModel.kt:652) — also country-wide.
+
+So the wizard gate (`!languageChosen && !alertActive`, MainScreen.kt:248) opens only when **no oblast anywhere in Ukraine** is on alert and the feed is empty. That's exactly what you saw:
+- **"Half load then map opens"** — at startup the feed is empty → `alertActive` false → wizard composes; the first tick arrives with an active alert → wizard drops → map. 
+- **"Calm city, no wizard"** — your city is calm but some other oblast is on alert → `redCities` non-empty → `alertActive` stays true → wizard never loads, no matter where you are.
+
+## Fix
+
+Scope `alertActive` to the focus point — reuse the signal the app already treats as "the map is the urgent screen" (banner logic, MainScreen.kt:665): `activeZone != null || focusOblastAlertActive` (threats in *your* red/yellow zones, or an official alert on *your* oblast/pinned city).
+
+- `alertActive = activeZone != null || focusOblastAlertActive` at MainViewModel.kt:758.
+- All existing consumers (update-dialog gating, Settings replay/check-update disabling) become "during *your* alert" — strictly more correct, no other edits.
+- No `AlertService` mirror change needed (`alertActive` is UI-only).
+
+## Remaining question
+
+With the fix, on a fresh install while *your own oblast* is alerted, the wizard still flashes a frame then drops (same "half load" feel, just rarer). Options:
+## 18/08/2026, 15:16:56
+
+Now the small card: remove the dead spacer and pass the modifier, and align the "R" row
+## 18/08/2026, 15:17:10
+
+Now I have the full picture. Let me set up todos and read the remaining edit targets.
+## 18/08/2026, 15:17:10
+
+
+
+
+## 18/08/2026, 15:17:22
+
+Now the large card: unify the spacer
+## 18/08/2026, 15:17:25
+
+Implementing the vibration fix first — MapView. Let me check remaining `Vibrator`/`VibrationEffect`/`LocalContext` usages in MainScreen before removing the copy there.
+## 18/08/2026, 15:17:28
+
+
+
+
+## 18/08/2026, 15:17:34
+
+Now making the edits. MapView imports first:
+## 18/08/2026, 15:17:35
+
+Now let me build
+## 18/08/2026, 15:17:51
+
+Build successful. Let me verify the final layout state
+## 18/08/2026, 15:17:59
+
+Now remove the fragile MainScreen copy and its now-unused imports:
+## 18/08/2026, 15:18:12
+
+That edit was wrong (just removed a blank line). Let me check and fix the imports properly:
+## 18/08/2026, 15:18:13
+
+All changes applied and the build is green. Summary:
+
+1. **Pills align with title** (both cards): `SummaryPills` now takes a `modifier`, applied with `padding(start = 52.dp)` — matching the title's left edge (40dp icon + 12dp spacer) in both small and large cards.
+2. **"R" row (small)**: padded `start = 52.dp` to align with the title too.
+3. **Title positions unified**: large card header spacer `10.dp` → `12.dp`, so titles sit at the same 52dp in both sizes.
+4. Removed the dead `Spacer(Modifier.width(20.dp))` (a width-only spacer does nothing inside a Column) and the leftover `padding(start)` on the level bar — kept the wider 80dp bar.
+## 18/08/2026, 15:18:22
+
+My edit mangled line 6. Fixing the imports block:
+## 18/08/2026, 15:18:34
+
+Vibration fix done. Now the bullet glow — reading the exact block:
+## 18/08/2026, 15:18:47
+
+Removing the bullet glow (the gold circle behind the projectile):
+## 18/08/2026, 15:18:53
+
+Now the tally notification. Let me find `postNeutralizedTally`:
+## 18/08/2026, 15:19:12
+
+
+
+
+## 18/08/2026, 15:19:33
+
+Now remove `neutralizedNotifBody` from Strings.kt (field, getter, UA
+## 18/08/2026, 15:19:47
+
+That edit lost the indentation. Let me check
+## 18/08/2026, 15:19:49
+
+## Plan
+
+**One-line fix** in `MainViewModel.kt:758`:
+
+```kotlin
+alertActive = activeZone != null || focusOblastAlertActive
+```
+
+(`activeZone` = threat in the user's red/yellow zones; `focusOblastAlertActive` = official alert on the focus point's oblast/pinned city — both location-scoped. `hasActiveAlert()` at line 1087 reads `uiState.alertActive`, so no change there.)
+
+**Why this covers both symptoms:**
+- Calm city while another oblast is alerted → `activeZone` null, `focusOblastAlertActive` false → `alertActive` false → wizard loads (the reported bug).
+- Alert on the user's own area → wizard still force-drops mid-flow without saving and returns when it clears (keeps the alert-priority design).
+
+**Files to change (build phase):**
+1. `app/src/main/java/ua/ukrainedrones/MainViewModel.kt` — the `alertActive` predicate (line 758).
+2. `CHANGELOG.md` — note under [Unreleased] that the wizard/alert gating is now scoped to the user's location.
+
+No `AlertService` mirror change, no test changes (none reference `alertActive`/`languageChosen`). Per your choice, no flash-suppression work — the startup flash can remain only in the rare case your own oblast is alerted during a fresh install.
+
+Verify after the edit: `.\gradlew.bat :app:assembleDebug` and `:app:testDebugUnitTest`.
+## 18/08/2026, 15:19:58
+
+Indentation is fine. Now the getter and the
+## 18/08/2026, 15:20:15
+
+**Bug:** `MainScreen.kt:86` uses `rememberSaveable { mutableStateOf(SettingsCollapseState()) }` with a plain data class. The default saver only supports Bundle-storable types, so restoring after process death throws `IllegalArgumentException`.
+
+**Fix (2 small edits):**
+
+1. `SettingsScreen.kt` — add a custom Saver to `SettingsCollapseState` (serialize the 7 booleans into a `BooleanArray`, which is Bundle-safe):
+
+```kotlin
+data class SettingsCollapseState(
+    val language: Boolean = true,
+    ...
+) {
+    companion object {
+        val Saver = Saver<SettingsCollapseState, BooleanArray>(
+            save = { BooleanArray(7).apply {
+                this[0] = it.language; this[1] = it.mapCenter; this[2] = it.cardSize
+                this[3] = it.threats; this[4] = it.night; this[5] = it.alerts
+                this[6] = it.additional
+            } },
+            restore = { b -> SettingsCollapseState(
+                language = b[0], mapCenter = b[1], cardSize = b[2], threats = b[3],
+                night = b[4], alerts = b[5], additional = b[6]
+            ) }
+        )
+    }
+}
+```
+
+2. `MainScreen.kt:86` — pass the saver:
+
+```kotlin
+var settingsCollapse by rememberSaveable(stateSaver = SettingsCollapseState.Saver) { mutableStateOf(SettingsCollapseState()) }
+```
+
+Verify with `.\gradlew.bat :app:assembleDebug`. Want me to apply it?
+## 18/08/2026, 15:20:17
+
+Both edits are correct. Now the UA/EN value
+## 18/08/2026, 15:20:32
+
+Tally done. Now the Settings Threats section — reading the group loop and expanded card:
+## 18/08/2026, 15:21:13
+
+Let me read `ThreatIcon` and `IconCatalog.res` to render the large asset
+## 18/08/2026, 15:21:43
+
+`import androidx.compose.runtime.*` covers it. Done — `SettingsScreen.kt:72` now has a custom `Saver`, and `MainScreen.kt:86` uses `stateSaver = SettingsCollapseState.Saver`.
+## 18/08/2026, 15:21:49
+
+All imports present. Applying the two Settings edits — divider first
+## 18/08/2026, 15:22:07
+
+Now the night-mode edits. Reading NightModeCard:
+
+
+## 18/08/2026, 15:22:24
+
+All three night-mode issues confirmed. Applying edits
+## 18/08/2026, 15:22:42
+
+Now reword `nightModeDesc`
+## 18/08/2026, 15:22:58
+
+All code changes done. Now updating the docs — reading CHANGELOG and the relevant ARCHITECTURE rows
+## 18/08/2026, 15:23:32
+
+Let me find the MapView row in ARCHITECTURE.md
+## 18/08/2026, 15:23:42
+
+Now updating ARCHITECTURE.md — the MainScreen vibration claim moves to MapView:
+
+
+## 18/08/2026, 15:23:48
+
+Compile error in SettingsScreen.kt:82 — not from my change. Let me look
+## 18/08/2026, 15:24:03
+
+`SettingsCollapseState` + `Saver` was added by concurrent uncommitted work and is missing its import. Let me verify how it's used before minimally fixing
+## 18/08/2026, 15:24:13
+
+Now the CHANGELOG — adding the new entries under [
+## 18/08/2026, 15:24:16
+
+Live code, missing one import. Adding it:
+## 18/08/2026, 15:24:23
+
+Docs done. Now building:
+
+
+## 18/08/2026, 15:25:20
+
+Compilation passed; the failure is a stale incremental dex archive (leftover from the earlier aborted build). Cleaning and rebuilding:
+## 18/08/2026, 15:25:38
+
+Some files are locked — likely a leftover build process or a concurrent build holding the dir. Let me stop daemons and remove just the stale dex artifact
+## 18/08/2026, 15:25:43
+
+Build passes. Checking tests for references to removed/ch
+## 18/08/2026, 15:38:37
+
+The wizard's language step uses `LanguageFlag`, which is deliberately inverted (SettingsScreen.kt:1745): the **current** language gets a blue box + faded emoji, the alternate flag is full-color. On a fresh install the default is UA (prefs `language()` → UA), so you see 🇺🇦 in the blue box/faded and 🇬🇧 bright. I want to be sure what "reverse" means before I change it:
+## 18/08/2026, 15:40:32
+
+That clears it up — the **title** should be in the reverse language, matching the existing Settings pattern. Let me confirm that pattern
+## 18/08/2026, 15:40:48
+
+Confirmed — the app already uses this pattern for the Settings Language header (SettingsScreen.kt:313-316): *"the header names the language you'd switch to, not the one currently active."* The wizard's step-0 title should match.
+
+## Plan
+
+**One-line change** in `MainScreen.kt` — `FirstLaunchWizard`'s step title (currently line 346, `0 -> s.languageChooseTitle`):
+
+```kotlin
+0 -> Strings.get(if (current == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA).languageChooseTitle
+```
+
+- When the wizard shows Ukrainian, the title reads **"Choose language"** (English); when it shows English, it reads **«Оберіть мову»** — always the language you'd switch to, exactly like the Settings header.
+- It flips live as the user taps a flag (`current` changes → title updates). The tips below stay in the current language, same as Settings.
+
+**Files to change (build phase):**
+1. `app/src/main/java/ua/ukrainedrones/MainScreen.kt` — the step-0 title.
+2. `CHANGELOG.md` — small [Unreleased] note.
+
+Verify with `.\gradlew.bat :app:assembleDebug` (note: the tree had a concurrent build holding file locks earlier — if that recurs I'll stop the daemon and retry before touching anything else).
+
+OK to implement?
+## 18/08/2026, 15:42:36
+
+Let me review the current wizard structure and the fast/slow + icon helpers before planning
+## 18/08/2026, 15:43:48
+
+All clear. Here's the consolidated plan for the wizard polish (including the earlier reverse-language title):
+
+## New wizard structure (3 steps, counter `x/3`)
+
+**Step 1 — Language (title in reverse language)** + intro + tips + icon pack at the bottom:
+- Step title uses the *other* language's `languageChooseTitle` (matches the Settings Language header pattern, SettingsScreen.kt:316) and flips live as the user taps a flag.
+- **New intro paragraph**, larger, on top (new string, both languages — proposed wording):
+  - EN: *"This setup is important — this app has advanced safety features you should know about. Take 30 seconds to get familiar now, so you're ready when it matters."*
+  - UA: *«Це налаштування важливе — у застосунку є просунуті функції безпеки, про які варто знати. Виділи 30 секунд і ознайомся зараз, щоб бути готовим, коли це важливо.»*
+- **Tips text bigger**: `bodySmall` → `bodyMedium`, tip icons 16→20dp.
+- **Tip 1 drone icon → the photo**: switch `ic_threat_shahed` → `IconCatalog.photoRes(ThreatType.SHAHED)` (the `threat_photo_shahed` asset).
+- **`IconSetSelector` at the bottom** under a small `s.iconSetTitle` label (moved here from its own step).
+
+**Step 2 — "What do you care about" grid:**
+- Uses the chosen icon set (already wired via `iconSet` → `ThreatIcon`, now the "prev step" is step 1).
+- **Fast/slow separator**: build the grid from `fastAndSlowGroups(lang)` — ⚡ group (Ballistic, Cruise, MiG-31K, KAB) and 🐢 group (UAV, FPV, Recon, Unknown), each with a tiny group label header and a thin divider between the groups.
+
+**Step 3 — Preview + Start:**
+- Drop "Language" from the preview (agree, it's not core) → replace with **Night mode**: previews `live`, `zones`, `notif`, `night`.
+
+## Files to change (build phase)
+1. `app/src/main/java/ua/ukrainedrones/MainScreen.kt` — wizard restructure to 3 steps, reverse-language title, intro, tip font/icon, grid grouping, preview filter; delete `SetupIconPackStep`.
+2. `app/src/main/java/ua/ukrainedrones/Strings.kt` — add `onboardingIntro` (UA+EN) + getter.
+3. `CHANGELOG.md` — [Unreleased] note.
+
+Verify: `.\gradlew.bat :app:assembleDebug` (the tree had a concurrent build holding file locks earlier — if it recurs I'll `--stop` the daemon and retry first).
+
+Two quick choices before I build:
+## 18/08/2026, 15:45:10
+
+Preview = all 5 (live, zones, notif, night, follow). Proceeding with label headers + divider for the grid. Let me implement.

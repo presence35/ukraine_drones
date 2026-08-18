@@ -92,7 +92,6 @@ object Strings {
         val notifBodyRegion: String,
         val neutralizedNotifChannelName: String,
         val neutralizedChannelDesc: String,
-        val neutralizedNotifBody: String,
         val neutralizedLastLineFormat: String,
         val attributionText: String,
         val madeBy: String,
@@ -212,6 +211,8 @@ object Strings {
         val alertHistoryEmpty: String,
         val alertHistoryDistanceFormat: String,
         val alertHistoryOfficialLabel: String,
+        val alertHistoryClear: String,
+        val alertHistoryAutoClearNote: String,
         val cardSizeLabel: String,
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
@@ -417,7 +418,6 @@ object Strings {
         val notifBodyRegion: String get() = status.notifBodyRegion
         val neutralizedNotifChannelName: String get() = status.neutralizedNotifChannelName
         val neutralizedChannelDesc: String get() = status.neutralizedChannelDesc
-        val neutralizedNotifBody: String get() = status.neutralizedNotifBody
         val neutralizedLastLineFormat: String get() = status.neutralizedLastLineFormat
         val attributionText: String get() = status.attributionText
         val madeBy: String get() = status.madeBy
@@ -528,6 +528,8 @@ object Strings {
         val alertHistoryEmpty: String get() = misc.alertHistoryEmpty
         val alertHistoryDistanceFormat: String get() = misc.alertHistoryDistanceFormat
         val alertHistoryOfficialLabel: String get() = misc.alertHistoryOfficialLabel
+        val alertHistoryClear: String get() = misc.alertHistoryClear
+        val alertHistoryAutoClearNote: String get() = misc.alertHistoryAutoClearNote
         val cardSizeLabel: String get() = misc.cardSizeLabel
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
@@ -678,7 +680,7 @@ object Strings {
         sirenOverrideTitle = "Сирена звучить завжди",
         sirenOverrideDesc = "Сигнал тривоги звучить, навіть коли телефон у вібро- чи беззвучному режимі. За замовчуванням вимкнено — звук слідує за налаштуваннями телефону.",
         nightModeLabel = "Нічний режим",
-        nightModeDesc = "Власний розклад, звук і зони для нічного вікна: тримай оповіщення увімкненими.",
+        nightModeDesc = "Окреме налаштування звуку, вібрації та зон для нічного вікна.",
         nightStartTimeLabel = "Початок",
         nightEndTimeLabel = "Кінець",
         nightSoundLabel = "Звук уночі",
@@ -721,7 +723,6 @@ object Strings {
         notifBodyRegion = "Одеський регіон",
         neutralizedNotifChannelName = "Завершені загрози",
         neutralizedChannelDesc = "Лічильник завершених поблизу загроз — живе, поки його не прибрати.",
-        neutralizedNotifBody = "Загроз, що могли тебе досягти, більше не відстежують. Натисни, щоб відкрити мапу.",
         neutralizedLastLineFormat = "Остання: %s",
         attributionText = "Карта повітряних тривог — NEPTUN",
         madeBy = "Зроблено Presaince",
@@ -841,6 +842,8 @@ object Strings {
         alertHistoryEmpty = "Тривог ще не було",
         alertHistoryDistanceFormat = "≈%1\$d км",
         alertHistoryOfficialLabel = "Офіційна тривога",
+        alertHistoryClear = "Очистити",
+        alertHistoryAutoClearNote = "Автоматично очищається через 3 дні",
         cardSizeLabel = "Розмір і деталізація картки загрози",
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
@@ -1040,7 +1043,7 @@ object Strings {
         sirenOverrideTitle = "Sirens always sound",
         sirenOverrideDesc = "Ring the siren even when the phone is on vibrate or silent. Off by default — alerts follow your phone's sound settings.",
         nightModeLabel = "Night mode",
-        nightModeDesc = "Own schedule, sound and zones for the night window: keep alerts on.",
+        nightModeDesc = "Separate sound, vibration and zone settings for the night window.",
         nightStartTimeLabel = "Start",
         nightEndTimeLabel = "End",
         nightSoundLabel = "Sound at night",
@@ -1083,7 +1086,6 @@ object Strings {
         notifBodyRegion = "Odesa region",
         neutralizedNotifChannelName = "Resolved threats",
         neutralizedChannelDesc = "Tally of threats resolved near you — kept until dismissed.",
-        neutralizedNotifBody = "Threats that could have reached you are no longer tracked. Tap to open the map.",
         neutralizedLastLineFormat = "Last: %s",
         attributionText = "Air threat map — NEPTUN",
         madeBy = "Made by Presaince",
@@ -1203,6 +1205,8 @@ object Strings {
         alertHistoryEmpty = "No alerts yet",
         alertHistoryDistanceFormat = "≈%1\$d km",
         alertHistoryOfficialLabel = "Official alert",
+        alertHistoryClear = "Clear",
+        alertHistoryAutoClearNote = "Auto-clears after 3 days",
         cardSizeLabel = "Threat card size and detail",
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",

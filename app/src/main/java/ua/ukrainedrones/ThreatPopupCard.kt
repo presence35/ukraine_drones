@@ -197,16 +197,20 @@ fun ThreatPopupCard(
                         }
                     }
                     Spacer(Modifier.height(4.dp))
-                    Spacer(Modifier.width(fontAware(20.dp)))
                     SummaryPills(
                         proximity = proximity,
                         pinnedCity = pinnedCity,
                         s = s,
                         lang = lang,
-                        singleLine = true
+                        singleLine = true,
+                        modifier = Modifier.padding(start = 52.dp)
                     )
                     Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Start) {
+                    Row(
+                        modifier = Modifier.padding(start = 52.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
+                    ) {
                         Text(
                             s.reliabilityShort,
                             fontWeight = FontWeight.Medium,
@@ -223,9 +227,7 @@ fun ThreatPopupCard(
                         LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
                         Spacer(Modifier.width(6.dp))
                         HorizontalLevelBar(level = threatLevel,
-                            modifier = Modifier
-                                .width(fontAware(80.dp))
-                                .padding(start = fontAware(20.dp))
+                            modifier = Modifier.width(fontAware(80.dp))
                         )
                     }
                 }
@@ -243,7 +245,7 @@ fun ThreatPopupCard(
                                 size = 40.dp,
                                 contentDescription = typeLabel
                             )
-                            Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
@@ -274,7 +276,8 @@ fun ThreatPopupCard(
                             proximity = proximity,
                             pinnedCity = pinnedCity,
                             s = s,
-                            lang = lang
+                            lang = lang,
+                            modifier = Modifier.padding(start = 52.dp)
                         )
                         Spacer(Modifier.height(4.dp))
 
@@ -452,7 +455,8 @@ private fun SummaryPills(
     pinnedCity: City?,
     s: Strings.StringSet,
     lang: AppLanguage,
-    singleLine: Boolean = false
+    singleLine: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val distUser = proximity?.distToUserKm
     if (distUser == null) {
@@ -478,6 +482,7 @@ private fun SummaryPills(
             )
         ) {
             Row(
+                modifier = modifier,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -486,6 +491,7 @@ private fun SummaryPills(
         }
     } else {
         FlowRow(
+            modifier = modifier,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {

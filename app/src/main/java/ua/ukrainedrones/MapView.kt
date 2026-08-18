@@ -11,6 +11,9 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.VibrationAttributes
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -319,6 +322,7 @@ fun NeptunMapView(
     val followBulletState by rememberUpdatedState(uiState.followBullet)
     val mapScope = rememberCoroutineScope()
     val deathFx = remember { ThreatDeathOverlay() }
+    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
 
     // Follow-the-bullet: glide the camera onto an off-screen strike, then, when the setting is
     // on, return it to where it was 0.3s after the explosion finishes.
@@ -793,6 +797,15 @@ fun NeptunMapView(
                         rotationDeg = rotation,
                         alpha = marker.alpha ?: 1f
                     )
+                    // A short pulse as the projectile detonates on the map. USAGE_ALARM keeps it
+                    // audible as a vibration even when the system "touch feedback" haptics are off.
+                    if (vibrator != null) mapScope.launch {
+                        delay(DEATH_EXPLOSION_START_MS)
+                        vibrator.vibrate(
+                            VibrationEffect.createOneShot(120L, VibrationEffect.DEFAULT_AMPLITUDE),
+                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
+                        )
+                    }
                 }
             }
         }

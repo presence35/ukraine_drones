@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
@@ -49,6 +50,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -133,6 +135,27 @@ internal fun ConnectionStatus(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(s.connStatusTitle, modifier = Modifier.weight(1f))
+                    Image(
+                        painter = painterResource(R.drawable.neptun),
+                        contentDescription = s.attributionText,
+                        modifier = Modifier.height(26.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "neptun.in.ua",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.clickable {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://neptun.in.ua/")
+                                )
+                            )
+                        }
+                    )
                     IconButton(onClick = { onShowInfoChange(false) }) {
                         Icon(
                             imageVector = Icons.Default.Close,
@@ -200,29 +223,6 @@ internal fun ConnectionStatus(
                     }
                     ConnectionLogSection(s, lang)
                     AlertHistorySection(s, lang, iconSet)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("https://neptun.in.ua/")
-                                )
-                            )
-                        }
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.neptun),
-                            contentDescription = s.attributionText,
-                            modifier = Modifier.height(40.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "neptun.in.ua",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White
-                        )
-                    }
                 }
             }
         }
@@ -353,9 +353,11 @@ private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet, lang: Ap
 
 /**
  * Collapsible log of the last ~20 fired alerts (zone sirens + official alerts), newest first.
- * Rows carry the threat icon, a tier dot, the type label, datetime, locality, distance and —
- * once ended — the duration it rang.
+ * Rows carry the threat icon, the tier-colored type label, datetime, locality and distance.
+ * Consecutive entries within [WAVE_GAP_MS] cluster into a rough "wave" group.
  */
+private val WAVE_GAP_MS = 30L * 60 * 1000
+
 @Composable
 private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet: ThreatIconSet) {
     var expanded by remember { mutableStateOf(false) }
@@ -392,10 +394,33 @@ private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
+                var prevAt = entries.asReversed().first().atMillis
                 entries.asReversed().forEach { entry ->
+                    if (prevAt - entry.atMillis > WAVE_GAP_MS) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
                     AlertHistoryRow(entry, s, lang, iconSet)
+                    prevAt = entry.atMillis
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    onClick = { AlertHistory.clear() },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(s.alertHistoryClear)
                 }
             }
+            Text(
+                s.alertHistoryAutoClearNote,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 4.dp)
+            )
         }
     }
 }
@@ -413,7 +438,7 @@ private fun AlertHistoryRow(
         val info = ThreatTypeCatalog.INFO.getValue(type)
         if (lang == AppLanguage.UA) info.labelUa else info.labelEn
     } ?: s.alertHistoryOfficialLabel
-    val dotColor = when (entry.tier) {
+    val titleColor = when (entry.tier) {
         ThreatZone.INNER -> Color(0xFFE57373)
         ThreatZone.OUTER -> Color(0xFFF9A825)
         null -> Color(0xFF64B5F6)
@@ -434,18 +459,12 @@ private fun AlertHistoryRow(
             modifier = Modifier.size(22.dp)
         )
         Spacer(Modifier.width(8.dp))
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(dotColor)
-        )
-        Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 typeLabel,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = titleColor
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -469,15 +488,6 @@ private fun AlertHistoryRow(
             Text(
                 String.format(s.alertHistoryDistanceFormat, km.roundToInt()),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        entry.endMillis?.let { end ->
-            val durSec = ((end - entry.atMillis) / 1000).coerceAtLeast(0)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                String.format(s.connLogDurFormat, durSec / 60, durSec % 60),
-                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

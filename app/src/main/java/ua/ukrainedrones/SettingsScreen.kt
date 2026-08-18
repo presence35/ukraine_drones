@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -77,7 +78,21 @@ data class SettingsCollapseState(
     val night: Boolean = true,
     val alerts: Boolean = true,
     val additional: Boolean = true
-)
+) {
+    companion object {
+        val Saver = Saver<SettingsCollapseState, BooleanArray>(
+            save = { it.let { s -> BooleanArray(7).apply {
+                this[0] = s.language; this[1] = s.mapCenter; this[2] = s.cardSize
+                this[3] = s.threats; this[4] = s.night; this[5] = s.alerts
+                this[6] = s.additional
+            } } },
+            restore = { b -> SettingsCollapseState(
+                language = b[0], mapCenter = b[1], cardSize = b[2], threats = b[3],
+                night = b[4], alerts = b[5], additional = b[6]
+            ) }
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -395,6 +410,12 @@ expanded = collapse.threats,
                 onToggle = { onCollapseChange(collapse.copy(threats = !collapse.threats)) }
                 ) {
                     fastAndSlowGroups(lang).forEachIndexed { index, (groupIcon, groupTitle, types) ->
+                        if (index == 1) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+                        }
                         val groupMapOn = types.none { it in hiddenTypes }
                         val groupAlertsOn = types.none { it in silencedTypes }
                         val groupCollapsed = if (index == 0) fastGroupCollapsed else slowGroupCollapsed
@@ -883,9 +904,7 @@ private fun NightModeCard(
             title = s.nightModeLabel,
             description = s.nightModeDesc,
             checked = enabled,
-            onCheckedChange = onEnabledChange,
-            icon = painterResource(R.drawable.ic_moon),
-            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+            onCheckedChange = onEnabledChange
         )
         if (enabled) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -909,7 +928,9 @@ private fun NightModeCard(
                 )
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            SectionCaption(s.nightSoundLabel)
+            Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                SectionCaption(s.nightSoundLabel)
+            }
             Column(modifier = Modifier.padding(horizontal = 14.dp)) {
                 AlertToggleRow(
                     title = s.nightZoneSirenOverrideTitle,
@@ -978,7 +999,7 @@ private fun NightModeCard(
                             onArmedChange = onSlowRedArmedChange,
                             onCommit = onSlowRedChange
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(10.dp))
                         ZoneRow(
                             value = slowYellowKm,
                             range = 21f..50f,
@@ -1007,7 +1028,7 @@ private fun NightModeCard(
                             onArmedChange = onFastRedArmedChange,
                             onCommit = onFastRedChange
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(10.dp))
                         ZoneRow(
                             value = fastYellowMin,
                             range = 6f..20f,
@@ -1341,12 +1362,17 @@ private fun ThreatSettingsCard(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        ThreatIcon(
-                            type = type,
-                            set = iconSet,
-                            size = 160.dp,
-                            contentDescription = label
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(IconCatalog.res(type, iconSet)),
+                            contentDescription = label,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }

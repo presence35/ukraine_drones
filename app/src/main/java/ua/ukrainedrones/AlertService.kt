@@ -942,14 +942,11 @@ notifyMonitor(
         val builder = NotificationCompat.Builder(this, CHANNEL_NEUTRALIZED)
             .setSmallIcon(R.drawable.ic_launcher_drone)
             .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
-            .setContentText(s.neutralizedNotifBody)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openAppIntent())
             .setDeleteIntent(neutralizedDismissPendingIntent())
         if (lastLine != null) {
-            builder.setStyle(
-                NotificationCompat.BigTextStyle().bigText("${s.neutralizedNotifBody}\n$lastLine")
-            )
+            builder.setContentText(lastLine)
         }
         safeNotify(NOTIF_NEUTRALIZED, builder.build())
     }

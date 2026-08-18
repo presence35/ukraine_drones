@@ -15894,3 +15894,68 @@ go
 ## 18/08/2026, 14:51:07
 
 git push
+## 18/08/2026, 14:51:57
+
+3. 10min is too small, 30mins.
+## 18/08/2026, 14:52:13
+
+go
+## 18/08/2026, 15:09:50
+
+2 i never feel any vibrate, changing its pulse won't fix that bug.
+go
+## 18/08/2026, 15:11:13
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 15:13:48
+
+nothing changed.  the 3 pills should alfgn w the title (small and large), not the threat icon.  same w "R" (small only).  alos the title on small/large are slightly diff positions.
+## 18/08/2026, 15:13:55
+
+the wizard seems to half load and then the map opens.  i guess cos it's a threat is on.  but if i go to a city with no threat then the wizard doens't try to load.  weird bug.
+## 18/08/2026, 15:15:40
+
+go
+## 18/08/2026, 15:16:09
+
+what's the adb debug powershell command? i'm getting force close immediately on fressh instal.
+## 18/08/2026, 15:19:46
+
+08-18 15:17:08.790  6684  6684 E AndroidRuntime: FATAL EXCEPTION: main
+08-18 15:17:08.790  6684  6684 E AndroidRuntime: Process: ua.ukrainedrones, PID: 6684
+08-18 15:17:08.790  6684  6684 E AndroidRuntime: java.lang.IllegalArgumentException: MutableState containing SettingsCollapseState(language=true, mapCenter=true, cardSize=true, threats=true, night=true, alerts=true, additional=true) cannot be saved using the current SaveableStateRegistry. The default implementation only supports types which can be stored inside the Bundle. Please consider implementing a custom Saver for this class and pass it as a stateSaver parameter to rememberSaveable().
+08-18 15:17:08.790  6684  6684 E AndroidRuntime:        at androidx.compose.runtime.saveable.RememberSaveableKt.requireCanBeSaved(RememberSaveable.kt:242)
+## 18/08/2026, 15:21:19
+
+don't verify
+## 18/08/2026, 15:22:24
+
+go
+## 18/08/2026, 15:36:40
+
+"Choose language" in the qziard should be reverse language.
+## 18/08/2026, 15:42:06
+
+the 3 helper textes should be bigger font.
+
+and make a larger" This setup is important. This app has advanced features that you should be aware of. Take the 30 seconds to familiarze yourself".
+
+mabye better working.
+
+the drone icon should be the threat_photo. The "wahd do you care about icons" should be whatever threat icons they chose on prev step.  put small separtor for fast/small.
+
+language is not a core feature lol.   try harder.
+
+move the threat icon selection to the first step. at the bottom.  now step 2 is not needed.
+## 18/08/2026, 15:45:30
+
+in settings, threats, "Unknown" should have the shrodingerscat pic, not the icon pack.
+## 18/08/2026, 15:48:03
+
+in settings, threats, "Unknown" should have the shrodingerscat pic, not the icon pack.
+## 18/08/2026, 15:48:31
+
+when clicking "Later" in firsth launch it still shows the android permission screens.  skip those too.
+## 18/08/2026, 15:51:30
+
+when clicking "Later" in firsth launch it still shows the android permission screens.  skip those too.

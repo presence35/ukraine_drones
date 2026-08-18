@@ -45,4 +45,17 @@ class AlertHistoryTest {
         assertEquals("", serializeAlertHistory(emptyList()))
         assertTrue(parseAlertHistory("").isEmpty())
     }
+
+    @Test
+    fun `prune drops entries at or older than the max age`() {
+        val now = 1_000_000L
+        val maxAge = AlertHistory.AUTO_CLEAR_AGE_MS
+        val fresh = entry(now - 1_000)
+        val boundary = entry(now - maxAge) // exactly maxAge old: dropped (kept only if strictly younger)
+        val expired = entry(now - maxAge - 1)
+        assertEquals(
+            listOf(fresh),
+            pruneExpiredEntries(listOf(fresh, boundary, expired), now, maxAge)
+        )
+    }
 }

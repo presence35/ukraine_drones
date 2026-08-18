@@ -2,8 +2,6 @@ package ua.ukrainedrones
 
 import android.app.Activity
 import android.content.Intent
-import android.os.VibrationEffect
-import android.os.Vibrator
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -85,7 +83,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var scrollToThreatsTick by remember { mutableStateOf(0) }
     var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
     val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
-    var settingsCollapse by rememberSaveable { mutableStateOf(SettingsCollapseState()) }
+    var settingsCollapse by rememberSaveable(stateSaver = SettingsCollapseState.Saver) { mutableStateOf(SettingsCollapseState()) }
     // The zones sheet edits whatever the map is currently showing: night settings while the
     // night window is active and separate night zones are enabled, day settings otherwise.
     val editingNight = uiState.nightActive && uiState.nightUseCustomZones
@@ -913,14 +911,8 @@ private fun MapScreen(
                     2 -> uiState.neutralizedThreat?.let { threat ->
                         val fade = remember { Animatable(1f) }
                         var neutralizing by remember { mutableStateOf(true) }
-                        val cardContext = LocalContext.current
-                        val vibrator = remember { cardContext.getSystemService(Vibrator::class.java) }
                         LaunchedEffect(Unit) {
                             delay(DEATH_EXPLOSION_START_MS)
-                            // A short pulse as the projectile detonates on the map.
-                            vibrator?.vibrate(
-                                VibrationEffect.createWaveform(vibrationPattern(1), -1)
-                            )
                             neutralizing = false
                             fade.animateTo(0f, tween(DEATH_EXPLOSION_LEN_MS.toInt()))
                             onDismissPopup()

@@ -230,21 +230,10 @@ class ThreatDeathOverlay : Overlay() {
                             canvas.drawCircle(ox, oy, 14f * density * lf, flashPaint)
                             flashPaint.shader = null
                         }
-                        // Bullet: the projectile PNG, rotated to the heading, over a gold flash.
+                        // Bullet: the projectile PNG, rotated to the heading.
                         canvas.save()
                         canvas.translate(bx, by)
                         canvas.rotate((Math.toDegrees(atan2(headY.toDouble(), headX.toDouble())) + 90).toFloat())
-                        flashPaint.shader = RadialGradient(
-                            0f, 0f, 14f * density,
-                            intArrayOf(
-                                Color.argb(160, 255, 215, 0),
-                                Color.argb(0, 255, 215, 0)
-                            ),
-                            floatArrayOf(0f, 1f),
-                            Shader.TileMode.CLAMP
-                        )
-                        canvas.drawCircle(0f, 0f, 14f * density, flashPaint)
-                        flashPaint.shader = null
                         val bitmap = bulletBitmap ?: run {
                             BitmapFactory.decodeResource(mapView.context.resources, R.drawable.bullet)
                                 ?.also { bulletBitmap = it }

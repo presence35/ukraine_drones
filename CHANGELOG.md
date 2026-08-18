@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Map: the death-strike animation now vibrates the phone once, right at the explosion, with an alarm-class haptic pulse so it's felt even when the system "touch feedback" vibration is off — and the projectile no longer has a glowing halo around it.
+- Notifications: the "Resolved threats" tally now shows only the running count plus the last threat type — the extra body line is gone.
+- Settings → Threats: the Fast and Slow group sections are separated by a divider, and each expanded type card shows the selected icon pack large and full-width.
+- Night mode: removed the duplicate moon icon on the mode toggle, reworded its description, and aligned the "Sound at night" caption with the toggles beneath it.
+
+- First-run wizard / alert gating: "an alert is live" now means one relevant to *you* — a threat in your red/yellow zones or an official alert on your oblast/pinned city — instead of any alert anywhere in the country. The wizard now loads even while other regions are on alert, and still force-closes (without saving) when your own area is hit.
+- System status popup: the NEPTUN logo and an underlined `neptun.in.ua` link now sit in the popup header next to the status title (were at the bottom).
+- System status popup → Alerts: a "Clear" button wipes the alert history; entries auto-clear after 3 days. Rows no longer show the ring duration (that was how long the siren rang, not arrival time) — only the distance. The tier dot is gone; the alert title itself is colored red/yellow/blue by tier. Consecutive alerts within ~30 min cluster into a rough "wave" group with a divider between groups, and locality names transliterate to English in EN mode.
+
 - Settings → Additional: new "Follow the bullet" sub-setting under "Resolved-threat animation" (shown only while it's on) — the camera glides to an off-screen strike and returns to where you were 0.3s after the explosion finishes; turn it off to keep the camera still while the animation plays.
 - Settings: your place is saved — every section keeps its collapsed/expanded state and the scroll position across opening/closing Settings and app restarts (the zone-panel gear still jumps straight to the relevant section).
 - Settings → Threats: the " — tap to toggle" hint is gone from the title, the Map/Alerts toggles are compact icon buttons on one line, the rows are tighter, and each expanded type card now shows a large preview of its icon from the selected icon pack.

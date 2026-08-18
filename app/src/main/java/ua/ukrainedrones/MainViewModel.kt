@@ -755,7 +755,7 @@ val uiState: StateFlow<UiState> = combine(
             neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
-            alertActive = mapThreats.isNotEmpty() || redCities.isNotEmpty()
+            alertActive = activeZone != null || focusOblastAlertActive
         )
     }
 

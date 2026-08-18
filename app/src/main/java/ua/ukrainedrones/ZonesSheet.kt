@@ -110,9 +110,7 @@ fun ZonesPanel(
                 onArmedChange = onSlowRedArmedChange,
                 onCommit = onSlowRedChange
             )
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(8.dp))
+Spacer(Modifier.height(10.dp))
             ZoneRow(
                 value = slowYellowKm,
                 range = 21f..50f,
@@ -144,9 +142,7 @@ fun ZonesPanel(
                 onArmedChange = onFastRedArmedChange,
                 onCommit = onFastRedChange
             )
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(8.dp))
+Spacer(Modifier.height(10.dp))
             ZoneRow(
                 value = fastYellowMin,
                 range = 6f..20f,
@@ -264,7 +260,7 @@ internal fun ZoneRow(
                 uncheckedBorderColor = Color.Transparent
             )
         )
-        Spacer(Modifier.width(12.dp))
+Spacer(Modifier.width(8.dp))
         // A subtle ghost tick on the track marks the day value while night zones are being
         // edited, so the two can be compared on the spot.
         Box(
@@ -301,14 +297,28 @@ internal fun ZoneRow(
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            if (reference != null && dayLabel != null) {
-                "$value $unit · $dayLabel $reference $unit"
-            } else "$value $unit",
-            color = accent,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.labelLarge
-        )
+Spacer(Modifier.width(6.dp))
+        if (reference != null && dayLabel != null) {
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "$value $unit",
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    "$dayLabel $reference $unit",
+                    color = Color(0xFF9E9E9E),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        } else {
+            Text(
+                "$value $unit",
+                color = accent,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
     }
 }

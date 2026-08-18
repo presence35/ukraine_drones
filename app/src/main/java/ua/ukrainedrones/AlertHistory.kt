@@ -35,6 +35,9 @@ object AlertHistory {
 
     internal const val MAX_ENTRIES = 20
 
+    /** Entries older than this are pruned on load/append (3 days). */
+    internal const val AUTO_CLEAR_AGE_MS = 3L * 24 * 60 * 60 * 1000
+
     private val _entries = MutableStateFlow<List<AlertHistoryEntry>>(emptyList())
     val entries: StateFlow<List<AlertHistoryEntry>> = _entries.asStateFlow()
 
@@ -83,8 +86,17 @@ object AlertHistory {
         }
     }
 
+    /** Wipe the whole history (System-status popup "Clear" button). */
+    fun clear() {
+        openAtMillis.clear()
+        _entries.value = emptyList()
+        persist()
+    }
+
     private fun append(entry: AlertHistoryEntry) {
-        _entries.value = (_entries.value + entry).takeLast(MAX_ENTRIES)
+        val now = System.currentTimeMillis()
+        _entries.value =
+            pruneExpiredEntries(_entries.value + entry, now, AUTO_CLEAR_AGE_MS).takeLast(MAX_ENTRIES)
     }
 
     private fun closeEntry(atMillis: Long, end: Long) {
@@ -100,10 +112,20 @@ object AlertHistory {
 
     private fun attachLoaded() {
         val context = appContext ?: return
+        val now = System.currentTimeMillis()
         val loaded = runBlocking { parseAlertHistory(ZonePrefs(context).alertHistory().first()) }
-        _entries.value = loaded
+        val pruned = pruneExpiredEntries(loaded, now, AUTO_CLEAR_AGE_MS)
+        _entries.value = pruned
+        if (pruned != loaded) persist()
     }
 }
+
+/** Drop entries older than [maxAgeMs] — the 3-day auto-clear. Pure, unit-tested. */
+internal fun pruneExpiredEntries(
+    entries: List<AlertHistoryEntry>,
+    now: Long,
+    maxAgeMs: Long
+): List<AlertHistoryEntry> = entries.filter { now - it.atMillis < maxAgeMs }
 
 /**
  * Serialized form of the history — "at|end|tier|type|locality|distance" lines, one per event.
