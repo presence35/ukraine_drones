@@ -172,7 +172,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 versionName = BuildConfig.VERSION_NAME,
                 isChecking = uiState.update is UpdateState.Checking,
                 latestVersion = uiState.latestVersion,
-                alertActive = uiState.alertActive,
                 onBack = { screen = Screen.MAP },
                 onLanguageChange = { viewModel.setLanguage(it) },
                 onThreatMapToggle = { type, visible -> viewModel.setThreatMapVisible(type, visible) },

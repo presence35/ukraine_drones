@@ -46614,3 +46614,62 @@ Done. Build passes (`:app:assembleDebug` SUCCESSFUL; warnings are pre-existing).
 - `AlertService.kt` — new coroutine collects `NeptunClient.removedThreats` (server-driven only, never the TEMP long-press), bumps the count and re-posts `NOTIF_NEUTRALIZED` on a silent `IMPORTANCE_LOW` channel: "5 threats neutralized" / «Знешкоджено 5 загроз» (+UA plural), body shows "Last: <type>".
 - Swiping it away → `NeutralizedDismissReceiver` → `ACTION_NEUTRALIZED_DISMISS` resets the count, so it stays dismissed and a later neutralization starts a fresh tally. Tapping opens the map.
 - `Strings.kt` — 4 new `Status` strings + `neutralizedThreatsPhrase()` plural helper; `AndroidManifest.xml` declares the receiver; `ARCHITECTURE.md` + `CHANGELOG.md` updated.
+## 18/08/2026, 13:04:25
+
+Task 1 done. Now the Strings.kt edits.
+## 18/08/2026, 13:08:33
+
+Done. Build succeeds.
+
+- **Grey bell**: `AlertsOffBell` (`ThreatPopupCard.kt:43`) now renders a plain grey `Icons.Outlined.Notifications` (`0xFF9E9E9E`) — no red X, no bell-with-slash. Applies everywhere it's used (map pill, zones panel, threat cards).
+- **Night-attack notes removed**: stripped the claim from `nightModeDesc` (Settings → Night mode), deleted the `nightMuteWarning` string + its yellow warning block in the night custom-zone sliders (kept the "Stop Monitoring & Exit" tip), and rewrote `guideNightSummary`/`guideNightD3` in the feature guide — all in UA + EN (`Strings.kt`). CHANGELOG updated under `## [Unreleased]`.
+## 18/08/2026, 13:09:36
+
+Now Strings.kt. Let me read the relevant lines:
+## 18/08/2026, 13:11:07
+
+Now the CHANGELOG entry:
+
+
+## 18/08/2026, 13:11:17
+
+
+
+
+## 18/08/2026, 13:11:27
+
+Now verify the build:
+
+
+## 18/08/2026, 13:11:59
+
+Build passes. Changes:
+
+- `SettingsScreen.kt` — removed the `alertActive` param, the `enabled = !alertActive` on both buttons, and both `disabledDuringAlarm` captions.
+- `MainScreen.kt` — dropped the `alertActive = ...` arg.
+- `Strings.kt` — removed the dead `disabledDuringAlarm` string (EN + UA).
+- `CHANGELOG.md` — added an Unreleased entry.
+
+The buttons are now always enabled regardless of alarm state.
+## 18/08/2026, 13:12:05
+
+Now replace the dialog block:
+## 18/08/2026, 13:12:15
+
+Now the CHANGELOG entry:
+## 18/08/2026, 13:12:47
+
+`ModalBottomSheet` is experimental here — adding the opt-in:
+## 18/08/2026, 13:13:42
+
+Done. The System-status popup is now a `ModalBottomSheet` with a scrollable body:
+
+- `ConnectionStatus.kt` — `AlertDialog` replaced with `ModalBottomSheet` + `@OptIn(ExperimentalMaterial3Api::class)`; header row (status dot + title + close X) on top, body wrapped in `verticalScroll` so the 20-entry alert history and connection log scroll instead of clipping. Swipe-down and scrim tap also dismiss.
+- `CHANGELOG.md` — entry added under `[Unreleased]`.
+- `assembleDebug` passes.
+## 18/08/2026, 13:15:50
+
+I'll explore the codebase for these tasks. Let me start with targeted searches.
+## 18/08/2026, 13:16:02
+
+Now let me look at how the Settings screen is shown/navigated within MainScreen.

@@ -118,7 +118,6 @@ fun SettingsScreen(
     versionName: String,
     isChecking: Boolean,
     latestVersion: String?,
-    alertActive: Boolean,
     onBack: () -> Unit,
     onLanguageChange: (AppLanguage) -> Unit,
     onThreatMapToggle: (ThreatType, Boolean) -> Unit,
@@ -696,29 +695,17 @@ fun SettingsScreen(
             }
 
             item {
-                Column {
-                    OutlinedButton(
-                        onClick = onRelaunchSetup,
-                        enabled = !alertActive,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(s.relaunchSetupTitle, fontWeight = FontWeight.SemiBold)
-                    }
-                    if (alertActive) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            s.disabledDuringAlarm,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        )
-                    }
+                OutlinedButton(
+                    onClick = onRelaunchSetup,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(s.relaunchSetupTitle, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -736,60 +723,47 @@ fun SettingsScreen(
             }
 
             item {
-                Column {
-                    if (isChecking) {
-                        Button(
-                            onClick = onCheckUpdate,
-                            enabled = false,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(s.updateButton, fontWeight = FontWeight.SemiBold)
-                        }
-                    } else if (latestVersion != null) {
-                        Button(
-                            onClick = onCheckUpdate,
-                            enabled = !alertActive,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.ic_download),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                "${s.updateAvailableButton} · v$latestVersion",
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    } else {
-                        OutlinedButton(
-                            onClick = onCheckUpdate,
-                            enabled = !alertActive,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = s.checkForUpdates,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(s.updateButton, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                    if (!isChecking && alertActive) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            s.disabledDuringAlarm,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                if (isChecking) {
+                    Button(
+                        onClick = onCheckUpdate,
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
                         )
+                        Spacer(Modifier.width(10.dp))
+                        Text(s.updateButton, fontWeight = FontWeight.SemiBold)
+                    }
+                } else if (latestVersion != null) {
+                    Button(
+                        onClick = onCheckUpdate,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_download),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "${s.updateAvailableButton} · v$latestVersion",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onCheckUpdate,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = s.checkForUpdates,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(s.updateButton, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1021,13 +995,6 @@ private fun NightModeCard(
                     }
                     Spacer(Modifier.height(8.dp))
                     if (!slowRedArmed || !slowYellowArmed || !fastRedArmed || !fastYellowArmed) {
-                        Text(
-                            s.nightMuteWarning,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium,
-                            color = ZoneYellowColor,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-                        )
                         Text(
                             s.nightMuteExitNote,
                             style = MaterialTheme.typography.bodySmall,

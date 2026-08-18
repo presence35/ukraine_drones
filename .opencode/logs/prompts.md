@@ -15805,3 +15805,18 @@ done?
 ## 18/08/2026, 13:03:23
 
 go
+## 18/08/2026, 13:08:53
+
+go
+## 18/08/2026, 13:11:33
+
+go
+## 18/08/2026, 13:15:31
+
+bug: when tapping a notif, if the app is in settings it should close and go to the map.
+tapping footer threats should cycle thru each for that type.
+ensure threats icons are facing the proper direction for message that contain "heading toward..."
+notifs aren't trnslitering properly all the time, what's missing?
+1s after the camera follows the explosion, return to the user's og cam location -- add a subsetting under "neutraliztion animation" that says "follow the bullet".
+save state of everything in settings, coallpsed and scroll position.  unless clicking from zone panel, that logic is already wired.
+in settings->threats, remove the word " - tap to toggle" from title, and to make the whole section shorter, put the map and alert toggles on the same line, and make the padding thinner.

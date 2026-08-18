@@ -6,6 +6,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,15 +20,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ConnectionStatus(
     neptunDown: Boolean,
@@ -102,13 +108,22 @@ internal fun ConnectionStatus(
     }
     if (showInfo) {
         val context = LocalContext.current
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showInfo = false },
-            confirmButton = {
-                TextButton(onClick = { showInfo = false }) { Text(s.backButton) }
-            },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            sheetState = rememberModalBottomSheetState()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box(
                         modifier = Modifier
                             .size(10.dp)
@@ -116,10 +131,15 @@ internal fun ConnectionStatus(
                             .background(dotColor)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(s.connStatusTitle)
+                    Text(s.connStatusTitle, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { showInfo = false }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = s.backButton,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-            },
-            text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SourceStatusRow(
                         color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
@@ -204,7 +224,7 @@ internal fun ConnectionStatus(
                     }
                 }
             }
-        )
+        }
     }
 }
 

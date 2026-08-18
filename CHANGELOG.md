@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- System status popup is now a bottom sheet with a scrollable body — the long alert history and connection log no longer clip off-screen.
+- Settings: "Replay first launch" and "Check for updates" are no longer disabled during an active alarm — they stay available regardless of alert state.
+
+- Zone bells: the muted "alerts off" indicator is a plain grey bell again (no more red X) on the map pill, in the zones panel and on threat cards.
+- Night mode / Zones: removed the "attacks are most common at night" notes from the night-mode description, the muted-zones warning and the feature guide — night mode is about your own schedule, not a frequency claim.
+
 - Notifications: new "Neutralized threats" tally — a silent, dismissible notification that counts real server-side neutralizations (not manual test triggers) while you're away, appending to the count as each one lands and stopping when you swipe it away. Tap it to open the map.
 - Map: optional "Time-to-arrival lines" (Settings → Additional, off by default) — for fast threats a red line along the course shows where the object will be at the red time threshold and a yellow one at the yellow threshold.
 - Zones panel: the title now matches what it edits — "🌙 Night zones 🌙" during the night window, "Day zones" when night zones are configured but it's daytime, otherwise "Alert zones" (was always "Alert zones").

@@ -48,7 +48,6 @@ object Strings {
         val officialAlertsRedTridentNote: String,
         val sirenOverrideTitle: String,
         val sirenOverrideDesc: String,
-        val disabledDuringAlarm: String,
         val nightModeLabel: String,
         val nightModeDesc: String,
         val nightStartTimeLabel: String,
@@ -62,7 +61,6 @@ object Strings {
         val nightCustomZonesDesc: String,
         val nightVibrationLabel: String,
         val nightVibrationDesc: String,
-        val nightMuteWarning: String,
         val nightMuteExitNote: String,
         val allAlertsOffLabel: String,
         val zoneButtonRed: String,
@@ -376,7 +374,6 @@ object Strings {
         val officialAlertsRedTridentNote: String get() = settings.officialAlertsRedTridentNote
         val sirenOverrideTitle: String get() = settings.sirenOverrideTitle
         val sirenOverrideDesc: String get() = settings.sirenOverrideDesc
-        val disabledDuringAlarm: String get() = settings.disabledDuringAlarm
         val nightModeLabel: String get() = settings.nightModeLabel
         val nightModeDesc: String get() = settings.nightModeDesc
         val nightStartTimeLabel: String get() = settings.nightStartTimeLabel
@@ -390,7 +387,6 @@ object Strings {
         val nightCustomZonesDesc: String get() = settings.nightCustomZonesDesc
         val nightVibrationLabel: String get() = settings.nightVibrationLabel
         val nightVibrationDesc: String get() = settings.nightVibrationDesc
-        val nightMuteWarning: String get() = settings.nightMuteWarning
         val nightMuteExitNote: String get() = settings.nightMuteExitNote
         val allAlertsOffLabel: String get() = settings.allAlertsOffLabel
         val zoneButtonRed: String get() = settings.zoneButtonRed
@@ -677,9 +673,8 @@ object Strings {
         officialAlertsRedTridentNote = "Червоний тризуб у шапці означає, що офіційна тривога активна.",
         sirenOverrideTitle = "Сирена звучить завжди",
         sirenOverrideDesc = "Сигнал тривоги звучить, навіть коли телефон у вібро- чи беззвучному режимі. За замовчуванням вимкнено — звук слідує за налаштуваннями телефону.",
-        disabledDuringAlarm = "Недоступно під час тривоги",
         nightModeLabel = "Нічний режим",
-        nightModeDesc = "Уночі атаки найбільш імовірні — ти мусиш прокинутися. Власний розклад, звук і зони для нічного вікна: тримай оповіщення увімкненими.",
+        nightModeDesc = "Власний розклад, звук і зони для нічного вікна: тримай оповіщення увімкненими.",
         nightStartTimeLabel = "Початок",
         nightEndTimeLabel = "Кінець",
         nightSoundLabel = "Звук уночі",
@@ -691,7 +686,6 @@ object Strings {
         nightCustomZonesDesc = "Власні відстані/час і червона/жовта зони на час нічного вікна.",
         nightVibrationLabel = "Вібрація вночі",
         nightVibrationDesc = "Окрема сила вібрації для швидких і повільних загроз під час нічного вікна.",
-        nightMuteWarning = "Вночі атаки найбільш імовірні — ти можеш проспати одну.",
         nightMuteExitNote = "Якщо справді хочеш повної тиші — скористайся кнопкою «Зупинити моніторинг і вийти» нижче; інакше легко забути повернути налаштування вранці.",
         allAlertsOffLabel = "Усі сповіщення вимкнено",
         zoneButtonRed = "Червона зона: натисни, щоб наблизити",
@@ -904,10 +898,10 @@ object Strings {
         guideFastD2 = "Офіційні сповіщення: додає сигнал повітряної тривоги області.",
         guideFastD3 = "Налаштування зон — у кнопці зони на мапі або Налаштуваннях.",
         guideNightTitle = "Нічний режим",
-        guideNightSummary = "Уночі атаки найбільш імовірні — сценарій, який тримає тебе в курсі, поки всі сплять.",
+        guideNightSummary = "Нічне вікно з власними зонами, звуком і дзвіночками — щоб не залишитися без оповіщень.",
         guideNightD1 = "Вікно з початком і кінцем; підтримується перехід через північ (наприклад, 22:00–07:00).",
         guideNightD2 = "Поки вікно активне, діють власні нічні зони та дзвіночки — а нічні сирени можуть звучати навіть на беззвучному.",
-        guideNightD3 = "Увімкнено за замовчуванням — вночі критично не проспати атаку.",
+        guideNightD3 = "Увімкнено за замовчуванням — власні нічні налаштування діють одразу.",
         guideFollowTitle = "Слідувати за мною",
         guideFollowSummary = "Мапа та обидві зони слідують за твоїм GPS.",
         guideFollowD1 = "Твоє положення — синя точка, що світиться.",
@@ -1039,9 +1033,8 @@ object Strings {
         officialAlertsRedTridentNote = "A red trident in the header means the official alert is on.",
         sirenOverrideTitle = "Sirens always sound",
         sirenOverrideDesc = "Ring the siren even when the phone is on vibrate or silent. Off by default — alerts follow your phone's sound settings.",
-        disabledDuringAlarm = "Disabled while an alarm is active",
         nightModeLabel = "Night mode",
-        nightModeDesc = "Attacks are most likely at night — you must wake up. Own schedule, sound and zones for the night window: keep alerts on.",
+        nightModeDesc = "Own schedule, sound and zones for the night window: keep alerts on.",
         nightStartTimeLabel = "Start",
         nightEndTimeLabel = "End",
         nightSoundLabel = "Sound at night",
@@ -1053,7 +1046,6 @@ object Strings {
         nightCustomZonesDesc = "Own distances/times and red/yellow zones for the night window.",
         nightVibrationLabel = "Vibration at night",
         nightVibrationDesc = "Separate vibration strength for fast and slow threats during the night window.",
-        nightMuteWarning = "Attacks are most common at night — you may sleep through one.",
         nightMuteExitNote = "If you truly want total silence, use \"Stop Monitoring & Exit\" below instead — otherwise you may forget to switch alerts back on tomorrow.",
         allAlertsOffLabel = "All alerts are off",
         zoneButtonRed = "Red zone: tap to zoom in",
@@ -1266,10 +1258,10 @@ object Strings {
         guideFastD2 = "Official alerts: adds the oblast air-raid signal on top.",
         guideFastD3 = "Zone settings live in the zone button on the map or in Settings.",
         guideNightTitle = "Night mode",
-        guideNightSummary = "Night is when attacks are most likely — a scenario that keeps you alert while everyone sleeps.",
+        guideNightSummary = "A night window with its own zones, sound and bells — so you never miss an alert.",
         guideNightD1 = "A window with a start and end; overnight schedules (past midnight) work, e.g. 22:00–07:00.",
         guideNightD2 = "While the window is active, its own zones and bells apply — and night sirens can ring even on silent.",
-        guideNightD3 = "On by default — at night it's critical you don't sleep through an attack.",
+        guideNightD3 = "On by default — your separate night settings apply right away.",
         guideFollowTitle = "Follow me",
         guideFollowSummary = "The map and both zones follow your GPS position.",
         guideFollowD1 = "Your position shows as a glowing blue dot.",

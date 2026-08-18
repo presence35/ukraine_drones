@@ -1,7 +1,6 @@
 package ua.ukrainedrones
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,16 +8,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -41,35 +38,19 @@ private val DistUserAmber = Color(0xFFFFD54F)
 private val DistUserGreen = Color(0xFF81C784)
 private val GpsDot = Color(0xFF4FC3F7)
 
-/** Red crossed bell marking a type whose alerts are switched off in Settings. */
+/** Grey bell marking a type whose alerts are switched off in Settings. */
 @Composable
 internal fun AlertsOffBell(
     size: Dp = 14.dp,
-    tint: Color = Color(0xFFE57373),
+    tint: Color = Color(0xFF9E9E9E),
     contentDescription: String? = null
 ) {
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size)) {
-        Icon(
-            imageVector = Icons.Filled.Notifications,
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier.fillMaxSize()
-        )
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val w = this.size.width
-            val h = this.size.height
-            val m = w * 0.18f
-            val stroke = w * 0.16f
-            drawLine(
-                Color(0xFFE53935), Offset(m, m), Offset(w - m, h - m),
-                strokeWidth = stroke, cap = StrokeCap.Round
-            )
-            drawLine(
-                Color(0xFFE53935), Offset(w - m, m), Offset(m, h - m),
-                strokeWidth = stroke, cap = StrokeCap.Round
-            )
-        }
-    }
+    Icon(
+        imageVector = Icons.Outlined.Notifications,
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = Modifier.size(size)
+    )
 }
 
 /** System font scale, capped so extreme accessibility sizes can't break the layout. */
