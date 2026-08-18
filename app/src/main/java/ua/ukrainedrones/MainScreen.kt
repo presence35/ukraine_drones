@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +66,15 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var screen by remember { mutableStateOf(Screen.MAP) }
+    var showConnectionInfo by remember { mutableStateOf(false) }
+
+    // The System-status sheet never lingers over the map: it closes when an alert starts and
+    // whenever the user navigates to Settings/Guide, so returning to the map is always clean.
+    LaunchedEffect(screen, uiState.activeZone, uiState.focusOblastAlertActive) {
+        if (screen != Screen.MAP || uiState.activeZone != null || uiState.focusOblastAlertActive) {
+            showConnectionInfo = false
+        }
+    }
 
     // The settings heart pulses gently until Settings has been opened 10 times.
     val scope = rememberCoroutineScope()
@@ -72,7 +83,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var guideFeatureId by remember { mutableStateOf<String?>(null) }
     var guideFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
-    val settingsListState = rememberLazyListState()
+    var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
+    val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    var settingsCollapse by rememberSaveable { mutableStateOf(SettingsCollapseState()) }
     // The zones sheet edits whatever the map is currently showing: night settings while the
     // night window is active and separate night zones are enabled, day settings otherwise.
     val editingNight = uiState.nightActive && uiState.nightUseCustomZones
@@ -93,6 +106,11 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         }
         screen = Screen.SETTINGS
         viewModel.autoCheckForUpdates(allowPopup = false)
+    }
+
+    // A notification tap reveals a threat on the map: leave Settings and show it.
+    LaunchedEffect(uiState.revealRequest?.tick) {
+        if (uiState.revealRequest != null && screen == Screen.SETTINGS) screen = Screen.MAP
     }
 
     // The map stays composed under the Settings overlay so its camera and tiles are never
@@ -120,7 +138,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onFastYellowArmedChange = { if (editingNight) viewModel.setNightFastYellowArmed(it) else viewModel.setFastYellowArmed(it) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
-            onTempNeutralize = { id -> viewModel.tempNeutralize(id) }
+            onTempNeutralize = { id -> viewModel.tempNeutralize(id) },
+            showConnectionInfo = showConnectionInfo,
+            onShowConnectionInfoChange = { showConnectionInfo = it }
         )
         if (screen == Screen.SETTINGS) {
             // Composed after MapScreen, so its handler is checked first on Back.
@@ -131,6 +151,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatsScrollHandled = { scrollToThreatsTick = 0 },
                 scrollToThreatsTick = scrollToThreatsTick,
                 scrollToNightMode = uiState.nightActive,
+                collapse = settingsCollapse,
+                onCollapseChange = { settingsCollapse = it },
                 hiddenTypes = uiState.hiddenTypes,
                 silencedTypes = uiState.silencedTypes,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
@@ -167,6 +189,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 showMapScale = uiState.showMapScale,
                 showTtaLines = uiState.showTtaLines,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
+                followBullet = uiState.followBullet,
+                neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
                 fastGroupCollapsed = uiState.fastGroupCollapsed,
                 slowGroupCollapsed = uiState.slowGroupCollapsed,
                 versionName = BuildConfig.VERSION_NAME,
@@ -208,11 +232,16 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onShowTtaLinesChange = { viewModel.setShowTtaLines(it) },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
+                onFollowBulletChange = { viewModel.setFollowBullet(it) },
+                onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
                 onFastGroupCollapse = { viewModel.setFastGroupCollapsed(it) },
                 onSlowGroupCollapse = { viewModel.setSlowGroupCollapsed(it) },
                 onExit = onExit,
                 onCheckUpdate = { viewModel.checkForUpdates() },
-                onRelaunchSetup = { viewModel.relaunchSetup() },
+                onRelaunchSetup = {
+                    viewModel.relaunchSetup()
+                    wizardOpenedDuringAlert = true
+                },
                 onOpenGuide = {
                     guideFromSettings = true
                     guideFeatureId = null
@@ -261,8 +290,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     // First-install: a full-screen wizard — language (+tips), icon pack, which threats matter,
     // then a feature preview. It force-closes without saving the moment an alert goes live
-    // (alerts outrank onboarding); the wizard returns once the alert clears.
-    if (!uiState.languageChosen && !uiState.alertActive) {
+    // (alerts outrank onboarding); the wizard returns once the alert clears. Opening it via
+    // "Replay first launch" is the user's explicit choice and works even while an alert is
+    // already active (wizardOpenedDuringAlert overrides the gate until the alert clears).
+    LaunchedEffect(uiState.alertActive) {
+        if (!uiState.alertActive) wizardOpenedDuringAlert = false
+    }
+    if (!uiState.languageChosen && (!uiState.alertActive || wizardOpenedDuringAlert)) {
         FirstLaunchWizard(
             current = uiState.language,
             iconSet = uiState.iconSet,
@@ -589,7 +623,9 @@ private fun MapScreen(
     onFastYellowArmedChange: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit,
-    onTempNeutralize: (String) -> Unit
+    onTempNeutralize: (String) -> Unit,
+    showConnectionInfo: Boolean,
+    onShowConnectionInfoChange: (Boolean) -> Unit
 ) {
     val s = Strings.get(uiState.language)
     var fitUkraineTick by remember { mutableStateOf(0) }
@@ -598,6 +634,8 @@ private fun MapScreen(
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
+    // Last strip-tapped threat id per type, so repeated taps cycle through each of that type.
+    val stripCycle = remember { mutableStateMapOf<ThreatType, String>() }
     // The zones sheet edits whatever the map is currently showing.
     val editingNight = uiState.nightActive && uiState.nightUseCustomZones
 
@@ -680,6 +718,8 @@ private fun MapScreen(
                     backupOfflineElapsedSec = uiState.backupOfflineElapsedSec,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
+                    showInfo = showConnectionInfo,
+                    onShowInfoChange = onShowConnectionInfoChange,
                     s = s,
                     lang = uiState.language,
                     iconSet = uiState.iconSet,
@@ -793,9 +833,9 @@ private fun MapScreen(
                                 val alerting = type !in uiState.silencedTypes
                                 if (count > 0 && visible && alerting) {
                                     val focus = uiState.focusLocation
-                                    val target = (uiState.threatsInner + uiState.threatsOuter)
+                                    val list = (uiState.threatsInner + uiState.threatsOuter)
                                         .filter { it.type == type }
-                                        .minByOrNull {
+                                        .sortedBy {
                                             if (focus != null) distanceMeters(focus.lat, focus.lon, it.lat, it.lon)
                                             else 0.0
                                         }
@@ -804,7 +844,19 @@ private fun MapScreen(
                                         count = count,
                                         enabled = true,
                                         iconSet = uiState.iconSet,
-                                        onClick = { target?.let(onThreatStripTap) }
+                                        onClick = {
+                                            list.firstOrNull()?.let { nearest ->
+                                                val current = stripCycle[type]
+                                                val next = if (current == null || list.size == 1) {
+                                                    nearest
+                                                } else {
+                                                    val idx = list.indexOfFirst { it.id == current }
+                                                    if (idx in 0 until list.size - 1) list[idx + 1] else list[0]
+                                                }
+                                                stripCycle[type] = next.id
+                                                onThreatStripTap(next)
+                                            }
+                                        }
                                     )
                                 }
                             }

@@ -46673,3 +46673,884 @@ I'll explore the codebase for these tasks. Let me start with targeted searches.
 ## 18/08/2026, 13:16:02
 
 Now let me look at how the Settings screen is shown/navigated within MainScreen.
+## 18/08/2026, 13:16:22
+
+Now let me read SettingsScreen.kt, focusing on the section/collapse/scroll structure.
+## 18/08/2026, 13:17:10
+
+Now let me look at the footer threat strip in MainScreen.
+## 18/08/2026, 13:17:37
+
+Now let me read Threat.kt to understand course/message parsing.
+## 18/08/2026, 13:18:40
+
+Let me look at AlertService's notification body construction for task 4.
+## 18/08/2026, 13:20:04
+
+Now let me read ThreatDeathAnimation.kt and the MapView death/camera handling for task 5.
+## 18/08/2026, 13:20:48
+
+Let me look at how WAV files are used in this project.
+## 18/08/2026, 13:21:04
+
+Not worth it. Your 3 WAVs total **~430 KB** (`air_raid_siren.wav` 176 KB, `zone_outer.wav` 176 KB, `all_clear.wav` 77 KB) — that's negligible in an APK.
+
+Considerations:
+- **Compression saves ~300 KB at best** for a 2s siren clip — no real benefit.
+- **Quality risk**: sirens are pure tones; lossy encoders can add artifacts at low bitrates.
+- **They're notification-channel sounds** (`AlertService.kt` `setSound`) — WAV plays fine there.
+- **Web port** (`web/`) uses the same WAVs natively in browsers — WAV is the lowest-common-denominator format, so keeping it avoids shipping dual copies.
+
+If you ever do want to shrink them, **OGG is the better choice than MP3** (Android-native, patent-free, better at low bitrates) — but for 430 KB I'd skip it.
+
+My recommendation: keep WAV as-is.
+## 18/08/2026, 13:21:41
+
+Let me examine the MainViewModel prefs combine blocks to understand how to add the new `followBullet` pref.
+## 18/08/2026, 13:24:08
+
+Let me check the Strings.kt structure around the misc group to know where to add the new strings.
+## 18/08/2026, 13:24:10
+
+The `R.raw.*` references are by resource name (no extension), so the OGGs resolve automatically. Let me confirm the exact reference sites.
+## 18/08/2026, 13:24:26
+
+I've explored all the relevant code. Before finalizing the plan, I have two design questions where your intent matters.
+## 18/08/2026, 13:24:36
+
+Plan:
+
+1. Delete `app/src/main/res/raw/OLD air_raid_siren.wav`, `OLD all_clear.wav`, `OLD zone_outer.wav` (the `OLD `-prefixed names also break aapt2 resource naming anyway).
+2. No code changes — `R.raw.air_raid_siren` / `zone_outer` / `all_clear` (`AlertService.kt:1020,1030,1040,1052,1062`) resolve by base name, so they now pick up the `.ogg` files automatically. Android supports OGG for notification-channel sounds.
+3. Verify: `.\gradlew.bat :app:assembleDebug`.
+
+Files changed:
+1. `app/src/main/res/raw/OLD air_raid_siren.wav` (delete)
+2. `app/src/main/res/raw/OLD all_clear.wav` (delete)
+3. `app/src/main/res/raw/OLD zone_outer.wav` (delete)
+## 18/08/2026, 13:26:16
+
+The WAVs are already gone — only the three OGGs remain. Verifying the build now.
+## 18/08/2026, 13:26:39
+
+
+
+
+## 18/08/2026, 13:26:40
+
+This error is unrelated to the audio change — missing drawable resources. Let me check if it's pre-existing.
+## 18/08/2026, 13:26:48
+
+Plan mode — I've mapped the change. Current state:
+
+- Monitor notification (`AlertService.kt:582-588`): title `notifOngoingTitle` ("Alert monitoring"), body text = `notifStatusZones` ("Threat alarm is following your GPS") or `notifStatusPinned` (city) when pinned; no subtitle today.
+- `startForegroundCompat` (`AlertService.kt:201-206`) posts the same placeholder with the body text.
+- `focusBannerCity` is already localized per language, so it works directly as a title.
+
+Proposed change:
+
+1. **`Strings.kt`** — EN `notifOngoingTitle` → `"Alert monitoring your GPS"`; UA → `"Моніторинг тривог за твоїм GPS"`. Delete now-unused `notifStatusZones` / `notifStatusPinned` (both locales + accessors).
+2. **`AlertService.kt`** — `notifyMonitor` call becomes:
+   - title: offline → `offlineStatusTitle`; pinned → `state.focusBannerCity`; else → `notifOngoingTitle`.
+   - text/subtitle: removed (pass `""`), including `startForegroundCompat`.
+
+One decision before I write the plan for
+## 18/08/2026, 13:26:51
+
+Build failure is pre-existing and unrelated to the audio swap — the working tree has deleted drawables `threat_ballistic.webp` / `threat_shahed.webp` (still referenced in `ThreatImages.kt:18,20`). Those deletions are not mine. Let me check what the icons referenced:
+## 18/08/2026, 13:26:56
+
+Audio swap is complete. But the build is broken by an unrelated pre-existing change: two `drawable-nodpi` webp files were deleted. Let me check what's in that folder now.
+## 18/08/2026, 13:27:03
+
+The audio swap is done and correct. But the build is blocked by a pre-existing broken state: `threat_shahed.webp` and `threat_ballistic.webp` were deleted from `drawable-nodpi/` but still referenced in `ThreatImages.kt:18,20`. Let me check if replacements exist elsewhere.
+## 18/08/2026, 13:27:11
+
+The audio swap is complete and correct:
+- 3 OGGs in `res/raw/` (`air_raid_siren.ogg` 10 KB, `all_clear.ogg` 7 KB, `zone_outer.ogg` 7 KB)
+- WAVs deleted; `R.raw.*` refs in `AlertService.kt` resolve to the OGGs by name — no code change needed
+
+But `:app:assembleDebug` fails on a **pre-existing, unrelated** issue: `threat_shahed.webp` and `threat_ballistic.webp` were deleted from `drawable-nodpi/` (still in your working tree as unstaged deletions) but `ThreatImages.kt:18,20` still references them. No replacements exist anywhere in `res/`.
+## 18/08/2026, 13:30:19
+
+Let me look at the current layout code for the zone sliders in both files
+## 18/08/2026, 13:30:35
+
+
+
+
+## 18/08/2026, 13:31:09
+
+Let me see the code right after the image block and check
+
+## 18/08/2026, 13:31:17
+
+Dropping the photo block, removing `ThreatImages.kt`, and deleting the remaining
+## 18/08/2026, 13:31:29
+
+Now check if `iconSet`/`context`/`imageRequest` are still used in this function after the removal.
+
+
+## 18/08/2026, 13:31:43
+
+
+
+
+## 18/08/2026, 13:31:47
+
+Now removing the unused coil imports, the `imageRequest` helper, deleting `ThreatImages.kt`, and the leftover `threat_unknown.webp`.
+
+
+## 18/08/2026, 13:32:07
+
+Now check for leftover `ThreatImages` import and verify no other references, then build
+## 18/08/2026, 13:32:09
+
+All `ZoneRow`s live in exactly the two places you mentioned. One thing is ambiguous before I finalize the plan — the divider to
+## 18/08/2026, 13:32:39
+
+Build is green. Let me check for leftover unused `context`/imports in the edited function and whether guide text mentions photos
+## 18/08/2026, 13:32:48
+
+Plan confirmed — offline body removed too, and "GPS" → "approx location".
+
+Files to change (in order):
+
+1. **`app/src/main/java/ua/ukrainedrones/Strings.kt`**
+   - `notifOngoingTitle`: EN → `"Alert monitoring your approx location"`, UA → `"Моніторинг тривог за твоїм приблизним місцезнаходженням"`.
+   - Delete `notifStatusZones` and `notifStatusPinned` (Status interface + both locale instances + StringSet accessors) — now unused.
+
+2. **`app/src/main/java/ua/ukrainedrones/AlertService.kt`**
+   - `startForegroundCompat` (line 201-206): title-only, text `""`.
+   - `notifyMonitor` call (line 582-588): title = `offlineStatusTitle` when offline, `state.focusBannerCity` when pinned, else `notifOngoingTitle`; text `""` in all cases (monitor notification is now title-only; the detailed offline alert + Retry stays on its own channel).
+
+3. **`CHANGELOG.md`** — add a line under `## [Unreleased]` about the clearer monitor notification.
+
+Then verify with `.\gradlew.bat :app:assembleDebug`.
+## 18/08/2026, 13:32:56
+
+`val context` at line 1281 is now unused (it was only for `imageRequest`). Removing it
+## 18/08/2026, 13:33:20
+
+Build green. Now adding CHANGELOG entries per
+## 18/08/2026, 13:33:28
+
+Confirmed. Here's the plan.
+
+## Plan
+
+### 1. `ZonesSheet.kt` — `ZoneRow` two-line value (lines 304–312)
+When `reference`/`dayLabel` are present (night editing), replace the single trailing `Text` with a `Column`:
+- Line 1: `"$value $unit"` — accent color, `labelLarge`, SemiBold (the night value, unchanged).
+- Line 2: `"$dayLabel $reference $unit"` — neutral gray `Color(0xFF9E9E9E)` (same gray as the unchecked switch thumb), `labelSmall`.
+- Day mode (`reference == null`) keeps the current single-line accent text.
+
+### 2. `ZonesSheet.kt` — remove in-group dividers (lines 113–115, 147–149)
+Replace `Spacer(8) + HorizontalDivider + Spacer(8)` between the red/yellow `ZoneRow`s with a single `Spacer(10.dp)` — in both the Slow and Fast `ZoneGroup`s.
+
+### 3. `SettingsScreen.kt` — remove in-group dividers (lines 953, 982)
+Same treatment in both night-custom-zones `GroupedZoneSection`s: drop the `HorizontalDivider`, keep vertical spacing via `Spacer(10.dp)`.
+
+### 4. Padding tuning for the wider slider
+Since the day text moves below, trim the fixed-width spacers on the row so the slider's `weight(1f)` box gains room:
+- `Spacer(12.dp)` after the Switch → `8.dp`
+- `Spacer(10.dp)` before the text → `6.dp`
+- day line `horizontalAlignment = Alignment.End` so the two lines right-align under the value.
+
+### 5. Docs touch
+Update the `ZonesSheet.kt` row in `ARCHITECTURE.md` ("bracketed 'day N' reference" → "gray day reference below the night value").
+
+### Verify
+- `.\gradlew.bat :app:assembleDebug` (no domain-logic change, so no unit-test run needed; you'll judge the padding on device).
+
+Files to change, in edit order:
+1. `app/src/main/java/ua/ukrainedrones/ZonesSheet.kt`
+2. `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`
+3. `ARCHITECTURE.md`
+## 18/08/2026, 13:33:32
+
+ThreatImages.kt was a documented source file — updating ARCHITECTURE.md module map per the repo convention
+
+
+## 18/08/2026, 13:33:52
+
+Done. Summary:
+
+**Audio swap** — the 3 OGGs are wired up automatically (`R.raw.*` refs in `AlertService.kt` resolve by base name), WAVs deleted. ~430 KB → ~25 KB total.
+
+**Deleted reference photos** (per your call — iconpacks only):
+- Removed the photo block from the expanded threat card in `SettingsScreen.kt`
+- Deleted `ThreatImages.kt`, `threat_unknown.webp`, and the unused coil imports/`imageRequest` helper
+- Updated `ARCHITECTURE.md` module map
+
+**CHANGELOG.md** — both changes logged under `[Unreleased]`.
+
+`:app:assembleDebug` builds green.
+## 18/08/2026, 13:36:28
+
+Research complete. Here's the plan.
+
+## Plan
+
+### 1. Notification tap closes Settings → map
+`MainScreen.kt`: add a `LaunchedEffect` keyed on `uiState.revealRequest?.tick` that sets `screen = Screen.MAP` when Settings is open. The existing reveal-pan in `MapView` already runs regardless of `paused`, so the map will pan to the revealed threat as before.
+
+### 2. Footer strip cycles through each threat of a type
+`MainScreen.kt` (`MapScreen`): hold `val stripCycle = remember { mutableStateMapOf<ThreatType, String>() }` (last-tapped id per type). For each type cell, order the type's threats by distance, find the last-tapped one, and pass the *next* one (wrapping) to `onThreatStripTap`, storing its id.
+
+### 3. Icons face the target of "heading toward…" messages
+- `Prediction.kt`: add `bearingDegrees(lat1, lon1, lat2, lon2)` (equirectangular, consistent with `distanceMeters`).
+- `Cities.kt`: add `byUa: Map<String, City>` (nameUa → City).
+- `Threat.kt`: `courseDeg` becomes `bearingDeg ?: heading ?: courseFromMessage() ?: fallbackCourse(id)`, where `courseFromMessage()` parses `title`/`explanationShort` with the "toward" subset of `COURSE_PATTERNS` (курсом на / у напрямку / рухається в напрямку / Курс на), looks up the place in `Cities.byUa`, and returns the bearing from the threat to that city. Dead-reckoning (`predictPosition`) is untouched — icon facing only, per the request.
+
+### 4. Notification transliteration gap
+- `AlertService.kt` `threatBody` (~line 730): `where` (`locality ?: district ?: region`) is used raw in EN. Route it through `Cities.uaToEn[where] ?: Transliteration.transliterate(where)` in EN (matches the invariant).
+- `ConnectionStatus.kt` `AlertHistoryRow` (~line 458): same transliteration for the alert-history locality (same invariant).
+
+### 5. "Follow the bullet" sub-setting + camera return
+- `ZonePrefs.kt`: `follow_bullet` key, `followBullet(): Flow<Boolean>` (default **true**), `setFollowBullet`.
+- `MainViewModel.kt`: add `followBullet` to `UiState`, `PrefsSnapshot`, the `AlertConfig` flags combine, `seedFlow`, `buildUiState`, and the copy block + `setFollowBullet`.
+- `Strings.kt`: `followBulletTitle`/`followBulletDesc` (UA + EN), added to the misc group next to `deathAnimationTitle`.
+- `SettingsScreen.kt`: new param + an indented sub-toggle under the "Neutralizing animation" row (only shown while that toggle is on).
+- `MainScreen.kt`: thread `followBullet` + `onFollowBulletChange` through.
+- `MapView.kt`: in both death-spawn paths (real `removedThreats` and the TEMP long-press), when `followBullet` is on — capture the pre-pan center, pan to the target if off-screen (existing `keepThreatOnScreen`, made to report whether it panned), and schedule a return to the original center at **0.3s after the explosion finishes** (`DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300`). A `LaunchedEffect` delays and animates back once. When off, the camera never moves for the animation.
+
+### 6. Save Settings state (collapsed + scroll)
+- `MainScreen.kt`: 
+  - `settingsListState` → `rememberSaveable(saver = LazyListState.Saver) { LazyListState() }` (survives reopen + process death).
+  - Hoist the 7 section-collapse booleans (language / map center / card size / threats / night / alerts / additional) out of `SettingsScreen` into `rememberSaveable`, passing a small `SettingsCollapseState` data class + one change lambda down.
+- `SettingsScreen.kt`: drop the internal `remember` states; wire toggles to the hoisted state. The zone-panel scroll path (`scrollToThreatsTick`) is untouched — it animates the same list state.
+
+### 7. Settings → Threats cleanup
+- `Strings.kt`: `threatsLabel` → `"Загрози"` / `"Threats"` (drop "— tap to toggle").
+- `SettingsScreen.kt` `ThreatSettingsCard`: replace the stacked labeled chips with two icon-only `IconToggle`s (map pin + bell) on the same line; thin the row padding (vertical 12 → ~8) and the expanded-content padding.
+
+### Tests / docs / verify
+- `ThreatTest.kt`: unit tests for the message-derived `courseDeg` (heading-toward place → correct bearing; unknown place → fallback pseudo-course; real bearing still wins).
+- `ARCHITECTURE.md`: touch up the module-map lines for `ZonePrefs` (follow_bullet), `SettingsScreen` (saved collapse/scroll + follow-bullet), `MainScreen` (strip cycling / settings-close-on-reveal), `Threat` (`courseDeg`).
+- Build + verify: `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+
+**Files to edit, in order:**
+1. `app/src/main/java/ua/ukrainedrones/Prediction.kt`
+2. `app/src/main/java/ua/ukrainedrones/Cities.kt`
+3. `app/src/main/java/ua/ukrainedrones/Threat.kt`
+4. `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`
+5. `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`
+6. `app/src/main/java/ua/ukrainedrones/Strings.kt`
+7. `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`
+8. `app/src/main/java/ua/ukrainedrones/MainScreen.kt`
+9. `app/src/main/java/ua/ukrainedrones/MapView.kt`
+10. `app/src/main/java/ua/ukrainedrones/AlertService.kt`
+11. `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`
+12. `app/src/test/java/ua/ukrainedrones/ThreatTest.kt`
+13. `ARCHITECTURE.md`
+
+Ready to implement on your go.
+## 18/08/2026, 13:37:54
+
+Let me check `reachKm` and the focus-distance helpers before proposing the counting scope.
+## 18/08/2026, 13:38:53
+
+Now the AlertService edits
+## 18/08/2026, 13:39:02
+
+
+
+
+## 18/08/2026, 13:39:13
+
+Now verify with a build:
+## 18/08/2026, 13:39:26
+
+Done. Build passes (the warnings are pre-existing).
+
+- Monitor notification is now title-only: **"Alert monitoring your approx location"** (UA: «Моніторинг тривог за твоїм приблизним місцезнаходженням») when following, the **pinned city name** when pinned, **"Offline"** when disconnected — subtitle/body removed everywhere (`AlertService.kt:583`, `startForegroundCompat`).
+- Removed the now-unused `notifStatusZones`/`notifStatusPinned` strings.
+- Added a CHANGELOG line under `## [Unreleased]`.
+## 18/08/2026, 13:39:30
+
+Got it — two things: neutral wording, and a sane counting scope without adding yet another setting.
+
+## Plan: reword + scope the tally
+
+### 1. Counting scope (no new setting)
+Only count a neutralization when the threat's last-known position (`ThreatRemoved.lat/lon`) was within that type's **`reachKm`** of your focus point (GPS or pinned city) — the same per-type cap the alert model already uses (`Zones.kt:43`). So:
+- An **FPV/KAB/recon** gone 300 km away → **not counted** (reach 40/70/50 km — you'd never have been alerted anyway).
+- A **Shahed** at 300 km → counted (reach 1000 km); a **ballistic** at 300 km → counted (country-scale).
+
+This answers "do I care if it was 300 km away?" with "only if it could have reached you" — consistent with every other alert in the app, zero toggles. If the focus is unknown (no GPS, no pin), nothing counts, matching how zone alerts already behave. The collector already has the removal's lat/lon/type; the focus is available as `state.focusLocation` (`MonitorEvent.State`), surfaced via a `@Volatile` field the collector reads.
+
+### 2. Neutral wording
+Drop "real"/«реально» everywhere and stop implying interception. "Resolved" (the server's own term) or "gone / no longer tracked" is honest — we don't know if it was shot down or detonated on target.
+
+### Files (edit order)
+1. `Strings.kt` — reword `neutralizedChannelDesc`, `neutralizedNotifBody` (UA+EN), the channel name, and `neutralizedThreatsPhrase` (e.g. EN "N threats resolved", UA «Завершено N загроз») to neutral copy.
+2. `AlertService.kt` — add the focus field; in the `removedThreats` collector, skip when focus is null or `distanceMeters(focus, removed) / 1000 > reachKm(removed.type)`; update the collector comment.
+3. `ARCHITECTURE.md` — note the reach-scoping on the `AlertService` row.
+4. `CHANGELOG.md` — update the Unreleased entry wording + scope.
+5. Verify: `.\gradlew.bat :app:assembleDebug`.
+
+Two choices for you
+
+
+## 18/08/2026, 13:41:27
+
+The codebase state doesn't match what I saw earlier — let me verify against git.
+## 18/08/2026, 13:42:01
+
+Now the picture is clear — the working tree already has the ThreatImages/Wikimedia reference deleted (uncommitted). Let me check the icon system to plan the replacement.
+## 18/08/2026, 13:42:24
+
+Good — let me survey every user-visible "neutralized/neutralizing" string so the plan covers them
+## 18/08/2026, 13:51:43
+
+## Plan
+
+**1. ConnectionStatus modal header** — `ConnectionStatus.kt`
+- In the modal's top status row (lines 121–142), after the title, add the NEPTUN logo (`R.drawable.neptun`, ~26dp — bigger than the 14dp pill) + `neptun.in.ua` URL text styled `bodyMedium`, white, `TextDecoration.Underline`, clickable → opens `https://neptun.in.ua/` (the `LocalContext` is already in scope).
+- Delete the old bottom attribution row (lines 202–224).
+
+**2. Alert history — `AlertHistory.kt`**
+- Add 3-day auto-clear: prune entries with `now - atMillis ≥ 3d` on every `append` and on `attachLoaded` (persist when pruned). Extract a pure `pruneExpiredEntries(entries, now, maxAgeMs)` so it's unit-testable (matches the existing `serializeAlertHistory`/`parseAlertHistory` pattern).
+- Add `clear()` — empties entries + `openAtMillis` map, persists empty.
+
+**3. Alert history UI — `ConnectionStatus.kt`**
+- `AlertHistorySection` expanded mode: a Clear button + caption "Auto-clears after 3 days" at the bottom (button only when entries exist; caption always).
+- `AlertHistoryRow`: remove the red/yellow/blue dot and color the **type label** by tier instead; **drop the MM:SS duration** column, keep km; transliterate locality for EN via `Cities.uaToEn[locality] ?: Transliteration.transliterate(locality)`.
+- Wave grouping: consecutive entries ≤ ~10 min apart (by `atMillis`) cluster into a rough "wave"; a thin `HorizontalDivider` between groups.
+
+**4. Strings — `Strings.kt`**
+- Add to `Misc` + accessors: `alertHistoryClear` (UA "Очистити" / EN "Clear") and `alertHistoryAutoClearNote` (UA "Автоматично очищається через 3 дні" / EN "Auto-clears after 3 days").
+
+**5. Tests / docs / verify**
+- `AlertHistoryTest.kt`: unit test for `pruneExpiredEntries`.
+- Update `ARCHITECTURE.md` (ConnectionStatus + AlertHistory rows) and append `CHANGELOG.md` `[Unreleased]` entries.
+- Verify: `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`.
+
+Files to change, in edit order:
+1. `app/src/main/java/ua/ukrainedrones/AlertHistory.kt`
+2. `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`
+3. `app/src/main/java/ua/ukrainedrones/Strings.kt`
+4. `app/src/test/java/ua/ukrainedrones/AlertHistoryTest.kt`
+5. `ARCHITECTURE.md`
+6. `CHANGELOG.md`
+## 18/08/2026, 13:51:55
+
+Let me check the bullet.png dimensions to size it correctly
+## 18/08/2026, 13:52:12
+
+`bullet.png` is **87 × 138 px** (tall, tip-up). The bug: it's drawn into a square `RectF(-half,-half,half,half)` with `half = 14dp`, so the 87px width gets stretched to 28dp — both axes forced equal, ignoring the 0.63 aspect.
+
+## Plan
+`ThreatDeathAnimation.kt`, the bitmap draw (~line 238):
+
+- Preserve the sprite's aspect ratio: scale the long axis (138px) to the existing 28dp and let the short axis follow proportionally → ~28dp long × ~17.6dp thick (instead of 28×28).
+- Add `import kotlin.math.max`.
+
+```kotlin
+if (bitmap != null) {
+    val longHalf = 14f * density
+    val bw = bitmap.width.toFloat()
+    val bh = bitmap.height.toFloat()
+    val scale = longHalf * 2f / max(bw, bh)
+    val hw = bw * scale / 2f
+    val hh = bh * scale / 2f
+    canvas.drawBitmap(bitmap, null, RectF(-hw, -hh, hw, hh), bulletPaint)
+}
+```
+
+Want the bullet smaller overall too (e.g. 22dp long), or keep 28dp length with correct aspect?
+## 18/08/2026, 13:52:22
+
+
+
+
+## 18/08/2026, 13:53:45
+
+Now I have the full picture. Let me implement. First `ZonePrefs.kt`
+## 18/08/2026, 13:54:05
+
+
+
+
+## 18/08/2026, 13:54:19
+
+
+
+
+## 18/08/2026, 13:54:31
+
+
+
+
+## 18/08/2026, 13:55:11
+
+Now `Strings.kt` — Misc fields, getters, values, plus all the "neutralized"→"resolved" rewordings
+## 18/08/2026, 13:55:56
+
+Now the UA/EN Misc values — reword death-animation strings and add the tally toggle strings
+## 18/08/2026, 13:56:08
+
+Root cause found — it's the same country-wide `alertActive` bug.
+
+The wizard is gated at `MainScreen.kt:265`:
+```
+if (!uiState.languageChosen && !uiState.alertActive) { FirstLaunchWizard(...) }
+```
+`relaunchSetup()` (`MainViewModel.kt:1010`) correctly flips `languageChosen=false`, but the wizard **only renders when `alertActive` is false**. And `alertActive` is the country-wide flag we established is effectively stuck true (permanently-flagged Luhansk in the backup feed when the backup merges, or *any* distant oblast alert). So the flag flips, but the wizard never shows → "does nothing."
+
+The old design intent was "alerts outrank onboarding — force-close the wizard if an alarm goes live." But with `alertActive` being country-wide + stuck, the wizard is permanently suppressed, which is exactly what broke the button.
+
+## Plan
+
+**1. `MainScreen.kt` (line 265)** — remove the alert gate: `if (!uiState.languageChosen)` and update the comment (lines 262–264).
+
+**2. `ARCHITECTURE.md` (line 67)** — update the wizard description (drop the `!alertActive` gating note).
+
+**3. `CHANGELOG.md`** — add an Unreleased line: Replay first launch now always opens the wizard.
+
+Tradeoff to be aware of: with the gate removed, the full-screen wizard will also cover the map if a real local siren is sounding while it's open (step 0 has no back-dismiss, so a user must pick a language to leave). If you'd rather keep that safety behavior, I can gate the wizard on a *local* alarm instead (`focusOblastAlertActive || activeZone != null`) — it just won't be stuck on distant/stale alerts.
+
+Want the full removal, or the local-alarm gate?
+## 18/08/2026, 13:56:27
+
+Now the tally-notification strings (drop "real", use "resolved")
+## 18/08/2026, 13:56:50
+
+Now the compact-card labels/notes (guide group)
+## 18/08/2026, 13:57:00
+
+The sheet's `showInfo` is local state inside `ConnectionStatus`, and `MapScreen` stays composed under Settings/Guide (so the sheet would persist across navigation). The "anxiety state" is `uiState.activeZone != null || uiState.focusOblastAlertActive` (MainScreen.kt:626-627). Let me confirm the exact dismiss trigger before planning.
+## 18/08/2026, 13:57:29
+
+Now the phrase helper — rename to `resolvedThreatsPhrase` and re
+## 18/08/2026, 13:57:40
+
+Now `AlertService.kt` — scoping, toggle gate, and updated
+## 18/08/2026, 13:57:58
+
+Now set `currentFocus` in `handleState` and fix the phrase-helper call + KDoc
+
+
+## 18/08/2026, 13:58:20
+
+Now `MainViewModel.kt` — thread the new pref through
+## 18/08/2026, 13:59:55
+
+Now `MainScreen.kt` — pass the new pref +
+## 18/08/2026, 14:00:22
+
+The sheet's `showInfo` state is local to `ConnectionStatus` (ConnectionStatus.kt:82), and `MapScreen` stays composed under Settings/Guide (MainScreen.kt:98-100) — so the sheet would linger across navigation, and stay up over an active alert. The alert/"anxiety" state is `uiState.activeZone != null || uiState.focusOblastAlertActive` (MainScreen.kt:626-627).
+
+## Plan
+
+**`app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`**
+- Hoist the sheet's visibility: remove `var showInfo by remember { mutableStateOf(false) }` (line 82) and add two params — `showInfo: Boolean` and `onShowInfoChange: (Boolean) -> Unit`.
+- Replace the three write sites: `clickable { showInfo = true }` → `clickable { onShowInfoChange(true) }`, `onDismissRequest = { showInfo = false }` → `onDismissRequest = { onShowInfoChange(false) }`, close `IconButton(onClick = { showInfo = false })` → `onShowInfoChange(false)`.
+- Drop now-unused imports (`mutableStateOf`, `remember`, `getValue`, `setValue`) if nothing else uses them.
+
+**`app/src/main/java/ua/ukrainedrones/MainScreen.kt`**
+- In `MainScreen`: add `var showConnectionInfo by remember { mutableStateOf(false) }`, plus an auto-dismiss effect:
+  ```
+  LaunchedEffect(screen, uiState.activeZone, uiState.focusOblastAlertActive) {
+      if (screen != Screen.MAP || uiState.activeZone != null || uiState.focusOblastAlertActive)
+          showConnectionInfo = false
+  }
+  ```
+  Covers both cases: dismiss when an alert starts (only on the transition, so opening it mid-alert still works), and dismiss whenever navigating to Settings/Guide (so returning to the map is always clean).
+- Thread the state through `MapScreen`: add `showInfo: Boolean` / `onShowInfoChange: (Boolean) -> Unit` params to `MapScreen` and pass them into the `ConnectionStatus(...)` call (line 664).
+
+No string or CHANGELOG change needed (behavioral fix). Verify with `.\gradlew.bat :app:assembleDebug`.
+## 18/08/2026, 14:00:28
+
+Now `SettingsScreen.kt` — params and the toggle row in the Alerts card
+## 18/08/2026, 14:01:11
+
+Now docs. Updating the `AlertService` row, `ZonePrefs` row, `SettingsScreen` row in `ARCHITECTURE.md`
+
+
+## 18/08/2026, 14:01:22
+
+Let me check the wizard's dismiss options before answering.
+## 18/08/2026, 14:01:28
+
+
+
+
+## 18/08/2026, 14:02:07
+
+There's a "Later" button on step 0 (`MainScreen.kt:382` → `onComplete`), and Back on later steps, so yes — the wizard is dismissible. Good, that resolves the "trapped" concern.
+
+Let me confirm where to declare the new state (the `onRelaunchSetup` wiring is at line ~215, before the render gate):
+## 18/08/2026, 14:02:28
+
+Now the CHANGELOG entry
+
+
+## 18/08/2026, 14:02:31
+
+Confirmed: the wizard is dismissible — step 0 has a "Later" button (`MainScreen.kt:382`) and later steps have Back down to step 0. So no trap.
+
+Here's the plan that keeps force-close-on-live-alert while letting the user open the wizard during an alert:
+
+## Plan
+
+**1. `MainScreen.kt`**
+- Add local state near the other top-level states (line ~74): `var wizardOpenedDuringAlert by remember { mutableStateOf(false) }`.
+- `onRelaunchSetup` (line 217): `{ viewModel.relaunchSetup(); wizardOpenedDuringAlert = true }` — the Replay button now overrides the alert gate.
+- Add a reset: `LaunchedEffect(uiState.alertActive) { if (!uiState.alertActive) wizardOpenedDuringAlert = false }` (clears the override once the alert passes).
+- Render gate (line 265) becomes `if (!uiState.languageChosen && (!uiState.alertActive || wizardOpenedDuringAlert))`; update the comment (262–264).
+
+Behavior matrix (all preserved/desired):
+- **Alert starts while wizard is open** → wizard force-closes without saving; returns when the alert clears (original behavior intact).
+- **Replay tapped during an active alert** → wizard opens (the user's explicit choice, now honored).
+- **First install with alert already active** → wizard still suppressed (no user choice involved there, unchanged).
+
+**2. `ARCHITECTURE.md` (line 67)** — update the wizard description: no longer gated on alertActive for opening; still force-closes if an alert goes live while open.
+
+**3. `CHANGELOG.md`** — extend the Unreleased entry: Replay first launch works during an active alarm; the wizard still force-closes if an alert starts while it's open.
+
+No changes needed in the ViewModel — `relaunchSetup()` stays as-is. Then verify with `.\gradlew.bat :app:assembleDebug`.
+
+Say go and I'll implement.
+## 18/08/2026, 14:02:39
+
+Updating the two older Unreleased lines that quote the renamed
+## 18/08/2026, 14:03:09
+
+Now let me build to verify everything compiles
+## 18/08/2026, 14:03:32
+
+The prefs-snapshot data class needs the field too. Let me find it
+## 18/08/2026, 14:04:08
+
+Now ARCHITECTURE.md and CHANGELOG:
+## 18/08/2026, 14:05:01
+
+Build passes (warnings are pre-existing). Done.
+
+- `MainScreen.kt` — added `wizardOpenedDuringAlert` state, set true by the Replay button, reset when the alert clears, and used to override the alert gate. The wizard still force-closes if an alert starts while it's open.
+- `ARCHITECTURE.md` + `CHANGELOG.md` — updated to match.
+
+Replay first launch now opens the wizard even during an active alarm; a live alert mid-wizard still force-closes it without saving.
+## 18/08/2026, 14:05:29
+
+Done. The bullet now keeps its 87:138 aspect ratio at 22dp long (~13.8dp thick), drawn via aspect-preserving scale. Build green.
+## 18/08/2026, 14:18:58
+
+Starting with Task 3. Adding `bearingDegrees` to Prediction.kt:
+## 18/08/2026, 14:19:20
+
+Now add `byUa` to Cities.kt:
+## 18/08/2026, 14:19:37
+
+Now the `courseDeg` change in Threat.kt:
+## 18/08/2026, 14:20:02
+
+Task 3 code done. Now Task 5 — ZonePrefs:
+## 18/08/2026, 14:20:37
+
+Now MainViewModel plumbing. UiState field first:
+## 18/08/2026, 14:21:11
+
+Now AlertConfig:
+## 18/08/2026, 14:21:50
+
+The working tree already has `neutralizedTallyEnabled` here (13 flows). I need to add `followBullet` as the 14th:
+## 18/08/2026, 14:22:03
+
+Let me verify the AlertConfig field ordering matches:
+## 18/08/2026, 14:22:26
+
+The working tree is being modified in parallel — `neutralizedTallyEnabled` now appears. Let me get the full current picture:
+## 18/08/2026, 14:22:57
+
+The parallel edit left `neutralizedTallyEnabled` half-wired (UiState + setter exist, but PrefsSnapshot/AlertConfig fields are missing) — the file won't compile. I'll complete that plumbing correctly while I'm here. Let me read the construction sites:
+## 18/08/2026, 14:23:37
+
+Now add `followBullet` to the UiState copy block and the `buildUiState` param:
+## 18/08/2026, 14:24:00
+
+Now the seedFlow — add the new prefs reads:
+## 18/08/2026, 14:24:34
+
+Now add the `setFollowBullet` setter near the other setters:
+## 18/08/2026, 14:25:10
+
+Task 3 and the followBullet plumbing done (also completed the parallel `neutralizedTallyEnabled` wiring that was left half-done). Now Strings.kt:
+## 18/08/2026, 14:25:55
+
+Now the UA values (near line 848) and EN values (near line 1208):
+## 18/08/2026, 14:26:48
+
+Now the `threatsLabel` cleanup:
+## 18/08/2026, 14:27:52
+
+Strings done. Now the big one — SettingsScreen.kt. Let me re-read its current state since the working tree changed
+## 18/08/2026, 14:28:13
+
+
+
+
+## 18/08/2026, 14:29:13
+
+Now making the SettingsScreen signature
+## 18/08/2026, 14:30:45
+
+## Objective
+
+- Implement 8 bug fixes/features in the Ukraine Drones Android app: (1) notification tap closes Settings→map, (2) footer threat strip cycles per type, (3) threat icons face "heading toward…" destinations, (4) fix notification transliteration gaps, (5) "follow the bullet" camera sub-setting + return to original camera, (6) persist Settings collapse+scroll state, (7) Settings→Threats cleanup (title, same-line toggles, thinner padding), (8) expanded threat card shows large icon of selected iconpack.
+- User confirmed: camera returns 0.3s after the explosion finishes (not 1s after it starts); threat-row toggles become icon-only.
+
+## Important Details
+
+- followBullet pref: default `true`, key `follow_bullet` (already added to ZonePrefs).
+- Camera return timing = 0.3s after explosion finishes = `DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300` = 2000+3000+300 = **5300ms** after spawn.
+- Working tree has PRE-EXISTING uncommitted changes that must NOT be undone: `ThreatImages.kt` deleted, `threat_ballistic/shahed/unknown.webp` deleted, `ic_launcher.png` deleted, siren `.wav`→`.ogg` (untracked), plus modifications to `SettingsScreen.kt`, `Strings.kt`, `AlertService.kt`, `ARCHITECTURE.md`, `CHANGELOG.md`, `version.properties`.
+- Files are being modified in parallel by an external process: `SettingsScreen.kt` line count changed 1727→1697 mid-session; `MainViewModel.kt` grew to 1164 lines and gained `neutralizedTallyEnabled` half-wired mid-session. **Re-read files immediately before each edit.**
+- ThreatSettingsCard currently (line ~1197) has NO image section — the old pic/Wikimedia block is already deleted. Task 8 = only ADD the large icon; nothing left to delete.
+- `courseFromMessage()` parses `explanationShort ?: title` via `COURSE_TARGET_PATTERNS`, resolves place via `Cities.byUa`, returns `bearingDegrees(lat, lon, city.lat, city.lon)`; `predictPosition` intentionally untouched (icon facing only).
+- Task 6 approach: hoist 7 collapse booleans to MainScreen via `rememberSaveable` (pass a small `SettingsCollapseState` data class + one change lambda); `settingsListState` → `rememberSaveable(saver = LazyListState.Saver)`. Zone-panel `scrollToThreatsTick` path stays untouched.
+- Task 4: `threatBody()` in AlertService (~line 730) uses `where = t.locality ?: t.district ?: t.region` raw in EN → fix with `Cities.uaToEn[where] ?: Transliteration.transliterate(where)`; same for `AlertHistoryRow` locality in ConnectionStatus.kt (~line 458, `lang` is in scope).
+- Task 5 camera logic: gate on followBullet; capture pre-pan center; `keepThreatOnScreen` (called in 2 death-spawn paths) must be changed to report whether it panned; return via a `LaunchedEffect` delay + `animateTo`, clearing state. When off, camera never moves for the animation.
+- Task 1: `LaunchedEffect(uiState.revealRequest?.tick)` in MainScreen — if `screen == Screen.SETTINGS`, set `screen = Screen.MAP`.
+- Task 2: `stripCycle = remember { mutableStateMapOf<ThreatType, String>() }` in MapScreen; per type order threats by distance, pick next id (wrapping), call `onThreatStripTap`.
+- Build/verify: `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest`.
+
+## Work State
+
+### Completed
+
+- **Task 3 (code done, tests pending):**
+  - `Prediction.kt`: added `import kotlin.math.atan2` and `bearingDegrees(lat1, lon1, lat2, lon2)` (equirectangular, returns 0..360).
+  - `Cities.kt`: added `val byUa: Map<String, City> = ALL.associate { it.nameUa to it }`.
+  - `Threat.kt`: `courseDeg` getter now `bearingDeg ?: heading ?: courseFromMessage() ?: fallbackCourse(id)`; added private `courseFromMessage()` and file-level `COURSE_TARGET_PATTERNS` (курсом на / у напрямку / рухається в напрямку / Курс на patterns).
+- **Task 5 (partial):**
+  - `ZonePrefs.kt`: added `followBulletKey = booleanPreferencesKey("follow_bullet")`, `followBullet(): Flow<Boolean>` (default true), `setFollowBullet(enabled)`.
+  - `MainViewModel.kt`: added `followBullet` to UiState (line ~100), PrefsSnapshot (~240), AlertConfig (~279), and the 14-flow flags combine (~328) with `AlertConfig(flags[0..13])`.
+  - Fixed broken parallel edits: `neutralizedTallyEnabled` was referenced in UiState/prefsSnapshot construction/uiState copy but missing from AlertConfig and PrefsSnapshot (file would not compile). Just added the field to both data classes in the correct position (after followBullet). Construction mapping now consistent.
+- **Task 8 (research):** confirmed ThreatImages.kt + webp + coil/AsyncImage block already deleted in working tree; plan is to add `Box(fillMaxWidth, contentAlignment=Center)` with `ThreatIcon(type = type, set = iconSet, size = 160.dp)` in the expanded section (after speed pill, before joke).
+
+### Active
+
+- **MainViewModel.kt: `setFollowBullet` function not yet added** (only `setNeutralizedTallyEnabled` exists at line ~1007). Also `seedFlow` still needs `prefs.followBullet().first()` and the `buildUiState` call needs `followBullet = prefs.followBullet` (verify line ~563 region where neutralizedTallyEnabled is copied).
+
+### Blocked
+
+- (none) — but the file is being concurrently modified by an external process; treat every prior read as potentially stale.
+
+## Next Move
+
+1. Add `setFollowBullet(enabled: Boolean)` to MainViewModel (~line 1007), add `prefs.followBullet().first()` to seedFlow, and pass `followBullet = prefs.followBullet` in the buildUiState call — then re-read to confirm compile consistency.
+2. Strings.kt: add `followBulletTitle`/`followBulletDesc` (UA+EN) next to `deathAnimationTitle`/`deathAnimationDesc` (UA ~848, EN ~1208); change `threatsLabel` to `"Загрози"` (UA ~695) and `"Threats"` (EN ~1055).
+3. SettingsScreen.kt: follow-bullet indented sub-toggle under Neutralizing animation row (~line 604); ThreatSettingsCard — icon-only IconToggles on same line (replace stacked labeled chips), row padding vertical 12→8, large `ThreatIcon` (160.dp) in expanded section; remove internal collapse `remember`s, wire hoisted state from MainScreen.
+4. MainScreen.kt: LaunchedEffect close-settings-on-reveal (task 1), `stripCycle` state + next-threat logic (task 2), `rememberSaveable` for `settingsListState` + hoisted collapse booleans (task 6), thread `followBullet` + `onFollowBulletChange` to SettingsScreen.
+5. MapView.kt: gate camera pan on `followBulletState`; `keepThreatOnScreen` → return Boolean; schedule return at 5300ms via LaunchedEffect; skip pan when followBullet off.
+6. AlertService.kt `threatBody` + ConnectionStatus.kt `AlertHistoryRow`: EN transliteration of `where`/locality.
+7. ThreatTest.kt: courseDeg message-derived tests (toward-city bearing, unknown place → fallback, real bearing wins).
+8. ARCHITECTURE.md module-map updates (ZonePrefs follow_bullet, SettingsScreen saved state/follow-bullet/large icon, MainScreen strip cycling, Threat courseDeg).
+9. Build: `.\gradlew.bat :app:assembleDebug` + `.\gradlew.bat :app:testDebugUnitTest`.
+
+## Relevant Files
+
+- `app/src/main/java/ua/ukrainedrones/Prediction.kt`: `bearingDegrees` added (task 3).
+- `app/src/main/java/ua/ukrainedrones/Cities.kt`: `byUa` map added (task 3).
+- `app/src/main/java/ua/ukrainedrones/Threat.kt`: `courseDeg`/`courseFromMessage`/`COURSE_TARGET_PATTERNS` (task 3).
+- `app/src/main/java/ua/ukrainedrones/ZonePrefs.kt`: `follow_bullet` pref added (task 5).
+- `app/src/main/java/ua/ukrainedrones/MainViewModel.kt`: followBullet + neutralizedTallyEnabled plumbing mostly done; `setFollowBullet` still missing.
+- `app/src/main/java/ua/ukrainedrones/Strings.kt`: followBullet strings + threatsLabel change pending.
+- `app/src/main/java/ua/ukrainedrones/SettingsScreen.kt`: tasks 5 (sub-toggle), 6 (hoisted state), 7 (icon-only toggles/thin padding/title), 8 (large icon) pending; note parallel edits.
+- `app/src/main/java/ua/ukrainedrones/MainScreen.kt`: tasks 1, 2, 6 pending.
+- `app/src/main/java/ua/ukrainedrones/MapView.kt`: task 5 camera follow/return pending; `keepThreatOnScreen` needs Boolean return.
+- `app/src/main/java/ua/ukrainedrones/AlertService.kt`: `threatBody` (~line 730) transliteration fix pending; file has pre-existing uncommitted changes.
+- `app/src/main/java/ua/ukrainedrones/ConnectionStatus.kt`: `AlertHistoryRow` (~line 458) transliteration fix pending.
+- `app/src/test/java/ua/ukrainedrones/ThreatTest.kt`: courseDeg tests pending (existing tests at lines 149-166).
+- `ARCHITECTURE.md`: ThreatImages row already removed; other module-map updates pending.
+- `app/src/main/java/ua/ukrainedrones/ThreatDeathAnimation.kt`: `DEATH_EXPLOSION_START_MS` (2000) / `DEATH_EXPLOSION_LEN_MS` (3000) public consts for return timing.
+## 18/08/2026, 14:31:00
+
+Continuing. Now replace the internal collapse states with the hoisted one
+## 18/08/2026, 14:31:21
+
+
+
+
+## 18/08/2026, 14:31:51
+
+Now the Additional
+## 18/08/2026, 14:32:18
+
+Now add the follow-bullet sub-toggle under the death-animation row
+## 18/08/2026, 14:32:26
+
+Now the ThreatSettingsCard for tasks 7 & 8
+
+
+## 18/08/2026, 14:32:57
+
+Task 7 — icon-only toggles on the same line, thinner
+## 18/08/2026, 14:33:19
+
+Task 8 — large icon in the expanded section
+## 18/08/2026, 14:33:24
+
+Now define the `SettingsCollapseState
+## 18/08/2026, 14:33:28
+
+
+
+
+## 18/08/2026, 14:33:43
+
+
+
+
+## 18/08/2026, 14:33:51
+
+SettingsScreen done. Now MainScreen.kt — tasks 1, 
+## 18/08/2026, 14:34:55
+
+Now the MainScreen edits — imports, hoisted state, reveal-close, and the new
+## 18/08/2026, 14:35:31
+
+Now task 2 — the threat strip cycling. Let me read MapScreen
+
+
+## 18/08/2026, 14:36:12
+
+MainScreen done. Now MapView.kt — task 5 camera follow/return
+
+
+## 18/08/2026, 14:36:50
+
+
+
+
+## 18/08/2026, 14:37:42
+
+
+
+
+## 18/08/2026, 14:38:35
+
+Now the follow-bullet state + helper in
+## 18/08/2026, 14:38:42
+
+Now the two call sites and the `keepThreatOnScreen` Boolean return
+
+
+## 18/08/2026, 14:39:05
+
+MapView done. Now task 4 — the transliteration fixes. Let me look at both spots
+## 18/08/2026, 14:39:57
+
+Now the tests. Let me check the existing ThreatTest.
+## 18/08/2026, 14:41:15
+
+
+
+
+## 18/08/2026, 14:41:24
+
+Now ARCHITECTURE.md. Let me find the rows
+## 18/08/2026, 14:41:55
+
+Now updating ARCHITECTURE.md rows
+## 18/08/2026, 14:43:47
+
+Now append CHANGELOG entries per the repo workflow
+## 18/08/2026, 14:44:09
+
+
+
+
+## 18/08/2026, 14:44:22
+
+Before building, let me verify the combine positional order and AlertConfig field order still
+## 18/08/2026, 14:44:54
+
+
+
+
+## 18/08/2026, 14:45:08
+
+Found a missing wiring — `followBullet` isn't set in the PrefsSnapshot construction
+## 18/08/2026, 14:45:15
+
+Now the build. This will take a while.
+
+
+## 18/08/2026, 14:45:33
+
+
+
+
+## 18/08/2026, 14:45:42
+
+The field is `tick`, not `revealTick`
+
+
+## 18/08/2026, 14:46:41
+
+Plan mode — investigating all five items. Let me look at the relevant code.
+## 18/08/2026, 14:46:46
+
+Build green. One warning is from my `courseFromMessage` — fixing the pointless Elvis on the non-null `title`
+
+
+## 18/08/2026, 14:47:35
+
+The external process added a `showInfo` param to ConnectionStatus mid-build. Let me look at both sides
+## 18/08/2026, 14:47:44
+
+Imports still used by the log sections — keep them. Now MainScreen.kt:
+## 18/08/2026, 14:47:48
+
+
+
+
+## 18/08/2026, 14:48:47
+
+
+
+
+## 18/08/2026, 14:48:56
+
+The expanded `ThreatSettingsCard` already shows a 160dp `ThreatIcon`. Let me check git history to see what the "big photo" used to be, and look at the reference-photos section
+
+
+## 18/08/2026, 14:49:02
+
+Done. The sheet's visibility is now hoisted to `MainScreen` and auto-dismisses in both cases:
+
+- **Alert start** (`activeZone != null` or official oblast alert active) — closes so it never obscures the map during an alert (opening it mid-alert still works, since the effect fires on state *change*).
+- **Navigating to Settings/Guide** — closes, so returning to the map is always clean.
+
+Changes: `ConnectionStatus.kt` (visibility hoisted to `showInfo`/`onShowInfoChange` params) and `MainScreen.kt:66-73` (state + auto-dismiss `LaunchedEffect`, threaded through `MapScreen`). Build passes.
+## 18/08/2026, 14:49:09
+
+The external editor finished its refactor — re-running the tests
+## 18/08/2026, 14:49:51
+
+All green — build and tests pass. Final todo
+## 18/08/2026, 14:49:56
+
+The working tree already differs from HEAD — `ThreatImages.kt` was deleted. Let me see what the committed `ThreatSettingsCard` looked like vs now
+## 18/08/2026, 14:50:09
+
+All 8 tasks done. `.\gradlew.bat :app:assembleDebug` and `.\gradlew.bat :app:testDebugUnitTest` both pass.
+
+- **Task 1** — `MainScreen.kt`: `LaunchedEffect(uiState.revealRequest?.tick)` drops Settings → map on notification reveal.
+- **Task 2** — Threat strip now cycles per type: `stripCycle` remembers the last-tapped id per `ThreatType`, taps step through the distance-sorted list (wrapping).
+- **Task 3** — `Threat.courseDeg` resolves bearing → heading → message-named destination (new `COURSE_TARGET_PATTERNS` + `Cities.byUa`, aimed via `Prediction.bearingDegrees`) → pseudo-course. 4 new unit tests pass.
+- **Task 4** — `AlertService.threatBody` and `ConnectionStatus.AlertHistoryRow` transliterate UA place names (via `Cities.byUa`/`Transliteration`) when the app language is EN.
+- **Task 5** — `follow_bullet` pref (default on, wired through `ZonePrefs`/`MainViewModel`/`SettingsScreen`), sub-toggle indented under the animation row; `MapView.keepThreatOnScreen` returns whether it panned, and `followStrike` returns the camera 0.3s after the explosion (START+LEN+300 = 5300ms). Off ⇒ camera never moves.
+- **Task 6** — Settings scroll (`LazyListState.Saver`) + collapse state (new `SettingsCollapseState`, `rememberSaveable`) hoisted to `MainScreen`; zone-panel gear jump still works.
+- **Task 7** — `threatsLabel` → "Загрози"/"Threats"; stacked chips replaced by two `IconToggle`s on one line; row padding 12→8.
+- **Task 8** — expanded threat card shows a 160dp `ThreatIcon` of the selected icon pack.
+- Updated `ARCHITECTURE.md` rows + appended 6 `CHANGELOG.md` [Unreleased] entries.
+
+Note: the working tree has a concurrent editor — it landed a `ConnectionStatus` pill/sheet refactor mid-session and wired the new `showInfo` params itself; I left its changes untouched.
+## 18/08/2026, 14:50:54
+
+Let me check the `ThreatIcon` composable and the photo assets to understand "the larger version of the current iconpack"

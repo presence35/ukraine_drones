@@ -167,6 +167,36 @@ class ThreatTest {
     }
 
     @Test
+    fun `courseDeg aims the icon at a city named in the course message`() {
+        val t = threat(explanationShort = "Група БпЛА курсом на Київ", lat = 46.48, lon = 30.73)
+        assertEquals(
+            bearingDegrees(46.48, 30.73, 50.4501, 30.5234),
+            t.courseDeg, 1e-9
+        )
+    }
+
+    @Test
+    fun `courseDeg reads the course from the title when the message is empty`() {
+        val t = threat(title = "БпЛА курсом на Київ", explanationShort = null, lat = 46.48, lon = 30.73)
+        assertEquals(
+            bearingDegrees(46.48, 30.73, 50.4501, 30.5234),
+            t.courseDeg, 1e-9
+        )
+    }
+
+    @Test
+    fun `courseDeg falls back to pseudo-course when the message names no known place`() {
+        val t = threat(explanationShort = "БпЛА курсом на Золоте")
+        assertEquals(Threat.fallbackCourse("t1"), t.courseDeg, 1e-9)
+    }
+
+    @Test
+    fun `courseDeg prefers the velocity bearing over the message`() {
+        val t = threat(bearingDeg = 90.0, heading = 200.0, explanationShort = "Курс на Київ")
+        assertEquals(90.0, t.courseDeg, 1e-9)
+    }
+
+    @Test
     fun `inOblast matches on oblast or name prefix`() {
         val alert = OblastAlert("kyiv", "Київ", "Київська", "2026-08-14")
         assertTrue(alert.inOblast("Київ"))

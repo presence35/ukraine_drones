@@ -90,6 +90,7 @@ class AlertService : Service() {
     private var alertEpoch = 0
     private var neutralizedCount = 0
     private var lastNeutralizedType: ThreatType? = null
+    @Volatile private var currentFocus: LatLng? = null
 
     private sealed class MonitorEvent {
         data class State(
@@ -201,7 +202,7 @@ class AlertService : Service() {
     private fun startForegroundCompat() {
         val notif = monitorNotification(
             title = Strings.get(AppLanguage.UA).notifOngoingTitle,
-            text = Strings.get(AppLanguage.UA).notifStatusZones,
+            text = "",
             retryLabel = null
         )
         ServiceCompat.startForeground(
@@ -217,10 +218,16 @@ class AlertService : Service() {
     private fun startMonitoring() {
         if (monitoringJob != null) return
         val prefs = ZonePrefs(applicationContext)
-        // Real neutralizations only: this flow carries server-driven resolutions/removals
-        // (the TEMP map long-press never touches it), so the tally excludes user activation.
+        // Server-driven resolutions/removals only — the TEMP map long-press never touches this
+        // flow, so the tally excludes manual test triggers.
         scope.launch {
             NeptunClient.removedThreats.collect { removed ->
+                val focus = currentFocus ?: return@collect
+                // Count only threats that could have reached the focus: same per-type reach cap
+                // the alerts use. A resolved object far outside its reach (e.g. an FPV at 300 km)
+                // was never a threat to you — it's noise.
+                if (distanceMeters(focus.lat, focus.lon, removed.lat, removed.lon) / 1000.0 > reachKm(removed.type)) return@collect
+                if (!prefs.neutralizedTallyEnabled().first()) return@collect
                 neutralizedCount++
                 lastNeutralizedType = removed.type
                 postNeutralizedTally(prefs.language().first())
@@ -424,6 +431,7 @@ class AlertService : Service() {
 
     private suspend fun handleState(state: MonitorEvent.State) {
         val s = Strings.get(state.lang)
+        currentFocus = state.focusLocation
 
         if (lastChannelLang != state.lang) {
             updateMonitorChannel(s)
@@ -579,11 +587,15 @@ class AlertService : Service() {
             }
         }
 
-        notifyMonitor(
-            title = if (offline != null) s.offlineStatusTitle else s.notifOngoingTitle,
-            text = if (offline != null) {
-                s.offlineBodyFormat
-            } else if (state.focusPinned) String.format(s.notifStatusPinned, state.focusBannerCity) else s.notifStatusZones,
+notifyMonitor(
+            title = if (offline != null) {
+                s.offlineStatusTitle
+            } else if (state.focusPinned) {
+                state.focusBannerCity
+            } else {
+                s.notifOngoingTitle
+            },
+            text = "",
             retryLabel = if (offline != null) s.offlineRetryAction else null
         )
 
@@ -731,7 +743,9 @@ class AlertService : Service() {
         val info = ThreatTypeCatalog.INFO.getValue(t.type)
         val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
         val where = t.locality ?: t.district ?: t.region
-        return if (where != null) "$label — $where" else label
+        val whereText = if (where == null) null else if (lang == AppLanguage.UA) where
+            else Cities.byUa[where]?.nameEn ?: Transliteration.transliterate(where)
+        return if (whereText != null) "$label — $whereText" else label
     }
 
     /** Approx. distance from the focus point (GPS/pin) to a threat, km — for the alert history. */
@@ -915,9 +929,9 @@ class AlertService : Service() {
     }
 
     /**
-     * Silent, dismissible running tally of real neutralizations. Re-posted on the same id with
-     * an incremented count each time; swiping it away (delete intent) resets the count so it
-     * stays gone until the next neutralization starts a fresh tally.
+     * Silent, dismissible running tally of resolved threats near the focus. Re-posted on the
+     * same id with an incremented count each time; swiping it away (delete intent) resets the
+     * count so it stays gone until the next resolution starts a fresh tally.
      */
     private fun postNeutralizedTally(lang: AppLanguage) {
         val s = Strings.get(lang)
@@ -927,7 +941,7 @@ class AlertService : Service() {
         }
         val builder = NotificationCompat.Builder(this, CHANNEL_NEUTRALIZED)
             .setSmallIcon(R.drawable.ic_launcher_drone)
-            .setContentTitle(neutralizedThreatsPhrase(neutralizedCount, lang))
+            .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
             .setContentText(s.neutralizedNotifBody)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openAppIntent())

@@ -2,13 +2,24 @@
 
 ## [Unreleased]
 
+- Settings → Additional: new "Follow the bullet" sub-setting under "Resolved-threat animation" (shown only while it's on) — the camera glides to an off-screen strike and returns to where you were 0.3s after the explosion finishes; turn it off to keep the camera still while the animation plays.
+- Settings: your place is saved — every section keeps its collapsed/expanded state and the scroll position across opening/closing Settings and app restarts (the zone-panel gear still jumps straight to the relevant section).
+- Settings → Threats: the " — tap to toggle" hint is gone from the title, the Map/Alerts toggles are compact icon buttons on one line, the rows are tighter, and each expanded type card now shows a large preview of its icon from the selected icon pack.
+- Threat strip: tapping a footer threat type now cycles through each threat of that type (nearest first) instead of always landing on the nearest.
+- A notification tap while Settings is open now closes Settings and reveals the threat on the map.
+- Threat icons now face the place named in the course message ("…курсом на Київ" aims the icon at Kyiv) when the stream reports no velocity bearing or heading.
+
+- Monitor notification is now title-only: "Alert monitoring your approx location" (or the pinned city name when a city is pinned) — the "following your GPS" subtitle is gone.
+- Alert sounds are now compressed OGG files (~70 KB total, down from ~430 KB) — smaller APK, same sound.
+- Settings → Threats: reference photos (bundled and hotlinked) are gone from the expanded threat cards — icons only.
+
 - System status popup is now a bottom sheet with a scrollable body — the long alert history and connection log no longer clip off-screen.
-- Settings: "Replay first launch" and "Check for updates" are no longer disabled during an active alarm — they stay available regardless of alert state.
+- Settings: "Replay first launch" and "Check for updates" are no longer disabled during an active alarm — they stay available regardless of alert state. Replay opens the first-run wizard even mid-alert; the wizard still force-closes without saving if an alert goes live while it's open (and returns once the alert clears).
 
 - Zone bells: the muted "alerts off" indicator is a plain grey bell again (no more red X) on the map pill, in the zones panel and on threat cards.
 - Night mode / Zones: removed the "attacks are most common at night" notes from the night-mode description, the muted-zones warning and the feature guide — night mode is about your own schedule, not a frequency claim.
 
-- Notifications: new "Neutralized threats" tally — a silent, dismissible notification that counts real server-side neutralizations (not manual test triggers) while you're away, appending to the count as each one lands and stopping when you swipe it away. Tap it to open the map.
+- Notifications: new "Resolved threats" tally — a silent, dismissible notification counting threats resolved near you (within each type's reach of your GPS/pin — an FPV gone 300 km away doesn't count, a Shahed does), appending as each one drops and stopping when you swipe it away. Tap it to open the map. The copy never claims interception ("resolved"/«Завершено», not "shot down"/"neutralized" — we can't know whether it hit its target). Toggle it off in Settings → Alerts.
 - Map: optional "Time-to-arrival lines" (Settings → Additional, off by default) — for fast threats a red line along the course shows where the object will be at the red time threshold and a yellow one at the yellow threshold.
 - Zones panel: the title now matches what it edits — "🌙 Night zones 🌙" during the night window, "Day zones" when night zones are configured but it's daytime, otherwise "Alert zones" (was always "Alert zones").
 - Night mode: new "Vibration at night" toggle (off by default) with its own Fast/Slow strength sliders, used instead of the day strengths while the night window is active.
@@ -28,12 +39,12 @@
 - First-run setup is now a guided 4-step walkthrough: language → icon pack → tips + Fast/Slow alert groups (no more per-type toggles) → a quick tour of the core features. Settings → Additional has a "Repeat first setup" button to walk through it again (nothing else is reset).
 - First-run icon-pack step + Settings → Additional: the icon picker is now four stacked full-width rows (Classic, Photos, Army, Comic), each fitting all seven icons side by side — no titles, no scrolling.
 - Settings → Alerts: the vibration strength sliders now give a live preview — a short pulse at the chosen strength while you drag.
-- Threat card: when a selected threat resolves, the popup now crossfades into the compact "Neutralizing…/Neutralized" card instead of vanishing instantly, and the card fades out across the explosion.
+- Threat card: when a selected threat resolves, the popup now crossfades into the compact "Resolving…/Resolved" card instead of vanishing instantly, and the card fades out across the explosion.
 - Death animation: the projectile flight is now 1.5s (impact comes earlier), and the bullet is painted in Ukraine colors (gold head, blue chevron).
 - Death animation: real NEPTUN resolutions no longer leave the live marker on the map during the flight — the overlay renders its own copy of the icon, so the icon can't flip or change direction mid-flight.
 - Death animation: threats that resolve while the map isn't visible (Settings open or the app backgrounded) no longer fire stale or "bullet to nowhere" animations on return.
-- Settings → Additional: new "Neutralizing animation" toggle — turn off the projectile/explosion flourish entirely (the resolved card no longer flips to "Neutralized" and stays put until you close it). When on, the map vibrates briefly the moment the projectile detonates. If the server re-sends a resolution for an already-destroyed threat, the follow-up projectile just flies off-screen instead of exploding where the threat used to be.
-- Death animation: the projectile now flies as the new bullet sprite; Settings → Additional's "Neutralizing animation" row uses an explosion icon (was a skull).
+- Settings → Additional: new "Resolved-threat animation" toggle — turn off the projectile/explosion flourish entirely (the resolved card no longer flips to "Resolved" and stays put until you close it). When on, the map vibrates briefly the moment the projectile detonates. If the server re-sends a resolution for an already-destroyed threat, the follow-up projectile just flies off-screen instead of exploding where the threat used to be.
+- Death animation: the projectile now flies as the new bullet sprite; Settings → Additional's "Resolved-threat animation" row uses an explosion icon (was a skull).
 - Settings: the night-zone sliders are grouped in subtle bordered boxes (Slow and Fast), matching the map's zones panel.
 - Zone bells: the muted "alerts off" crossed-bell icon now renders reliably on the map pills and in the zones panel (it was invisible before).
 

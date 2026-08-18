@@ -1,6 +1,7 @@
 package ua.ukrainedrones
 
 import org.osmdroid.util.GeoPoint
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -16,6 +17,16 @@ fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Doub
     val dLat = (lat2 - lat1) * 110_574.0
     val dLon = (lon2 - lon1) * 111_320.0 * cos(Math.toRadians((lat1 + lat2) / 2.0))
     return sqrt(dLat * dLat + dLon * dLon)
+}
+
+/** Initial bearing in degrees clockwise from north (0..360) from (lat1, lon1) toward (lat2, lon2),
+ *  on the same equirectangular metre basis as [distanceMeters]. Good enough for course-facing
+ *  icons (a UAV "heading toward" a city) over the distances these threats cover. */
+fun bearingDegrees(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val dLat = (lat2 - lat1) * 110_574.0
+    val dLon = (lon2 - lon1) * 111_320.0 * cos(Math.toRadians((lat1 + lat2) / 2.0))
+    val deg = Math.toDegrees(atan2(dLon, dLat))
+    return (deg + 360.0) % 360.0
 }
 
 /**

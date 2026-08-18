@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.api.IGeoPoint
 import org.osmdroid.events.MapListener
@@ -314,7 +316,21 @@ fun NeptunMapView(
     val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
     val focusLocationState by rememberUpdatedState(uiState.focusLocation)
     val deathAnimationEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)
+    val followBulletState by rememberUpdatedState(uiState.followBullet)
+    val mapScope = rememberCoroutineScope()
     val deathFx = remember { ThreatDeathOverlay() }
+
+    // Follow-the-bullet: glide the camera onto an off-screen strike, then, when the setting is
+    // on, return it to where it was 0.3s after the explosion finishes.
+    val followStrike: (MapView, GeoPoint) -> Unit = { mapView, geo ->
+        val preCenter = mapView.mapCenter
+        if (keepThreatOnScreen(mapView, geo) && followBulletState) {
+            mapScope.launch {
+                delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
+                mapViewRef.value?.controller?.animateTo(preCenter)
+            }
+        }
+    }
 
     AndroidView(
         modifier = modifier.fillMaxSize(),
@@ -705,7 +721,7 @@ fun NeptunMapView(
                                             origin = origin?.let { GeoPoint(it.lat, it.lon) }
                                         )
                                     } else {
-                                        keepThreatOnScreen(mapView, target)
+                                        followStrike(mapView, target)
                                         deathFx.spawn(
                                             id = pressedId,
                                             geo = target,
@@ -767,7 +783,7 @@ fun NeptunMapView(
                     val icon = threatIcon(context, r.type, iconSetState)
                     // If the resolved threat is off-screen, glide it into view so the strike
                     // is actually seen (never fights the user's own panning — one-time pan).
-                    mapViewRef.value?.let { keepThreatOnScreen(it, anchor) }
+                    mapViewRef.value?.let { followStrike(it, anchor) }
                     mapViewRef.value?.invalidate()
                     deathFx.spawn(
                         id = r.id,
@@ -877,7 +893,7 @@ fun NeptunMapView(
 /** Glide the camera onto [geo] when it's outside the viewport, so a death strike is actually
  *  seen. One-time nudge at spawn — deliberately never chases the target later, so it never
  *  fights the user's own panning. */
-private fun keepThreatOnScreen(mapView: MapView, geo: GeoPoint) {
+private fun keepThreatOnScreen(mapView: MapView, geo: GeoPoint): Boolean {
     val p = Point()
     mapView.projection.toPixels(geo, p)
     val margin = 48f * mapView.context.resources.displayMetrics.density
@@ -885,5 +901,7 @@ private fun keepThreatOnScreen(mapView: MapView, geo: GeoPoint) {
         p.y < -margin || p.y > mapView.height + margin
     ) {
         mapView.controller.animateTo(geo)
+        return true
     }
+    return false
 }

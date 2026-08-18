@@ -16,6 +16,7 @@ import org.osmdroid.views.overlay.Overlay
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -249,10 +250,15 @@ class ThreatDeathOverlay : Overlay() {
                                 ?.also { bulletBitmap = it }
                         }
                         if (bitmap != null) {
-                            val half = 14f * density
+                            val longHalf = 11f * density
+                            val bw = bitmap.width.toFloat()
+                            val bh = bitmap.height.toFloat()
+                            val scale = longHalf * 2f / max(bw, bh)
+                            val hw = bw * scale / 2f
+                            val hh = bh * scale / 2f
                             canvas.drawBitmap(
                                 bitmap, null,
-                                RectF(-half, -half, half, half),
+                                RectF(-hw, -hh, hw, hh),
                                 bulletPaint
                             )
                         }

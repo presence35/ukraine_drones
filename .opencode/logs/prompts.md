@@ -15820,3 +15820,77 @@ notifs aren't trnslitering properly all the time, what's missing?
 1s after the camera follows the explosion, return to the user's og cam location -- add a subsetting under "neutraliztion animation" that says "follow the bullet".
 save state of everything in settings, coallpsed and scroll position.  unless clicking from zone panel, that logic is already wired.
 in settings->threats, remove the word " - tap to toggle" from title, and to make the whole section shorter, put the map and alert toggles on the same line, and make the padding thinner.
+## 18/08/2026, 13:20:41
+
+should we compress the WAV files?  mp3?
+## 18/08/2026, 13:23:37
+
+i made them OGGs.  update.  delete old WAVs
+## 18/08/2026, 13:25:31
+
+main notif: "threat alarm is following your gps" should be clear.
+title "Alert monitoring your GPS" (or pinned city name if active)
+subtitle remove.
+## 18/08/2026, 13:26:06
+
+go
+## 18/08/2026, 13:30:07
+
+in the zone sliders (settings and zone panel), remove the horizontal line between fast/slow., in the night mode sliders, the day setting should be gray so the night setting stands out more, and the slider is too narrow now, so the day text should fit below the night's.  you will have to play w the padding.
+## 18/08/2026, 13:37:16
+
+remove the word "real "from the notif, we can't be sure it was actually shot down vs hit its target, don't wanna mislead.  How should we count tho/  If you're 300kmn away do you care a threat was neturalized? Another setting is getting bulky
+## 18/08/2026, 13:37:25
+
+go
+## 18/08/2026, 13:39:51
+
+also, the threat pictures in settings:  the expanded mode pic should now be the larger version of the selected iconpack.  delete the old pics or reference to wikimedia.
+## 18/08/2026, 13:42:30
+
+the bullet faces proper, but it's sized wrong. it needs to be much thinner to keep the aspect ratio.
+## 18/08/2026, 13:45:05
+
+connectionstatus modal: move the neptun logo and url to next to the status line at the top, more prominent.  underlin the url so it looks clikcable.
+put a "clear" button at the bottom of the alerts exapnded mode, and say it auto clears after 3 days (does it?).
+## 18/08/2026, 13:50:10
+
+and add a setting to toggle the counting notif.
+## 18/08/2026, 13:51:36
+
+the bullet faces proper, but it's sized wrong. it needs to be much thinner to keep the aspect ratio.
+## 18/08/2026, 13:54:10
+
+the replya first luanch button does nothing.  no error.
+## 18/08/2026, 13:54:46
+
+ensure it is hidden when returning to the map in an anxiety state, etc
+## 18/08/2026, 14:01:05
+
+can't the user just tap off the wizard to close it? isn't erhe a "later" button?  But yes, if the wizard is up and an alert happens, it should just force close, we hae that already.  just dont' gate the user's choice to open the wizard during alert.
+## 18/08/2026, 14:03:23
+
+go
+## 18/08/2026, 14:04:30
+
+22
+## 18/08/2026, 14:18:27
+
+go
+## 18/08/2026, 14:30:46
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 14:46:18
+
+small vibrate when the explosion happens. sometimes the bullet has a glow around it, it should not.
+the notif body "threat that could have reached you are no longer tracked..." is confusing, remove it entirely.  keep "last: [threat]"
+
+the threats in settings had their big photo removed when expanded, put it back, use the larger version of the current iconpack. put a divider btween the slow and fast sections.
+
+remove teh 2nd gray moon in the night mode setting, and reword the helper ttext in the toggle.  "sounds at night" as aligned wrong.
+## 18/08/2026, 14:46:24
+
+go
+## 18/08/2026, 14:51:07
+
+git push

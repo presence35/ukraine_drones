@@ -437,6 +437,9 @@ object Cities {
     /** Ukrainian → English place-name lookup, used when translating NEPTUN's course text. */
     val uaToEn: Map<String, String> = ALL.associate { it.nameUa to it.nameEn }
 
+    /** Ukrainian name → city lookup, used to resolve a course-message place to its coordinates. */
+    val byUa: Map<String, City> = ALL.associate { it.nameUa to it }
+
     /** City (by Ukrainian name) → its oblast name stem, used to highlight a city label in red
      *  while an official air-raid alert is active for that oblast. Matched via `contains`
      *  against the alert's oblast/name (e.g. stem "Харківськ" hits "Харківська область"). */

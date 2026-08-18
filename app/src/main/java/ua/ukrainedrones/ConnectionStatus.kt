@@ -63,6 +63,8 @@ internal fun ConnectionStatus(
     backupOfflineElapsedSec: Long?,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
+    showInfo: Boolean,
+    onShowInfoChange: (Boolean) -> Unit,
     s: Strings.StringSet,
     lang: AppLanguage,
     iconSet: ThreatIconSet,
@@ -79,13 +81,12 @@ internal fun ConnectionStatus(
         backupActive -> s.connBackup
         else -> s.connOnline
     }
-    var showInfo by remember { mutableStateOf(false) }
-    Row(
+        Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(horizontal = 8.dp, vertical = 3.dp)
-            .clickable { showInfo = true },
+            .clickable { onShowInfoChange(true) },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Image(
@@ -109,7 +110,7 @@ internal fun ConnectionStatus(
     if (showInfo) {
         val context = LocalContext.current
         ModalBottomSheet(
-            onDismissRequest = { showInfo = false },
+            onDismissRequest = { onShowInfoChange(false) },
             sheetState = rememberModalBottomSheetState()
         ) {
             Column(
@@ -132,7 +133,7 @@ internal fun ConnectionStatus(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(s.connStatusTitle, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { showInfo = false }) {
+                    IconButton(onClick = { onShowInfoChange(false) }) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = s.backButton,
@@ -455,7 +456,8 @@ private fun AlertHistoryRow(
                 entry.locality?.let { locality ->
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        locality,
+                        if (lang == AppLanguage.UA) locality
+                        else Cities.byUa[locality]?.nameEn ?: Transliteration.transliterate(locality),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

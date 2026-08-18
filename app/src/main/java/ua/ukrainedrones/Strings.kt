@@ -89,7 +89,6 @@ object Strings {
         val notifOngoingTitle: String,
         val notifChannelName: String,
         val notifChannelDesc: String,
-        val notifStatusZones: String,
         val notifBodyRegion: String,
         val neutralizedNotifChannelName: String,
         val neutralizedChannelDesc: String,
@@ -183,7 +182,6 @@ object Strings {
         val alertSourceBoth: String,
         val notifBodyRegionFormat: String,
         val notifReasonFormat: String,
-        val notifStatusPinned: String,
         val offlineStatusTitle: String,
         val offlineBodyFormat: String,
         val offlineOfficialSirensLine: String,
@@ -222,6 +220,10 @@ object Strings {
         val showTtaLinesDesc: String,
         val deathAnimationTitle: String,
         val deathAnimationDesc: String,
+        val followBulletTitle: String,
+        val followBulletDesc: String,
+        val neutralizedTallyTitle: String,
+        val neutralizedTallyDesc: String,
         val iconSetTitle: String,
         val iconSetClassicLabel: String,
         val iconSetPhotoLabel: String,
@@ -412,7 +414,6 @@ object Strings {
         val notifOngoingTitle: String get() = status.notifOngoingTitle
         val notifChannelName: String get() = status.notifChannelName
         val notifChannelDesc: String get() = status.notifChannelDesc
-        val notifStatusZones: String get() = status.notifStatusZones
         val notifBodyRegion: String get() = status.notifBodyRegion
         val neutralizedNotifChannelName: String get() = status.neutralizedNotifChannelName
         val neutralizedChannelDesc: String get() = status.neutralizedChannelDesc
@@ -500,7 +501,6 @@ object Strings {
         val alertSourceBoth: String get() = threat.alertSourceBoth
         val notifBodyRegionFormat: String get() = threat.notifBodyRegionFormat
         val notifReasonFormat: String get() = threat.notifReasonFormat
-        val notifStatusPinned: String get() = threat.notifStatusPinned
         val offlineStatusTitle: String get() = threat.offlineStatusTitle
         val offlineBodyFormat: String get() = threat.offlineBodyFormat
         val offlineOfficialSirensLine: String get() = threat.offlineOfficialSirensLine
@@ -536,6 +536,10 @@ object Strings {
         val showTtaLinesDesc: String get() = misc.showTtaLinesDesc
         val deathAnimationTitle: String get() = misc.deathAnimationTitle
         val deathAnimationDesc: String get() = misc.deathAnimationDesc
+        val followBulletTitle: String get() = misc.followBulletTitle
+        val followBulletDesc: String get() = misc.followBulletDesc
+        val neutralizedTallyTitle: String get() = misc.neutralizedTallyTitle
+        val neutralizedTallyDesc: String get() = misc.neutralizedTallyDesc
         val iconSetTitle: String get() = misc.iconSetTitle
         val iconSetClassicLabel: String get() = misc.iconSetClassicLabel
         val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
@@ -692,7 +696,7 @@ object Strings {
         zoneButtonYellow = "Жовта зона: натисни, щоб наблизити",
         slowSectionLabel = "Повільні — відстань",
         fastSectionLabel = "Швидкі — час до прильоту",
-        threatsLabel = "Загрози — натисни, щоб увімкнути",
+        threatsLabel = "Загрози",
         threatMapLabel = "Мапа",
         threatAlertLabel = "Сповіщення",
         fastGroupLabel = "Швидкі",
@@ -711,14 +715,13 @@ object Strings {
     private fun uaStatus() = Status(
         redZoneAlert = "Червона тривога",
         yellowZoneAlert = "Жовта тривога",
-        notifOngoingTitle = "Моніторинг тривог",
+        notifOngoingTitle = "Моніторинг тривог за твоїм приблизним місцезнаходженням",
         notifChannelName = "Фоновий статус",
         notifChannelDesc = "Моніторинг працює у фоновому режимі. Вимкнення цього лише приховує статусне сповіщення — сповіщення про повітряну тривогу все одно спрацьовуватимуть.",
-        notifStatusZones = "Тривога слідкує за твоїм GPS",
         notifBodyRegion = "Одеський регіон",
-        neutralizedNotifChannelName = "Знешкоджені загрози",
-        neutralizedChannelDesc = "Лічильник реально знешкоджених загроз — живе, поки його не прибрати.",
-        neutralizedNotifBody = "Реальні знешкодження, поки ти в укритті. Натисни, щоб відкрити мапу.",
+        neutralizedNotifChannelName = "Завершені загрози",
+        neutralizedChannelDesc = "Лічильник завершених поблизу загроз — живе, поки його не прибрати.",
+        neutralizedNotifBody = "Загроз, що могли тебе досягти, більше не відстежують. Натисни, щоб відкрити мапу.",
         neutralizedLastLineFormat = "Остання: %s",
         attributionText = "Карта повітряних тривог — NEPTUN",
         madeBy = "Зроблено Presaince",
@@ -808,7 +811,6 @@ object Strings {
         alertSourceBoth = " · NEPTUN + резервне джерело",
         notifBodyRegionFormat = "%1\$s область",
         notifReasonFormat = "Загрози в %1\$s",
-        notifStatusPinned = "Тривога прикріплена до %1\$s",
         offlineStatusTitle = "Офлайн",
         offlineBodyFormat = "Офлайн — резервні системи працюють, але менш надійні. Натисни, щоб повторити.",
         offlineOfficialSirensLine = "Покладайся на офіційні сирени.",
@@ -845,8 +847,12 @@ object Strings {
         showMapScaleDesc = "Масштабна шкала в нижньому правому куті карти.",
         showTtaLinesTitle = "Лінії часу до прильоту",
         showTtaLinesDesc = "Для швидких загроз: червона лінія по курсу, де об'єкт буде через червону межу часу, і жовта — де через жовту.",
-        deathAnimationTitle = "Анімація знешкодження",
-        deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу знешкоджено.",
+        deathAnimationTitle = "Анімація завершення загрози",
+        deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу перестають відстежувати. Просто для розваги.",
+        followBulletTitle = "Слідувати за снарядом",
+        followBulletDesc = "Камера летить за снарядом до цілі, а потім повертається туди, де ти був.",
+        neutralizedTallyTitle = "Лічильник завершених загроз",
+        neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, завершених поблизу тебе, доки працює моніторинг.",
         iconSetTitle = "Іконки загроз",
         iconSetClassicLabel = "Класичні",
         iconSetPhotoLabel = "Фото",
@@ -936,10 +942,10 @@ object Strings {
         guideUpdateD2 = "Завантажуй і встановлюй просто з діалогу.",
         guideUpdateD3 = "Можна також натиснути «Перевірити оновлення» в Налаштуваннях.",
         lastSeenAgoFormat = "Востаннє %1\$s тому",
-        neutralizedLabel = "Нейтралізовано",
-        neutralizedNote = "Просто анімація — цієї загрози більше немає, з якої б то не було причини.",
-        neutralizingLabel = "Знешкодження ворога…",
-        neutralizingNote = "Снаряд у дорозі — наша зброя вже ближче до цілі.",
+        neutralizedLabel = "Завершено",
+        neutralizedNote = "Просто анімація — цю загрозу більше не відстежують, з будь-якої причини.",
+        neutralizingLabel = "Завершення загрози…",
+        neutralizingNote = "Просто анімація — загрозу більше не відстежують, з будь-якої причини.",
     )
 
     private fun uaExplainers() = ExplainerStrings(
@@ -1052,7 +1058,7 @@ object Strings {
         zoneButtonYellow = "Yellow zone: tap to zoom in",
         slowSectionLabel = "Slow — distance",
         fastSectionLabel = "Fast — time to arrival",
-        threatsLabel = "Threats — tap to toggle",
+        threatsLabel = "Threats",
         threatMapLabel = "Map",
         threatAlertLabel = "Alerts",
         fastGroupLabel = "Fast",
@@ -1071,14 +1077,13 @@ object Strings {
     private fun enStatus() = Status(
         redZoneAlert = "Red alert",
         yellowZoneAlert = "Yellow alert",
-        notifOngoingTitle = "Alert monitoring",
+        notifOngoingTitle = "Alert monitoring your approx location",
         notifChannelName = "Background status",
         notifChannelDesc = "Monitoring runs in the background. Turning this off only hides this status notification — air-raid alerts still sound.",
-        notifStatusZones = "Threat alarm is following your GPS",
         notifBodyRegion = "Odesa region",
-        neutralizedNotifChannelName = "Neutralized threats",
-        neutralizedChannelDesc = "Running tally of real threat neutralizations, kept until dismissed.",
-        neutralizedNotifBody = "Real neutralizations while you were away. Tap to open the map.",
+        neutralizedNotifChannelName = "Resolved threats",
+        neutralizedChannelDesc = "Tally of threats resolved near you — kept until dismissed.",
+        neutralizedNotifBody = "Threats that could have reached you are no longer tracked. Tap to open the map.",
         neutralizedLastLineFormat = "Last: %s",
         attributionText = "Air threat map — NEPTUN",
         madeBy = "Made by Presaince",
@@ -1168,7 +1173,6 @@ object Strings {
         alertSourceBoth = " · NEPTUN + backup source",
         notifBodyRegionFormat = "%1\$s region",
         notifReasonFormat = "Threats reported in %1\$s",
-        notifStatusPinned = "Threat alarm is pinned to %1\$s",
         offlineStatusTitle = "Offline",
         offlineBodyFormat = "Offline — backup systems active but less reliable. Tap to retry.",
         offlineOfficialSirensLine = "Rely on official sirens.",
@@ -1205,8 +1209,12 @@ object Strings {
         showMapScaleDesc = "Scale bar in the map's bottom-right corner.",
         showTtaLinesTitle = "Time-to-arrival lines",
         showTtaLinesDesc = "For fast threats: a red line along the course to where it will be at the red time threshold, and yellow at the yellow one.",
-        deathAnimationTitle = "Neutralizing animation",
-        deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is neutralized.",
+        deathAnimationTitle = "Resolved-threat animation",
+        deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is no longer tracked. Just for fun.",
+        followBulletTitle = "Follow the bullet",
+        followBulletDesc = "The camera rides the projectile to the target, then returns to where you were.",
+        neutralizedTallyTitle = "Resolved-threats tally",
+        neutralizedTallyDesc = "Show a notification counting threats resolved near you while monitoring is running.",
         iconSetTitle = "Threat icons",
         iconSetClassicLabel = "Classic",
         iconSetPhotoLabel = "Photos",
@@ -1296,10 +1304,10 @@ object Strings {
         guideUpdateD2 = "Download and install straight from the dialog.",
         guideUpdateD3 = "You can also tap Check for updates in Settings.",
         lastSeenAgoFormat = "Last seen %1\$s ago",
-        neutralizedLabel = "Neutralized",
-        neutralizedNote = "Just a visual flourish — that threat is no longer around, for whatever reason.",
-        neutralizingLabel = "Neutralizing enemy…",
-        neutralizingNote = "Projectile in flight — our strike is closing in on the target.",
+        neutralizedLabel = "Resolved",
+        neutralizedNote = "Just a visual flourish — that threat is no longer tracked, for whatever reason.",
+        neutralizingLabel = "Resolving threat…",
+        neutralizingNote = "Just a visual flourish — that threat is no longer tracked, for whatever reason.",
     )
 
     private fun enExplainers() = ExplainerStrings(
@@ -1373,12 +1381,12 @@ fun sourcesWord(count: Int, lang: AppLanguage): String = when (lang) {
 }
 
 /**
- * Pluralized "N threats neutralized" headline for the tally notification.
- * English: "1 threat neutralized" / "N threats neutralized".
+ * Pluralized "N threats resolved" headline for the tally notification.
+ * English: "1 threat resolved" / "N threats resolved".
  * Ukrainian: "1 загрозу" (21, 31…), "2–4 загрози" (22–24…), else "загроз" (5–20, 25–30…).
  */
-fun neutralizedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
-    AppLanguage.EN -> if (count == 1) "1 threat neutralized" else "$count threats neutralized"
+fun resolvedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
+    AppLanguage.EN -> if (count == 1) "1 threat resolved" else "$count threats resolved"
     AppLanguage.UA -> {
         val n10 = count % 10
         val n100 = count % 100
@@ -1387,7 +1395,7 @@ fun neutralizedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang
             n10 in 2..4 && n100 !in 12..14 -> "загрози"
             else -> "загроз"
         }
-        "Знешкоджено $count $form"
+        "Завершено $count $form"
     }
 }
 

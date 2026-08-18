@@ -97,6 +97,8 @@ data class UiState(
     val iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     val showMapScale: Boolean = true,
     val deathAnimationEnabled: Boolean = true,
+    val followBullet: Boolean = true,
+    val neutralizedTallyEnabled: Boolean = true,
     val fastGroupCollapsed: Boolean = false,
     val slowGroupCollapsed: Boolean = false,
     val fastVibrationLevel: Int = 3,
@@ -235,6 +237,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val iconSet: ThreatIconSet,
         val showMapScale: Boolean,
         val deathAnimationEnabled: Boolean,
+        val followBullet: Boolean,
+        val neutralizedTallyEnabled: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
         val fastVibrationLevel: Int,
@@ -273,6 +277,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val followMe: Boolean,
         val showMapScale: Boolean,
         val deathAnimationEnabled: Boolean,
+        val followBullet: Boolean,
+        val neutralizedTallyEnabled: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
         val showTtaLines: Boolean
@@ -321,13 +327,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.followMe(),
             prefs.showMapScale(),
             prefs.deathAnimationEnabled(),
+            prefs.followBullet(),
+            prefs.neutralizedTallyEnabled(),
             prefs.fastGroupCollapsed(),
             prefs.slowGroupCollapsed(),
             prefs.showTtaLines()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4],
-                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11]
+                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12], flags[13]
             )
         },
         combine(
@@ -403,6 +411,8 @@ combine(
             iconSet = c.iconSet,
             showMapScale = b.showMapScale,
             deathAnimationEnabled = b.deathAnimationEnabled,
+            followBullet = b.followBullet,
+            neutralizedTallyEnabled = b.neutralizedTallyEnabled,
             fastGroupCollapsed = b.fastGroupCollapsed,
             slowGroupCollapsed = b.slowGroupCollapsed,
             fastVibrationLevel = vib.first,
@@ -459,6 +469,8 @@ combine(
         prefs.nightFastVibrationLevel().first()
         prefs.nightSlowVibrationLevel().first()
         prefs.showTtaLines().first()
+        prefs.deathAnimationEnabled().first()
+        prefs.followBullet().first()
         emit(Unit)
     }.flowOn(Dispatchers.IO)
 
@@ -553,6 +565,8 @@ val uiState: StateFlow<UiState> = combine(
             iconSet = prefs.iconSet,
             showMapScale = prefs.showMapScale,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
+            followBullet = prefs.followBullet,
+            neutralizedTallyEnabled = prefs.neutralizedTallyEnabled,
             fastGroupCollapsed = prefs.fastGroupCollapsed,
             slowGroupCollapsed = prefs.slowGroupCollapsed,
             fastVibrationLevel = prefs.fastVibrationLevel,
@@ -994,6 +1008,14 @@ val uiState: StateFlow<UiState> = combine(
 
     fun setDeathAnimationEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setDeathAnimationEnabled(enabled) }
+    }
+
+    fun setFollowBullet(enabled: Boolean) {
+        viewModelScope.launch { prefs.setFollowBullet(enabled) }
+    }
+
+    fun setNeutralizedTallyEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setNeutralizedTallyEnabled(enabled) }
     }
 
     fun setLanguage(lang: AppLanguage) {

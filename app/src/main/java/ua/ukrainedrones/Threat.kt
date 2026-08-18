@@ -168,11 +168,31 @@ data class Threat(
     /**
      * Direction to display, mirroring `predictPosition`'s heading resolution (the velocity
      * bearing when present, else the reported heading, else NEPTUN's deterministic A(id)
-     * pseudo-course — what their own map shows when no course is known). 0 = north. Kept in
+     * pseudo-course — what their own map shows when no course is known). When no real course
+     * is reported but the course message names a destination ("…курсом на Київ"), the icon
+     * faces the bearing toward that city instead of a pseudo-random angle. 0 = north. Kept in
      * lockstep with `predictPosition` so a marker that glides along its bearing always faces it.
      */
     val courseDeg: Double
-        get() = bearingDeg ?: heading ?: fallbackCourse(id)
+        get() = bearingDeg ?: heading ?: courseFromMessage() ?: fallbackCourse(id)
+
+    /**
+     * Best-effort course from the NEPTUN course text when the velocity bearing and heading
+     * are both absent: the message names a destination ("…курсом на Київ" / "у напрямку"),
+     * resolve it in the city dictionary and aim the icon at its coordinates. Null when the
+     * text names no known place or carries no direction — then the A(id) pseudo-course applies.
+     */
+    private fun courseFromMessage(): Double? {
+        val text = explanationShort ?: title.takeIf { it.isNotBlank() } ?: return null
+        for (pattern in COURSE_TARGET_PATTERNS) {
+            val m = pattern.find(text) ?: continue
+            val place = m.groupValues.getOrNull(1)?.trim()?.trimEnd('.', '—', '-') ?: continue
+            val city = Cities.byUa[place] ?: continue
+            return bearingDegrees(lat, lon, city.lat, city.lon)
+        }
+        return null
+    }
+
     companion object {
         /** NEPTUN's deterministic pseudo-course when no real course is reported (their SDK `A(id)`). */
         fun fallbackCourse(id: String): Double {
@@ -325,6 +345,18 @@ private val COURSE_PATTERNS: List<Pair<Regex, String>> = listOf(
     Regex("^БпЛА над (.+)$") to "UAV over {X}",
     Regex("^БпЛА рухається в напрямку (.+)$") to "UAV moving toward {X}",
     Regex("^Курс на (.+)$") to "Course toward {X}"
+)
+
+/** The subset of [COURSE_PATTERNS] that names a *destination* ("heading toward X") — used to
+ *  aim the marker icon at that place when the stream reports no velocity bearing or heading.
+ *  "From the direction of" / "over" are excluded: they don't face the threat toward a target. */
+private val COURSE_TARGET_PATTERNS: List<Regex> = listOf(
+    Regex("^Група БпЛА курсом на (.+)$"),
+    Regex("^Шахеди? курсом на (.+)$"),
+    Regex("^БпЛА курсом на (.+)$"),
+    Regex("^Ракета (?:летить )?(?:у напрямку|на) (.+)$"),
+    Regex("^БпЛА рухається в напрямку (.+)$"),
+    Regex("^Курс на (.+)$")
 )
 
 /**

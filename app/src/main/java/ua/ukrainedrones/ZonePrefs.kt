@@ -48,6 +48,8 @@ class ZonePrefs(private val context: Context) {
     private val threatIconSetKey = stringPreferencesKey("threat_icon_set")
     private val showMapScaleKey = booleanPreferencesKey("show_map_scale")
     private val deathAnimationEnabledKey = booleanPreferencesKey("death_animation_enabled")
+    private val followBulletKey = booleanPreferencesKey("follow_bullet")
+    private val neutralizedTallyEnabledKey = booleanPreferencesKey("neutralized_tally_enabled")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
     private val fastGroupCollapsedKey = booleanPreferencesKey("fast_group_collapsed")
     private val slowGroupCollapsedKey = booleanPreferencesKey("slow_group_collapsed")
@@ -322,6 +324,22 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setDeathAnimationEnabled(enabled: Boolean) {
         context.dataStore.edit { it[deathAnimationEnabledKey] = enabled }
+    }
+
+    /** Whether the camera follows the death bullet (then returns to where the user was) — default on. */
+    fun followBullet(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[followBulletKey] ?: true }
+
+    suspend fun setFollowBullet(enabled: Boolean) {
+        context.dataStore.edit { it[followBulletKey] = enabled }
+    }
+
+    /** Whether the "resolved threats" tally notification counts/show — default on. */
+    fun neutralizedTallyEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[neutralizedTallyEnabledKey] ?: true }
+
+    suspend fun setNeutralizedTallyEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[neutralizedTallyEnabledKey] = enabled }
     }
 
     /** Whether the pre-migration osmdroid tile caches have already been deleted. */

@@ -59,8 +59,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.flow.first
@@ -68,6 +67,17 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val UkraineBlue = Color(0xFF005BBB)
+
+/** Collapse state of the Settings sections, hoisted to MainScreen and saved across switches. */
+data class SettingsCollapseState(
+    val language: Boolean = true,
+    val mapCenter: Boolean = true,
+    val cardSize: Boolean = true,
+    val threats: Boolean = true,
+    val night: Boolean = true,
+    val alerts: Boolean = true,
+    val additional: Boolean = true
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,6 +87,8 @@ fun SettingsScreen(
     onThreatsScrollHandled: () -> Unit,
     scrollToThreatsTick: Int,
     scrollToNightMode: Boolean,
+    collapse: SettingsCollapseState,
+    onCollapseChange: (SettingsCollapseState) -> Unit,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     officialAlertsEnabled: Boolean,
@@ -113,6 +125,8 @@ fun SettingsScreen(
     showMapScale: Boolean,
     showTtaLines: Boolean,
     deathAnimationEnabled: Boolean,
+    followBullet: Boolean,
+    neutralizedTallyEnabled: Boolean,
     fastGroupCollapsed: Boolean,
     slowGroupCollapsed: Boolean,
     versionName: String,
@@ -154,6 +168,8 @@ fun SettingsScreen(
     onShowMapScaleChange: (Boolean) -> Unit,
     onShowTtaLinesChange: (Boolean) -> Unit,
     onDeathAnimationChange: (Boolean) -> Unit,
+    onFollowBulletChange: (Boolean) -> Unit,
+    onNeutralizedTallyChange: (Boolean) -> Unit,
     onFastGroupCollapse: (Boolean) -> Unit,
     onSlowGroupCollapse: (Boolean) -> Unit,
     onExit: () -> Unit,
@@ -195,11 +211,8 @@ fun SettingsScreen(
             }
         }
     }
-    // Fast/Slow groups' collapsed state is persisted (ZonePrefs), so it survives restarts.
-    // The "Additional settings" section starts expanded so the scale/icon toggles are visible.
-    var additionalExpanded by remember { mutableStateOf(true) }
-    // The disclaimers card auto-expands on the first 3 Settings opens, then just remembers
-    // the state the user leaves it in.
+    // Collapse states are hoisted to MainScreen (rememberSaveable) so they survive screen
+    // switches and process death; only the disclaimer card keeps its own remember logic.
     var disclaimerExpanded by remember { mutableStateOf(disclaimerReadCount < 3 || !disclaimerCollapsed) }
     LaunchedEffect(Unit) {
         if (disclaimerReadCount < 3) onDisclaimerShown()
@@ -208,12 +221,6 @@ fun SettingsScreen(
         disclaimerExpanded = !disclaimerExpanded
         onDisclaimerCollapse(!disclaimerExpanded)
     }
-    var languageExpanded by remember { mutableStateOf(true) }
-    var mapCenterExpanded by remember { mutableStateOf(true) }
-    var cardSizeExpanded by remember { mutableStateOf(true) }
-    var threatsExpanded by remember { mutableStateOf(true) }
-    var nightExpanded by remember { mutableStateOf(true) }
-    var alertsExpanded by remember { mutableStateOf(true) }
 
     // The Threats/Night-mode section headers are fixed item indices in this LazyColumn; scroll
     // to one when the zones-sheet gear asks (ZonesSheet → Settings). Night mode (index 5) when
@@ -293,8 +300,8 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA).languageLabel,
                     icon = painterResource(id = R.drawable.ic_language),
-                    expanded = languageExpanded,
-                    onToggle = { languageExpanded = !languageExpanded }
+expanded = collapse.language,
+                onToggle = { onCollapseChange(collapse.copy(language = !collapse.language)) }
                 ) {
                     Row(
                         modifier = Modifier
@@ -322,8 +329,8 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.mapCenterLabel,
                     icon = rememberVectorPainter(Icons.Default.LocationOn),
-                    expanded = mapCenterExpanded,
-                    onToggle = { mapCenterExpanded = !mapCenterExpanded }
+expanded = collapse.mapCenter,
+                onToggle = { onCollapseChange(collapse.copy(mapCenter = !collapse.mapCenter)) }
                 ) {
                     AlertToggleRow(
                         title = s.followMeTitle,
@@ -345,8 +352,8 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.cardSizeLabel,
                     icon = painterResource(R.drawable.ic_card_size),
-                    expanded = cardSizeExpanded,
-                    onToggle = { cardSizeExpanded = !cardSizeExpanded }
+expanded = collapse.cardSize,
+                onToggle = { onCollapseChange(collapse.copy(cardSize = !collapse.cardSize)) }
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
                         ThreatCardSizeSelector(
@@ -384,8 +391,8 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.threatsLabel,
                     icon = rememberVectorPainter(Icons.Default.Warning),
-                    expanded = threatsExpanded,
-                    onToggle = { threatsExpanded = !threatsExpanded }
+expanded = collapse.threats,
+                onToggle = { onCollapseChange(collapse.copy(threats = !collapse.threats)) }
                 ) {
                     fastAndSlowGroups(lang).forEachIndexed { index, (groupIcon, groupTitle, types) ->
                         val groupMapOn = types.none { it in hiddenTypes }
@@ -471,8 +478,8 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.nightModeLabel,
                     icon = painterResource(R.drawable.ic_moon),
-                    expanded = nightExpanded,
-                    onToggle = { nightExpanded = !nightExpanded }
+expanded = collapse.night,
+                onToggle = { onCollapseChange(collapse.copy(night = !collapse.night)) }
                 ) {
                     NightModeCard(
                         lang = lang,
@@ -522,8 +529,8 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.alertsLabel,
                     icon = rememberVectorPainter(Icons.Default.Notifications),
-                    expanded = alertsExpanded,
-                    onToggle = { alertsExpanded = !alertsExpanded }
+expanded = collapse.alerts,
+                onToggle = { onCollapseChange(collapse.copy(alerts = !collapse.alerts)) }
                 ) {
                     AlertToggleRow(
                         title = s.officialAlertsTitle,
@@ -540,6 +547,15 @@ fun SettingsScreen(
                         checked = sirenOverride,
                         onCheckedChange = { v -> showExplainer("sirenOverride"); onSirenOverrideChange(v) },
                         icon = painterResource(R.drawable.ic_volume_up),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.neutralizedTallyTitle,
+                        description = s.neutralizedTallyDesc,
+                        checked = neutralizedTallyEnabled,
+                        onCheckedChange = onNeutralizedTallyChange,
+                        icon = rememberVectorPainter(Icons.Default.Notifications),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -580,7 +596,7 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { additionalExpanded = !additionalExpanded }
+                                .clickable { onCollapseChange(collapse.copy(additional = !collapse.additional)) }
                                 .padding(horizontal = 14.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -591,14 +607,14 @@ fun SettingsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Icon(
-                                imageVector = if (additionalExpanded) Icons.Default.KeyboardArrowUp
+                                imageVector = if (collapse.additional) Icons.Default.KeyboardArrowUp
                                 else Icons.Default.KeyboardArrowDown,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
-                        AnimatedVisibility(visible = additionalExpanded) {
+                        AnimatedVisibility(visible = collapse.additional) {
                             Column {
                                 AlertToggleRow(
                                     title = s.deathAnimationTitle,
@@ -608,6 +624,18 @@ fun SettingsScreen(
                                     icon = painterResource(R.drawable.ic_explosion),
                                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                AnimatedVisibility(visible = deathAnimationEnabled) {
+                                    Column(modifier = Modifier.padding(start = 24.dp)) {
+                                        AlertToggleRow(
+                                            title = s.followBulletTitle,
+                                            description = s.followBulletDesc,
+                                            checked = followBullet,
+                                            onCheckedChange = onFollowBulletChange,
+                                            icon = painterResource(R.drawable.ic_explosion),
+                                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 AlertToggleRow(
                                     title = s.showMapScaleTitle,
@@ -1060,12 +1088,6 @@ private fun NightTimeField(
     }
 }
 
-private fun imageRequest(context: Context, url: String): ImageRequest =
-    ImageRequest.Builder(context)
-        .data(url)
-        .setHeader("User-Agent", "UkraineDrones (Android; https://odesaplay.com.ua)")
-        .build()
-
 @Composable
 private fun AlertToggleRow(
     title: String,
@@ -1227,7 +1249,7 @@ private fun ThreatSettingsCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ThreatIcon(
@@ -1263,21 +1285,18 @@ private fun ThreatSettingsCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.width(12.dp))
-                Column(
-                    modifier = Modifier.width(96.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    ToggleChip(
+                Spacer(Modifier.width(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconToggle(
                         icon = Icons.Filled.Place,
-                        label = s.threatMapLabel,
+                        contentDescription = s.threatMapLabel,
                         on = onMap,
                         enabled = true,
                         onClick = { onThreatMapToggle(type, !onMap) }
                     )
-                    ToggleChip(
+                    IconToggle(
                         icon = Icons.Filled.Notifications,
-                        label = s.threatAlertLabel,
+                        contentDescription = s.threatAlertLabel,
                         on = onAlerts,
                         enabled = true,
                         onClick = { onThreatAlertToggle(type, !onAlerts) }
@@ -1285,7 +1304,6 @@ private fun ThreatSettingsCard(
                 }
             }
             AnimatedVisibility(visible = expanded) {
-                val context = LocalContext.current
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1314,34 +1332,21 @@ private fun ThreatSettingsCard(
                             )
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    ThreatImages.drawableRes(type)?.let { resId ->
-                        Image(
-                            painter = painterResource(id = resId),
-                            contentDescription = label,
-                            contentScale = ContentScale.FillWidth,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                        )
-                    } ?: ThreatImages.url(type)?.let { imgUrl ->
-                        AsyncImage(
-                            model = imageRequest(context, imgUrl),
-                            contentDescription = label,
-                            placeholder = painterResource(id = IconCatalog.res(type, iconSet)),
-                            error = painterResource(id = IconCatalog.res(type, iconSet)),
-                            contentScale = ContentScale.FillWidth,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                        )
-                    }
                     joke.takeIf { it.isNotBlank() }?.let {
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "— $it",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        ThreatIcon(
+                            type = type,
+                            set = iconSet,
+                            size = 160.dp,
+                            contentDescription = label
                         )
                     }
                 }
