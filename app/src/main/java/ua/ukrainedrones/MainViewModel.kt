@@ -65,6 +65,9 @@ data class UiState(
     val nightFastYellowArmed: Boolean = true,
     val nightZoneSirenOverride: Boolean = false,
     val nightOfficialSirenOverride: Boolean = false,
+    val nightVibrationEnabled: Boolean = false,
+    val nightFastVibrationLevel: Int = 3,
+    val nightSlowVibrationLevel: Int = 3,
     val officialAlertsEnabled: Boolean = true,
     val sirenOverride: Boolean = false,
     val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
@@ -98,6 +101,7 @@ data class UiState(
     val slowGroupCollapsed: Boolean = false,
     val fastVibrationLevel: Int = 3,
     val slowVibrationLevel: Int = 3,
+    val showTtaLines: Boolean = false,
     val alertActive: Boolean = false        // any threat or official alert live right now
 )
 
@@ -206,7 +210,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private data class NightPrefs(
         val window: NightWindowPrefs,
-        val zones: NightZonesPrefs
+        val zones: NightZonesPrefs,
+        val vibrationEnabled: Boolean,
+        val vibration: NightVibration
     )
 
     private data class PrefsSnapshot(
@@ -233,6 +239,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val slowGroupCollapsed: Boolean,
         val fastVibrationLevel: Int,
         val slowVibrationLevel: Int,
+        val showTtaLines: Boolean,
         val night: NightPrefs
     )
 
@@ -267,7 +274,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val showMapScale: Boolean,
         val deathAnimationEnabled: Boolean,
         val fastGroupCollapsed: Boolean,
-        val slowGroupCollapsed: Boolean
+        val slowGroupCollapsed: Boolean,
+        val showTtaLines: Boolean
     )
 
     private val liveSnapshot = combine(
@@ -314,11 +322,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             prefs.showMapScale(),
             prefs.deathAnimationEnabled(),
             prefs.fastGroupCollapsed(),
-            prefs.slowGroupCollapsed()
+            prefs.slowGroupCollapsed(),
+            prefs.showTtaLines()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4],
-                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10]
+                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11]
             )
         },
         combine(
@@ -364,8 +373,15 @@ combine(
                         zoneSirenOverride = flags[4],
                         officialSirenOverride = flags[5]
                     )
-                }
-        ) { window, zones -> NightPrefs(window, zones) }
+                },
+        combine(
+            prefs.nightVibrationEnabled(),
+            prefs.nightFastVibrationLevel(),
+            prefs.nightSlowVibrationLevel()
+        ) { enabled, fast, slow -> enabled to NightVibration(fast, slow) }
+    ) { window, zones, vib ->
+        NightPrefs(window, zones, vib.first, vib.second)
+    }
     ) { a, b, c, vib, night ->
         PrefsSnapshot(
             mapEnabled = a.map,
@@ -391,6 +407,7 @@ combine(
             slowGroupCollapsed = b.slowGroupCollapsed,
             fastVibrationLevel = vib.first,
             slowVibrationLevel = vib.second,
+            showTtaLines = b.showTtaLines,
             night = night
         )
     }
@@ -438,6 +455,10 @@ combine(
         prefs.nightFastYellowZoneArmed().first()
         prefs.nightZoneSirenOverride().first()
         prefs.nightOfficialSirenOverride().first()
+        prefs.nightVibrationEnabled().first()
+        prefs.nightFastVibrationLevel().first()
+        prefs.nightSlowVibrationLevel().first()
+        prefs.showTtaLines().first()
         emit(Unit)
     }.flowOn(Dispatchers.IO)
 
@@ -523,6 +544,9 @@ val uiState: StateFlow<UiState> = combine(
             nightFastYellowArmed = prefs.night.zones.fastYellowArmed,
             nightZoneSirenOverride = prefs.night.zones.zoneSirenOverride,
             nightOfficialSirenOverride = prefs.night.zones.officialSirenOverride,
+            nightVibrationEnabled = prefs.night.vibrationEnabled,
+            nightFastVibrationLevel = prefs.night.vibration.fast,
+            nightSlowVibrationLevel = prefs.night.vibration.slow,
             languageChosen = prefs.languageChosen,
             batteryOnboardShown = prefs.batteryOnboardShown,
             threatCardSize = prefs.cardSize,
@@ -532,7 +556,8 @@ val uiState: StateFlow<UiState> = combine(
             fastGroupCollapsed = prefs.fastGroupCollapsed,
             slowGroupCollapsed = prefs.slowGroupCollapsed,
             fastVibrationLevel = prefs.fastVibrationLevel,
-            slowVibrationLevel = prefs.slowVibrationLevel
+            slowVibrationLevel = prefs.slowVibrationLevel,
+            showTtaLines = prefs.showTtaLines
         )
     }.stateIn(
         viewModelScope,
@@ -843,6 +868,22 @@ val uiState: StateFlow<UiState> = combine(
 
     fun setNightOfficialSirenOverride(override: Boolean) {
         viewModelScope.launch { prefs.setNightOfficialSirenOverride(override) }
+    }
+
+    fun setNightVibrationEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setNightVibrationEnabled(enabled) }
+    }
+
+    fun setNightFastVibrationLevel(level: Int) {
+        viewModelScope.launch { prefs.setNightFastVibrationLevel(level) }
+    }
+
+    fun setNightSlowVibrationLevel(level: Int) {
+        viewModelScope.launch { prefs.setNightSlowVibrationLevel(level) }
+    }
+
+    fun setShowTtaLines(show: Boolean) {
+        viewModelScope.launch { prefs.setShowTtaLines(show) }
     }
 
     /** Follow-me toggle: switching it back on resumes GPS-centered zones/camera. */

@@ -73,6 +73,10 @@ class ZonePrefs(private val context: Context) {
     private val nightFastYellowArmedKey = booleanPreferencesKey("night_fast_yellow_armed")
     private val nightZoneSirenOverrideKey = booleanPreferencesKey("night_zone_siren_override")
     private val nightOfficialSirenOverrideKey = booleanPreferencesKey("night_official_siren_override")
+    private val nightVibrationEnabledKey = booleanPreferencesKey("night_vibration_enabled")
+    private val nightFastVibrationLevelKey = intPreferencesKey("night_fast_vibration_level")
+    private val nightSlowVibrationLevelKey = intPreferencesKey("night_slow_vibration_level")
+    private val showTtaLinesKey = booleanPreferencesKey("show_tta_lines")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 2–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -304,6 +308,14 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[showMapScaleKey] = show }
     }
 
+    /** Whether fast-threat time-to-arrival course lines render on the map — default off. */
+    fun showTtaLines(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[showTtaLinesKey] ?: false }
+
+    suspend fun setShowTtaLines(show: Boolean) {
+        context.dataStore.edit { it[showTtaLinesKey] = show }
+    }
+
     /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */
     fun deathAnimationEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[deathAnimationEnabledKey] ?: true }
@@ -510,6 +522,30 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setNightOfficialSirenOverride(override: Boolean) {
         context.dataStore.edit { it[nightOfficialSirenOverrideKey] = override }
+    }
+
+    /** Whether night mode applies its own vibration strengths during the night window. Default off. */
+    fun nightVibrationEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[nightVibrationEnabledKey] ?: false }
+
+    suspend fun setNightVibrationEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[nightVibrationEnabledKey] = enabled }
+    }
+
+    /** Night vibration strength 0–4 for fast (missile) zone alerts — default 3 (strong). */
+    fun nightFastVibrationLevel(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightFastVibrationLevelKey] ?: 3 }
+
+    suspend fun setNightFastVibrationLevel(level: Int) {
+        context.dataStore.edit { it[nightFastVibrationLevelKey] = level.coerceIn(0, 4) }
+    }
+
+    /** Night vibration strength 0–4 for slow (drone) zone alerts — default 3 (strong). */
+    fun nightSlowVibrationLevel(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[nightSlowVibrationLevelKey] ?: 3 }
+
+    suspend fun setNightSlowVibrationLevel(level: Int) {
+        context.dataStore.edit { it[nightSlowVibrationLevelKey] = level.coerceIn(0, 4) }
     }
 }
 

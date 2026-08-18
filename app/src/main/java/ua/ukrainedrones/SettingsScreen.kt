@@ -76,6 +76,7 @@ fun SettingsScreen(
     listState: LazyListState,
     onThreatsScrollHandled: () -> Unit,
     scrollToThreatsTick: Int,
+    scrollToNightMode: Boolean,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     officialAlertsEnabled: Boolean,
@@ -86,6 +87,10 @@ fun SettingsScreen(
     nightStartMin: Int,
     nightEndMin: Int,
     nightUseCustomZones: Boolean,
+    slowRedKm: Int,
+    slowYellowKm: Int,
+    fastRedMin: Int,
+    fastYellowMin: Int,
     nightSlowRedKm: Int,
     nightSlowYellowKm: Int,
     nightFastRedMin: Int,
@@ -96,6 +101,9 @@ fun SettingsScreen(
     nightFastYellowArmed: Boolean,
     nightZoneSirenOverride: Boolean,
     nightOfficialSirenOverride: Boolean,
+    nightVibrationEnabled: Boolean,
+    nightFastVibrationLevel: Int,
+    nightSlowVibrationLevel: Int,
     disclaimerCollapsed: Boolean,
     disclaimerReadCount: Int,
     followMe: Boolean,
@@ -103,6 +111,7 @@ fun SettingsScreen(
     threatCardSize: ThreatCardSize,
     iconSet: ThreatIconSet,
     showMapScale: Boolean,
+    showTtaLines: Boolean,
     deathAnimationEnabled: Boolean,
     fastGroupCollapsed: Boolean,
     slowGroupCollapsed: Boolean,
@@ -134,6 +143,9 @@ fun SettingsScreen(
     onNightFastYellowArmedChange: (Boolean) -> Unit,
     onNightZoneSirenOverrideChange: (Boolean) -> Unit,
     onNightOfficialSirenOverrideChange: (Boolean) -> Unit,
+    onNightVibrationEnabledChange: (Boolean) -> Unit,
+    onNightFastVibrationChange: (Int) -> Unit,
+    onNightSlowVibrationChange: (Int) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
@@ -141,6 +153,7 @@ fun SettingsScreen(
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
+    onShowTtaLinesChange: (Boolean) -> Unit,
     onDeathAnimationChange: (Boolean) -> Unit,
     onFastGroupCollapse: (Boolean) -> Unit,
     onSlowGroupCollapse: (Boolean) -> Unit,
@@ -203,12 +216,13 @@ fun SettingsScreen(
     var nightExpanded by remember { mutableStateOf(true) }
     var alertsExpanded by remember { mutableStateOf(true) }
 
-    // The Threats section header is a fixed item index in this LazyColumn; scroll to it when
-    // the zones-sheet gear asks (ZonesSheet → Settings, landing on Threats). The tick is
-    // consumed after the jump so a later plain open keeps the last scroll position.
+    // The Threats/Night-mode section headers are fixed item indices in this LazyColumn; scroll
+    // to one when the zones-sheet gear asks (ZonesSheet → Settings). Night mode (index 5) when
+    // the night window is active, Threats (index 4) otherwise. The tick is consumed after the
+    // jump so a later plain open keeps the last scroll position.
     LaunchedEffect(scrollToThreatsTick) {
         if (scrollToThreatsTick > 0) {
-            listState.animateScrollToItem(4)
+            listState.animateScrollToItem(if (scrollToNightMode) 5 else 4)
             onThreatsScrollHandled()
         }
     }
@@ -477,6 +491,13 @@ fun SettingsScreen(
                         fastYellowArmed = nightFastYellowArmed,
                         zoneSirenOverride = nightZoneSirenOverride,
                         officialSirenOverride = nightOfficialSirenOverride,
+                        vibrationEnabled = nightVibrationEnabled,
+                        fastVibrationLevel = nightFastVibrationLevel,
+                        slowVibrationLevel = nightSlowVibrationLevel,
+                        daySlowRedKm = slowRedKm,
+                        daySlowYellowKm = slowYellowKm,
+                        dayFastRedMin = fastRedMin,
+                        dayFastYellowMin = fastYellowMin,
                         onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
                         onStartChange = onNightStartChange,
                         onEndChange = onNightEndChange,
@@ -490,7 +511,10 @@ fun SettingsScreen(
                         onFastRedArmedChange = onNightFastRedArmedChange,
                         onFastYellowArmedChange = onNightFastYellowArmedChange,
                         onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
-                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange
+                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
+                        onVibrationEnabledChange = onNightVibrationEnabledChange,
+                        onFastVibrationChange = onNightFastVibrationChange,
+                        onSlowVibrationChange = onNightSlowVibrationChange
                     )
                 }
             }
@@ -592,6 +616,15 @@ fun SettingsScreen(
                                     checked = showMapScale,
                                     onCheckedChange = onShowMapScaleChange,
                                     icon = painterResource(R.drawable.ic_scale),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                AlertToggleRow(
+                                    title = s.showTtaLinesTitle,
+                                    description = s.showTtaLinesDesc,
+                                    checked = showTtaLines,
+                                    onCheckedChange = onShowTtaLinesChange,
+                                    icon = painterResource(R.drawable.ic_explosion),
                                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -815,6 +848,13 @@ private fun NightModeCard(
     fastYellowArmed: Boolean,
     zoneSirenOverride: Boolean,
     officialSirenOverride: Boolean,
+    vibrationEnabled: Boolean,
+    fastVibrationLevel: Int,
+    slowVibrationLevel: Int,
+    daySlowRedKm: Int,
+    daySlowYellowKm: Int,
+    dayFastRedMin: Int,
+    dayFastYellowMin: Int,
     onEnabledChange: (Boolean) -> Unit,
     onStartChange: (Int) -> Unit,
     onEndChange: (Int) -> Unit,
@@ -828,7 +868,10 @@ private fun NightModeCard(
     onFastRedArmedChange: (Boolean) -> Unit,
     onFastYellowArmedChange: (Boolean) -> Unit,
     onZoneSirenOverrideChange: (Boolean) -> Unit,
-    onOfficialSirenOverrideChange: (Boolean) -> Unit
+    onOfficialSirenOverrideChange: (Boolean) -> Unit,
+    onVibrationEnabledChange: (Boolean) -> Unit,
+    onFastVibrationChange: (Int) -> Unit,
+    onSlowVibrationChange: (Int) -> Unit
 ) {
     val s = Strings.get(lang)
     var editing by remember { mutableStateOf<String?>(null) }  // "start" | "end" | null
@@ -885,6 +928,32 @@ private fun NightModeCard(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             AlertToggleRow(
+                title = s.nightVibrationLabel,
+                description = s.nightVibrationDesc,
+                checked = vibrationEnabled,
+                onCheckedChange = onVibrationEnabledChange
+            )
+            if (vibrationEnabled) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    VibrationSliderRow(
+                        label = s.fastGroupLabel,
+                        level = fastVibrationLevel,
+                        accent = Color(0xFFE57373),
+                        levelName = { vibrationLevelName(s, it) },
+                        onLevelChange = onFastVibrationChange
+                    )
+                    VibrationSliderRow(
+                        label = s.slowGroupLabel,
+                        level = slowVibrationLevel,
+                        accent = Color(0xFFF9A825),
+                        levelName = { vibrationLevelName(s, it) },
+                        onLevelChange = onSlowVibrationChange
+                    )
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AlertToggleRow(
                 title = s.nightCustomZonesTitle,
                 description = s.nightCustomZonesDesc,
                 checked = useCustomZones,
@@ -902,6 +971,8 @@ private fun NightModeCard(
                             accent = ZoneRedColor,
                             armed = slowRedArmed,
                             bellDesc = s.alertsBellToggle,
+                            reference = daySlowRedKm,
+                            dayLabel = s.dayShortLabel,
                             onArmedChange = onSlowRedArmedChange,
                             onCommit = onSlowRedChange
                         )
@@ -913,6 +984,8 @@ private fun NightModeCard(
                             accent = ZoneYellowColor,
                             armed = slowYellowArmed,
                             bellDesc = s.alertsBellToggle,
+                            reference = daySlowYellowKm,
+                            dayLabel = s.dayShortLabel,
                             onArmedChange = onSlowYellowArmedChange,
                             onCommit = onSlowYellowChange
                         )
@@ -927,6 +1000,8 @@ private fun NightModeCard(
                             accent = ZoneRedColor,
                             armed = fastRedArmed,
                             bellDesc = s.alertsBellToggle,
+                            reference = dayFastRedMin,
+                            dayLabel = s.dayShortLabel,
                             onArmedChange = onFastRedArmedChange,
                             onCommit = onFastRedChange
                         )
@@ -938,6 +1013,8 @@ private fun NightModeCard(
                             accent = ZoneYellowColor,
                             armed = fastYellowArmed,
                             bellDesc = s.alertsBellToggle,
+                            reference = dayFastYellowMin,
+                            dayLabel = s.dayShortLabel,
                             onArmedChange = onFastYellowArmedChange,
                             onCommit = onFastYellowChange
                         )

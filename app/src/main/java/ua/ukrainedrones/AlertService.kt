@@ -36,6 +36,7 @@ class AlertService : Service() {
     companion object {
         const val ACTION_STOP = "ua.ukrainedrones.STOP"
         const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
+        const val ACTION_NEUTRALIZED_DISMISS = "ua.ukrainedrones.NEUTRALIZED_DISMISS"
         const val EXTRA_REVEAL_ID = "reveal_threat_id"
         const val EXTRA_REVEAL_LAT = "reveal_threat_lat"
         const val EXTRA_REVEAL_LON = "reveal_threat_lon"
@@ -46,10 +47,13 @@ class AlertService : Service() {
         private const val CHANNEL_ALERTS_ALARM = "alerts_siren_alarm"
         private const val CHANNEL_ALERTS_OUTER_ALARM = "alerts_siren_outer_alarm"
         private const val CHANNEL_OFFLINE = "offline"
+        private const val CHANNEL_NEUTRALIZED = "neutralized"
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
         private const val NOTIF_ALLCLEAR = 3
         private const val NOTIF_OFFLINE = 4
+        private const val NOTIF_MILESTONE = 5
+        private const val NOTIF_NEUTRALIZED = 6
         private const val CENTRE_ALERT_GRACE_MS = 60_000L
         /** Vibration level used for official alerts with no known reason threat (fixed, urgent). */
         private const val VIBRATION_STRONG = 4
@@ -74,8 +78,9 @@ class AlertService : Service() {
     private var lastMonitorTitle: String? = null
     private var lastMonitorText: String? = null
     private var lastMonitorRetry: String? = null
-private var wasConnected = true
+    private var wasConnected = true
     private var offlineNotifShown = false
+    private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
     private var notif3minShown = false
     private var notif6minShown = false
@@ -83,6 +88,8 @@ private var wasConnected = true
     private var notif20minShown = false
     private val speedTracker = ThreatSpeedTracker()
     private var alertEpoch = 0
+    private var neutralizedCount = 0
+    private var lastNeutralizedType: ThreatType? = null
 
     private sealed class MonitorEvent {
         data class State(
@@ -144,7 +151,9 @@ private var wasConnected = true
         val window: NightWindow,
         val zones: NightZones,
         val zoneSirenOverride: Boolean,
-        val officialSirenOverride: Boolean
+        val officialSirenOverride: Boolean,
+        val vibrationEnabled: Boolean,
+        val vibration: NightVibration
     )
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -179,6 +188,12 @@ private var wasConnected = true
         if (intent?.action == ACTION_RETRY) {
             NeptunClient.retryNow()
         }
+        if (intent?.action == ACTION_NEUTRALIZED_DISMISS) {
+            // The tally notification was swiped away — reset the count so any later
+            // neutralizations start a fresh tally instead of resurrecting the dismissed one.
+            neutralizedCount = 0
+            lastNeutralizedType = null
+        }
         startMonitoring()
         return START_STICKY
     }
@@ -202,6 +217,15 @@ private var wasConnected = true
     private fun startMonitoring() {
         if (monitoringJob != null) return
         val prefs = ZonePrefs(applicationContext)
+        // Real neutralizations only: this flow carries server-driven resolutions/removals
+        // (the TEMP map long-press never touches it), so the tally excludes user activation.
+        scope.launch {
+            NeptunClient.removedThreats.collect { removed ->
+                neutralizedCount++
+                lastNeutralizedType = removed.type
+                postNeutralizedTally(prefs.language().first())
+            }
+        }
         monitoringJob = scope.launch {
             val nowFlow = MutableStateFlow(System.currentTimeMillis())
             launch {
@@ -271,9 +295,16 @@ private var wasConnected = true
                     },
                     combine(
                         prefs.nightZoneSirenOverride(), prefs.nightOfficialSirenOverride()
-                    ) { zoneOv, officialOv -> zoneOv to officialOv }
-                ) { window, zones, ov ->
-                    NightSettings(window, zones, ov.first, ov.second)
+                    ) { zoneOv, officialOv -> zoneOv to officialOv },
+                    combine(
+                        prefs.nightVibrationEnabled(),
+                        prefs.nightFastVibrationLevel(),
+                        prefs.nightSlowVibrationLevel()
+                    ) { enabled, fast, slow ->
+                        enabled to NightVibration(fast, slow)
+                    }
+                ) { window, zones, ov, vib ->
+                    NightSettings(window, zones, ov.first, ov.second, vib.first, vib.second)
                 }
             ) { core, params, config, tail, night ->
                 val neptun = core.first
@@ -299,6 +330,10 @@ private var wasConnected = true
                 )
                 val zoneSirenOverride = if (nightActive) night.zoneSirenOverride else config.sirenOverride
                 val officialSirenOverride = if (nightActive) night.officialSirenOverride else config.sirenOverride
+                val effectiveVibration = effectiveVibration(
+                    tail.fastVibrationLevel, tail.slowVibrationLevel,
+                    night.vibration, night.vibrationEnabled, nightActive
+                )
                 val attribution = focusAttribution(followMe, gps, pinned)
                 val officialActive = attribution.token?.let { token ->
                     neptun.oblastAlerts.any { it.inOblast(token) }
@@ -333,8 +368,8 @@ private var wasConnected = true
                     officialSirenOverride = officialSirenOverride,
                     connected = neptun.connected,
                     offlineElapsedSec = neptun.offlineElapsedSec,
-                    fastVibrationLevel = tail.fastVibrationLevel,
-                    slowVibrationLevel = tail.slowVibrationLevel,
+                    fastVibrationLevel = effectiveVibration.fast,
+                    slowVibrationLevel = effectiveVibration.slow,
                     focusLocation = focus
                 )
             }.collect { handleState(it) }
@@ -442,7 +477,7 @@ private var wasConnected = true
                 offlineNotifShown = true
             }
         }
-wasConnected = state.connected
+        wasConnected = state.connected
 
         // Reconnection milestone notifications (3min, 6min, 10min, 20min)
         val neptun = NeptunClient.state.value
@@ -480,13 +515,13 @@ wasConnected = state.connected
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
                     .build()
-                safeNotify(NOTIF_ONEMORE, notif)
+                safeNotify(NOTIF_MILESTONE, notif)
             }
             // Show notification at 6 minutes
             if (elapsedSinceReconnect >= sixMinMs && !notif6minShown) {
                 notif6minShown = true
                 val s = Strings.get(state.lang)
-                val backupStatus = if (neptun.backupUp) "active" : "inactive"
+                val backupStatus = if (neptun.backupUp) "active" else "inactive"
                 val msg = if (state.lang == AppLanguage.UA) {
                     "Backup alerts from alerts.com.ua are currently $backupStatus. Official sirens may be limited."
                 } else {
@@ -500,7 +535,7 @@ wasConnected = state.connected
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
                     .build()
-                safeNotify(NOTIF_ONEMORE, notif)
+                safeNotify(NOTIF_MILESTONE, notif)
             }
             // Show notification at 10 minutes
             if (elapsedSinceReconnect >= tenMinMs && !notif10minShown) {
@@ -519,7 +554,7 @@ wasConnected = state.connected
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
                     .build()
-                safeNotify(NOTIF_ONEMORE, notif)
+                safeNotify(NOTIF_MILESTONE, notif)
             }
             // Show notification at 20 minutes and stop reconnection attempts
             if (elapsedSinceReconnect >= twentyMinMs && !notif20minShown) {
@@ -538,10 +573,9 @@ wasConnected = state.connected
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
                     .build()
-                safeNotify(NOTIF_ONEMORE, notif)
+                safeNotify(NOTIF_MILESTONE, notif)
                 // After 20 minutes, cancel further auto-reconnect attempts
-                NeptunClient.reconnectJob?.cancel()
-                NeptunClient.reconnectJob = null
+                NeptunClient.stopReconnect()
             }
         }
 
@@ -880,6 +914,41 @@ wasConnected = state.connected
         safeNotify(NOTIF_OFFLINE, notif)
     }
 
+    /**
+     * Silent, dismissible running tally of real neutralizations. Re-posted on the same id with
+     * an incremented count each time; swiping it away (delete intent) resets the count so it
+     * stays gone until the next neutralization starts a fresh tally.
+     */
+    private fun postNeutralizedTally(lang: AppLanguage) {
+        val s = Strings.get(lang)
+        val info = lastNeutralizedType?.let { ThreatTypeCatalog.INFO[it] }
+        val lastLine = info?.let {
+            String.format(s.neutralizedLastLineFormat, if (lang == AppLanguage.UA) it.labelUa else it.labelEn)
+        }
+        val builder = NotificationCompat.Builder(this, CHANNEL_NEUTRALIZED)
+            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setContentTitle(neutralizedThreatsPhrase(neutralizedCount, lang))
+            .setContentText(s.neutralizedNotifBody)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(openAppIntent())
+            .setDeleteIntent(neutralizedDismissPendingIntent())
+        if (lastLine != null) {
+            builder.setStyle(
+                NotificationCompat.BigTextStyle().bigText("${s.neutralizedNotifBody}\n$lastLine")
+            )
+        }
+        safeNotify(NOTIF_NEUTRALIZED, builder.build())
+    }
+
+    /** Reset the tally when the user swipes the notification away. */
+    private fun neutralizedDismissPendingIntent(): PendingIntent {
+        val intent = Intent(this, NeutralizedDismissReceiver::class.java)
+        return PendingIntent.getBroadcast(
+            this, 2, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
     private fun postAllClear(s: Strings.StringSet, city: String) {
         alertEpoch++
         val notif = NotificationCompat.Builder(this, CHANNEL_ALLCLEAR)
@@ -1003,6 +1072,12 @@ wasConnected = state.connected
                 enableVibration(true)
             }
         )
+        // Neutralized tally: informational, always silent (LOW importance) — never rings.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_NEUTRALIZED, en.neutralizedNotifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
+                description = en.neutralizedChannelDesc
+            }
+        )
         val keep = setOf(
             CHANNEL_MONITOR,
             CHANNEL_ALERTS,
@@ -1010,7 +1085,8 @@ wasConnected = state.connected
             CHANNEL_ALLCLEAR,
             CHANNEL_ALERTS_ALARM,
             CHANNEL_ALERTS_OUTER_ALARM,
-            CHANNEL_OFFLINE
+            CHANNEL_OFFLINE,
+            CHANNEL_NEUTRALIZED
         )
         nm.notificationChannels
             .filter { it.id !in keep }

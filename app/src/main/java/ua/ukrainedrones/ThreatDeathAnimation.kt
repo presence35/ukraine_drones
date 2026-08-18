@@ -232,7 +232,7 @@ class ThreatDeathOverlay : Overlay() {
                         // Bullet: the projectile PNG, rotated to the heading, over a gold flash.
                         canvas.save()
                         canvas.translate(bx, by)
-                        canvas.rotate(Math.toDegrees(atan2(headY.toDouble(), headX.toDouble())).toFloat())
+                        canvas.rotate((Math.toDegrees(atan2(headY.toDouble(), headX.toDouble())) + 90).toFloat())
                         flashPaint.shader = RadialGradient(
                             0f, 0f, 14f * density,
                             intArrayOf(

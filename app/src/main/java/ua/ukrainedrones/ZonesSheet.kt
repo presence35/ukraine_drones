@@ -10,7 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -44,6 +47,12 @@ fun ZonesPanel(
     fastYellowArmed: Boolean,
     lang: AppLanguage,
     nightActive: Boolean = false,
+    useNightZones: Boolean = false,
+    nightEnabled: Boolean = false,
+    daySlowRedKm: Int? = null,
+    daySlowYellowKm: Int? = null,
+    dayFastRedMin: Int? = null,
+    dayFastYellowMin: Int? = null,
     onSlowRedChange: (Int) -> Unit,
     onSlowYellowChange: (Int) -> Unit,
     onFastRedChange: (Int) -> Unit,
@@ -62,7 +71,11 @@ fun ZonesPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                if (nightActive) "\uD83C\uDF19 ${s.nightZonesTitle} \uD83C\uDF19" else s.dayZonesTitle,
+                when {
+                    nightActive -> "\uD83C\uDF19 ${s.nightZonesTitle} \uD83C\uDF19"
+                    nightEnabled && useNightZones -> s.dayZonesTitle
+                    else -> s.alertZonesTitle
+                },
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
@@ -92,6 +105,8 @@ fun ZonesPanel(
                 accent = RedZoneColor,
                 armed = slowRedArmed,
                 bellDesc = s.alertsBellToggle,
+                reference = if (nightActive) daySlowRedKm else null,
+                dayLabel = s.dayShortLabel,
                 onArmedChange = onSlowRedArmedChange,
                 onCommit = onSlowRedChange
             )
@@ -105,6 +120,8 @@ fun ZonesPanel(
                 accent = YellowZoneColor,
                 armed = slowYellowArmed,
                 bellDesc = s.alertsBellToggle,
+                reference = if (nightActive) daySlowYellowKm else null,
+                dayLabel = s.dayShortLabel,
                 onArmedChange = onSlowYellowArmedChange,
                 onCommit = onSlowYellowChange
             )
@@ -122,6 +139,8 @@ fun ZonesPanel(
                 accent = RedZoneColor,
                 armed = fastRedArmed,
                 bellDesc = s.alertsBellToggle,
+                reference = if (nightActive) dayFastRedMin else null,
+                dayLabel = s.dayShortLabel,
                 onArmedChange = onFastRedArmedChange,
                 onCommit = onFastRedChange
             )
@@ -135,6 +154,8 @@ fun ZonesPanel(
                 accent = YellowZoneColor,
                 armed = fastYellowArmed,
                 bellDesc = s.alertsBellToggle,
+                reference = if (nightActive) dayFastYellowMin else null,
+                dayLabel = s.dayShortLabel,
                 onArmedChange = onFastYellowArmedChange,
                 onCommit = onFastYellowChange
             )
@@ -206,6 +227,8 @@ internal fun ZoneRow(
     accent: Color,
     armed: Boolean,
     bellDesc: String,
+    reference: Int? = null,
+    dayLabel: String? = null,
     onArmedChange: (Boolean) -> Unit,
     onCommit: (Int) -> Unit
 ) {
@@ -242,24 +265,47 @@ internal fun ZoneRow(
             )
         )
         Spacer(Modifier.width(12.dp))
-        Slider(
-            value = local,
-            onValueChange = {
-                val v = it.roundToInt()
-                local = v.toFloat()
-                onCommit(v)
-            },
-            valueRange = range,
-            steps = 0,
-            colors = SliderDefaults.colors(
-                thumbColor = accent,
-                activeTrackColor = accent
-            ),
-            modifier = Modifier.weight(1f)
-        )
+        // A subtle ghost tick on the track marks the day value while night zones are being
+        // edited, so the two can be compared on the spot.
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .drawBehind {
+                    val ref = reference ?: return@drawBehind
+                    val thumbR = 10.dp.toPx()
+                    val fraction =
+                        ((ref - range.start) / (range.endInclusive - range.start)).toFloat()
+                    val x = thumbR + fraction * (size.width - 2 * thumbR)
+                    drawLine(
+                        color = Color(0xFFB0BEC5).copy(alpha = 0.45f),
+                        start = Offset(x, size.height * 0.25f),
+                        end = Offset(x, size.height * 0.75f),
+                        strokeWidth = 2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+        ) {
+            Slider(
+                value = local,
+                onValueChange = {
+                    val v = it.roundToInt()
+                    local = v.toFloat()
+                    onCommit(v)
+                },
+                valueRange = range,
+                steps = 0,
+                colors = SliderDefaults.colors(
+                    thumbColor = accent,
+                    activeTrackColor = accent
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Spacer(Modifier.width(10.dp))
         Text(
-            "$value $unit",
+            if (reference != null && dayLabel != null) {
+                "$value $unit · $dayLabel $reference $unit"
+            } else "$value $unit",
             color = accent,
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.labelLarge

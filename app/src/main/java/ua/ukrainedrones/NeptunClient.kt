@@ -204,6 +204,9 @@ object NeptunClient {
         lastFrameAt = now
         if (wsStale) refreshFromRest()
         AlertsUaClient.refreshNow()
+        // A 20-minute milestone may have stopped the reconnect loop while the app was closed;
+        // resuming the socket on the next open matches the notification's promise.
+        if (!manuallyStopped && !_state.value.connected) retryNow()
     }
 
     private val restUrl = "https://neptun.in.ua/api/v1/threats"
@@ -224,6 +227,13 @@ object NeptunClient {
         ws = null
         old?.close(1001, "manual retry")
         connect()
+    }
+
+    /** Stop the periodic reconnect loop (fires at the 20-minute milestone). A later
+     *  [retryNow] / [onForeground] call restarts it. */
+    fun stopReconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = null
     }
 
     /**

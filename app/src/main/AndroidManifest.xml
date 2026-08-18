@@ -34,6 +34,10 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".NeutralizedDismissReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

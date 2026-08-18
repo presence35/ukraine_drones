@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Notifications: new "Neutralized threats" tally — a silent, dismissible notification that counts real server-side neutralizations (not manual test triggers) while you're away, appending to the count as each one lands and stopping when you swipe it away. Tap it to open the map.
+- Map: optional "Time-to-arrival lines" (Settings → Additional, off by default) — for fast threats a red line along the course shows where the object will be at the red time threshold and a yellow one at the yellow threshold.
+- Zones panel: the title now matches what it edits — "🌙 Night zones 🌙" during the night window, "Day zones" when night zones are configured but it's daytime, otherwise "Alert zones" (was always "Alert zones").
+- Night mode: new "Vibration at night" toggle (off by default) with its own Fast/Slow strength sliders, used instead of the day strengths while the night window is active.
+- Settings: while editing the night's custom zone sliders, each slider shows a ghost tick plus a bracketed "day N" reference so you can align the night thresholds with the day ones.
+
+- Zones panel: the settings gear now opens Settings scrolled to the Night mode section when the night window is active, otherwise to the Threats section as before.
+
 - Zones panel: it now edits whatever the map is currently showing — during the night window it tunes the night zones/bells (moon-flanked "Night zones" title, subtle indigo panel border, moon in the header), otherwise the day ones ("Day zones"); sliders and bells always move the rings you see.
 - Zones panel: the Slow and Fast groups each sit in a subtle rounded border box; the turtle/lightning icons are vertically centered and the lightning now renders as a real emoji everywhere (no more half-bolt text glyph).
 - Settings: every section (Language, Map centre, Card size, Threats, Night mode, Alerts) is now collapsible from its header.

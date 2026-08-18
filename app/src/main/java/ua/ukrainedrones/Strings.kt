@@ -33,6 +33,8 @@ object Strings {
     data class Settings(
         val dayZonesTitle: String,
         val nightZonesTitle: String,
+        val alertZonesTitle: String,
+        val dayShortLabel: String,
         val nightModeHeaderDesc: String,
         val redZoneLabel: String,
         val yellowZoneLabel: String,
@@ -58,6 +60,8 @@ object Strings {
         val nightOfficialSirenOverrideDesc: String,
         val nightCustomZonesTitle: String,
         val nightCustomZonesDesc: String,
+        val nightVibrationLabel: String,
+        val nightVibrationDesc: String,
         val nightMuteWarning: String,
         val nightMuteExitNote: String,
         val allAlertsOffLabel: String,
@@ -89,6 +93,10 @@ object Strings {
         val notifChannelDesc: String,
         val notifStatusZones: String,
         val notifBodyRegion: String,
+        val neutralizedNotifChannelName: String,
+        val neutralizedChannelDesc: String,
+        val neutralizedNotifBody: String,
+        val neutralizedLastLineFormat: String,
         val attributionText: String,
         val madeBy: String,
         val connOnline: String,
@@ -212,6 +220,8 @@ object Strings {
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
         val showMapScaleDesc: String,
+        val showTtaLinesTitle: String,
+        val showTtaLinesDesc: String,
         val deathAnimationTitle: String,
         val deathAnimationDesc: String,
         val iconSetTitle: String,
@@ -351,6 +361,8 @@ object Strings {
         val wizardStartButton: String get() = onboarding.wizardStartButton
         val dayZonesTitle: String get() = settings.dayZonesTitle
         val nightZonesTitle: String get() = settings.nightZonesTitle
+        val alertZonesTitle: String get() = settings.alertZonesTitle
+        val dayShortLabel: String get() = settings.dayShortLabel
         val nightModeHeaderDesc: String get() = settings.nightModeHeaderDesc
         val redZoneLabel: String get() = settings.redZoneLabel
         val yellowZoneLabel: String get() = settings.yellowZoneLabel
@@ -376,6 +388,8 @@ object Strings {
         val nightOfficialSirenOverrideDesc: String get() = settings.nightOfficialSirenOverrideDesc
         val nightCustomZonesTitle: String get() = settings.nightCustomZonesTitle
         val nightCustomZonesDesc: String get() = settings.nightCustomZonesDesc
+        val nightVibrationLabel: String get() = settings.nightVibrationLabel
+        val nightVibrationDesc: String get() = settings.nightVibrationDesc
         val nightMuteWarning: String get() = settings.nightMuteWarning
         val nightMuteExitNote: String get() = settings.nightMuteExitNote
         val allAlertsOffLabel: String get() = settings.allAlertsOffLabel
@@ -404,6 +418,10 @@ object Strings {
         val notifChannelDesc: String get() = status.notifChannelDesc
         val notifStatusZones: String get() = status.notifStatusZones
         val notifBodyRegion: String get() = status.notifBodyRegion
+        val neutralizedNotifChannelName: String get() = status.neutralizedNotifChannelName
+        val neutralizedChannelDesc: String get() = status.neutralizedChannelDesc
+        val neutralizedNotifBody: String get() = status.neutralizedNotifBody
+        val neutralizedLastLineFormat: String get() = status.neutralizedLastLineFormat
         val attributionText: String get() = status.attributionText
         val madeBy: String get() = status.madeBy
         val connOnline: String get() = status.connOnline
@@ -518,6 +536,8 @@ object Strings {
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
         val showMapScaleDesc: String get() = misc.showMapScaleDesc
+        val showTtaLinesTitle: String get() = misc.showTtaLinesTitle
+        val showTtaLinesDesc: String get() = misc.showTtaLinesDesc
         val deathAnimationTitle: String get() = misc.deathAnimationTitle
         val deathAnimationDesc: String get() = misc.deathAnimationDesc
         val iconSetTitle: String get() = misc.iconSetTitle
@@ -642,6 +662,8 @@ object Strings {
     private fun uaSettings() = Settings(
         dayZonesTitle = "Денні зони",
         nightZonesTitle = "Нічні зони",
+        alertZonesTitle = "Зони тривог",
+        dayShortLabel = "день",
         nightModeHeaderDesc = "Нічний режим активний",
         redZoneLabel = "Червона зона",
         yellowZoneLabel = "Жовта зона",
@@ -667,6 +689,8 @@ object Strings {
         nightOfficialSirenOverrideDesc = "Офіційна тривога вночі дзвонить навіть у вібро- чи беззвучному режимі.",
         nightCustomZonesTitle = "Окремі нічні зони",
         nightCustomZonesDesc = "Власні відстані/час і червона/жовта зони на час нічного вікна.",
+        nightVibrationLabel = "Вібрація вночі",
+        nightVibrationDesc = "Окрема сила вібрації для швидких і повільних загроз під час нічного вікна.",
         nightMuteWarning = "Вночі атаки найбільш імовірні — ти можеш проспати одну.",
         nightMuteExitNote = "Якщо справді хочеш повної тиші — скористайся кнопкою «Зупинити моніторинг і вийти» нижче; інакше легко забути повернути налаштування вранці.",
         allAlertsOffLabel = "Усі сповіщення вимкнено",
@@ -698,6 +722,10 @@ object Strings {
         notifChannelDesc = "Моніторинг працює у фоновому режимі. Вимкнення цього лише приховує статусне сповіщення — сповіщення про повітряну тривогу все одно спрацьовуватимуть.",
         notifStatusZones = "Тривога слідкує за твоїм GPS",
         notifBodyRegion = "Одеський регіон",
+        neutralizedNotifChannelName = "Знешкоджені загрози",
+        neutralizedChannelDesc = "Лічильник реально знешкоджених загроз — живе, поки його не прибрати.",
+        neutralizedNotifBody = "Реальні знешкодження, поки ти в укритті. Натисни, щоб відкрити мапу.",
+        neutralizedLastLineFormat = "Остання: %s",
         attributionText = "Карта повітряних тривог — NEPTUN",
         madeBy = "Зроблено Presaince",
         connOnline = "Онлайн",
@@ -821,6 +849,8 @@ object Strings {
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
         showMapScaleDesc = "Масштабна шкала в нижньому правому куті карти.",
+        showTtaLinesTitle = "Лінії часу до прильоту",
+        showTtaLinesDesc = "Для швидких загроз: червона лінія по курсу, де об'єкт буде через червону межу часу, і жовта — де через жовту.",
         deathAnimationTitle = "Анімація знешкодження",
         deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу знешкоджено.",
         iconSetTitle = "Іконки загроз",
@@ -994,6 +1024,8 @@ object Strings {
     private fun enSettings() = Settings(
         dayZonesTitle = "Day zones",
         nightZonesTitle = "Night zones",
+        alertZonesTitle = "Alert zones",
+        dayShortLabel = "day",
         nightModeHeaderDesc = "Night mode active",
         redZoneLabel = "Red zone",
         yellowZoneLabel = "Yellow zone",
@@ -1019,6 +1051,8 @@ object Strings {
         nightOfficialSirenOverrideDesc = "Official oblast alerts ring at night even on vibrate/silent.",
         nightCustomZonesTitle = "Separate night zones",
         nightCustomZonesDesc = "Own distances/times and red/yellow zones for the night window.",
+        nightVibrationLabel = "Vibration at night",
+        nightVibrationDesc = "Separate vibration strength for fast and slow threats during the night window.",
         nightMuteWarning = "Attacks are most common at night — you may sleep through one.",
         nightMuteExitNote = "If you truly want total silence, use \"Stop Monitoring & Exit\" below instead — otherwise you may forget to switch alerts back on tomorrow.",
         allAlertsOffLabel = "All alerts are off",
@@ -1050,6 +1084,10 @@ object Strings {
         notifChannelDesc = "Monitoring runs in the background. Turning this off only hides this status notification — air-raid alerts still sound.",
         notifStatusZones = "Threat alarm is following your GPS",
         notifBodyRegion = "Odesa region",
+        neutralizedNotifChannelName = "Neutralized threats",
+        neutralizedChannelDesc = "Running tally of real threat neutralizations, kept until dismissed.",
+        neutralizedNotifBody = "Real neutralizations while you were away. Tap to open the map.",
+        neutralizedLastLineFormat = "Last: %s",
         attributionText = "Air threat map — NEPTUN",
         madeBy = "Made by Presaince",
         connOnline = "Online",
@@ -1173,6 +1211,8 @@ object Strings {
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
         showMapScaleDesc = "Scale bar in the map's bottom-right corner.",
+        showTtaLinesTitle = "Time-to-arrival lines",
+        showTtaLinesDesc = "For fast threats: a red line along the course to where it will be at the red time threshold, and yellow at the yellow one.",
         deathAnimationTitle = "Neutralizing animation",
         deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is neutralized.",
         iconSetTitle = "Threat icons",
@@ -1337,6 +1377,25 @@ fun sourcesWord(count: Int, lang: AppLanguage): String = when (lang) {
             n10 in 2..4 && n100 !in 12..14 -> "джерела"
             else -> "джерел"
         }
+    }
+}
+
+/**
+ * Pluralized "N threats neutralized" headline for the tally notification.
+ * English: "1 threat neutralized" / "N threats neutralized".
+ * Ukrainian: "1 загрозу" (21, 31…), "2–4 загрози" (22–24…), else "загроз" (5–20, 25–30…).
+ */
+fun neutralizedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
+    AppLanguage.EN -> if (count == 1) "1 threat neutralized" else "$count threats neutralized"
+    AppLanguage.UA -> {
+        val n10 = count % 10
+        val n100 = count % 100
+        val form = when {
+            n10 == 1 && n100 != 11 -> "загрозу"
+            n10 in 2..4 && n100 !in 12..14 -> "загрози"
+            else -> "загроз"
+        }
+        "Знешкоджено $count $form"
     }
 }
 

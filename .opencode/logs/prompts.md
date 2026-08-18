@@ -15723,3 +15723,85 @@ git push
 ## 18/08/2026, 00:45:52
 
 git push
+## 18/08/2026, 00:48:36
+
+run .\gradlew.bat :app:release
+## 18/08/2026, 00:49:24
+
+bump to v0.4.0
+## 18/08/2026, 00:50:26
+
+from zonespanel, if the user taps settings, instead of auto scrolling to threats, if night mode is on, scroll to there
+## 18/08/2026, 00:52:23
+
+add vibraiton in settings->night mode
+## 18/08/2026, 00:54:31
+
+go
+## 18/08/2026, 00:58:11
+
+make a notif of how many threats were neturalized (real ones, not user-activated).  keep it alive and appedn the count until the user dismisses.  Cool to see that while you went to shelter 5 drones were shot down.
+## 18/08/2026, 00:59:47
+
+the 2 buttons at bottom of settings say they're disalbed while an alarm is active. ...there is no alarm active!
+## 18/08/2026, 01:01:01
+
+the conntectionstatus popup needsa  vertical scroll.  the Alerts log gets long.  maybe we rethink this screen.
+## 18/08/2026, 01:02:04
+
+btw the bullet is facing upward, so orient accordingly.  currently on the map all i see is a big bullet tip, not the body.  and it's facing 180d, not 0d.
+## 18/08/2026, 01:04:24
+
+go
+## 18/08/2026, 01:08:07
+
+the "off alarm bell" is bad. I thought we had a grey one, this new red X one sucks.
+remove notes that attacks are more common at night -- it's not true.  in settings, night mode, and i think in zone panel.
+## 18/08/2026, 11:30:41
+
+go
+## 18/08/2026, 11:31:02
+
+continue
+## 18/08/2026, 11:31:23
+
+also, if separate night zones is one, is there a way to make the slider show a subtle shadow of what day zones are, so you can compare on the spot? If it looks bad we can just put in brackets what day is).
+
+how can we visuall represent "time to arrival", maybe a line on the map, instead of a zone?
+## 18/08/2026, 11:31:31
+
+continue
+## 18/08/2026, 11:31:38
+
+conitnue
+## 18/08/2026, 11:32:03
+
+the "off alarm bell" is bad. I thought we had a grey one, this new red X one sucks.
+remove notes that attacks are more common at night -- it's not true.  in settings, night mode, and i think in zone panel.
+## 18/08/2026, 11:34:38
+
+go
+## 18/08/2026, 12:21:49
+
+go
+## 18/08/2026, 12:22:08
+
+go
+## 18/08/2026, 12:40:02
+
+from a military general's perspctive and from a civilzian on the ground.  tell me what this app is missing, does well, fails hard at, and needs improvemtn or wahtever.  keep it wihtin reason (ie, i can'te ver get precise coords for a threat, etc)
+## 18/08/2026, 12:40:26
+
+from a military general's perspctive and from a civilzian on the ground.  tell me what this app is missing, does well, fails hard at, and needs improvemtn or wahtever.  keep it wihtin reason (ie, i can'te ver get precise coords for a threat, etc)
+## 18/08/2026, 12:43:28
+
+from a military general's perspctive and from a civilzian on the ground.  tell me what this app is missing, does well, fails hard at, and needs improvemtn or wahtever.  keep it wihtin reason (ie, i can'te ver get precise coords for a threat, etc)
+## 18/08/2026, 12:55:28
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 18/08/2026, 12:59:04
+
+done?
+## 18/08/2026, 13:03:23
+
+go
