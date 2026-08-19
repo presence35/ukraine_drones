@@ -106,9 +106,12 @@ data class UiState(
     val slowVibrationLevel: Int = 3,
     val showTtaLines: Boolean = false,
     val sheltersEnabled: Boolean = true,
+    val sheltersWithKids: Boolean = true,
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
+    val shelterRefreshing: Boolean = false,        // pull-to-refresh in-flight on the shelter screen
     val alertActive: Boolean = false,        // any threat or official alert live right now
-    val lastFrameAt: Long = 0                // epoch millis of the last live frame — 0 until the feed settles
+    val lastFrameAt: Long = 0,               // epoch millis of the last live frame — 0 until the feed settles
+    val now: Long = 0L                       // wall-clock epoch millis of this snapshot (shelter header age)
 )
 
 /** One-shot request from a notification tap to bring the camera onto a threat. */
@@ -137,7 +140,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val prefs = ZonePrefs(app.applicationContext)
-    private val speedTracker = ThreatSpeedTracker()
     private val updateManager = UpdateManager(app.applicationContext)
 
     private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
@@ -150,8 +152,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val installPermissionFlow = MutableStateFlow(false)
     private val latestVersionFlow = MutableStateFlow<String?>(null)
     private var lastAvailableUpdate: UpdateInfo? = null
+    /** Bumped each time a Settings-open check finds an available update (remind-only or fresh). */
+    private val updateReminderFlow = MutableStateFlow(0)
+    val updateReminderTick: StateFlow<Int> get() = updateReminderFlow
     private val nowFlow = MutableStateFlow(System.currentTimeMillis())
     private val shelterIndexFlow = MutableStateFlow<ShelterIndex?>(null)
+    private val shelterRefreshingFlow = MutableStateFlow(false)
+    private val shelterDataFlow = combine(shelterIndexFlow, shelterRefreshingFlow) { idx, refreshing -> idx to refreshing }
     private var isChecking = false
 
     private val zonesFlow = combine(
@@ -195,7 +202,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val batteryOnboardShown: Boolean,
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet,
-        val sheltersEnabled: Boolean
+        val sheltersEnabled: Boolean,
+        val sheltersWithKids: Boolean
     )
 
     /** Night-mode window prefs (raw, day values untouched). */
@@ -255,6 +263,7 @@ val fastGroupCollapsed: Boolean,
         val slowVibrationLevel: Int,
         val showTtaLines: Boolean,
         val sheltersEnabled: Boolean,
+        val sheltersWithKids: Boolean,
         val night: NightPrefs
     )
 
@@ -351,17 +360,22 @@ val fastGroupCollapsed: Boolean,
         },
         combine(
             combine(
-                prefs.pinnedCity(),
-                prefs.languageChosen(),
-                prefs.batteryOnboardShown(),
-                prefs.threatCardSize(),
-                prefs.threatIconSet()
-            ) { pinned, chosen, batteryShown, card, iconSet ->
-                PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false)
+                combine(
+                    prefs.pinnedCity(),
+                    prefs.languageChosen(),
+                    prefs.batteryOnboardShown(),
+                    prefs.threatCardSize(),
+                    prefs.threatIconSet()
+                ) { pinned, chosen, batteryShown, card, iconSet ->
+                    PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true)
+                },
+                prefs.sheltersEnabled()
+            ) { quad, shelters ->
+                quad.copy(sheltersEnabled = shelters)
             },
-            prefs.sheltersEnabled()
-        ) { quad, shelters ->
-            quad.copy(sheltersEnabled = shelters)
+            prefs.sheltersWithKidsEnabled()
+        ) { quad, kids ->
+            quad.copy(sheltersWithKids = kids)
         },
         combine(
             prefs.fastVibrationLevel(),
@@ -435,6 +449,7 @@ combine(
             slowVibrationLevel = vib.second,
             showTtaLines = b.showTtaLines,
             sheltersEnabled = c.sheltersEnabled,
+            sheltersWithKids = c.sheltersWithKids,
             night = night
         )
     }
@@ -496,8 +511,8 @@ val uiState: StateFlow<UiState> = combine(
         liveSnapshot,
         prefsSnapshot,
         updateUiFlow,
-        shelterIndexFlow
-    ) { _, live, prefs, updateUi, shelters ->
+        shelterDataFlow
+    ) { _, live, prefs, updateUi, shelterPair ->
         val nightActive = isNightActive(
             NightConfig(prefs.night.window.enabled, prefs.night.window.startMin, prefs.night.window.endMin),
             live.now
@@ -591,7 +606,9 @@ val uiState: StateFlow<UiState> = combine(
             slowVibrationLevel = prefs.slowVibrationLevel,
             showTtaLines = prefs.showTtaLines,
             sheltersEnabled = prefs.sheltersEnabled,
-            shelterIndex = shelters
+            sheltersWithKids = prefs.sheltersWithKids,
+            shelterIndex = shelterPair.first,
+            shelterRefreshing = shelterPair.second
         )
     }.stateIn(
         viewModelScope,
@@ -665,9 +682,9 @@ val uiState: StateFlow<UiState> = combine(
             if (t.type !in mapEnabledTypes) continue
             val stale = t.isStale(now)
             if (!stale) {
-                speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
+                ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
             }
-            val predicted = speedTracker.estimate(t.id, t)
+            val predicted = ThreatSpeedTracker.estimate(t.id, t)
                 ?.let { predictPosition(t, it, now) } ?: GeoPoint(t.lat, t.lon)
             if (neptun.oblastAlerts.isNotEmpty()) mapThreats.add(t)
             // Stale threats stay on the map but never feed counts, tiers, or the gauge.
@@ -679,7 +696,7 @@ val uiState: StateFlow<UiState> = combine(
             val distKm = distanceMeters(
                 focusLocation.lat, focusLocation.lon, tierLat, tierLon
             ) / 1000.0
-            val speedKmh = speedTracker.estimate(t.id, t)?.times(3.6)
+            val speedKmh = ThreatSpeedTracker.estimate(t.id, t)?.times(3.6)
             val tier = zoneTier(t, distKm, speedKmh, params)
             if (tier != null) {
                 val eta = etaMinutes(distKm, speedKmh)
@@ -722,8 +739,8 @@ val uiState: StateFlow<UiState> = combine(
             if (t.areaOnly) {
                 null
             } else {
-                speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-                val speedPair = speedTracker.estimateWithSource(t.id, t)
+                ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
+                val speedPair = ThreatSpeedTracker.estimateWithSource(t.id, t)
                 val speed = speedPair?.first
                 val predicted = speed?.let { predictPosition(t, it, now) }
                     ?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(t.lat, t.lon)
@@ -778,7 +795,8 @@ val uiState: StateFlow<UiState> = combine(
             neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
-            alertActive = activeZone != null || focusOblastAlertActive
+            alertActive = activeZone != null || focusOblastAlertActive,
+            now = now
         )
     }
 
@@ -927,6 +945,10 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setSheltersEnabled(enabled) }
     }
 
+    fun setSheltersWithKidsEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setSheltersWithKidsEnabled(enabled) }
+    }
+
     /** Loads the bundled Odesa shelter snapshot, then refreshes it from the update server daily. */
     private suspend fun loadShelters() {
         val context = getApplication<Application>()
@@ -946,6 +968,24 @@ val uiState: StateFlow<UiState> = combine(
                     cacheFile.writeText(fresh)
                 }
             }
+        }
+    }
+
+    /** Pull-to-refresh on the shelter screen: re-fetches shelters.json from the update server,
+     *  bypassing the daily cache, and updates the in-memory index when a fresh copy arrives. */
+    fun refreshShelters() {
+        viewModelScope.launch {
+            shelterRefreshingFlow.value = true
+            val fresh = updateManager.fetchSheltersJson()
+            if (fresh != null) {
+                ShelterIndex.fromJson(fresh)?.let {
+                    shelterIndexFlow.value = it
+                    runCatching {
+                        File(getApplication<Application>().filesDir, SHELTERS_CACHE_FILE).writeText(fresh)
+                    }
+                }
+            }
+            shelterRefreshingFlow.value = false
         }
     }
 
@@ -1129,7 +1169,7 @@ val uiState: StateFlow<UiState> = combine(
      */
     fun panToThreat(t: Threat) {
         val now = System.currentTimeMillis()
-        val predicted = speedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
+        val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
             ?: GeoPoint(t.lat, t.lon)
         revealThreat(t.id, predicted.latitude, predicted.longitude, select = false)
     }
@@ -1145,37 +1185,27 @@ val uiState: StateFlow<UiState> = combine(
     }
 
     /**
-     * Every Settings open: if an update is already known, just re-show the "tap to download"
-     * toast (no network hit); otherwise check silently and toast when one turns up.
+     * Every Settings open: if an update is already known, just re-raise the "update available"
+     * reminder (no network hit); otherwise check silently and remind when one turns up. The
+     * reminder is surfaced by MainScreen as a snackbar with a Download action.
      */
     fun checkForUpdatesOnSettingsOpen() {
-        latestVersionFlow.value?.let { v ->
-            viewModelScope.launch { showUpdateAvailableToast(v) }
-        } ?: run {
-            checkForUpdates(notify = false, popupAvailable = false, toastOnAvailable = true)
+        if (latestVersionFlow.value != null) {
+            updateReminderFlow.value++
+        } else {
+            checkForUpdates(notify = false, popupAvailable = false, remindOnAvailable = true)
         }
     }
 
-    /** Tap on the update toast: pop the download dialog for the last known version. */
+    /** Tap on the update reminder: pop the download dialog for the last known version. */
     fun showDownloadScreen() {
         lastAvailableUpdate?.let { updateStateFlow.value = UpdateState.Available(it) }
-    }
-
-    private suspend fun showUpdateAvailableToast(versionName: String) {
-        val s = Strings.get(prefs.language().first())
-        val toast = Toast.makeText(
-            getApplication(),
-            String.format(s.updateAvailableOnOpen, "v$versionName"),
-            Toast.LENGTH_LONG
-        )
-        toast.view?.setOnClickListener { showDownloadScreen() }
-        toast.show()
     }
 
     /** True when any threat or official alert is currently active — the update dialog stays hidden then. */
     private fun hasActiveAlert(): Boolean = uiState.value.alertActive
 
-    fun checkForUpdates(notify: Boolean = true, popupAvailable: Boolean = true, popupOnlyWithoutAlert: Boolean = false, toastOnAvailable: Boolean = false) {
+    fun checkForUpdates(notify: Boolean = true, popupAvailable: Boolean = true, popupOnlyWithoutAlert: Boolean = false, remindOnAvailable: Boolean = false) {
         if (isChecking) return
         val current = updateStateFlow.value
         if (current is UpdateState.Downloading || current is UpdateState.Downloaded) return
@@ -1192,7 +1222,7 @@ val uiState: StateFlow<UiState> = combine(
                     latestVersionFlow.value = result.info.versionName
                     val showDialog = popupAvailable && (!popupOnlyWithoutAlert || !hasActiveAlert())
                     updateStateFlow.value = if (showDialog) result else UpdateState.Idle
-                    if (toastOnAvailable) showUpdateAvailableToast(result.info.versionName)
+                    if (remindOnAvailable) updateReminderFlow.value++
                 }
                 is UpdateState.UpToDate -> {
                     latestVersionFlow.value = null

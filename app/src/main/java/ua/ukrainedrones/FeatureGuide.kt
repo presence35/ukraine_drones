@@ -49,6 +49,8 @@ fun guideFeatures(s: Strings.StringSet): List<GuideFeature> = listOf(
         listOf(s.guideNightD1, s.guideNightD2, s.guideNightD3), GuideDiagram.NIGHT),
     GuideFeature("follow", s.guideCategoryLocation, s.guideFollowTitle, s.guideFollowSummary,
         listOf(s.guideFollowD1, s.guideFollowD2, s.guideFollowD3), GuideDiagram.FOLLOW),
+    GuideFeature("shelter", s.guideCategoryLocation, s.guideShelterTitle, s.guideShelterSummary,
+        listOf(s.guideShelterD1, s.guideShelterD2, s.guideShelterD3), GuideDiagram.SHELTER),
     GuideFeature("pin", s.guideCategoryLocation, s.guidePinTitle, s.guidePinSummary,
         listOf(s.guidePinD1, s.guidePinD2), GuideDiagram.PIN),
     GuideFeature("cardSize", s.guideCategoryCards, s.guideCardSizeTitle, s.guideCardSizeSummary,

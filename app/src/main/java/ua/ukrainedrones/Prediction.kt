@@ -151,17 +151,29 @@ fun predictPosition(t: Threat, speedMps: Double, nowMillis: Long): GeoPoint? {
  * Tracks consecutive fixes per threat to estimate ground speed for position smoothing.
  * Prefers the server's speedKmh (NEPTUN's SDK predicts purely from velocity.speedKmh),
  * then measured speed (consecutive fixes / trail timestamps), then a per-type nominal.
+ *
+ * A single shared instance serves every consumer (UI + background service + map preview), so
+ * the "same" threat always measures the same speed — the UI and the alert service can never
+ * disagree near a zone boundary. Access is synchronized because consumers run on different
+ * threads (Main + IO).
  */
-class ThreatSpeedTracker {
+object ThreatSpeedTracker {
     private data class Fix(val t: Long, val lat: Double, val lon: Double)
     private val fixes = HashMap<String, ArrayDeque<Fix>>()
 
     fun record(id: String, t: Long, lat: Double, lon: Double) {
-        val q = fixes.getOrPut(id) { ArrayDeque() }
-        val last = q.lastOrNull()
-        if (last != null && last.t == t) return
-        q.addLast(Fix(t, lat, lon))
-        while (q.size > 4) q.removeFirst()
+        synchronized(fixes) {
+            val q = fixes.getOrPut(id) { ArrayDeque() }
+            val last = q.lastOrNull()
+            if (last != null && last.t == t) return
+            q.addLast(Fix(t, lat, lon))
+            while (q.size > 4) q.removeFirst()
+        }
+    }
+
+    /** Drop all recorded fixes (test isolation only — a fresh start mirrors a fresh install). */
+    internal fun clear() {
+        synchronized(fixes) { fixes.clear() }
     }
 
     fun estimate(id: String, t: Threat): Double? =
@@ -170,14 +182,16 @@ class ThreatSpeedTracker {
     /** Speed plus where it came from: server/measured fixes = RECORDED, per-type = TYPICAL. */
     fun estimateWithSource(id: String, t: Threat): Pair<Double, SpeedSource>? {
         t.speedKmh?.let { s -> if (s in 5.0..2000.0) return s / 3.6 to SpeedSource.RECORDED }
-        val q = fixes[id]
-        if (q != null && q.size >= 2) {
-            val a = q.first()
-            val b = q.last()
-            val dt = (b.t - a.t) / 1000.0
-            if (dt in 2.0..600.0) {
-                val v = distanceMeters(a.lat, a.lon, b.lat, b.lon) / dt
-                if (v in 5.0..400.0) return v to SpeedSource.RECORDED
+        synchronized(fixes) {
+            val q = fixes[id]
+            if (q != null && q.size >= 2) {
+                val a = q.first()
+                val b = q.last()
+                val dt = (b.t - a.t) / 1000.0
+                if (dt in 2.0..600.0) {
+                    val v = distanceMeters(a.lat, a.lon, b.lat, b.lon) / dt
+                    if (v in 5.0..400.0) return v to SpeedSource.RECORDED
+                }
             }
         }
         if (t.trail.size >= 2) {

@@ -84,17 +84,18 @@ data class SettingsCollapseState(
     val cardSize: Boolean = true,
     val threats: Boolean = true,
     val alerts: Boolean = true,
+    val shelter: Boolean = true,
     val additional: Boolean = true
 ) {
     companion object {
         val Saver = Saver<SettingsCollapseState, BooleanArray>(
-            save = { it.let { s -> BooleanArray(6).apply {
+            save = { it.let { s -> BooleanArray(7).apply {
                 this[0] = s.language; this[1] = s.mapCenter; this[2] = s.cardSize
-                this[3] = s.threats; this[4] = s.alerts; this[5] = s.additional
+                this[3] = s.threats; this[4] = s.alerts; this[5] = s.shelter; this[6] = s.additional
             } } },
             restore = { b -> SettingsCollapseState(
                 language = b[0], mapCenter = b[1], cardSize = b[2], threats = b[3],
-                alerts = b[4], additional = b[5]
+                alerts = b[4], shelter = b.getOrElse(5) { true }, additional = b.getOrElse(6) { true }
             ) }
         )
     }
@@ -146,6 +147,7 @@ fun SettingsScreen(
     showMapScale: Boolean,
     showTtaLines: Boolean,
     sheltersEnabled: Boolean,
+    sheltersWithKids: Boolean,
     deathAnimationEnabled: Boolean,
     followBullet: Boolean,
     neutralizedTallyEnabled: Boolean,
@@ -192,6 +194,7 @@ fun SettingsScreen(
     onShowMapScaleChange: (Boolean) -> Unit,
     onShowTtaLinesChange: (Boolean) -> Unit,
     onSheltersEnabledChange: (Boolean) -> Unit,
+    onSheltersWithKidsChange: (Boolean) -> Unit,
     onDeathAnimationChange: (Boolean) -> Unit,
     onFollowBulletChange: (Boolean) -> Unit,
     onNeutralizedTallyChange: (Boolean) -> Unit,
@@ -633,7 +636,34 @@ expanded = collapse.alerts,
                         onVibrationEnabledChange = onNightVibrationEnabledChange,
                         onFastVibrationChange = onNightFastVibrationChange,
                         onSlowVibrationChange = onNightSlowVibrationChange,
-                        flash = flashId == "nightMode"
+flash = flashId == "nightMode"
+                    )
+                }
+            }
+
+            item {
+                CollapsibleSectionCard(
+                    title = s.shelterSectionTitle,
+                    icon = painterResource(id = R.drawable.ic_shelter),
+                    expanded = collapse.shelter,
+                    onToggle = { onCollapseChange(collapse.copy(shelter = !collapse.shelter)) }
+                ) {
+                    AlertToggleRow(
+                        title = s.shelterSettingsTitle,
+                        description = s.shelterSettingsDesc,
+                        checked = sheltersEnabled,
+                        onCheckedChange = onSheltersEnabledChange,
+                        icon = painterResource(R.drawable.ic_shelter),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.shelterWithKidsTitle,
+                        description = s.shelterWithKidsDesc,
+                        checked = sheltersWithKids,
+                        onCheckedChange = onSheltersWithKidsChange,
+                        icon = painterResource(R.drawable.ic_adult_kid),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -700,15 +730,6 @@ expanded = collapse.alerts,
                                     checked = showTtaLines,
                                     onCheckedChange = onShowTtaLinesChange,
                                     icon = painterResource(R.drawable.ic_explosion),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                AlertToggleRow(
-                                    title = s.shelterSettingsTitle,
-                                    description = s.shelterSettingsDesc,
-                                    checked = sheltersEnabled,
-                                    onCheckedChange = onSheltersEnabledChange,
-                                    icon = painterResource(R.drawable.ic_shelter),
                                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

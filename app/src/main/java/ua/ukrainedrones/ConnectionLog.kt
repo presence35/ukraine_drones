@@ -2,6 +2,7 @@ package ua.ukrainedrones
 
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +42,7 @@ object ConnectionLog {
     @Volatile private var attached = false
     private var appContext: Context? = null
     private val attachScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val attachDone = CompletableDeferred<Unit>()
 
     /**
      * Restore persisted entries + any in-progress episode from DataStore. Call once (from
@@ -65,8 +67,12 @@ object ConnectionLog {
             }
             pending = restoredPending
             _entries.value = restoredEntries
+            attachDone.complete(Unit)
         }
     }
+
+    /** Wait for [attach]'s async restore to finish (before the watchdog's writes race it). */
+    suspend fun awaitAttached() = attachDone.await()
 
     /**
      * Called every watchdog tick with the current status. Commits the completed off/backup

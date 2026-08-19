@@ -57,6 +57,7 @@ class AlertsUaTest {
     fun `backup active and sourced when disconnected`() {
         val st = NeptunState(
             connected = false,
+            backupUp = true,
             neptunAlerts = emptyList(),
             backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
         )
@@ -69,10 +70,74 @@ class AlertsUaTest {
     fun `backup is authoritative for an oblast while the socket is down even if NEPTUN reported it`() {
         val st = NeptunState(
             connected = false,
+            backupUp = true,
             neptunAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null)),
             backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
         )
         assertEquals(AlertSource.BACKUP, st.alertSourceFor("Одеськ"))
+    }
+
+    @Test
+    fun `last known NEPTUN alerts are held while both sources are down`() {
+        // Backup polled OK earlier, then died: its stale payload must not surface while NEPTUN
+        // is down too, but NEPTUN's last-known list is HELD — an outage must never fabricate
+        // "alert ended". Held alerts are never source-tagged (no live source confirms them).
+        val st = NeptunState(
+            connected = false,
+            backupUp = false,
+            backupLastOkAt = System.currentTimeMillis() - 120_000,
+            neptunAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null)),
+            backupAlerts = listOf(OblastAlert("99", "Харківська область", "Харківська область", null))
+        )
+        assertTrue(st.oblastAlerts.any { it.inOblast("Одеськ") })
+        assertTrue(st.oblastAlerts.none { it.inOblast("Харківськ") })
+        assertNull(st.alertSourceFor("Одеськ"))
+        assertNull(st.alertSourceFor("Харківськ"))
+    }
+
+    @Test
+    fun `stale backup does not merge while NEPTUN is merely silent`() {
+        // NEPTUN alive but silent (backupActive) with the backup itself down: only NEPTUN's
+        // own alerts count — the stale backup payload never sneaks in.
+        val st = NeptunState(
+            connected = true,
+            backupUp = false,
+            lastFrameAt = System.currentTimeMillis() - 70_000,
+            neptunAlerts = listOf(OblastAlert("1", "Одеська область", "Одеська область", null)),
+            backupAlerts = listOf(OblastAlert("14", "Харківська область", "Харківська область", null))
+        )
+        assertTrue(st.backupActive)
+        assertEquals(listOf("Одеська область"), st.oblastAlerts.map { it.oblast })
+        assertEquals(AlertSource.NEPTUN, st.alertSourceFor("Одеськ"))
+        assertNull(st.alertSourceFor("Харківськ"))
+    }
+
+    @Test
+    fun `forceOffline activates backup even while NEPTUN connected`() {
+        val st = NeptunState(
+            connected = true,
+            lastFrameAt = System.currentTimeMillis(),
+            forceOffline = true,
+            backupUp = true,
+            backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
+        )
+        assertTrue(st.backupActive)
+        assertTrue(st.oblastAlerts.any { it.inOblast("Одеськ") })
+        assertEquals(AlertSource.BACKUP, st.alertSourceFor("Одеськ"))
+    }
+
+    @Test
+    fun `forceOffline with backup down holds last known NEPTUN alerts`() {
+        val st = NeptunState(
+            connected = true,
+            lastFrameAt = System.currentTimeMillis(),
+            forceOffline = true,
+            backupUp = false,
+            neptunAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null)),
+            backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
+        )
+        assertTrue(st.neptunDown)
+        assertTrue(st.oblastAlerts.any { it.inOblast("Одеськ") })
     }
 
     @Test
@@ -104,19 +169,6 @@ class AlertsUaTest {
     fun `backup offline elapsed null before first success`() {
         val st = NeptunState(backupUp = false, backupLastOkAt = 0L)
         assertNull(st.backupOfflineElapsedSec)
-    }
-
-    @Test
-    fun `forceOffline activates backup even while NEPTUN connected`() {
-        val st = NeptunState(
-            connected = true,
-            lastFrameAt = System.currentTimeMillis(),
-            forceOffline = true,
-            backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
-        )
-        assertTrue(st.backupActive)
-        assertTrue(st.oblastAlerts.any { it.inOblast("Одеськ") })
-        assertEquals(AlertSource.BACKUP, st.alertSourceFor("Одеськ"))
     }
 
     @Test

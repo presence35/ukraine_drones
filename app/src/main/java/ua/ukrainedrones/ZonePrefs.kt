@@ -81,6 +81,7 @@ class ZonePrefs(private val context: Context) {
     private val nightSlowVibrationLevelKey = intPreferencesKey("night_slow_vibration_level")
     private val showTtaLinesKey = booleanPreferencesKey("show_tta_lines")
     private val sheltersEnabledKey = booleanPreferencesKey("shelters_enabled")
+    private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 2–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -326,6 +327,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setSheltersEnabled(enabled: Boolean) {
         context.dataStore.edit { it[sheltersEnabledKey] = enabled }
+    }
+
+    /** Whether walk times account for kids (slower pace) — default on. */
+    fun sheltersWithKidsEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[sheltersWithKidsEnabledKey] ?: true }
+
+    suspend fun setSheltersWithKidsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[sheltersWithKidsEnabledKey] = enabled }
     }
 
     /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */

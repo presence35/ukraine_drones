@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Build
+import android.os.CancellationSignal
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +28,9 @@ object LocationTracker {
     private val _location = MutableStateFlow<LatLng?>(null)
     val location: StateFlow<LatLng?> = _location.asStateFlow()
 
+    private val _lastFixAtMs = MutableStateFlow<Long?>(null)
+    val lastFixAtMs: StateFlow<Long?> = _lastFixAtMs.asStateFlow()
+
     @Volatile
     private var started = false
     private var appContext: Context? = null
@@ -38,12 +43,12 @@ object LocationTracker {
         if (!hasPermission(app)) return
         val l = object : LocationListener {
             override fun onLocationChanged(loc: Location) {
-                _location.value = LatLng(loc.latitude, loc.longitude)
+                recordFix(loc)
             }
         }
         listener = l
         try {
-            pickLastKnown(app)?.let { _location.value = LatLng(it.latitude, it.longitude) }
+            pickLastKnown(app)?.let { recordFix(it) }
             val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             val looper = Looper.getMainLooper()
             // Network provider only: the alert zones are km-scale, so a coarse fix is
@@ -61,6 +66,36 @@ object LocationTracker {
         }
     }
 
+    /** Requests a precise one-shot fix (GPS, falling back to network) for the shelter list. */
+    fun forceRefresh() {
+        val ctx = appContext ?: return
+        val fine = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!fine) return
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val onFix: (Location) -> Unit = { loc -> recordFix(loc) }
+        val requested = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                lm.getCurrentLocation(
+                    LocationManager.GPS_PROVIDER,
+                    CancellationSignal(),
+                    ContextCompat.getMainExecutor(ctx)
+                ) { loc -> if (loc != null) onFix(loc) }
+            } else {
+                lm.requestSingleUpdate(LocationManager.GPS_PROVIDER, object : LocationListener {
+                    override fun onLocationChanged(loc: Location) { onFix(loc) }
+                }, Looper.getMainLooper())
+            }
+        }
+        if (requested.isFailure) {
+            runCatching {
+                lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, object : LocationListener {
+                    override fun onLocationChanged(loc: Location) { onFix(loc) }
+                }, Looper.getMainLooper())
+            }
+        }
+    }
+
     fun stop() {
         val ctx = appContext ?: return
         listener?.let {
@@ -71,6 +106,11 @@ object LocationTracker {
         }
         listener = null
         started = false
+    }
+
+    private fun recordFix(loc: Location) {
+        _location.value = LatLng(loc.latitude, loc.longitude)
+        _lastFixAtMs.value = System.currentTimeMillis()
     }
 
     private fun hasPermission(ctx: Context): Boolean =

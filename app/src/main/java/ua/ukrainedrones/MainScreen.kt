@@ -69,6 +69,21 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var showZonesSheet by remember { mutableStateOf(false) }
     var activeExplainer by remember { mutableStateOf<Explainer?>(null) }
 
+    // The Settings-open update check surfaces here as a snackbar with a Download action.
+    val updateReminderTick by viewModel.updateReminderTick.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(updateReminderTick) {
+        if (updateReminderTick > 0) {
+            val s = Strings.get(uiState.language)
+            val result = snackbarHostState.showSnackbar(
+                message = String.format(s.updateAvailableOnOpen, "v${uiState.latestVersion.orEmpty()}"),
+                actionLabel = s.updateDownload,
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.showDownloadScreen()
+        }
+    }
+
     // Only one overlay can be up at a time: opening any of them closes the others (and the
     // threat popup), and an arriving update dialog outranks everything.
     LaunchedEffect(showConnectionInfo, showZonesSheet, uiState.update) {
@@ -213,6 +228,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 showMapScale = uiState.showMapScale,
                 showTtaLines = uiState.showTtaLines,
                 sheltersEnabled = uiState.sheltersEnabled,
+                sheltersWithKids = uiState.sheltersWithKids,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
@@ -259,6 +275,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onShowTtaLinesChange = { viewModel.setShowTtaLines(it) },
                 onSheltersEnabledChange = { viewModel.setSheltersEnabled(it) },
+                onSheltersWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
                 onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
@@ -291,9 +308,19 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 lang = uiState.language,
                 focus = uiState.focusLocation,
                 index = uiState.shelterIndex,
+                withKids = uiState.sheltersWithKids,
+                shelterRefreshing = uiState.shelterRefreshing,
+                now = uiState.now,
+                onRefresh = { viewModel.refreshShelters() },
                 onBack = { screen = Screen.MAP }
             )
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 12.dp)
+        )
     }
 
     // Auto-launch the installer once the APK is downloaded and permission is granted.

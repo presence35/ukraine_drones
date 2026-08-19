@@ -140,6 +140,30 @@ class ThreatTest {
     }
 
     @Test
+    fun `translateCourseAssessment translates common words instead of transliterating them`() {
+        assertEquals(
+            "UAV over the sea",
+            translateCourseAssessment("БпЛА над морем", AppLanguage.EN)
+        )
+        assertEquals(
+            "UAV heading toward Black Sea",
+            translateCourseAssessment("БпЛА курсом на Чорне море", AppLanguage.EN)
+        )
+        assertEquals(
+            "Missile heading toward the water area",
+            translateCourseAssessment("Ракета летить у напрямку акваторії", AppLanguage.EN)
+        )
+    }
+
+    @Test
+    fun `fallbackCourse swaps common words and vocabulary before transliterating`() {
+        assertEquals(
+            "Swarm UAV loiters over the sea",
+            translateCourseAssessment("Рій БпЛА барражує над морем", AppLanguage.EN)
+        )
+    }
+
+    @Test
     fun `fallbackCourse is deterministic per id`() {
         assertEquals(Threat.fallbackCourse("abc"), Threat.fallbackCourse("abc"), 1e-9)
         assertFalse(Threat.fallbackCourse("abc") == Threat.fallbackCourse("def"))

@@ -5,9 +5,15 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class PredictionTest {
+
+    @Before
+    fun setUp() {
+        ThreatSpeedTracker.clear()
+    }
 
     @Test
     fun `distanceMeters is symmetric and reasonable`() {
@@ -131,7 +137,7 @@ class PredictionTest {
 
     @Test
     fun `speedTracker prefers server speedKmh as recorded`() {
-        val tracker = ThreatSpeedTracker()
+        val tracker = ThreatSpeedTracker
         tracker.record("t1", 1L, 0.0, 0.0)
         tracker.record("t1", 100L, 0.0, 0.0)
         val (speed, source) = tracker.estimateWithSource(
@@ -143,7 +149,7 @@ class PredictionTest {
 
     @Test
     fun `speedTracker measures from consecutive fixes`() {
-        val tracker = ThreatSpeedTracker()
+        val tracker = ThreatSpeedTracker
         tracker.record("t1", 0L, 0.0, 0.0)
         tracker.record("t1", 100_000L, 0.1, 0.0) // ~11 km north in 100 s ≈ 111 m/s
         val (speed, source) = tracker.estimateWithSource("t1", threat())!!
@@ -153,7 +159,7 @@ class PredictionTest {
 
     @Test
     fun `speedTracker falls back to nominal typical`() {
-        val tracker = ThreatSpeedTracker()
+        val tracker = ThreatSpeedTracker
         val (speed, source) = tracker.estimateWithSource("t1", threat())!!
         assertEquals(SpeedSource.TYPICAL, source)
         assertEquals(50.0, speed, 1e-9) // shahed 180 km/h
@@ -161,7 +167,7 @@ class PredictionTest {
 
     @Test
     fun `speedTracker uses trail timestamps`() {
-        val tracker = ThreatSpeedTracker()
+        val tracker = ThreatSpeedTracker
         val t = threat(
             trail = listOf(
                 TrailPoint(0.0, 0.0, 0L),

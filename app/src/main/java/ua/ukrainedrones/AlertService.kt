@@ -71,6 +71,7 @@ class AlertService : Service() {
     private var monitoringJob: Job? = null
 
     private var wasFocusAlertActive = false
+    private var wasOfficialAlertsEnabled = true
     private var currentReasonThreatId: String? = null
     private var knownZones: Map<String, ThreatZone> = emptyMap()
     private var lastChannelLang: AppLanguage? = null
@@ -82,11 +83,10 @@ class AlertService : Service() {
     private var offlineNotifShown = false
     private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
-    private var notif3minShown = false
+private var notif3minShown = false
     private var notif6minShown = false
     private var notif10minShown = false
     private var notif20minShown = false
-    private val speedTracker = ThreatSpeedTracker()
     private var alertEpoch = 0
     private var neutralizedCount = 0
     private var lastNeutralizedType: ThreatType? = null
@@ -163,9 +163,16 @@ class AlertService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
-        ConnectionLog.attach(applicationContext)
-        AlertHistory.attach(applicationContext)
-        NeptunClient.start()
+        // Await the persisted log/history restore before NeptunClient.start() brings up the
+        // watchdog (ConnectionLog.observe) and monitoring starts writing AlertHistory — an
+        // async restore finishing after a fresh write would clobber it.
+        scope.launch {
+            ConnectionLog.attach(applicationContext)
+            AlertHistory.attach(applicationContext)
+            ConnectionLog.awaitAttached()
+            AlertHistory.awaitAttached()
+            NeptunClient.start()
+        }
         scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
         scope.launch {
             val prefs = ZonePrefs(applicationContext)
@@ -422,8 +429,8 @@ class AlertService : Service() {
             if (t.status == "resolved" || t.status == "stale" || isExpired(t, now) || t.areaOnly) continue
             if (t.type !in enabled) continue
             if (t.advisory) continue
-            speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-            val estimate = speedTracker.estimate(t.id, t)
+            ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
+            val estimate = ThreatSpeedTracker.estimate(t.id, t)
             val p = estimate?.let { predictPosition(t, it, now) }
             val lat = if (t.type in FastThreatTypes) (p?.latitude ?: t.lat) else t.lat
             val lon = if (t.type in FastThreatTypes) (p?.longitude ?: t.lon) else t.lon
@@ -491,7 +498,20 @@ class AlertService : Service() {
                 offlineNotifShown = true
             }
         }
+        val wasConnectedBefore = wasConnected
         wasConnected = state.connected
+        if (state.connected && !wasConnectedBefore) {
+            // Just reconnected: reset the offline-milestone ladder and drop any lingering
+            // milestone notification so it can't stay in the shade after the outage ends.
+            notif3minShown = false
+            notif6minShown = false
+            notif10minShown = false
+            notif20minShown = false
+            try {
+                NotificationManagerCompat.from(this).cancel(NOTIF_MILESTONE)
+            } catch (_: SecurityException) {
+            }
+        }
 
         // Reconnection milestone notifications (3min, 6min, 10min, 20min)
         val neptun = NeptunClient.state.value
@@ -503,28 +523,14 @@ class AlertService : Service() {
         val tenMinMs = 10 * 60 * 1000L
         val twentyMinMs = 20 * 60 * 1000L
 
-        if (state.connected && wasConnected == false) {
-            // Just connected - reset milestone flags
-            notif3minShown = false
-            notif6minShown = false
-            notif10minShown = false
-            notif20minShown = false
-        }
-
         if (!state.connected && elapsedSinceReconnect > 0) {
             // Show notification at 3 minutes
             if (elapsedSinceReconnect >= threeMinMs && !notif3minShown) {
                 notif3minShown = true
-                val s = Strings.get(state.lang)
-                val msg = if (state.lang == AppLanguage.UA) {
-                    "Backup system is monitoring the alert feed. The app will keep trying to reconnect in the background."
-                } else {
-                    "Backup system is monitoring the alert feed. The app will keep trying to reconnect in the background."
-                }
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
-                    .setContentText(msg)
+                    .setContentText(s.offlineMilestone3Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
@@ -534,17 +540,11 @@ class AlertService : Service() {
             // Show notification at 6 minutes
             if (elapsedSinceReconnect >= sixMinMs && !notif6minShown) {
                 notif6minShown = true
-                val s = Strings.get(state.lang)
-                val backupStatus = if (neptun.backupUp) "active" else "inactive"
-                val msg = if (state.lang == AppLanguage.UA) {
-                    "Backup alerts from alerts.com.ua are currently $backupStatus. Official sirens may be limited."
-                } else {
-                    "Backup alerts from alerts.com.ua are currently $backupStatus. Official sirens may be limited."
-                }
+                val backupStatus = if (neptun.backupUp) s.offlineMilestone6MinActive else s.offlineMilestone6MinInactive
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
-                    .setContentText(msg)
+                    .setContentText(String.format(s.offlineMilestone6MinFormat, backupStatus))
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
@@ -554,16 +554,10 @@ class AlertService : Service() {
             // Show notification at 10 minutes
             if (elapsedSinceReconnect >= tenMinMs && !notif10minShown) {
                 notif10minShown = true
-                val s = Strings.get(state.lang)
-                val msg = if (state.lang == AppLanguage.UA) {
-                    "No NEPTUN connection for 10 minutes. The app continues reconnecting every 5 seconds in the background."
-                } else {
-                    "No NEPTUN connection for 10 minutes. The app continues reconnecting every 5 seconds in the background."
-                }
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
-                    .setContentText(msg)
+                    .setContentText(s.offlineMilestone10Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
@@ -573,16 +567,10 @@ class AlertService : Service() {
             // Show notification at 20 minutes and stop reconnection attempts
             if (elapsedSinceReconnect >= twentyMinMs && !notif20minShown) {
                 notif20minShown = true
-                val s = Strings.get(state.lang)
-                val msg = if (state.lang == AppLanguage.UA) {
-                    "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it."
-                } else {
-                    "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it."
-                }
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
-                    .setContentText(msg)
+                    .setContentText(s.offlineMilestone20Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
@@ -650,13 +638,26 @@ notifyMonitor(
             )
         }
         // Drop ids that left zoneThreats entirely (resolved/expired/out of range) so a future
-        // re-entry is treated as new; everything else keeps its value so the not-yet-fired
-        // new entries are re-evaluated on the next tick.
-        val droppedZoneIds = knownZones.keys.filterNot { it in state.zoneThreats.keys }
-        knownZones = knownZones.filterKeys { it in state.zoneThreats.keys }
+        // re-entry is treated as new — except ids the user shot down within the grace window:
+        // their quick same-id respawn is the same drone coming back and must not re-alert.
+        // Everything else keeps its value so the not-yet-fired new entries are re-evaluated
+        // on the next tick.
+        val userShotAt = NeptunClient.state.value.userShotAt
+        val droppedZoneIds = knownZones.keys.filterNot { id ->
+            id in state.zoneThreats.keys ||
+                (userShotAt[id]?.let { now - it <= NeptunClient.USER_SHOT_GRACE_MS } ?: false)
+        }
+        knownZones = knownZones.filterKeys { it !in droppedZoneIds }
         if (droppedZoneIds.isNotEmpty()) {
-            val now = System.currentTimeMillis()
             droppedZoneIds.forEach { AlertHistory.closeAlert("id:$it", now) }
+        }
+
+        // Official-alert notifications were turned back on while an alert is live: the alert
+        // was never announced while muted, so force a fresh announce. wasFocusAlertActive only
+        // tracks alerts we actually posted a notification for.
+        if (state.officialAlertsEnabled != wasOfficialAlertsEnabled) {
+            wasOfficialAlertsEnabled = state.officialAlertsEnabled
+            if (state.officialAlertsEnabled) wasFocusAlertActive = false
         }
 
         // Official oblast-level alert (independent of zone membership). Gated by the
@@ -689,6 +690,7 @@ notifyMonitor(
                 } ?: VIBRATION_STRONG
             )
             currentReasonThreatId = state.officialReasonThreatId
+            wasFocusAlertActive = true
         } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
             state.officialReasonThreatId != currentReasonThreatId
         ) {
@@ -717,7 +719,7 @@ notifyMonitor(
         // never when the official-alert notifications are turned off. When no zone alert is
         // active, cancel the lingering siren notification immediately instead of waiting for
         // the 60s grace path below; if a zone alert is still ringing, leave it up.
-        if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertActive) {
+if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertActive) {
             if (alertable.isEmpty()) {
                 cancelAlert()
             }
@@ -725,7 +727,9 @@ notifyMonitor(
             postAllClear(s, state.focusBannerCity)
             currentReasonThreatId = null
         }
-        wasFocusAlertActive = state.focusOblastAlertActive
+        // An alert that ends (or was never notified) while notifications are off must not leave
+        // the "already notified" flag stuck on for a future alert.
+        if (!state.focusOblastAlertActive) wasFocusAlertActive = false
 
         // Start the grace window once nothing is active; clear only after it expires.
         // The periodic nowFlow tick re-runs this every grace period, so a quiet stream still
@@ -789,12 +793,12 @@ notifyMonitor(
             if (t.status != "active" || t.advisory || t.areaOnly || t.type !in enabled ||
                 isExpired(t, now) || !inFocusOblast(t, token)
             ) continue
-            speedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-            val predicted = speedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
+            ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
+            val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
             val lat = predicted?.latitude ?: t.lat
             val lon = predicted?.longitude ?: t.lon
             val distKm = if (focus != null) distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0 else null
-            val speed = speedTracker.estimate(t.id, t)
+            val speed = ThreatSpeedTracker.estimate(t.id, t)
             val eta = if (speed != null && speed > 0.0 && distKm != null) distKm / (speed * 3.6) * 60.0 else null
             val score = if (distKm != null) {
                 val (redVal, yellowVal) =
@@ -1030,79 +1034,11 @@ notifyMonitor(
     private fun createChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Default (EN) names; refreshed per-language by updateMonitorChannel() on start.
+        // Default (EN) names; refreshed per-language by updateChannels() on start and on
+        // every language change (re-creating with the same id updates name/description only —
+        // importance/sound persist, so users keep their per-channel settings).
         val en = Strings.get(AppLanguage.EN)
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_MONITOR, en.notifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
-                description = en.notifChannelDesc
-            }
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ALERTS, "Air alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Air-raid sirens and urgent zone alerts"
-                enableVibration(true)
-                setSound(
-                    sirenUri(R.raw.air_raid_siren),
-                    notificationAttributes()
-                )
-            }
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ALERTS_OUTER, "Region alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "OUTER zone (Регіон) warning alerts"
-                enableVibration(true)
-                setSound(
-                    sirenUri(R.raw.zone_outer),
-                    notificationAttributes()
-                )
-            }
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ALLCLEAR, "All clear", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Cheerful chime when the official air-raid alert ends"
-                enableVibration(true)
-                setSound(
-                    sirenUri(R.raw.all_clear),
-                    notificationAttributes()
-                )
-            }
-        )
-        // "Always sound" variants used only when the siren-override setting is on: they ring
-        // on the alarm stream so they sound even with the phone on vibrate/silent.
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ALERTS_ALARM, "Air alerts — always sound", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Air-raid sirens and urgent zone alerts, even on vibrate/silent"
-                enableVibration(true)
-                setSound(
-                    sirenUri(R.raw.air_raid_siren),
-                    alarmAttributes()
-                )
-            }
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ALERTS_OUTER_ALARM, "Region alerts — always sound", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "OUTER zone (Регіон) warning alerts, even on vibrate/silent"
-                enableVibration(true)
-                setSound(
-                    sirenUri(R.raw.zone_outer),
-                    alarmAttributes()
-                )
-            }
-        )
-        // Offline: high importance so it grabs attention, but silent — it's not an alert,
-        // just a "we lost the live feed" heads-up (the official sirens are still the authority).
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_OFFLINE, en.offlineChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
-                description = en.offlineChannelDesc
-                enableVibration(true)
-            }
-        )
-        // Neutralized tally: informational, always silent (LOW importance) — never rings.
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_NEUTRALIZED, en.neutralizedNotifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
-                description = en.neutralizedChannelDesc
-            }
-        )
+        defineChannels(nm, en)
         val keep = setOf(
             CHANNEL_MONITOR,
             CHANNEL_ALERTS,
@@ -1118,6 +1054,80 @@ notifyMonitor(
             .forEach { nm.deleteNotificationChannel(it.id) }
     }
 
+    private fun defineChannels(nm: NotificationManager, s: Strings.StringSet) {
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_MONITOR, s.notifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
+                description = s.notifChannelDesc
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERTS, s.alertChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = s.alertChannelDesc
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.air_raid_siren),
+                    notificationAttributes()
+                )
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERTS_OUTER, s.outerAlertChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = s.outerAlertChannelDesc
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.zone_outer),
+                    notificationAttributes()
+                )
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALLCLEAR, s.allClearChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = s.allClearChannelDesc
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.all_clear),
+                    notificationAttributes()
+                )
+            }
+        )
+        // "Always sound" variants used only when the siren-override setting is on: they ring
+        // on the alarm stream so they sound even with the phone on vibrate/silent.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERTS_ALARM, s.alarmAlertChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = s.alarmAlertChannelDesc
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.air_raid_siren),
+                    alarmAttributes()
+                )
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERTS_OUTER_ALARM, s.outerAlarmAlertChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = s.outerAlarmAlertChannelDesc
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.zone_outer),
+                    alarmAttributes()
+                )
+            }
+        )
+        // Offline: high importance so it grabs attention, but silent — it's not an alert,
+        // just a "we lost the live feed" heads-up (the official sirens are still the authority).
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_OFFLINE, s.offlineChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = s.offlineChannelDesc
+                enableVibration(true)
+            }
+        )
+        // Neutralized tally: informational, always silent (LOW importance) — never rings.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_NEUTRALIZED, s.neutralizedNotifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
+                description = s.neutralizedChannelDesc
+            }
+        )
+    }
+
     private fun notificationAttributes(): AudioAttributes =
         AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
@@ -1130,15 +1140,12 @@ notifyMonitor(
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
-    /** Re-creating the channel with the same id updates its name/description (not importance). */
+    /** Re-creating the channels with the same ids updates their names/descriptions (not
+     *  importance/sound), so switching the app language re-localizes every channel name. */
     private fun updateMonitorChannel(s: Strings.StringSet) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_MONITOR, s.notifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
-                description = s.notifChannelDesc
-            }
-        )
+        defineChannels(nm, s)
     }
 
     override fun onDestroy() {

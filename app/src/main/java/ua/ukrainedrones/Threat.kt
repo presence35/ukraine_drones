@@ -362,9 +362,11 @@ private val COURSE_TARGET_PATTERNS: List<Regex> = listOf(
 /**
  * Best-effort EN rendering of NEPTUN's course assessment (`explanationShort`), which is
  * always Ukrainian. Only known sentence templates are translated; the place name is looked
- * up in our city dictionary and otherwise transliterated, never semantically translated —
- * a wrong "translation" in a safety app is worse than none. Unrecognised sentence forms get
- * their hard-coded vocabulary swapped to EN and the remainder transliterated.
+ * up in our city dictionary and otherwise transliterated — a proper noun is never semantically
+ * translated, a wrong "translation" in a safety app is worse than none. Common (non-place)
+ * words, however, come from [COMMON_WORDS] so a phrase like "над морем" reads "over the sea"
+ * instead of the useless "over morem". Unrecognised sentence forms get their hard-coded
+ * vocabulary swapped to EN and the remainder transliterated.
  */
 fun translateCourseAssessment(text: String?, lang: AppLanguage): String? {
     if (text.isNullOrBlank()) return null
@@ -373,7 +375,9 @@ fun translateCourseAssessment(text: String?, lang: AppLanguage): String? {
     for ((pattern, template) in COURSE_PATTERNS) {
         val m = pattern.find(t) ?: continue
         val place = m.groupValues.getOrNull(1)?.trim()?.trimEnd('.', '—', '-') ?: continue
-        val en = Cities.uaToEn[place] ?: Transliteration.transliterate(place)
+        val en = Cities.uaToEn[place]
+            ?: COMMON_WORDS[place.lowercase()]
+            ?: Transliteration.transliterate(place)
         return template.replace("{X}", en)
     }
     return courseFallback(text)
@@ -397,12 +401,62 @@ private val COURSE_GLOSSARY: List<Pair<String, String>> = listOf(
     "над" to "over"
 )
 
+/**
+ * Common (non-place) Ukrainian words that carry real meaning for an EN reader and are
+ * translated, not transliterated — "морем" → "morem" would be pointless. Looked up
+ * whole-phrase first in the course-template slot; applied word-by-word in the fallback.
+ * Lowercase keys; proper nouns must NOT be added here (they live in [Cities]).
+ */
+private val COMMON_WORDS: Map<String, String> = mapOf(
+    "чорне море" to "Black Sea",
+    "азовське море" to "Sea of Azov",
+    "прибережна зона" to "the coastal zone",
+    "повітряний простір" to "airspace",
+    "населений пункт" to "a populated area",
+    "акваторія" to "the water area",
+    "акваторії" to "the water area",
+    "акваторією" to "the water area",
+    "морем" to "the sea",
+    "моря" to "the sea",
+    "море" to "the sea",
+    "берег" to "the coast",
+    "берега" to "the coast",
+    "берегом" to "the coast",
+    "кордон" to "the border",
+    "кордону" to "the border",
+    "кордоном" to "the border",
+    "простір" to "airspace",
+    "село" to "a village",
+    "села" to "a village",
+    "селом" to "a village",
+    "місто" to "a city",
+    "міста" to "a city",
+    "містом" to "a city",
+    "район" to "district",
+    "району" to "district",
+    "районом" to "district",
+    "рій" to "swarm",
+    "барражує" to "loiters",
+    "атакує" to "attacks",
+    "поблизу" to "near",
+    "поруч" to "near",
+    "вздовж" to "along"
+)
+
 private fun courseFallback(raw: String): String {
     var out = raw
-    for ((ua, en) in COURSE_GLOSSARY) {
+    for ((ua, en) in COURSE_GLOSSARY + COMMON_WORDS.entries.map { it.key to it.value }) {
+        val replacement = { match: MatchResult ->
+            val w = match.value
+            when {
+                w.all { it.isUpperCase() } -> en.uppercase()
+                w[0].isUpperCase() -> en.replaceFirstChar { it.uppercase() }
+                else -> en
+            }
+        }
         out = out.replace(
             Regex("(?iu)(?<![\\p{L}])" + Regex.escape(ua) + "(?![\\p{L}])"),
-            en
+            replacement
         )
     }
     return Transliteration.transliterate(out)

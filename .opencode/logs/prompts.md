@@ -17095,3 +17095,316 @@ go
 ## 19/08/2026, 11:51:09
 
 Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 19/08/2026, 11:57:18
+
+go
+## 19/08/2026, 12:03:26
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 19/08/2026, 12:10:50
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 19/08/2026, 13:56:00
+
+shelter screen should have pull down to refresh, and at the top the last known time a precise gps location was retreivied, and a way to force a gps refresh, it might ahve to bring up the android permission screen again.
+all locations need to be trasnliterated.
+
+in settings under the new "Shelter" section (move the existing toggle), add a toggle for "with kids", explaining it only calcuates walking distance a littler slower or whatever.  Use icons, an adult hodling a child's hand or something.  And in the list use the icons for adult and adult w child.  
+## 19/08/2026, 14:05:53
+
+go
+## 19/08/2026, 14:06:59
+
+the neptun connection stuff is absoultely horrible and unreliable now!
+i went inside and lost connection, and when i came outside it took 30kmiin of trying, even turning aiplane mode and toggling "test" in connection panel.  This is unacceptaable.  I had to reboot, why would that change anything?  And someimtes I'm getting officla laert ended even tho it's not.  something happened.
+## 19/08/2026, 14:09:33
+
+zooming should be as you zoom in on the map, not out.  the threat should get bigger asi you zoom in (not out)...but only to a point.
+
+if i shoot a drone down (for fun) when it respawansa  few seconds later it should not give a new alert.  Don't kill the actual object in memory, just draw the animation and temporarily hide the drone until redraw.
+## 19/08/2026, 14:12:02
+
+i wanna analyze the code in another llm.  gether a list of files it needs and zip them.
+## 19/08/2026, 14:13:37
+
+go
+## 19/08/2026, 14:28:39
+
+go
+## 19/08/2026, 14:33:00
+
+tapping "new version" toast force closes app
+## 19/08/2026, 14:38:49
+
+some words can be pre-tranlasted so the trasnliteration isn't poinless.  things like "morem", when it says "UAV over the sea".
+## 19/08/2026, 14:39:26
+
+go
+## 19/08/2026, 14:43:26
+
+put this in the wizard , page 3, prominant at the bottom.
+remove " on a dark map" from  page3 first hint.
+
+the kid and adult icons are too small and remove the bracket text after it.  larger fonts, ppl are stressed!
+
+does pressing refresh GPS actually refresh the shelter list too?  when pressing refresh it should give indcation that it's working on it.
+
+the "open in maps" button, on the right side of the screen, not full width.
+
+common words like "naiprositshe ukrytitta" should be pre-tranlsted into english and stores in strings.  find others.
+
+"follow me" hint should add that you can pin to a city too.
+reword "Start" (last button) to "Stay safe..."
+
+the go to shelter button should be dimmed gray when no active oblast alert.  put it on the left side of the screen, on same row as the other hover buttons.  reword to just "[running person icon] Shelter"
+## 19/08/2026, 14:43:41
+
+go
+## 19/08/2026, 14:45:10
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 19/08/2026, 14:52:37
+
+remove entirely the time-to-arrival lines feature
+## 19/08/2026, 14:57:54
+
+also update the feature guide
+## 19/08/2026, 15:01:55
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 19/08/2026, 15:03:12
+
+thoughts?
+
+***
+
+**Mode 3: Bug Hunter**
+
+Assume bugs exist. Findings ranked:
+
+**Critical**
+- None found that crash on normal paths.
+
+**High**
+- `MapView.kt:104,106,126` — `ContextCompat.getDrawable(...)!!` force-unwrap. Missing resource → NPE/crash on icon render.
+- `AlertService` + `NeptunClient` concurrent launches on start (`onCreate` multiple `scope.launch`). Race on `ConnectionLog`/`AlertHistory` restore vs first writes possible if timing slips.
+- Mirrored zone/prediction evaluation (`MainViewModel` ↔ `AlertService`). Any future divergence silently produces wrong alerts vs map.
+
+**Medium**
+- `LocationTracker.start()` — only NETWORK_PROVIDER. No GPS fallback for coarse fixes; indoor/stale last-known can leave focus wrong for minutes.
+- `currentFocus` (`@Volatile`) set after collect starts. Brief window where removed-threat tally uses null focus and skips valid neutralizations.
+- `OFFLINE_GRACE_MS = 0` (deliberate) + service kill/restart path relies on `offlinePendingSince`. Missed restore → silent offline state.
+- Drawable bitmaps created on every icon scale/zoom without reuse → transient GC pressure / jank on dense threat sets.
+
+**Low**
+- `MainScreen.kt:879` — redundant `!!` after null-check (safe but brittle style).
+- Multiple unbounded `while(true)` keep-alive loops; cancellation relies on `manuallyStopped` + scope cancel. Edge-case leak if stop/start races.
+- No input sanitization beyond finite checks on notification extras (lat/lon already guarded).
+
+No injection, no deadlocks, no obvious infinite loops under normal load. Tests cover core pure functions; concurrency edges less covered.
+## 19/08/2026, 15:07:46
+
+we should add a way to force a precise gps location.   idk where, tapping on blue dot, or a buton in the alert zones modal, or a setting.  let's thinkg about it.
+## 19/08/2026, 15:07:52
+
+continue
+## 19/08/2026, 15:17:47
+
+the enturalizing logic/animation should ONLY run if the user is on the map and no alert is active.  If the map isn't visible then it's pointless to do.
+
+in threatcard the "[alert] off" icon is too dark.  In fact all of the "off alert" bell icons are the wrong gray, they should be the same gray as the toggle's gray.
+
+Shelter. If the shelter button is off, how do they go to the list of shelters? We should put a button in the setting itself.  move the "with kids" toggle to the shelter screen.  save state.  reowrd the "GPS: x min" on the shleter screen to be more desrciptove: "A precise GPS fix is stale by 3 minutes (proper plural)".  Remove the fake "swipe down to refresh code", it doesn't work.   what formulas do you use to know how many walking minutes it takes?
+
+im getting "offline" connectoin WAY too often.  Maybe we ignore it if it's less than 5s old? How should we make this super reliable and not annoying?
+## 19/08/2026, 16:55:37
+
+continue
+## 19/08/2026, 17:26:21
+
+## Mode 2: Senior Code Review
+### Findings
+- [High] [ZonePrefs.kt:1] — God object mixing preferences with persisted app state (ConnectionLog/AlertHistory).
+- [High] [MainViewModel.kt:1] & [AlertService.kt:1] — Mirrored UI and alert evaluation logic creates a severe risk of architectural drift.
+- [Medium] [app/src/main/java/ua/ukrainedrones/:1] — Flat package structure obscures system boundaries.
+
+## Mode 3: Bug Hunter
+### Findings
+- [Critical] [NeptunClient.kt:1] — StateFlow<NeptunState> is conflated; high risk of dropping rapid intermediate WebSocket frames.
+- [High] [LocationTracker.kt:1] — Nullable LatLng? fallback state risks crashing distance math.
+- [High] [ZonePrefs.kt:1] — Async DataStore writes for operational logs risk data corruption during rapid restarts.
+- [Medium] [MainActivity.kt:1] — Legacy OSMdroid cache cleanup risks memory leaks.
+- [Medium] [AlertService.kt:1] — 3-second userShotAt grace window can suppress legitimate instant re-alerts.
+
+## Mode 4: Architecture Review
+### Findings
+- [High] [Architecture] — Direct API ingestion cannot scale 10x without risking client-side DDOS bans.
+- [Critical] [MainViewModel.kt:1, AlertService.kt:1] — Mirrored logic must be DELETED and replaced by `ThreatEvaluator`.
+- [Medium] [ZonePrefs.kt:1] — Must be split to prevent IO contention.
+
+## Mode 6: Refactor Pass
+### Findings
+- [Action] [MainViewModel.kt:1, AlertService.kt:1] — Extract orchestration loops into `ThreatEvaluator.kt`.
+- [Action] [Threat.kt:1] — Split into `Threat.kt`, `ThreatTypeCatalog.kt`, and `CourseMath.kt`.
+- [Action] [ZonePrefs.kt:1] — Split into `AppPrefs.kt`, `ConnectionLogStore.kt`, `AlertHistoryStore.kt`.
+- [Action] [MainScreen.kt:1] — Extract dialogs and sheets into standalone Composables to flatten nesting.
+
+## Mode 8: Performance Engineer
+### Findings
+- [High] [MainViewModel.kt:1, AlertService.kt:1] — 1Hz clock forces 2x dead-reckoning trig and distance math for all threats every second; burns CPU.
+- [High] [MapView.kt:1, Prediction.kt:1] — 1Hz state emissions cause GC churn from constant `LatLng` instantiations and Compose re-evaluations.
+- [Medium] [Transliteration.kt:1, Strings.kt:1] — String manipulation/formatting in the UI loop instead of ingestion pipeline wastes CPU.
+- [Medium] [AlertsUaClient.kt:1] — 20s polling prevents mobile radio sleep states; should back off when WS is healthy.
+
+## Mode 11: Technical Debt Audit
+### Findings
+- [Critical] [MainViewModel.kt:1, AlertService.kt:1] — Duplicated threat evaluation architecture represents the highest debt and drift risk.
+- [High] [ZonePrefs.kt:1] — God object mixing user preferences with high-frequency operational state (ConnectionLog/AlertHistory).
+- [Medium] [app/src/main/java/ua/ukrainedrones/:1] — Flat package structure bypasses Kotlin visibility controls (`internal`).
+- [Medium] [Threat.kt:1] — Multi-responsibility file handling parsing, cataloging, and course logic together.
+
+## Mode 12: Security & Privacy Audit
+### Findings
+- [Low] [Architecture] — Zero backend or cloud footprint ensures complete isolation from user telemetry tracking.
+- [Low] [LocationTracker.kt:1] — Strict reliance on coarse `NETWORK_PROVIDER` limits location precision risk.
+- [Low] [ZonePrefs.kt:1] — Local operational logging stores historical logs on disk, accessible only via device root access.
+
+## Mode 13: Dependency & Environment Audit
+### Findings
+- [Low] [app/build.gradle.kts:1] — Target SDK is set to 34; should be evaluated for updates to maintain modern Android platform compliance.
+- [Low] [app/build.gradle.kts:1] — Kotlin 1.9.24 and JDK 17 provide a stable and predictable build target.
+- [Low] [Architecture] — Total absence of third-party cloud SDKs (Firebase, analytics) minimizes supply-chain vulnerability surfaces.
+
+
+**************************
+
+Here is a comprehensive, standalone prompt containing all the architectural fixes and refactoring blueprints we've generated. You can copy and paste this directly into another LLM or code assistant to implement the changes.
+
+---
+
+```markdown
+# Refactoring & Architecture Master Prompt: Ukraine Drones App
+
+Please apply the following architectural fixes and refactoring phases to the Ukraine Drones Android application codebase (`ua.ukrainedrones`). The goal is to eliminate architectural drift, resolve god-object anti-patterns, fix performance bottlenecks, and introduce proper package boundaries.
+
+## Phase 1: Extract Unified Threat Evaluator (Eliminate Duplication)
+Problem: `MainViewModel` and `AlertService` independently re-derive threat distance, predictions, and tiering logic, creating a high risk of architectural drift and duplicated CPU load.
+
+Action: Create a shared `ThreatEvaluator.kt` singleton to act as the single source of truth for evaluated threats.
+
+```kotlin
+package ua.ukrainedrones.domain
+
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import ua.ukrainedrones.data.*
+// Import shared prediction and zone math
+
+data class EvaluatedThreat(
+    val threat: Threat,
+    val predictedLatLng: LatLng?,
+    val tier: ThreatZone,
+    val distanceKm: Double,
+    val etaMin: Int?
+)
+
+object ThreatEvaluator {
+    fun evaluateThreats(
+        neptunStateFlow: Flow<NeptunState>,
+        locationFlow: Flow<LatLng?>,
+        prefsFlow: Flow<ZonePrefsState>
+    ): Flow<List<EvaluatedThreat>> {
+        return combine(neptunStateFlow, locationFlow) { state, location ->
+            if (location == null) return@combine emptyList<EvaluatedThreat>()
+            
+            state.threats.values.map { threat ->
+                val speed = ThreatSpeedTracker.estimateWithSource(threat.id, threat)
+                val predicted = predictPosition(threat, speed, System.currentTimeMillis())
+                val distance = distanceMeters(location, predicted ?: threat.latLng) / 1000.0
+                
+                val tier = zoneTier(threat, distance, speed, ZoneParams(/* resolved params */))
+                val eta = etaMinutes(distance, speed)
+                
+                EvaluatedThreat(
+                    threat = threat,
+                    predictedLatLng = predicted,
+                    tier = tier,
+                    distanceKm = distance,
+                    etaMin = eta
+                )
+            }
+        }
+    }
+}
+
+```
+
+Refactor both `MainViewModel` and `AlertService` to collect from this shared flow rather than executing their own loop logic.
+
+---
+
+## Phase 2: Split the `ZonePrefs` God Object
+
+Problem: `ZonePrefs.kt` mixes user preferences (languages, icon sets, UI themes) with high-frequency operational runtime ring-buffers (`ConnectionLog` and `AlertHistory`), causing disk I/O contention during rapid state updates.
+
+Action: Split into modular stores.
+
+1. `AppPrefs.kt` (For user settings, UI toggles, and configuration data).
+2. `OperationalLogStore.kt` (Dedicated strictly to persisting connection logs and alert history ring buffers).
+
+```kotlin
+package ua.ukrainedrones.data
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.operationalStore by preferencesDataStore(name = "operational_logs")
+
+class OperationalLogStore(context: Context) {
+    private val dataStore = context.operationalStore
+
+    object Keys {
+        val SERIALIZED_CONNECTION_LOG = stringPreferencesKey("connection_log_json")
+        val SERIALIZED_ALERT_HISTORY = stringPreferencesKey("alert_history_json")
+    }
+
+    val connectionLogFlow: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[Keys.SERIALIZED_CONNECTION_LOG]
+    }
+
+    suspend fun saveConnectionLog(json: String) {
+        dataStore.edit { prefs ->
+            prefs[Keys.SERIALIZED_CONNECTION_LOG] = json
+        }
+    }
+}
+
+```
+
+---
+
+## Phase 3: Subsystem Package Migration & Visibility Control
+
+Problem: All production code lives in a flat package (`ua.ukrainedrones`), bypassing Kotlin's `internal` visibility modifiers and inviting tight, accidental coupling.
+
+Action: Reorganize files into explicit functional subsystems:
+
+```text
+app/src/main/java/ua/ukrainedrones/
+├── core/                   # Utility helpers, course math, transliteration
+├── data/                   # Data sources, Network clients, DataStores
+├── domain/                 # Core models, threat logic, Evaluator, zones
+├── service/                # Foreground services, location trackers, boot receivers
+└── ui/                     # Jetpack Compose UI, ViewModels, Composables, screens
+
+```
+
+Enforce strict boundary protection by marking low-level clients and internal helper functions as `internal` so they cannot be improperly accessed outside their respective packages.
+
+```
+
+```

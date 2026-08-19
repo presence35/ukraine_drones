@@ -2,6 +2,7 @@ package ua.ukrainedrones
 
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,14 +46,21 @@ object AlertHistory {
     private var appContext: Context? = null
     private val attachScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val openAtMillis = mutableMapOf<String, Long>()
+    private val attachDone = CompletableDeferred<Unit>()
 
     /** Restore persisted events from DataStore. Call once at startup (idempotent). */
     fun attach(context: Context) {
         if (attached) return
         attached = true
         appContext = context.applicationContext
-        attachScope.launch { attachLoaded() }
+        attachScope.launch {
+            attachLoaded()
+            attachDone.complete(Unit)
+        }
     }
+
+    /** Wait for [attach]'s async restore to finish (before writes race it). */
+    suspend fun awaitAttached() = attachDone.await()
 
     /**
      * Record a fired alert as open. Any previously open alert for the same [key] is closed

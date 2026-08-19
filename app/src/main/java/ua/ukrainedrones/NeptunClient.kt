@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.Callback
@@ -39,7 +40,9 @@ data class NeptunState(
     val forceOffline: Boolean = false,   // TEMP test toggle — force backup as if NEPTUN were down
     val backupUp: Boolean = false,      // backup source has polled successfully recently
     val backupLastOkAt: Long = 0L,      // epoch millis of the backup's last successful poll
-    val backupError: String? = null
+    val backupError: String? = null,
+    /** Epoch millis when each id was last shot down by the user (map long-press). */
+    val userShotAt: Map<String, Long> = emptyMap()
 ) {
     /** Seconds since the stream dropped, or null while NEPTUN appears online. */
     val offlineElapsedSec: Long?
@@ -71,21 +74,24 @@ data class NeptunState(
 
     /**
      * Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. While the
-     * socket is actually down, NEPTUN's last snapshot can be stale (alerts it reported before the
-     * drop are never re-confirmed), so the backup alone is the authoritative live source then;
-     * the merge only applies while the stream is alive but merely silent.
+     * socket is actually down, the backup alone is the authoritative live source (NEPTUN's last
+     * snapshot can be stale — alerts it reported before the drop are never re-confirmed); the
+     * merge only applies while the stream is alive but merely silent. When the backup is also
+     * down, NEPTUN's last-known list is HELD rather than cleared: an outage must never look like
+     * "alert ended" (no fabricated all-clear, no banner flicker) — the truth arrives on
+     * reconnect. Held alerts are never source-tagged ([alertSourceFor] requires a live source).
      */
     val oblastAlerts: List<OblastAlert>
         get() = when {
-            !connected -> backupAlerts
-            backupActive -> mergeAlerts(neptunAlerts, backupAlerts)
+            neptunDown -> if (backupUp) backupAlerts else neptunAlerts
+            backupActive -> if (backupUp) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
             else -> neptunAlerts
         }
 
     /** Which source(s) report an active official alert for the given oblast stem [token]. */
     fun alertSourceFor(token: String): AlertSource? {
         val n = connected && neptunAlerts.any { it.inOblast(token) }
-        val b = backupActive && backupAlerts.any { it.inOblast(token) }
+        val b = backupUp && backupActive && backupAlerts.any { it.inOblast(token) }
         return when {
             n && b -> AlertSource.BOTH
             n -> AlertSource.NEPTUN
@@ -118,8 +124,9 @@ object NeptunClient {
      */
     const val OFFLINE_GRACE_MS = 0L
 
-    /** Fixed reconnect interval after initial drop (5s, lightweight). */
-    const val RECONNECT_INTERVAL_MS = 5_000L
+    /** How long a user-shot drone stays "remembered": a same-id respawn inside this window
+     *  is the same drone coming back (no new alert); after it, a fresh appearance is a new threat. */
+    const val USER_SHOT_GRACE_MS = 3_000L
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // keep socket open indefinitely
@@ -149,6 +156,7 @@ object NeptunClient {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         }
         manuallyStopped = false
+        connectInFlight.set(false)
         connect()
         startKeepAliveTasks()
         startConnectionLog()
@@ -162,6 +170,9 @@ object NeptunClient {
         reconnectJob = null
         ws?.close(1000, "client stop")
         ws = null
+        // The dying socket's guarded onClosed/onFailure won't clear the flag; leave it
+        // fresh so a later start() can connect.
+        connectInFlight.set(false)
         AlertsUaClient.stop()
         scope.cancel()
     }
@@ -183,6 +194,9 @@ object NeptunClient {
                 else -> _state.value.offlineSince
             }
         )
+        // Turning the toggle back off while the socket is genuinely down must kick a real
+        // reconnect — otherwise the toggle looks like it did nothing.
+        if (!force && !_state.value.connected && !manuallyStopped) retryNow()
     }
 
     /** Relay the backup source's oblast alerts into our state whenever it updates. */
@@ -234,6 +248,10 @@ object NeptunClient {
         // the fresh connection connect() is about to create (see the ws-identity guards below).
         val old = ws
         ws = null
+        // The superseded socket's guarded callbacks will NOT clear the in-flight flag (they
+        // return early), so clear it here — otherwise connect() below would early-return and
+        // the client would stay dead forever (only a process restart used to fix it).
+        connectInFlight.set(false)
         old?.close(1001, "manual retry")
         connect()
     }
@@ -374,7 +392,13 @@ object NeptunClient {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (ws !== webSocket) return // superseded by a manual retry — the new socket owns state
+                if (ws !== webSocket) {
+                    // Superseded by a manual retry / stop. Without a successor socket the
+                    // in-flight flag would stay stuck true forever — clear it so a future
+                    // connect() can proceed.
+                    if (ws == null) connectInFlight.set(false)
+                    return
+                }
                 ws = null
                 connectInFlight.set(false)
                 _state.value = _state.value.copy(connected = false, offlineSince = System.currentTimeMillis(), reconnectStartMillis = System.currentTimeMillis())
@@ -382,8 +406,10 @@ object NeptunClient {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (ws !== webSocket) return // superseded by a manual retry — the new socket owns state
-                ws = null
+                if (ws !== webSocket) {
+                    if (ws == null) connectInFlight.set(false)
+                    return
+                }
                 connectInFlight.set(false)
                 _state.value = _state.value.copy(
                     connected = false,
@@ -409,7 +435,7 @@ object NeptunClient {
         reconnectAttempt++
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            delay(RECONNECT_INTERVAL_MS) // 5s fixed interval, lightweight
+            delay(reconnectDelayMs(reconnectAttempt))
             if (!manuallyStopped) connect()
         }
     }
@@ -424,6 +450,19 @@ object NeptunClient {
         else -> minOf(15_000L, 1000L * (1 shl (attempt - 1))) + (0..400).random()
     }
 
+    /** Record that the user shot down [id] on the map (long-press fake kill). */
+    fun markUserShot(id: String) {
+        if (id.isEmpty()) return
+        val now = System.currentTimeMillis()
+        _state.update { it.copy(userShotAt = it.userShotAt + (id to now)) }
+    }
+
+    /** Forget user-shot markers older than the grace window. */
+    private fun pruneUserShot(now: Long) {
+        val stale = _state.value.userShotAt.filterValues { now - it > USER_SHOT_GRACE_MS }
+        if (stale.isNotEmpty()) _state.update { it.copy(userShotAt = it.userShotAt - stale.keys) }
+    }
+
     private fun handleFrame(text: String) {
         try {
             val env = JSONObject(text)
@@ -436,6 +475,18 @@ object NeptunClient {
                         val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
                         map[t.id] = t
                     }
+                    // A user-shot drone the stream briefly loses is kept alive in memory for
+                    // the shot's grace window — it redraws in place on respawn instead of being
+                    // removed and re-added as a brand-new threat.
+                    val now = System.currentTimeMillis()
+                    val prev = _state.value.threats
+                    val shot = _state.value.userShotAt
+                    for (id in prev.keys) {
+                        if (id in map) continue
+                        val shotAt = shot[id] ?: continue
+                        if (now - shotAt <= USER_SHOT_GRACE_MS) map[id] = prev.getValue(id)
+                    }
+                    pruneUserShot(now)
                     _state.value = _state.value.copy(threats = map)
                 }
                 "upsert" -> {

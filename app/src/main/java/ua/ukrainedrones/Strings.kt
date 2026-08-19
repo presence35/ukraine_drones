@@ -28,7 +28,9 @@ object Strings {
         val wizardCareSubtitle: String,
         val wizardCareOn: String,
         val wizardCareOff: String,
-        val wizardStartButton: String
+        val wizardStartButton: String,
+        val wizardShelterTitle: String,
+        val wizardShelterDesc: String
     )
 
     data class Settings(
@@ -189,7 +191,23 @@ object Strings {
         val offlineOfficialSirensLine: String,
         val offlineRetryAction: String,
         val offlineChannelName: String,
-        val offlineChannelDesc: String
+        val offlineChannelDesc: String,
+        val offlineMilestone3Min: String,
+        val offlineMilestone6MinFormat: String,
+        val offlineMilestone6MinActive: String,
+        val offlineMilestone6MinInactive: String,
+        val offlineMilestone10Min: String,
+        val offlineMilestone20Min: String,
+        val alertChannelName: String,
+        val alertChannelDesc: String,
+        val outerAlertChannelName: String,
+        val outerAlertChannelDesc: String,
+        val allClearChannelName: String,
+        val allClearChannelDesc: String,
+        val alarmAlertChannelName: String,
+        val alarmAlertChannelDesc: String,
+        val outerAlarmAlertChannelName: String,
+        val outerAlarmAlertChannelDesc: String
     )
 
     data class Misc(
@@ -247,7 +265,12 @@ object Strings {
         val shelterDistanceKm: String,
         val shelterWalkMinutes: String,
         val shelterWalkAdultLabel: String,
-        val shelterWalkKidLabel: String
+        val shelterWalkKidLabel: String,
+        val shelterSectionTitle: String,
+        val shelterWithKidsTitle: String,
+        val shelterWithKidsDesc: String,
+        val shelterGpsAge: String,
+        val shelterGpsUnknown: String
     )
 
     data class Guide(
@@ -303,6 +326,11 @@ object Strings {
         val guideFollowD1: String,
         val guideFollowD2: String,
         val guideFollowD3: String,
+        val guideShelterTitle: String,
+        val guideShelterSummary: String,
+        val guideShelterD1: String,
+        val guideShelterD2: String,
+        val guideShelterD3: String,
         val guidePinTitle: String,
         val guidePinSummary: String,
         val guidePinD1: String,
@@ -379,6 +407,8 @@ object Strings {
         val wizardCareOn: String get() = onboarding.wizardCareOn
         val wizardCareOff: String get() = onboarding.wizardCareOff
         val wizardStartButton: String get() = onboarding.wizardStartButton
+        val wizardShelterTitle: String get() = onboarding.wizardShelterTitle
+        val wizardShelterDesc: String get() = onboarding.wizardShelterDesc
         val dayZonesTitle: String get() = settings.dayZonesTitle
         val nightZonesTitle: String get() = settings.nightZonesTitle
         val alertZonesTitle: String get() = settings.alertZonesTitle
@@ -528,6 +558,22 @@ object Strings {
         val offlineRetryAction: String get() = threat.offlineRetryAction
         val offlineChannelName: String get() = threat.offlineChannelName
         val offlineChannelDesc: String get() = threat.offlineChannelDesc
+        val offlineMilestone3Min: String get() = threat.offlineMilestone3Min
+        val offlineMilestone6MinFormat: String get() = threat.offlineMilestone6MinFormat
+        val offlineMilestone6MinActive: String get() = threat.offlineMilestone6MinActive
+        val offlineMilestone6MinInactive: String get() = threat.offlineMilestone6MinInactive
+        val offlineMilestone10Min: String get() = threat.offlineMilestone10Min
+        val offlineMilestone20Min: String get() = threat.offlineMilestone20Min
+        val alertChannelName: String get() = threat.alertChannelName
+        val alertChannelDesc: String get() = threat.alertChannelDesc
+        val outerAlertChannelName: String get() = threat.outerAlertChannelName
+        val outerAlertChannelDesc: String get() = threat.outerAlertChannelDesc
+        val allClearChannelName: String get() = threat.allClearChannelName
+        val allClearChannelDesc: String get() = threat.allClearChannelDesc
+        val alarmAlertChannelName: String get() = threat.alarmAlertChannelName
+        val alarmAlertChannelDesc: String get() = threat.alarmAlertChannelDesc
+        val outerAlarmAlertChannelName: String get() = threat.outerAlarmAlertChannelName
+        val outerAlarmAlertChannelDesc: String get() = threat.outerAlarmAlertChannelDesc
         val connLogTitle: String get() = misc.connLogTitle
         val connLogEmpty: String get() = misc.connLogEmpty
         val connLogDurFormat: String get() = misc.connLogDurFormat
@@ -583,6 +629,11 @@ object Strings {
         val shelterWalkMinutes: String get() = misc.shelterWalkMinutes
         val shelterWalkAdultLabel: String get() = misc.shelterWalkAdultLabel
         val shelterWalkKidLabel: String get() = misc.shelterWalkKidLabel
+        val shelterSectionTitle: String get() = misc.shelterSectionTitle
+        val shelterWithKidsTitle: String get() = misc.shelterWithKidsTitle
+        val shelterWithKidsDesc: String get() = misc.shelterWithKidsDesc
+        val shelterGpsAge: String get() = misc.shelterGpsAge
+        val shelterGpsUnknown: String get() = misc.shelterGpsUnknown
         val guideTitle: String get() = guide.guideTitle
         val guideSettingsButton: String get() = guide.guideSettingsButton
         val guideCategoryMap: String get() = guide.guideCategoryMap
@@ -635,6 +686,11 @@ object Strings {
         val guideFollowD1: String get() = guide.guideFollowD1
         val guideFollowD2: String get() = guide.guideFollowD2
         val guideFollowD3: String get() = guide.guideFollowD3
+        val guideShelterTitle: String get() = guide.guideShelterTitle
+        val guideShelterSummary: String get() = guide.guideShelterSummary
+        val guideShelterD1: String get() = guide.guideShelterD1
+        val guideShelterD2: String get() = guide.guideShelterD2
+        val guideShelterD3: String get() = guide.guideShelterD3
         val guidePinTitle: String get() = guide.guidePinTitle
         val guidePinSummary: String get() = guide.guidePinSummary
         val guidePinD1: String get() = guide.guidePinD1
@@ -695,7 +751,9 @@ object Strings {
         wizardCareSubtitle = "Усі загрози показано на мапі за замовчуванням; увімкніть сповіщення тут, а в ⚙ налаштуваннях зможете змінити будь-коли.",
         wizardCareOn = "Сповіщати",
         wizardCareOff = "Вимкнено",
-        wizardStartButton = "Почати",
+        wizardStartButton = "Будьте в безпеці…",
+        wizardShelterTitle = "Укриття поруч",
+        wizardShelterDesc = "Кнопка «Укриття» показує найближчі укриття та час пішки — швидкий шлях до безпеки під час тривоги.",
     )
 
     private fun uaSettings() = Settings(
@@ -816,7 +874,7 @@ object Strings {
         checkForUpdates = "Перевірити оновлення",
         updateButton = "Оновити",
         updateAvailableButton = "Доступне оновлення",
-        updateAvailableOnOpen = "Доступне оновлення v%s — торкніться, щоб завантажити зараз, або відкрийте Налаштування пізніше",
+        updateAvailableOnOpen = "Доступне оновлення v%s",
     )
 
     private fun uaThreat() = Threat(
@@ -857,6 +915,22 @@ object Strings {
         offlineRetryAction = "Повторити",
         offlineChannelName = "Офлайн-моніторинг",
         offlineChannelDesc = "Повідомлення, коли з'єднання із сервером тривог втрачено.",
+        offlineMilestone3Min = "Резервна система відстежує стрічку тривог. Застосунок продовжує спроби повторного з'єднання у фоновому режимі.",
+        offlineMilestone6MinFormat = "Резервні тривоги alerts.com.ua зараз %s. Офіційні сирени можуть бути обмежені.",
+        offlineMilestone6MinActive = "активні",
+        offlineMilestone6MinInactive = "неактивні",
+        offlineMilestone10Min = "Немає з'єднання з NEPTUN протягом 10 хвилин. Застосунок продовжує спроби підключення у фоновому режимі зі зростаючими затримками.",
+        offlineMilestone20Min = "Автоперепідключення зупинено після 20 хвилин. Будь ласка: повністю закрийте застосунок, перезавантажте телефон або перевірте інтернет-з'єднання. Підключення відновиться під час наступного відкриття застосунку.",
+        alertChannelName = "Повітряні тривоги",
+        alertChannelDesc = "Сирени повітряної тривоги та термінові зональні сповіщення",
+        outerAlertChannelName = "Сповіщення регіону",
+        outerAlertChannelDesc = "Попереджувальні сповіщення зовнішньої зони (Регіон)",
+        allClearChannelName = "Відбій тривоги",
+        allClearChannelDesc = "Приємний сигнал, коли офіційна повітряна тривога завершується",
+        alarmAlertChannelName = "Повітряні тривоги — завжди зі звуком",
+        alarmAlertChannelDesc = "Сирени повітряної тривоги та термінові зональні сповіщення, навіть у беззвучному режимі",
+        outerAlarmAlertChannelName = "Сповіщення регіону — завжди зі звуком",
+        outerAlarmAlertChannelDesc = "Попереджувальні сповіщення зовнішньої зони (Регіон), навіть у беззвучному режимі",
     )
 
     private fun uaMisc() = Misc(
@@ -896,7 +970,7 @@ object Strings {
         deathAnimationTitle = "Анімація завершення загрози",
         deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу перестають відстежувати. Просто для розваги.",
         followBulletTitle = "Слідувати за снарядом",
-        followBulletDesc = "Снаряд летить з найближчого великого міста до цілі, а камера повертається на твоє місце (GPS або закріплене місто).",
+        followBulletDesc = "Снаряд летить з найближчого великого міста до цілі, а камера слідує за ним до точки удару.",
         neutralizedTallyTitle = "Лічильник завершених загроз",
         neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, завершених поблизу тебе, доки працює моніторинг.",
         iconSetTitle = "Оберіть свої улюблені іконки загроз!",
@@ -904,7 +978,7 @@ object Strings {
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
         iconSetComicLabel = "Комікс",
-        shelterButtonLabel = "До укриття",
+        shelterButtonLabel = "Укриття",
         shelterScreenTitle = "Укриття поруч",
         shelterOpenInMaps = "Відкрити в мапах",
         shelterEmpty = "Укриттів поруч не знайдено",
@@ -915,6 +989,11 @@ object Strings {
         shelterWalkMinutes = "~%d хв",
         shelterWalkAdultLabel = "дорослим",
         shelterWalkKidLabel = "з дітьми",
+        shelterSectionTitle = "Укриття",
+        shelterWithKidsTitle = "З дітьми",
+        shelterWithKidsDesc = "З дітьми йдуть повільніше — час ходьби рахуємо трохи довше.",
+        shelterGpsAge = "GPS: %s",
+        shelterGpsUnknown = "GPS: —",
     )
 
     private fun uaGuide() = Guide(
@@ -966,10 +1045,15 @@ object Strings {
         guideNightD2 = "Поки вікно активне, діють власні нічні зони та дзвіночки — а нічні сирени можуть звучати навіть на беззвучному.",
         guideNightD3 = "Увімкнено за замовчуванням — власні нічні налаштування діють одразу.",
         guideFollowTitle = "Слідувати за мною",
-        guideFollowSummary = "Мапа та обидві зони слідують за твоїм GPS.",
+        guideFollowSummary = "Мапа та обидві зони слідують за твоїм GPS — або закріпи карту за містом.",
         guideFollowD1 = "Твоє положення — синя точка, що світиться.",
         guideFollowD2 = "Зони рухаються разом із тобою, тож ти завжди знаєш, чи загроза поруч.",
         guideFollowD3 = "Перемикач — у Налаштуваннях → Центр карти.",
+        guideShelterTitle = "Укриття поруч",
+        guideShelterSummary = "Кнопка «Укриття» на мапі відкриває список найближчих укриттів.",
+        guideShelterD1 = "Укриття відсортовані за відстанню з часом пішки — для дорослого та з дитиною.",
+        guideShelterD2 = "Кнопка GPS оновлює твоє положення; перетягни список униз, щоб оновити дані.",
+        guideShelterD3 = "«Відкрити в мапах» прокладає маршрут до вибраного укриття.",
         guidePinTitle = "Прикріпити до міста",
         guidePinSummary = "Закріпи мапу та зони за вибраним містом замість GPS.",
         guidePinD1 = "Зручно, коли стежиш за рідними в іншому місті.",
@@ -1076,7 +1160,9 @@ object Strings {
         wizardCareSubtitle = "Every threat is shown on the map by default; toggle alerts here, and go to ⚙ settings to change anytime.",
         wizardCareOn = "Alert",
         wizardCareOff = "Off",
-        wizardStartButton = "Start",
+        wizardStartButton = "Stay safe…",
+        wizardShelterTitle = "Nearby shelters",
+        wizardShelterDesc = "The \"Shelter\" button shows the nearest shelters with walking times — your quick route to safety during an alert.",
     )
 
     private fun enSettings() = Settings(
@@ -1197,7 +1283,7 @@ object Strings {
         checkForUpdates = "Check for updates",
         updateButton = "Update",
         updateAvailableButton = "Update available",
-        updateAvailableOnOpen = "Update v%s is available — tap to download now, or open Settings later",
+        updateAvailableOnOpen = "Update v%s is available",
     )
 
     private fun enThreat() = Threat(
@@ -1238,6 +1324,22 @@ object Strings {
         offlineRetryAction = "Retry",
         offlineChannelName = "Offline monitoring",
         offlineChannelDesc = "Notifications when the connection to the alert server is lost.",
+        offlineMilestone3Min = "Backup system is monitoring the alert feed. The app will keep trying to reconnect in the background.",
+        offlineMilestone6MinFormat = "Backup alerts from alerts.com.ua are currently %s. Official sirens may be limited.",
+        offlineMilestone6MinActive = "active",
+        offlineMilestone6MinInactive = "inactive",
+        offlineMilestone10Min = "No NEPTUN connection for 10 minutes. The app keeps retrying in the background with increasing delays.",
+        offlineMilestone20Min = "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it.",
+        alertChannelName = "Air alerts",
+        alertChannelDesc = "Air-raid sirens and urgent zone alerts",
+        outerAlertChannelName = "Region alerts",
+        outerAlertChannelDesc = "OUTER zone (Регіон) warning alerts",
+        allClearChannelName = "All clear",
+        allClearChannelDesc = "Cheerful chime when the official air-raid alert ends",
+        alarmAlertChannelName = "Air alerts — always sound",
+        alarmAlertChannelDesc = "Air-raid sirens and urgent zone alerts, even on vibrate/silent",
+        outerAlarmAlertChannelName = "Region alerts — always sound",
+        outerAlarmAlertChannelDesc = "OUTER zone (Регіон) warning alerts, even on vibrate/silent",
     )
 
     private fun enMisc() = Misc(
@@ -1277,7 +1379,7 @@ object Strings {
         deathAnimationTitle = "Resolved-threat animation",
         deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is no longer tracked. Just for fun.",
         followBulletTitle = "Follow the bullet",
-        followBulletDesc = "The projectile launches from the nearest major city toward the target, and the camera returns to your GPS/pinned city.",
+        followBulletDesc = "The projectile launches from the nearest major city toward the target, and the camera glides onto the strike.",
         neutralizedTallyTitle = "Resolved-threats tally",
         neutralizedTallyDesc = "Show a notification counting threats resolved near you while monitoring is running.",
         iconSetTitle = "Choose your favourite threat icons!",
@@ -1285,7 +1387,7 @@ object Strings {
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",
         iconSetComicLabel = "Comic",
-        shelterButtonLabel = "Go to shelter",
+        shelterButtonLabel = "Shelter",
         shelterScreenTitle = "Nearby shelters",
         shelterOpenInMaps = "Open in maps",
         shelterEmpty = "No shelters found nearby",
@@ -1296,6 +1398,11 @@ object Strings {
         shelterWalkMinutes = "~%d min",
         shelterWalkAdultLabel = "adult",
         shelterWalkKidLabel = "with kids",
+        shelterSectionTitle = "Shelter",
+        shelterWithKidsTitle = "With kids",
+        shelterWithKidsDesc = "Kids walk slower — the walking time is calculated a bit longer.",
+        shelterGpsAge = "GPS: %s",
+        shelterGpsUnknown = "GPS: —",
     )
 
     private fun enGuide() = Guide(
@@ -1307,7 +1414,7 @@ object Strings {
         guideCategoryCards = "Threat cards",
         guideCategorySettings = "Settings",
         guideLiveTitle = "Live threat map",
-        guideLiveSummary = "See every tracked threat moving across the whole country on a dark map.",
+        guideLiveSummary = "See every tracked threat moving across the whole country.",
         guideLiveD1 = "Markers show all 8 threat types — drones, missiles, guided bombs and more.",
         guideLiveD2 = "During an alert the map widens so you can check other regions at a glance.",
         guideLiveD3 = "Tap a marker to open its detail card; tap empty map to close it.",
@@ -1347,10 +1454,15 @@ object Strings {
         guideNightD2 = "While the window is active, its own zones and bells apply — and night sirens can ring even on silent.",
         guideNightD3 = "On by default — your separate night settings apply right away.",
         guideFollowTitle = "Follow me",
-        guideFollowSummary = "The map and both zones follow your GPS position.",
+        guideFollowSummary = "The map and both zones follow your GPS position — or pin the map to a city instead.",
         guideFollowD1 = "Your position shows as a glowing blue dot.",
         guideFollowD2 = "Zones move with you, so you always know if a threat is near.",
         guideFollowD3 = "Toggle it in Settings → Map centre.",
+        guideShelterTitle = "Nearby shelters",
+        guideShelterSummary = "The \"Shelter\" button on the map opens the list of the nearest shelters.",
+        guideShelterD1 = "Shelters are sorted by distance with walking times — as an adult and with a child.",
+        guideShelterD2 = "The GPS button refreshes your position; drag the list down to refresh the data.",
+        guideShelterD3 = "\"Open in maps\" routes you to the chosen shelter.",
         guidePinTitle = "Pin to a city",
         guidePinSummary = "Fix the map and zones on a chosen city instead of your GPS.",
         guidePinD1 = "Useful when you're watching over family elsewhere.",
@@ -1436,6 +1548,28 @@ object Strings {
     )
 
 }
+
+/**
+ * Glossary for translating common Ukrainian words inside shelter names into English.
+ * Applied before transliteration when the UI language is English.
+ * Phrase entries must be replaced before single-word entries.
+ */
+val SHELTER_NAME_GLOSSARY: Map<String, String> = mapOf(
+    "№" to "No.",
+    "найпростіше укриття" to "simplest shelter",
+    "первинне (мобільне) укриття" to "primary (mobile) shelter",
+    "укриття" to "shelter",
+    "зсцз" to "CDS",
+    "вулиця" to "street",
+    "вул" to "St",
+    "дорога" to "road",
+    "бульвар" to "boulevard",
+    "провулок" to "lane",
+    "пров" to "Ln",
+    "жк" to "complex",
+    "пляж" to "beach",
+    "парк" to "park",
+)
 
 
 /**

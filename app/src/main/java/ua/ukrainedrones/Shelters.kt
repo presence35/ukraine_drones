@@ -19,6 +19,20 @@ private const val ADULT_M_PER_MIN = 83.3334
 /** Walking speed with small children (~3 km/h). */
 private const val KID_M_PER_MIN = 50.0
 
+/** English display name for a Ukrainian shelter name: glossary translation, then transliteration. */
+fun shelterNameEn(ua: String): String {
+    var s = ua
+    SHELTER_NAME_GLOSSARY.entries
+        .sortedByDescending { it.key.length }
+        .forEach { (uaPart, enPart) ->
+            s = s.replace(uaPart, enPart, ignoreCase = true)
+        }
+    val capitalized = ua.isNotEmpty() && ua[0].isUpperCase() &&
+        s.isNotEmpty() && s[0].isLowerCase()
+    val out = Transliteration.transliterate(s)
+    return if (capitalized) out.replaceFirstChar { it.uppercase() } else out
+}
+
 /** A shelter paired with its straight-line distance to a query point. */
 data class NearestShelter(
     val shelter: Shelter,

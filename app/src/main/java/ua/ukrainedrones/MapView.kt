@@ -49,6 +49,7 @@ import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import java.io.File
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -147,10 +148,11 @@ private fun threatIconFor(
     if (scale <= 1.001f) threatIcon(context, type, iconSet)
     else scaledThreatIcon(context, type, iconSet, scale)
 
-/** Icon growth from map zoom: threats grow as you zoom in, clamped so they never balloon.
- *  Flat at 1.0× up to zoom 10, reaches 2.0× at zoom 16, stays there beyond. */
+/** Icon growth from map zoom: icons keep pace with the map's magnification as you zoom in
+ *  (the threat visibly grows), clamped so it never balloons. Flat at 1.0× up to zoom 10,
+ *  2.0× at zoom 12, capped at 3.0× (reached around zoom 13.2) and flat beyond. */
 private fun zoomIconScale(zoom: Double): Float =
-    1f + ((zoom - 10.0) / 6.0).coerceIn(0.0, 1.0).toFloat()
+    minOf(3.0, 2.0.pow(((zoom - 10.0) * 0.5).coerceAtLeast(0.0))).toFloat()
 
 private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
     ThreatZone.INNER -> Color.rgb(255, 82, 82)
@@ -373,7 +375,6 @@ fun NeptunMapView(
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
     val markerRefs = remember { mutableStateOf<MutableMap<String, Marker>>(mutableMapOf()) }
     val ttaRefs = remember { mutableStateOf<MutableMap<String, Pair<Polyline, Polyline>>>(mutableMapOf()) }
-    val speedTracker = remember { ThreatSpeedTracker() }
     val pausedState by rememberUpdatedState(paused)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
@@ -468,7 +469,7 @@ fun NeptunMapView(
                 val target = ring.id?.let { id ->
                     uiState.mapThreats.firstOrNull { it.id == id }
                 }?.let { t ->
-                    speedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
+                    ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
                 } ?: GeoPoint(ring.position.lat, ring.position.lon)
                 val existing = newRingMarker.value
                 if (existing == null || existing !in mapView.overlays) {
@@ -645,7 +646,10 @@ fun NeptunMapView(
                 // Threats anywhere in the country — tappable, type icon; stale/expired ones
                 // render dimmed (still tappable) until they pass the hard ghost cap.
                 for (t in uiState.mapThreats) {
-                    speedTracker.record(t.id, t.updatedAtMillis ?: System.currentTimeMillis(), t.lat, t.lon)
+                    // A user-shot drone stays hidden while its death animation plays; the
+                    // next redraw after the animation brings it back in place.
+                    if (deathFx.isActiveFor(t.id)) continue
+                    ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: System.currentTimeMillis(), t.lat, t.lon)
                     val typeInfo = ThreatTypeCatalog.INFO.getValue(t.type)
                     val typeLabel = if (lang == AppLanguage.UA) typeInfo.labelUa else typeInfo.labelEn
                     val rawRegion = t.region ?: t.district ?: t.locality ?: strings.noRegion
@@ -653,7 +657,7 @@ fun NeptunMapView(
                     // Place markers at their dead-reckoned position straight away (matching the
                     // animation loop) so a rebuild never snaps a moving marker back to its raw fix
                     // and returning to the app doesn't flash stale fixes before the loop corrects.
-                    val predicted = speedTracker.estimate(t.id, t)?.let {
+                    val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let {
                         predictPosition(t, it, System.currentTimeMillis())
                     }
                     val pos = predicted ?: GeoPoint(t.lat, t.lon)
@@ -682,7 +686,7 @@ fun NeptunMapView(
                     mapView.overlays.add(marker)
                     markerRefs.value[t.id] = marker
                     if (uiState.showTtaLines && !t.areaOnly && t.type in FastThreatTypes && predicted != null) {
-                        val speedMps = speedTracker.estimate(t.id, t) ?: 0.0
+                        val speedMps = ThreatSpeedTracker.estimate(t.id, t) ?: 0.0
                         val bearing = t.bearingDeg ?: t.heading
                         if (speedMps > 0.0 && bearing != null) {
                             val p = uiState.activeZoneParams
@@ -775,6 +779,9 @@ fun NeptunMapView(
                                 if (pressedId != null && pressedId == selectedThreatIdState) {
                                     onNeutralize(pressedId)
                                 }
+                                // Remember the shot so a same-id respawn within the grace window
+                                // doesn't re-alert (the object itself is never removed).
+                                if (pressedId != null) NeptunClient.markUserShot(pressedId)
                                 if (deathAnimationEnabledState) {
                                     val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
                                     val origin = strikeOrigin(target)
@@ -846,9 +853,8 @@ fun NeptunMapView(
                         context, r.type, iconSetState,
                         zoomIconScale(mapViewRef.value?.zoomLevelDouble ?: 0.0)
                     )
-                    // With follow-the-bullet on, the camera tours the strike: launching city →
-                    // target → back to the focus; otherwise it just glides onto the target when
-                    // it's off-screen so the strike is actually seen.
+                    // With follow-the-bullet on, the camera glides onto the target so the
+                    // strike is actually seen.
                     mapViewRef.value?.let { followStrike(it, anchor, origin) }
                     mapViewRef.value?.invalidate()
                     deathFx.spawn(
@@ -914,7 +920,7 @@ fun NeptunMapView(
                     marker.rotation = targetRot
                     dirty = true
                 }
-                val speed = speedTracker.estimate(t.id, t) ?: continue
+                val speed = ThreatSpeedTracker.estimate(t.id, t) ?: continue
                 val predicted = predictPosition(t, speed, now) ?: continue
                 val cur = marker.position
                 if (cur != null &&
@@ -949,7 +955,7 @@ fun NeptunMapView(
                 } else {
                     val t = ring.id?.let { id -> uiState.mapThreats.firstOrNull { it.id == id } }
                     val target = t?.let { tt ->
-                        speedTracker.estimate(tt.id, tt)?.let { predictPosition(tt, it, now) }
+                        ThreatSpeedTracker.estimate(tt.id, tt)?.let { predictPosition(tt, it, now) }
                     } ?: GeoPoint(ring.position.lat, ring.position.lon)
                     val cur = rm.position
                     if (cur == null ||
