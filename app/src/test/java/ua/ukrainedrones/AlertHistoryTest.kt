@@ -58,4 +58,13 @@ class AlertHistoryTest {
             pruneExpiredEntries(listOf(fresh, boundary, expired), now, maxAge)
         )
     }
+
+    @Test
+    fun `restored open entries are stamped ended at load`() {
+        val now = 1_000_000L
+        val open = entry(now - 5_000)                          // still "ringing" when the process died
+        val alreadyEnded = entry(now - 60_000, end = now - 30_000)
+        val result = markInterruptedOpenEntries(listOf(open, alreadyEnded), now)
+        assertEquals(listOf(open.copy(endMillis = now), alreadyEnded), result)
+    }
 }

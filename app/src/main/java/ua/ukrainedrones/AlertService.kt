@@ -188,6 +188,10 @@ class AlertService : Service() {
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_RETRY) {
+            // The TEMP force-offline test toggle would keep NEPTUN "down" even after a
+            // successful reconnect — turn it off so Retry truly restores the stream.
+            scope.launch { ZonePrefs(applicationContext).setForceOffline(false) }
+            NeptunClient.setForceOffline(false)
             NeptunClient.retryNow()
         }
         if (intent?.action == ACTION_NEUTRALIZED_DISMISS) {
@@ -518,7 +522,7 @@ class AlertService : Service() {
                     "Backup system is monitoring the alert feed. The app will keep trying to reconnect in the background."
                 }
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(msg)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -538,7 +542,7 @@ class AlertService : Service() {
                     "Backup alerts from alerts.com.ua are currently $backupStatus. Official sirens may be limited."
                 }
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(msg)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -557,7 +561,7 @@ class AlertService : Service() {
                     "No NEPTUN connection for 10 minutes. The app continues reconnecting every 5 seconds in the background."
                 }
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(msg)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -576,7 +580,7 @@ class AlertService : Service() {
                     "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it."
                 }
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_launcher_drone)
+                    .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(msg)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -661,6 +665,17 @@ notifyMonitor(
         val officialActive = state.officialAlertsEnabled && state.focusOblastAlertActive
         val officialBody = state.officialReason?.let { it + sourceTag(state.focusAlertSource, s) }
             ?: state.focusRegion + sourceTag(state.focusAlertSource, s)
+        if (officialActive && !wasFocusAlertActive) {
+            // Record the official alert in the history on its very first tick even when a zone
+            // alert wins the notification post — so the all-clear close below always has a row.
+            val reasonThreat = state.officialReasonThreatId?.let { all[it] }
+            AlertHistory.openAlert(
+                "official", null, reasonThreat?.type,
+                reasonThreat?.let { it.locality ?: it.district ?: it.region } ?: state.focusCityUa,
+                distanceFromFocusKm(reasonThreat, state),
+                System.currentTimeMillis()
+            )
+        }
         if (officialActive && !wasFocusAlertActive && !posted) {
             val reasonThreat = state.officialReasonThreatId?.let { all[it] }
             postAlert(
@@ -674,12 +689,6 @@ notifyMonitor(
                 } ?: VIBRATION_STRONG
             )
             currentReasonThreatId = state.officialReasonThreatId
-            AlertHistory.openAlert(
-                "official", null, reasonThreat?.type,
-                reasonThreat?.let { it.locality ?: it.district ?: it.region } ?: state.focusCityUa,
-                distanceFromFocusKm(reasonThreat, state),
-                System.currentTimeMillis()
-            )
         } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
             state.officialReasonThreatId != currentReasonThreatId
         ) {
@@ -826,7 +835,7 @@ notifyMonitor(
 
     private fun monitorNotification(title: String, text: String, retryLabel: String?) =
         NotificationCompat.Builder(this, CHANNEL_MONITOR)
-            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setSmallIcon(R.drawable.ic_trident)
             .setContentTitle(title)
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -866,7 +875,7 @@ notifyMonitor(
             else -> CHANNEL_ALERTS
         }
         return NotificationCompat.Builder(this, channel)
-            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setSmallIcon(R.drawable.ic_trident)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -918,7 +927,7 @@ notifyMonitor(
         val s = Strings.get(lang)
         val body = s.offlineBodyFormat
         val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setSmallIcon(R.drawable.ic_trident)
             .setContentTitle(s.offlineStatusTitle)
             .setContentText(body)
             .setStyle(
@@ -945,7 +954,7 @@ notifyMonitor(
             String.format(s.neutralizedLastLineFormat, if (lang == AppLanguage.UA) it.labelUa else it.labelEn)
         }
         val builder = NotificationCompat.Builder(this, CHANNEL_NEUTRALIZED)
-            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setSmallIcon(R.drawable.ic_trident)
             .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openAppIntent())
@@ -968,7 +977,7 @@ notifyMonitor(
     private fun postAllClear(s: Strings.StringSet, city: String) {
         alertEpoch++
         val notif = NotificationCompat.Builder(this, CHANNEL_ALLCLEAR)
-            .setSmallIcon(R.drawable.ic_launcher_drone)
+            .setSmallIcon(R.drawable.ic_trident)
             .setContentTitle(String.format(s.allClearTitle, city))
             .setContentText(s.allClearText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

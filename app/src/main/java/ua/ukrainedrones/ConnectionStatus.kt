@@ -478,6 +478,14 @@ private fun AlertHistoryRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                entry.endMillis?.let { end ->
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        String.format(s.alertHistoryEndedFormat, formatAlertAge(now, end, s)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 entry.locality?.let { locality ->
                     Spacer(Modifier.width(6.dp))
                     Text(

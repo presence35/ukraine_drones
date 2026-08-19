@@ -11,7 +11,6 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import android.os.SystemClock
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -137,6 +136,21 @@ private fun scaledThreatIcon(
     src.draw(canvas)
     return BitmapDrawable(context.resources, bmp)
 }
+
+/** Threat marker icon at the current zoom-derived scale ([scale] 1.0 = plain [threatIcon]). */
+private fun threatIconFor(
+    context: Context,
+    type: ThreatType,
+    iconSet: ThreatIconSet,
+    scale: Float
+): Drawable =
+    if (scale <= 1.001f) threatIcon(context, type, iconSet)
+    else scaledThreatIcon(context, type, iconSet, scale)
+
+/** Icon growth from map zoom: threats grow as you zoom in, clamped so they never balloon.
+ *  Flat at 1.0× up to zoom 10, reaches 2.0× at zoom 16, stays there beyond. */
+private fun zoomIconScale(zoom: Double): Float =
+    1f + ((zoom - 10.0) / 6.0).coerceIn(0.0, 1.0).toFloat()
 
 private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
     ThreatZone.INNER -> Color.rgb(255, 82, 82)
@@ -286,6 +300,32 @@ private const val NEW_RING_MS = 8_000L
 private const val REVEAL_MIN_SPAN_LAT = 0.10
 private const val REVEAL_MIN_SPAN_LON = 0.16
 
+/** Framing box for a notification reveal: focus near the top, threat near the bottom, with a
+ *  clamped span so a huge gap (or a zero gap) still yields a valid, zoomable box. */
+private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox {
+    if (focus == null) {
+        val span = 0.5
+        return BoundingBox(
+            threat.lat + span, threat.lon + span,
+            threat.lat - span, threat.lon - span
+        )
+    }
+    val ft = 0.28f  // focus vertical fraction from the top
+    val fb = 0.72f  // threat vertical fraction from the top
+    val g = fb - ft
+    val gapLat = Math.abs(focus.lat - threat.lat)
+    val spanLat = Math.max(gapLat / g, REVEAL_MIN_SPAN_LAT).coerceAtMost(40.0)
+    val north = Math.max(focus.lat, threat.lat) + ft * spanLat
+    val south = Math.min(focus.lat, threat.lat) - (1 - fb) * spanLat
+    val lonMid = (focus.lon + threat.lon) / 2
+    val gapLon = Math.abs(focus.lon - threat.lon)
+    val spanLon = Math.max(gapLon / g, REVEAL_MIN_SPAN_LON).coerceAtMost(80.0)
+    return BoundingBox(
+        north.coerceAtMost(85.0), lonMid + spanLon / 2,
+        south.coerceAtLeast(-85.0), lonMid - spanLon / 2
+    )
+}
+
 @Composable
 fun NeptunMapView(
     uiState: UiState,
@@ -301,7 +341,6 @@ fun NeptunMapView(
     revealRequest: RevealRequest? = null,
     paused: Boolean = false,
     onNeutralize: (String) -> Unit = {},
-    popupCoverPx: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -341,32 +380,18 @@ fun NeptunMapView(
     val iconSetState by rememberUpdatedState(uiState.iconSet)
     val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
     val focusLocationState by rememberUpdatedState(uiState.focusLocation)
-    val lastSelectedId = remember { mutableStateOf<String?>(null) }
     val deathAnimationEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)
     val followBulletState by rememberUpdatedState(uiState.followBullet)
-    val popupCoverPxState by rememberUpdatedState(popupCoverPx)
     val mapScope = rememberCoroutineScope()
     val deathFx = remember { ThreatDeathOverlay() }
     val vibrator = remember { context.getSystemService(Vibrator::class.java) }
 
-    // Follow-the-bullet: with the setting on, the camera tours a strike — it pans to the
-    // launching city (nearest major city to the target) first, glides onto the target during
-    // the flight, then returns to the focus (GPS/pinned) 0.3s after the explosion finishes —
-    // unless the user has panned somewhere else while the strike played.
-    val followStrike: (MapView, GeoPoint, GeoPoint?) -> Unit = { mapView, geo, origin ->
-        if (mapView.width > 0 && mapView.height > 0) {
-            val preFocus = focusLocationState?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
-            if (followBulletState) {
-                mapScope.launch {
-                    origin?.let { mapView.controller.animateTo(it) }
-                    delay(700)
-                    mapView.controller.animateTo(geo)
-                    delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L - 700)
-                    val mv = mapViewRef.value ?: return@launch
-                    if (distanceMeters(mv.mapCenter.latitude, mv.mapCenter.longitude, geo.latitude, geo.longitude) > 2000.0) return@launch
-                    mv.controller.animateTo(preFocus)
-                }
-            }
+    // Follow-the-bullet: with the setting on, the camera glides onto the strike; it never
+    // scrolls to the launching city, and it never returns anywhere after the explosion. Off:
+    // the camera stays still while the animation plays.
+    val followStrike: (MapView, GeoPoint, GeoPoint?) -> Unit = { mapView, geo, _ ->
+        if (mapView.width > 0 && mapView.height > 0 && followBulletState) {
+            mapScope.launch { mapView.controller.animateTo(geo) }
         }
     }
 
@@ -387,6 +412,7 @@ fun NeptunMapView(
             Configuration.getInstance().osmdroidTileCache = File(ctx.cacheDir, "osmdroid")
             Configuration.getInstance().tileFileSystemCacheMaxBytes = 64L * 1024 * 1024
             Configuration.getInstance().tileFileSystemCacheTrimBytes = 48L * 1024 * 1024
+            var lastIconScale = -1f
             MapView(ctx).apply {
                 setTileProvider(UkraineTileProvider(ctx))
                 setBackgroundColor(Color.BLACK)
@@ -404,13 +430,26 @@ fun NeptunMapView(
                 // once the first GPS fix lands, didDefaultFit re-zooms to the yellow zone.
                 controller.setZoom(12.0)
 
-                // Feed ground meters-per-pixel to the Compose scale bar while panning/zooming.
-                addMapListener(object : MapListener {
-                    private fun mpp(): Double =
-                        TileSystem.GroundResolution(this@apply.mapCenter.latitude, this@apply.zoomLevelDouble)
-                    override fun onScroll(event: ScrollEvent?): Boolean { onScaleChange(mpp()); return false }
-                    override fun onZoom(event: ZoomEvent?): Boolean { onScaleChange(mpp()); return false }
-                })
+                // Feed ground meters-per-pixel to the Compose scale bar while panning/zooming, and
+                    // grow/shrink the live threat icons as the zoom crosses the scaling band.
+                    addMapListener(object : MapListener {
+                        private fun mpp(): Double =
+                            TileSystem.GroundResolution(this@apply.mapCenter.latitude, this@apply.zoomLevelDouble)
+                        override fun onScroll(event: ScrollEvent?): Boolean { onScaleChange(mpp()); return false }
+                        override fun onZoom(event: ZoomEvent?): Boolean {
+                            onScaleChange(mpp())
+                            val scale = zoomIconScale(this@apply.zoomLevelDouble)
+                            if (scale != lastIconScale) {
+                                lastIconScale = scale
+                                for (t in uiState.mapThreats) {
+                                    markerRefs.value[t.id]?.icon =
+                                        threatIconFor(context, t.type, iconSetState, scale)
+                                }
+                                this@apply.invalidate()
+                            }
+                            return false
+                        }
+                    })
             }
         },
         update = { mapView ->
@@ -530,34 +569,16 @@ fun NeptunMapView(
                 newRingState.value = NewRingState(
                     reveal.id, threat, System.currentTimeMillis() + NEW_RING_MS
                 )
-                val revealFocus = uiState.focusLocation
-                if (revealFocus == null) {
-                    // No focus yet (no GPS, not pinned) — centre on the threat alone.
-                    val span = 0.5
-                    mapView.zoomToBoundingBox(
-                        BoundingBox(
-                            threat.lat + span, threat.lon + span,
-                            threat.lat - span, threat.lon - span
-                        ),
-                        true
-                    )
-                } else {
-                    val ft = 0.28f  // focus vertical fraction from the top
-                    val fb = 0.72f  // threat vertical fraction from the top
-                    val g = fb - ft
-                    val gapLat = Math.abs(revealFocus.lat - threat.lat)
-                    val spanLat = Math.max(gapLat / g, REVEAL_MIN_SPAN_LAT)
-                    val north = Math.max(revealFocus.lat, threat.lat) + ft * spanLat
-                    val south = Math.min(revealFocus.lat, threat.lat) - (1 - fb) * spanLat
-                    val lonMid = (revealFocus.lon + threat.lon) / 2
-                    val gapLon = Math.abs(revealFocus.lon - threat.lon)
-                    val spanLon = Math.max(gapLon / g, REVEAL_MIN_SPAN_LON)
-                    mapView.zoomToBoundingBox(
-                        BoundingBox(
-                            north, lonMid + spanLon / 2, south, lonMid - spanLon / 2
-                        ),
-                        true
-                    )
+                if (mapView.width > 0 && mapView.height > 0) {
+                    // Harden: a bad framing box (or a not-yet-laid-out map) must never crash
+                    // the composition thread — fall back to a plain centre-on-threat pan.
+                    try {
+                        mapView.zoomToBoundingBox(
+                            buildRevealBoundingBox(threat, uiState.focusLocation), true
+                        )
+                    } catch (_: Exception) {
+                        mapView.controller.animateTo(GeoPoint(threat.lat, threat.lon))
+                    }
                 }
                 placeRing()
             }
@@ -640,7 +661,7 @@ fun NeptunMapView(
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = threatIcon(context, t.type, iconSet)
+                        icon = threatIconFor(context, t.type, iconSet, zoomIconScale(mapView.zoomLevelDouble))
                         alpha = if (stale) 0.25f else 1.0f
                         title = typeLabel
                         snippet = regionLabel
@@ -821,7 +842,10 @@ fun NeptunMapView(
                     val base = IconCatalog.baseDeg(r.type, iconSetState)
                     val rotation = marker.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
                     // A fresh copy, not the marker's shared drawable.
-                    val icon = threatIcon(context, r.type, iconSetState)
+                    val icon = threatIconFor(
+                        context, r.type, iconSetState,
+                        zoomIconScale(mapViewRef.value?.zoomLevelDouble ?: 0.0)
+                    )
                     // With follow-the-bullet on, the camera tours the strike: launching city →
                     // target → back to the focus; otherwise it just glides onto the target when
                     // it's off-screen so the strike is actually seen.
@@ -860,42 +884,6 @@ fun NeptunMapView(
                 }
             }
         }
-
-    // Select → zoom & grow: when a marker is selected (tap / popup opened), pan + zoom the
-    // camera so the threat sits centred in the visible band below the popup and animate its
-    // icon ~1.8× bigger so the detail is actually readable. Notification reveals already frame
-    // the threat themselves, so they skip the pan (the icon still grows). Restores the previous
-    // selection's icon to normal size.
-    LaunchedEffect(uiState.selectedThreat?.id) {
-        val sel = uiState.selectedThreat
-        val prevId = lastSelectedId.value
-        if (prevId != null && prevId != sel?.id) {
-            uiState.mapThreats.firstOrNull { it.id == prevId }?.let { t ->
-                markerRefs.value[prevId]?.icon = threatIcon(context, t.type, iconSetState)
-            }
-        }
-        lastSelectedId.value = sel?.id
-        if (sel == null || pausedState) return@LaunchedEffect
-        delay(120) // let the popup compose and report its height via popupCoverPx
-        val mapView = mapViewRef.value ?: return@LaunchedEffect
-        if (uiState.revealRequest?.id != sel.id) {
-            centerAndZoomOnThreat(mapView, GeoPoint(sel.lat, sel.lon), popupCoverPxState)
-        }
-        mapScope.launch {
-            val marker = markerRefs.value[sel.id] ?: return@launch
-            val start = SystemClock.elapsedRealtime()
-            val dur = 250L
-            while (SystemClock.elapsedRealtime() - start < dur) {
-                val t = ((SystemClock.elapsedRealtime() - start).toFloat() / dur).coerceIn(0f, 1f)
-                val eased = 1f - (1f - t) * (1f - t)
-                marker.icon = scaledThreatIcon(context, sel.type, iconSetState, 1f + 0.8f * eased)
-                mapView.invalidate()
-                delay(16)
-            }
-            marker.icon = scaledThreatIcon(context, sel.type, iconSetState, 1.8f)
-            mapView.invalidate()
-        }
-    }
 
     // Smoothly advance markers between the (sparse) server fixes: predict each threat's
     // current position from its heading + estimated speed and move the marker in-place,
@@ -975,22 +963,4 @@ fun NeptunMapView(
             if (dirty) mapView.invalidate()
         }
     }
-}
-
-/** Centre the camera on [geo] at the vertical middle of the viewport below the popup, zooming
- *  in to a detail level so the threat's icon (and any strike) is actually readable. */
-private fun centerAndZoomOnThreat(mapView: MapView, geo: GeoPoint, coverPx: Int) {
-    if (mapView.width <= 0 || mapView.height <= 0) return
-    val p = Point()
-    mapView.projection.toPixels(geo, p)
-    val w = mapView.width.toFloat()
-    val h = mapView.height.toFloat()
-    val targetX = w / 2f
-    val targetY = (coverPx + h) / 2f
-    val center = mapView.projection.fromPixels(
-        (p.x - (targetX - p.x)).toInt(),
-        (p.y - (targetY - p.y)).toInt()
-    )
-    val targetZoom = maxOf(mapView.zoomLevelDouble, 11.0)
-    mapView.controller.animateTo(center, targetZoom, 450L)
 }

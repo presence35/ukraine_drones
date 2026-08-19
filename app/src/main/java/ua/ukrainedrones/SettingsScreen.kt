@@ -72,6 +72,10 @@ import kotlin.math.roundToInt
 
 private val UkraineBlue = Color(0xFF005BBB)
 
+/** Night mode's boxed section inside the Alerts card: a subtle indigo tint + border. */
+private val NightSectionBg = Color(0xFF14142A)
+private val NightSectionBorder = Color(0xFF2C3A66)
+
 /** Collapse state of the Settings sections, hoisted to MainScreen and saved across switches.
  *  Night mode is part of the Alerts section, so it has no collapse flag of its own. */
 data class SettingsCollapseState(
@@ -141,6 +145,7 @@ fun SettingsScreen(
     iconSet: ThreatIconSet,
     showMapScale: Boolean,
     showTtaLines: Boolean,
+    sheltersEnabled: Boolean,
     deathAnimationEnabled: Boolean,
     followBullet: Boolean,
     neutralizedTallyEnabled: Boolean,
@@ -186,6 +191,7 @@ fun SettingsScreen(
     onIconSetChange: (ThreatIconSet) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
     onShowTtaLinesChange: (Boolean) -> Unit,
+    onSheltersEnabledChange: (Boolean) -> Unit,
     onDeathAnimationChange: (Boolean) -> Unit,
     onFollowBulletChange: (Boolean) -> Unit,
     onNeutralizedTallyChange: (Boolean) -> Unit,
@@ -697,6 +703,15 @@ expanded = collapse.alerts,
                                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                AlertToggleRow(
+                                    title = s.shelterSettingsTitle,
+                                    description = s.shelterSettingsDesc,
+                                    checked = sheltersEnabled,
+                                    onCheckedChange = onSheltersEnabledChange,
+                                    icon = painterResource(R.drawable.ic_shelter),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                                     Text(
                                         s.iconSetTitle,
@@ -921,15 +936,24 @@ private fun NightModeCard(
     val s = Strings.get(lang)
     var editing by remember { mutableStateOf<String?>(null) }  // "start" | "end" | null
 
-    Column {
-        AlertToggleRow(
-            title = s.nightModeLabel,
-            description = s.nightModeDesc,
-            checked = enabled,
-            onCheckedChange = onEnabledChange,
-            flash = flash
-        )
-        if (enabled) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = NightSectionBg,
+        border = BorderStroke(1.dp, NightSectionBorder)
+    ) {
+        Column {
+            AlertToggleRow(
+                title = s.nightModeLabel,
+                description = s.nightModeDesc,
+                checked = enabled,
+                onCheckedChange = onEnabledChange,
+                icon = painterResource(R.drawable.ic_moon),
+                flash = flash
+            )
+            if (enabled) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(
                 modifier = Modifier
@@ -1076,6 +1100,7 @@ private fun NightModeCard(
                     }
                 }
             }
+        }
         }
     }
 
@@ -1545,15 +1570,22 @@ private fun CardSizeTile(
         ) {
             // Draw the real card at a fixed nominal width, then scale it down to the tile.
             // The height follows the scaled card exactly, so there's no dead space around it.
+            // The small card is a compact top-left chip on the map, so its preview hugs the
+            // tile's top-left corner at ~75% of the tile width instead of filling it.
             val density = LocalDensity.current
+            val previewNominal = if (size == ThreatCardSize.SMALL) 300.dp else 340.dp
             SubcomposeLayout(modifier = Modifier.fillMaxWidth()) { constraints ->
-                val nominalW = with(density) { 340.dp.toPx() }
-                val nominalWpx = with(density) { 340.dp.roundToPx() }
-                val scale = constraints.maxWidth.toFloat() / nominalW
+                val nominalW = with(density) { previewNominal.toPx() }
+                val nominalWpx = with(density) { previewNominal.roundToPx() }
+                val scale = if (size == ThreatCardSize.SMALL) {
+                    constraints.maxWidth * 0.75f / nominalW
+                } else {
+                    constraints.maxWidth.toFloat() / nominalW
+                }
                 val cardPlaceable = subcompose("preview-card") {
                     Box(
                         modifier = Modifier
-                            .width(340.dp)
+                            .width(previewNominal)
                             .graphicsLayer {
                                 scaleX = scale
                                 scaleY = scale

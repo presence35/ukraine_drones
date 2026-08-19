@@ -87,7 +87,11 @@ class MainActivity : ComponentActivity() {
         val id = intent?.getStringExtra(AlertService.EXTRA_REVEAL_ID) ?: return
         val lat = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LAT, Double.NaN)
         val lon = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LON, Double.NaN)
-        if (lat.isNaN() || lon.isNaN()) return
+        // Reject garbage coordinates (a stale notification or a corrupted extras bundle must
+        // never hand the map an out-of-range fix that could blow up the camera framing).
+        if (!lat.isFinite() || !lon.isFinite() ||
+            lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0
+        ) return
         viewModel.revealThreat(id, lat, lon)
     }
 

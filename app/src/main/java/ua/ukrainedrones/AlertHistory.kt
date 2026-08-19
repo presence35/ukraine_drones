@@ -114,7 +114,9 @@ object AlertHistory {
         val context = appContext ?: return
         val now = System.currentTimeMillis()
         val loaded = runBlocking { parseAlertHistory(ZonePrefs(context).alertHistory().first()) }
-        val pruned = pruneExpiredEntries(loaded, now, AUTO_CLEAR_AGE_MS)
+        val pruned = markInterruptedOpenEntries(
+            pruneExpiredEntries(loaded, now, AUTO_CLEAR_AGE_MS), now
+        )
         _entries.value = pruned
         if (pruned != loaded) persist()
     }
@@ -126,6 +128,15 @@ internal fun pruneExpiredEntries(
     now: Long,
     maxAgeMs: Long
 ): List<AlertHistoryEntry> = entries.filter { now - it.atMillis < maxAgeMs }
+
+/** Restored open entries were interrupted by the process dying — stamp them ended at [now];
+ *  a still-ringing alert is re-opened fresh by the service on its next tick. Pure, unit-tested. */
+internal fun markInterruptedOpenEntries(
+    entries: List<AlertHistoryEntry>,
+    now: Long
+): List<AlertHistoryEntry> = entries.map { e ->
+    if (e.endMillis == null) e.copy(endMillis = now) else e
+}
 
 /**
  * Serialized form of the history — "at|end|tier|type|locality|distance" lines, one per event.

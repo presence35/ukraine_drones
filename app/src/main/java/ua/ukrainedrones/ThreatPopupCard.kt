@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
@@ -46,7 +44,7 @@ private data class PillSpec(
     val contentDescription: String?
 )
 
-/** Grey bell marking a type whose alerts are switched off in Settings. */
+/** Grey crossed bell marking a type whose alerts are switched off in Settings. */
 @Composable
 internal fun AlertsOffBell(
     size: Dp = 14.dp,
@@ -54,11 +52,25 @@ internal fun AlertsOffBell(
     contentDescription: String? = null
 ) {
     Icon(
-        imageVector = Icons.Outlined.Notifications,
+        painter = painterResource(id = R.drawable.ic_notifications_off),
         contentDescription = contentDescription,
         tint = tint,
         modifier = Modifier.size(size)
     )
+}
+
+/** Crossed bell + small "off" chip shown next to the popup title when the type's alerts are off. */
+@Composable
+internal fun AlertsOffChip(s: Strings.StringSet) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        AlertsOffBell(size = fontAware(14.dp))
+        Spacer(Modifier.width(3.dp))
+        Text(
+            s.alertsOffLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF9E9E9E)
+        )
+    }
 }
 
 /** System font scale, capped so extreme accessibility sizes can't break the layout. */
@@ -227,7 +239,7 @@ fun ThreatPopupCard(
                                     )
                                     if (alertsOff) {
                                         Spacer(Modifier.width(6.dp))
-                                        AlertsOffBell(size = fontAware(14.dp))
+                                        AlertsOffChip(s)
                                     }
                                 }
                                 Spacer(Modifier.width(6.dp))
@@ -242,28 +254,36 @@ fun ThreatPopupCard(
                             }
                             Spacer(Modifier.height(8.dp))
                             val barHeight = fontAware(56.dp)
+                            // Metrics start under the title (icon 40dp + gap 12dp), not under the
+                            // icon, and the first row's vertical gauges land at the right edge
+                            // directly under the "R" and skull of the header row.
+                            val metricIndent = 52.dp
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 pillSpecs.forEachIndexed { index, p ->
                                     if (index == 0) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Spacer(Modifier.width(metricIndent))
                                             MetricPill(
                                                 number = p.number,
                                                 unit = p.unit,
                                                 contentDescription = p.contentDescription,
                                                 dotColor = p.dotColor
                                             )
-                                            Spacer(Modifier.width(14.dp))
+                                            Spacer(Modifier.weight(1f))
                                             VerticalReliabilityBar(reliability = threat.reliability, height = barHeight)
                                             Spacer(Modifier.width(6.dp))
                                             VerticalLevelBar(level = threatLevel, height = barHeight)
                                         }
                                     } else {
-                                        MetricPill(
-                                            number = p.number,
-                                            unit = p.unit,
-                                            contentDescription = p.contentDescription,
-                                            dotColor = p.dotColor
-                                        )
+                                        Row {
+                                            Spacer(Modifier.width(metricIndent))
+                                            MetricPill(
+                                                number = p.number,
+                                                unit = p.unit,
+                                                contentDescription = p.contentDescription,
+                                                dotColor = p.dotColor
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -345,7 +365,7 @@ fun ThreatPopupCard(
                                     )
                                     if (alertsOff) {
                                     Spacer(Modifier.width(6.dp))
-                                    AlertsOffBell(size = fontAware(14.dp))
+                                    AlertsOffChip(s)
                                 }
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -418,7 +438,8 @@ fun ThreatPopupCard(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            FlowRow(
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 ReliabilityBar(reliability = threat.reliability, s = s)

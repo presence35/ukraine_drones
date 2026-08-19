@@ -89,6 +89,18 @@ class UpdateManager(private val context: Context) {
         }
     }
 
+    /** Fetches the shelter list copy from the update server; null on failure. */
+    suspend fun fetchSheltersJson(): String? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url(UPDATE_BASE_URL + "shelters.json").build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** Streams the APK into cacheDir/updates/, reporting 0..1 progress, and validates the result. */
     suspend fun download(info: UpdateInfo, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(info.apkUrl).build()

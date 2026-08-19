@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,7 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
-private enum class Screen { MAP, SETTINGS, GUIDE }
+private enum class Screen { MAP, SETTINGS, GUIDE, SHELTERS }
 
 private val UkraineBlue = Color(0xFF005BBB)
 private val UkraineYellow = Color(0xFFFFD500)
@@ -126,12 +126,12 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             scope.launch { prefs.setSettingsHintRemaining(settingsHintRemaining) }
         }
         screen = Screen.SETTINGS
-        viewModel.autoCheckForUpdates(allowPopup = false)
+        viewModel.checkForUpdatesOnSettingsOpen()
     }
 
     // A notification tap reveals a threat on the map: leave Settings and show it.
     LaunchedEffect(uiState.revealRequest?.tick) {
-        if (uiState.revealRequest != null && screen == Screen.SETTINGS) screen = Screen.MAP
+        if (uiState.revealRequest != null && screen != Screen.MAP) screen = Screen.MAP
     }
 
     // The map stays composed under the Settings overlay so its camera and tiles are never
@@ -163,7 +163,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             showConnectionInfo = showConnectionInfo,
             onShowConnectionInfoChange = { showConnectionInfo = it },
             showZonesSheet = showZonesSheet,
-            onShowZonesSheetChange = { showZonesSheet = it }
+            onShowZonesSheetChange = { showZonesSheet = it },
+            onOpenShelters = { screen = Screen.SHELTERS }
         )
         if (screen == Screen.SETTINGS) {
             // Composed after MapScreen, so its handler is checked first on Back.
@@ -211,6 +212,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 iconSet = uiState.iconSet,
                 showMapScale = uiState.showMapScale,
                 showTtaLines = uiState.showTtaLines,
+                sheltersEnabled = uiState.sheltersEnabled,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
@@ -256,6 +258,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onIconSetChange = { viewModel.setThreatIconSet(it) },
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onShowTtaLinesChange = { viewModel.setShowTtaLines(it) },
+                onSheltersEnabledChange = { viewModel.setSheltersEnabled(it) },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
                 onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
@@ -280,6 +283,15 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 s = Strings.get(uiState.language),
                 initialFeatureId = guideFeatureId,
                 onBack = { screen = if (guideFromSettings) Screen.SETTINGS else Screen.MAP }
+            )
+        }
+        if (screen == Screen.SHELTERS) {
+            BackHandler { screen = Screen.MAP }
+            ShelterScreen(
+                lang = uiState.language,
+                focus = uiState.focusLocation,
+                index = uiState.shelterIndex,
+                onBack = { screen = Screen.MAP }
             )
         }
     }
@@ -564,7 +576,8 @@ private fun WizardThreatGrid(
                                 type = type,
                                 set = iconSet,
                                 size = 40.dp,
-                                tint = if (on) Color.Unspecified else offColor
+                                tint = if (on) Color.Unspecified else offColor,
+                                dimmed = !on
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
@@ -684,7 +697,8 @@ private fun MapScreen(
     showConnectionInfo: Boolean,
     onShowConnectionInfoChange: (Boolean) -> Unit,
     showZonesSheet: Boolean,
-    onShowZonesSheetChange: (Boolean) -> Unit
+    onShowZonesSheetChange: (Boolean) -> Unit,
+    onOpenShelters: () -> Unit
 ) {
     val s = Strings.get(uiState.language)
     var fitUkraineTick by remember { mutableStateOf(0) }
@@ -692,9 +706,6 @@ private fun MapScreen(
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
-    // Height (px) of the threat popup overlay — the map keeps selected/struck threats centred
-    // in the viewport that stays visible below it.
-    var popupHeightPx by remember { mutableStateOf(0) }
     // Last strip-tapped threat id per type, so repeated taps cycle through each of that type.
     val stripCycle = remember { mutableStateMapOf<ThreatType, String>() }
     // The zones sheet edits whatever the map is currently showing.
@@ -824,7 +835,6 @@ private fun MapScreen(
                         revealRequest = uiState.revealRequest,
                         paused = settingsOpen,
                         onNeutralize = onNeutralize,
-                        popupCoverPx = popupHeightPx,
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -862,6 +872,19 @@ private fun MapScreen(
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 4.dp)
                     )
+                    val shelterFocus = uiState.focusLocation
+                    if (uiState.sheltersEnabled && uiState.shelterIndex != null && shelterFocus != null &&
+                        uiState.shelterIndex!!.withinRegion(shelterFocus.lat, shelterFocus.lon)
+                    ) {
+                        ShelterButton(
+                            alertActive = uiState.focusOblastAlertActive,
+                            label = s.shelterButtonLabel,
+                            onClick = onOpenShelters,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 12.dp, bottom = if (uiState.showMapScale) 72.dp else 12.dp)
+                        )
+                    }
                 }
 
                 Surface(tonalElevation = 2.dp) {
@@ -945,7 +968,6 @@ private fun MapScreen(
                 modifier = Modifier
                     .align(if (smallCard) Alignment.TopStart else Alignment.TopCenter)
                     .padding(top = 12.dp, start = 16.dp, end = 16.dp)
-                    .onSizeChanged { popupHeightPx = it.height }
             ) { state ->
                 when (state) {
                     1 -> uiState.selectedThreat?.let { threat ->
@@ -964,7 +986,7 @@ private fun MapScreen(
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = if (smallCard) Arrangement.Start else Arrangement.End
+                                horizontalArrangement = Arrangement.Start
                             ) {
                                 ThreatCardSizeControl(
                                     current = uiState.threatCardSize,
@@ -1168,6 +1190,39 @@ private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: 
                         )
                 )
             }
+        }
+    }
+}
+
+/** "Go to shelter" pill: filled red while an official alert is active, ghost otherwise. */
+@Composable
+private fun ShelterButton(
+    alertActive: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(50)
+    val bg = if (alertActive) AlertRed else MaterialTheme.colorScheme.surface
+    val fg = if (alertActive) Color.White else MaterialTheme.colorScheme.primary
+    Surface(
+        shape = shape,
+        color = bg,
+        border = if (alertActive) null else BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Home,
+                contentDescription = null,
+                tint = fg,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
         }
     }
 }

@@ -16089,3 +16089,1009 @@ go
 ## 18/08/2026, 22:49:38
 
 continue
+## 18/08/2026, 22:54:40
+
+the icon is misleading, even tho our "off" bells are grey elswehre, it looks like an alert is active for this threat, so put a single cross thru it.  and small text "off"
+
+A. " - tap to download now...or go to [gear] settings later"
+## 18/08/2026, 23:04:02
+
+confirm the plan, lots has changed
+## 18/08/2026, 23:05:53
+
+Yeah. **Text only.** I’d improve the `.md` mostly by making it easier to scan and harder to let architecture drift.
+
+## Biggest problems
+
+### 1. It mixes **architecture**, **implementation inventory**, and **behavior specs**
+
+The file is trying to be three documents at once:
+
+* architecture map
+* complete file reference
+* detailed behavioral contract
+
+For example, the `MapView.kt` entry is effectively a mini design document, while some files get a simple one-liner. That makes the architecture file increasingly hard to maintain. 
+
+**I'd split mentally, even if keeping one file:**
+
+```md
+# Architecture
+## System overview
+## Data flow
+## Ownership boundaries
+## Key invariants
+## Module map
+## Testing / verification
+## Build / release
+```
+
+The detailed UI behavior should be shorter or moved into component-specific docs once it gets too large.
+
+---
+
+### 2. The flat package is hidden too deep
+
+This is actually a pretty important architectural fact:
+
+> all production code lives in one flat package
+
+But it's mentioned near the top and then you list 30+ files. 
+
+I'd explicitly add:
+
+```md
+## Package structure
+
+The app currently uses a flat package:
+
+app/src/main/java/ua/ukrainedrones/
+
+This is intentional for now. Files are grouped conceptually in this document,
+not physically.
+
+When the package grows beyond maintainability, migrate by subsystem:
+
+data/
+domain/
+state/
+ui/
+service/
+system/
+```
+
+That tells the next developer whether the flat structure is deliberate or just technical debt nobody got around to cleaning up.
+
+---
+
+### 3. The most important architectural risk should be called out harder
+
+This is the biggest thing in the whole document:
+
+> `MainViewModel` and `AlertService` independently reimplement zone tiering, focus attribution, and prediction. 
+
+That's a **major drift risk**. The document correctly calls it an invariant, but I'd elevate it into an **Architecture Risks / Deliberate Tradeoffs** section.
+
+```md
+## Deliberate tradeoffs / risks
+
+### Mirrored UI and alert evaluation
+
+`MainViewModel` and `AlertService` independently evaluate threats.
+
+Why:
+- UI needs continuously refreshed state.
+- Background monitoring must continue independently of UI.
+
+Risk:
+- Logic can drift.
+
+Mitigation:
+- Shared pure functions own all possible decision logic:
+  - `zoneTier`
+  - `predictPosition`
+  - `focusAttribution`
+  - staleness rules
+  - night-mode resolution
+- Both consumers should orchestrate these functions, not duplicate formulas.
+- Any change requires tests covering both paths.
+```
+
+Honestly, I'd go further eventually: make a shared `ThreatEvaluator` that returns evaluated threats, instead of having two giant consumers reconstruct the same logic.
+
+---
+
+### 4. Add an **ownership table**
+
+Right now I can find who does what, but I have to read a lot.
+
+Something like this near the top would help massively:
+
+| Concern               | Owner            | Other consumers      |
+| --------------------- | ---------------- | -------------------- |
+| NEPTUN connection     | `NeptunClient`   | UI, `AlertService`   |
+| Backup oblast alerts  | `AlertsUaClient` | `NeptunClient` state |
+| Threat prediction     | `Prediction.kt`  | ViewModel, service   |
+| Zone tier math        | `Zones.kt`       | ViewModel, service   |
+| Night rule resolution | `NightMode.kt`   | ViewModel, service   |
+| User preferences      | `ZonePrefs`      | all                  |
+| UI orchestration      | `MainViewModel`  | Compose              |
+| Background monitoring | `AlertService`   | notifications        |
+| Connection history    | `ConnectionLog`  | system status        |
+| Alert history         | `AlertHistory`   | system status        |
+| Map rendering         | `MapView.kt`     | Compose              |
+
+That gives someone the answer to **"where does this belong?"** immediately.
+
+---
+
+### 5. Make the data-flow diagram more complete
+
+The current diagram is good, but the arrows obscure one important fact: both UI and background service are **independent consumers of shared inputs**. 
+
+I'd redraw it conceptually as:
+
+```text
+                    ┌─────────────────┐
+ NEPTUN WS ────────►│                 │
+ NEPTUN REST ──────►│  NeptunClient   │
+ Alerts.com.ua ────►│                 │
+                    └────────┬────────┘
+                             │ StateFlow<NeptunState>
+                 ┌───────────┴───────────┐
+                 ▼                       ▼
+          MainViewModel              AlertService
+                 │                       │
+                 ▼                       ▼
+            Compose UI              Notifications
+                 │
+                 ├── MapView
+                 ├── Threat cards
+                 ├── Zones
+                 └── Settings
+```
+
+Then separately:
+
+```text
+ZonePrefs ─────┬──► MainViewModel
+               └──► AlertService
+
+LocationTracker ┬──► MainViewModel
+                └──► AlertService
+
+Shared domain logic:
+Zones.kt / Prediction.kt / NightMode.kt / Cities.kt
+```
+
+That makes the actual architecture obvious in about five seconds.
+
+---
+
+### 6. `ZonePrefs.kt` is becoming a god object
+
+That entry is enormous. It owns practically every persistent setting plus serialized logs/history and onboarding flags. 
+
+I'd flag this as something to split eventually:
+
+```text
+AppPrefs
+├── MapPrefs
+├── ThreatPrefs
+├── AlertPrefs
+├── NightPrefs
+├── UiPrefs
+└── SystemPrefs
+```
+
+And move persisted operational state out:
+
+```text
+ConnectionLogStore
+AlertHistoryStore
+```
+
+You don't necessarily need to physically refactor immediately, but the architecture doc should distinguish **preferences** from **persisted application state**.
+
+---
+
+### 7. Separate "what" from "how"
+
+Some entries contain very specific implementation details that don't matter architecturally.
+
+For example:
+
+```md
+`MapView.kt`
+- Owns map rendering and map-specific interaction.
+- Renders threats, zones, ETA lines, focus position and death overlays.
+- Handles selection framing and animation.
+- Does not decide which threats alert; that belongs to domain/state logic.
+```
+
+Then, if needed:
+
+```md
+### Map implementation notes
+- OSMdroid
+- overlayKey avoids rebuilds on position updates
+- death animation defers overlay rebuild
+```
+
+Right now the "what this component owns" is buried among details like animation timings and camera behavior.
+
+---
+
+### 8. Add explicit boundaries: **"must not do"**
+
+This would improve the document a lot.
+
+```md
+## Ownership boundaries
+
+### NeptunClient
+Owns:
+- network connection
+- frame parsing
+- REST/WS merge
+
+Must not:
+- decide alert tiers
+- access UI state
+- post notifications
+
+### MainViewModel
+Owns:
+- UI state derivation
+- selected threat
+- UI flows
+
+Must not:
+- own WebSocket lifecycle
+- directly perform map rendering
+- duplicate zone math
+
+### AlertService
+Owns:
+- background monitoring
+- notification lifecycle
+
+Must not:
+- depend on Compose
+- use UI-only selected state
+- implement new zone formulas locally
+
+### MapView
+Owns:
+- rendering
+- map interaction
+- visual animation
+
+Must not:
+- decide whether a threat should alert
+- persist application state
+```
+
+This is probably more valuable than another 500 words describing implementation details.
+
+---
+
+## My recommended new top structure
+
+I'd restructure the whole document roughly like this:
+
+```md
+# Architecture — Ukraine Drones
+
+> One-paragraph purpose.
+
+## Quick facts
+- Android / Kotlin / SDK
+- Compose + OSMdroid
+- Data sources
+- No backend / no push
+- Main package
+
+## System overview
+High-level diagram.
+
+## Core ownership
+| Concern | Source of truth | Consumers |
+
+## Data flow
+### Threat ingest
+### Alert backup
+### UI evaluation
+### Background evaluation
+
+## Module map
+### Data ingress
+### Domain logic
+### State
+### UI
+### Background services
+### System / persistence
+### Build
+
+## Key invariants
+Short, strict rules only.
+
+## Ownership boundaries
+What each major component owns and must not own.
+
+## Deliberate tradeoffs / known risks
+- mirrored UI/service evaluation
+- flat package
+- foreground service instead of backend/push
+- direct third-party API dependency
+
+## Failure modes
+- NEPTUN offline
+- backup offline
+- stale threats
+- process killed
+- reboot
+- location unavailable
+
+## Testing strategy
+Map invariant → test.
+
+## Build & release
+Commands and prerequisites.
+```
+
+### My overall verdict
+
+**The content is strong. The problem is organization, not missing information.** It clearly documents a lot of real invariants and edge cases, which is exactly what architecture docs usually fail to do. 
+
+But I'd make it **~30% shorter at the architecture level**, promote ownership/boundaries and known risks, and move ultra-specific UI behavior out of the module map. Right now it's an excellent memory dump for the project; with that restructuring, it becomes an excellent **navigation and decision document** too.
+
+## 18/08/2026, 23:08:33
+
+1. when official alert the button becomes full, when not, it's a ghost outline.  
+2. walking time adult and kid (in case families)
+3 i doubt it changes that often, maybe weekly? daily is prob fine, it's small file.
+## 18/08/2026, 23:10:13
+
+go
+## 18/08/2026, 23:10:34
+
+can you download the source data(s) now so i can verify them.  
+## 18/08/2026, 23:11:58
+
+the offline notif, tapping retry should disable the test neptun offline toggle.
+## 18/08/2026, 23:17:11
+
+nope.  misunderstandings.
+
+The 1.8x zoom is suppoed to be when i pinch-zoom on the map, whatever threat is vislb ehoslud grow w me.  but only from certain zoom levels, not infinite.  remove it from the "threat card is active" zoom.
+
+The bullet should not scroll to the city, it should just originate from the relevant city, the way it did before, but still start from just off edge of the screen.
+## 18/08/2026, 23:17:53
+
+go
+## 18/08/2026, 23:18:29
+
+did you incororpate the codebase, or just looked at the .md
+## 18/08/2026, 23:19:20
+
+do this first, then we'll actually verify claims:
+
+*****
+
+**Yes. Much better.** I'd call this a substantial improvement over the first version. It now works as an actual architecture document instead of mainly a giant annotated file list.
+
+The biggest improvements are:
+
+* **Quick facts + package structure** immediately establish the system. 
+* **System overview** makes the crucial UI/service independence obvious. 
+* **Core ownership table** is probably the single most useful addition.
+* **Ownership boundaries** answer "where should this code go?" and "what shouldn't this component do?" very clearly. 
+* **Tradeoffs / risks** is excellent. Calling out the mirrored evaluation, flat package, direct API dependency, and `ZonePrefs` god-object problem makes the doc much more honest and useful. 
+* **Failure modes** is another strong addition. That's architecture, not implementation trivia. 
+
+### I'd still fix 4 things
+
+#### 1. There is a contradiction around "duplicate"
+
+You say:
+
+> `MainViewModel` and `AlertService` each reimplement... logic
+
+Then later:
+
+> Both consumers orchestrate, never duplicate
+
+Those aren't quite compatible.  
+
+I'd change the latter to:
+
+> Both consumers independently orchestrate evaluation, but must call shared domain functions rather than duplicate decision formulas.
+
+That's much more precise.
+
+---
+
+#### 2. Possible semantic regression in threat gating
+
+This sentence says:
+
+> alerts-off keeps the type mapped but dimmed, **out of the footer strip**
+
+But your original architecture said a type is omitted from the footer when it is **hidden from the map**, while alerts-off merely shows the crossed bell. 
+
+Unless you intentionally changed the app behavior, remove **"out of the footer strip"**. That looks like an accidental change introduced while shortening.
+
+---
+
+#### 3. "Process killed" failure mode is misleading
+
+You have:
+
+> Process killed → Service restarted on reboot / package-replaced
+
+Those aren't responses to an ordinary process kill. Reboot and package replacement are separate events. 
+
+I'd split it:
+
+```text
+| App/service process interrupted | Foreground-service recovery depends on Android/service lifecycle; persisted operational state is restored when restarted. | AlertService, DataStore |
+| Reboot | BootReceiver restarts the service on BOOT_COMPLETED. | BootReceiver |
+| Package replaced | BootReceiver restarts the service on MY_PACKAGE_REPLACED. | BootReceiver |
+```
+
+Only keep the first row if that's actually supported by the code.
+
+---
+
+#### 4. The Module Map is still slightly too implementation-heavy
+
+It's **much better**, but `MainScreen.kt`, `MapView.kt`, and `AlertService.kt` are still paragraph monsters. 
+
+I'd apply a strict rule:
+
+> **Responsibility column: what this file owns.
+> Note: only details that could cause someone editing it to break an invariant.**
+
+For example, `MapView.kt` could become:
+
+```text
+| `MapView.kt` | Owns OSMdroid rendering, map interaction, marker/zone/ETA overlays, selection framing, and visual death animations. *Note:* overlay identity excludes raw positions so live movement updates in-place; map must not perform alert decisions. |
+```
+
+That's enough to navigate. The projectile origin and camera-tour details are implementation behavior, not architecture.
+
+---
+
+### My final structure rating
+
+**Before: 7/10** — lots of excellent knowledge, but buried.
+
+**Now: 9/10** — clear architecture, ownership, invariants, risks, and failure modes.
+
+The remaining **1 point** is mostly about consistency and pruning. I'd fix those four things, then stop adding sections unless the code genuinely introduces a new architectural boundary. Otherwise this document will slowly mutate back into `THE ENTIRE APP EXPLAINED.md`.
+
+
+
+## 18/08/2026, 23:23:36
+
+small card in settings size and detail looks big, it hsouldb ein the top left corner of its card.
+night mode section needs a visiaul cue, it's such a long section! mabye the entire section has a suble background, or border.
+## 18/08/2026, 23:25:45
+
+wizrd page 2 still has empty white circle for threats that are off, rather than graying teh image itself.
+wizard step 3 bigger font.  
+## 18/08/2026, 23:26:13
+
+tapping a notif when im on a pinned city didn't take me to the threat on the map, it just force closed.
+why didn't an official alert end show in the alert log? it should be added.
+## 18/08/2026, 23:27:59
+
+out of the strip
+## 18/08/2026, 23:28:46
+
+natural
+## 18/08/2026, 23:30:11
+
+all, moon icon.
+## 18/08/2026, 23:32:57
+
+go
+## 18/08/2026, 23:37:03
+
+1. https://omr.gov.ua/scripts/requests.php?action=maps-lf (raw data: type=36)
+i downlaoded adn saved to D:\Desktop\drones\app\src\main\res\xml\odesa_shelter.txt move it where you want
+## 18/08/2026, 23:38:03
+
+C:\Users\Bodi\AppData\Local\Temp\opencode\odesa_shelter.txt
+## 18/08/2026, 23:46:12
+
+it's full
+## 18/08/2026, 23:46:54
+
+go
+## 18/08/2026, 23:54:19
+
+Yep. I audited the architecture against the Kotlin source in the ZIP. There are several things worth fixing; a few are genuine behavioral bugs, not just documentation nits.
+
+## Real bugs
+
+### 🔴 1. Backup can serve stale alerts as if they are live
+
+This is the biggest one.
+
+`NeptunState.oblastAlerts` currently does:
+
+```kotlin
+when {
+    !connected -> backupAlerts
+    backupActive -> mergeAlerts(neptunAlerts, backupAlerts)
+    else -> neptunAlerts
+}
+```
+
+It does **not** check `backupUp`.
+
+`AlertsUaClient` deliberately keeps its last successful `alerts` payload when polling fails. So this sequence is possible:
+
+```text
+NEPTUN down
+↓
+backup says Odesa alert = ON
+↓
+backup API dies
+↓
+backupUp = false
+↓
+backupAlerts still contains Odesa = ON
+↓
+oblastAlerts still returns that old alert
+```
+
+Your architecture doc actually promises the opposite:
+
+> “no oblast alerts while NEPTUN is also down.” 
+
+**Fix:** when NEPTUN is down, only expose backup alerts while `backupUp == true`, otherwise expose an empty list or an explicitly stale state.
+
+I'd probably make the semantics:
+
+```kotlin
+!connected -> if (backupUp) backupAlerts else emptyList()
+```
+
+And similarly think carefully about the `backupActive`/merge case.
+
+---
+
+### 🔴 2. Reconnect backoff is not actually used
+
+You have:
+
+```kotlin
+internal fun reconnectDelayMs(attempt: Int)
+```
+
+with the documented 1–3s / exponential / 15s-cap behavior.
+
+But production does:
+
+```kotlin
+delay(RECONNECT_INTERVAL_MS) // 5s fixed interval
+```
+
+every time.
+
+So `reconnectDelayMs()` is effectively dead architecture/test code.
+
+This also means the architecture documentation claiming exponential reconnect behavior isn't true.
+
+**Choices:**
+
+Either delete `reconnectDelayMs()` and document fixed 5s, or actually use:
+
+```kotlin
+delay(reconnectDelayMs(reconnectAttempt))
+```
+
+The latter seems like what you originally intended.
+
+---
+
+### 🔴 3. Reconnection milestone flags never reset
+
+This is a straightforward logic bug in `AlertService`.
+
+You have:
+
+```kotlin
+wasConnected = state.connected
+```
+
+before:
+
+```kotlin
+if (state.connected && wasConnected == false) {
+    notif3minShown = false
+    ...
+}
+```
+
+By the time that condition runs, `wasConnected` already equals `state.connected`.
+
+So the reset condition can never detect the transition.
+
+Result:
+
+```text
+Outage #1:
+3 min notification → shown
+6 min → shown
+10 min → shown
+20 min → shown
+
+Reconnect
+
+Outage #2:
+3/6/10/20 min notifications → never shown
+```
+
+That should be fixed by doing the transition handling before updating `wasConnected`.
+
+---
+
+### 🟠 4. The old 3/6/10/20-minute notification isn't cancelled on reconnect
+
+Related to the previous bug.
+
+All four milestones use the same notification ID:
+
+```kotlin
+NOTIF_MILESTONE
+```
+
+but I don't see a cancellation when the connection returns.
+
+So after a long outage, the milestone notification can remain in the notification shade even after NEPTUN is back.
+
+I'd explicitly cancel it when reconnecting:
+
+```kotlin
+NotificationManagerCompat.from(this).cancel(NOTIF_MILESTONE)
+```
+
+---
+
+### 🟠 5. Turning official alerts back ON during an existing alert can fail to notify
+
+This one's subtle.
+
+You correctly gate actual notification firing with:
+
+```kotlin
+state.officialAlertsEnabled
+```
+
+but later you always do:
+
+```kotlin
+wasFocusAlertActive = state.focusOblastAlertActive
+```
+
+So:
+
+```text
+Official alert active
+↓
+User disables official-alert notifications
+↓
+wasFocusAlertActive = true
+↓
+User re-enables notifications while alert is still active
+↓
+officialActive = true
+but wasFocusAlertActive is also true
+↓
+no "new alert" notification
+```
+
+I'd track the **notified state** separately from the raw official-alert state, or update `wasFocusAlertActive` only when official notifications are enabled.
+
+---
+
+### 🟠 6. `ThreatSpeedTracker` is duplicated state
+
+This is the architecture issue I'd take most seriously.
+
+You correctly centralized:
+
+* `zoneTier`
+* `predictPosition`
+* staleness
+* night-mode rules
+
+But `MainViewModel` and `AlertService` each have their own:
+
+```kotlin
+private val speedTracker = ThreatSpeedTracker()
+```
+
+That means the "same" threat can get different measured speeds.
+
+Example:
+
+```text
+NEPTUN sends A
+→ service sees it
+
+NEPTUN sends B
+→ service has 2 fixes → measured speed
+
+UI wasn't active yet
+
+UI later sees A + B
+→ different history / timing / tracker state
+```
+
+Near a zone boundary, one can calculate:
+
+```text
+UI: 21 min ETA → no alert
+Service: 19 min ETA → OUTER
+```
+
+So the shared pure functions don't completely eliminate the mirror problem.
+
+I'd either:
+
+**A.** centralize threat evaluation into a shared `ThreatEvaluator`, or
+
+**B.** make measured-speed state part of the shared state model.
+
+My preference is A:
+
+```text
+NeptunState
+    ↓
+ThreatEvaluator
+    ├── predicted position
+    ├── speed source
+    ├── staleness
+    ├── zone
+    └── ETA
+          ↓
+   ┌──────┴──────┐
+   UI          AlertService
+```
+
+That makes your "single source of truth" claim actually true at the behavioral level.
+
+---
+
+### 🟠 7. `AlertHistory` has a restart bug
+
+`AlertHistory` persists entries, but `openAtMillis` is purely in-memory:
+
+```kotlin
+private val openAtMillis = mutableMapOf<String, Long>()
+```
+
+On service restart:
+
+```text
+alert starts
+↓
+persisted as endMillis = null
+↓
+service killed
+↓
+service restarts
+↓
+history loaded
+↓
+openAtMillis is empty
+↓
+alert ends
+↓
+closeAlert("official", ...)
+↓
+nothing closes
+```
+
+So an alert that spans a service restart can remain permanently "open" in history.
+
+`attachLoaded()` should reconstruct `openAtMillis` from entries with `endMillis == null`.
+
+---
+
+### 🟠 8. `AlertHistory.attach()` has a race with writes
+
+`attach()` loads asynchronously:
+
+```kotlin
+attachScope.launch { attachLoaded() }
+```
+
+but monitoring can start immediately.
+
+So theoretically:
+
+```text
+attach() begins loading old history
+↓
+new alert fires
+↓
+openAlert() writes new history
+↓
+attachLoaded() finishes loading OLD history
+↓
+_state.value = old history
+```
+
+You can lose the newly written event in memory / persistence ordering.
+
+The same pattern exists conceptually in `ConnectionLog`.
+
+I'd make attachment explicit and awaited before monitoring starts, rather than fire-and-forget initialization.
+
+---
+
+## 🟡 Smaller bugs / issues
+
+### 9. Ukrainian localization is missing for several offline milestone messages
+
+These all have identical UA/EN branches:
+
+* 3-minute message
+* 6-minute message
+* 10-minute message
+* 20-minute message
+
+For example both branches literally contain:
+
+> `"Backup system is monitoring the alert feed..."`
+
+So a Ukrainian user gets English.
+
+Those strings should live in `Strings.kt` anyway.
+
+---
+
+### 10. Notification channels are mostly permanently English
+
+`updateMonitorChannel()` updates only `CHANNEL_MONITOR`.
+
+The actual alert channels are created with hard-coded English names:
+
+```text
+Air alerts
+Region alerts
+All clear
+Air alerts — always sound
+...
+```
+
+Android notification channels persist, so changing the app language won't meaningfully localize those channel names.
+
+Not a functional problem, but it's inconsistent with the rest of the localization architecture.
+
+---
+
+### 11. Your architecture's `OFFLINE_GRACE_MS` is still wrong
+
+The document says 30 seconds. 
+
+The code is:
+
+```kotlin
+const val OFFLINE_GRACE_MS = 0L
+```
+
+And the code comments explicitly say zero is intentional.
+
+So either:
+
+**intentional:** change the architecture doc to `0 ms`
+
+or
+
+**desired behavior:** restore the 30-second grace.
+
+Right now the documentation is simply inaccurate.
+
+---
+
+## Architecture suggestions
+
+### 12. Promote `ThreatEvaluator` from "future idea" to actual target
+
+Your doc already identifies this as the future direction. 
+
+After looking at the code, I'd move this much higher on the priority list because the duplicated **stateful** speed tracking makes the existing mirror architecture more fragile than the document implies.
+
+---
+
+### 13. Split `ZonePrefs`
+
+You've already correctly identified it as a god object. 
+
+I'd eventually make:
+
+```text
+MapPrefs
+ThreatPrefs
+AlertPrefs
+NightPrefs
+UiPrefs
+SystemPrefs
+
+ConnectionLogStore
+AlertHistoryStore
+OfflineStateStore
+```
+
+You don't need to do this today, but I'd stop adding new responsibilities to `ZonePrefs`.
+
+---
+
+### 14. Move every user-visible string out of `AlertService`
+
+`Strings.kt` is supposed to be your localization source of truth, but `AlertService` still contains user-facing text directly.
+
+That makes localization easy to accidentally break, as you've already done with the offline milestone messages.
+
+---
+
+### 15. Add regression tests for the bugs above
+
+The most valuable missing tests now aren't more basic unit tests; they're **state-transition tests**:
+
+```text
+backupUp = false + NEPTUN down
+    → no official alerts
+
+backup goes stale
+    → stale backup alerts disappear
+
+offline → online → offline
+    → milestone notifications reset
+
+official alert active
+notifications OFF → ON
+    → notification fires
+
+service restart during active alert
+    → history closes correctly
+
+two consumers with different speed history
+    → evaluator produces one result
+```
+
+One caveat: the ZIP you gave me contains the production Kotlin sources but **not the test sources/build files**, so I couldn't verify the existing JUnit claims or actually run the Gradle test suite from this snapshot.
+
+## Bottom line
+
+The architecture Markdown is now **much closer to reality**, but the code audit exposed several things I'd fix before considering the architecture "locked":
+
+**Highest priority:** stale backup alerts, reconnect milestone state, reconnect backoff mismatch, and `ThreatSpeedTracker` duplication.
+
+The stale-backup issue is the one I'd fix first because this is an alerting app; displaying an old official alert as current is exactly the sort of edge case you don't want.
+
+## 19/08/2026, 11:33:14
+
+continue
+## 19/08/2026, 11:33:22
+
+continue
+## 19/08/2026, 11:34:25
+
+stop panning to the middle of sthe screen (it was fix for having a modal open), it's messing things up.  Send the bullet from the closest major city, off the edge of the screen, pan to the threat, and vse.
+## 19/08/2026, 11:44:49
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+## 19/08/2026, 11:45:14
+
+go
+## 19/08/2026, 11:51:09
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.

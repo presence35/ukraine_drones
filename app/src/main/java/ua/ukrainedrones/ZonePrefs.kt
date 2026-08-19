@@ -80,6 +80,7 @@ class ZonePrefs(private val context: Context) {
     private val nightFastVibrationLevelKey = intPreferencesKey("night_fast_vibration_level")
     private val nightSlowVibrationLevelKey = intPreferencesKey("night_slow_vibration_level")
     private val showTtaLinesKey = booleanPreferencesKey("show_tta_lines")
+    private val sheltersEnabledKey = booleanPreferencesKey("shelters_enabled")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 2–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -317,6 +318,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setShowTtaLines(show: Boolean) {
         context.dataStore.edit { it[showTtaLinesKey] = show }
+    }
+
+    /** Whether the "Go to shelter" button shows on the map — default on. */
+    fun sheltersEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[sheltersEnabledKey] ?: true }
+
+    suspend fun setSheltersEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[sheltersEnabledKey] = enabled }
     }
 
     /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */

@@ -115,6 +115,7 @@ object Strings {
         val reliabilityUnknown: String,
         val reliabilityLabel: String,
         val reliabilityShort: String,
+        val alertsOffLabel: String,
         val speedUnit: String,
         val groupLabel: String,
         val uncertaintyLabel: String,
@@ -147,7 +148,8 @@ object Strings {
         val updateCheckFailed: String,
         val checkForUpdates: String,
         val updateButton: String,
-        val updateAvailableButton: String
+        val updateAvailableButton: String,
+        val updateAvailableOnOpen: String
     )
 
     data class Threat(
@@ -214,6 +216,7 @@ object Strings {
         val alertHistoryOfficialLabel: String,
         val alertHistoryClear: String,
         val alertHistoryAutoClearNote: String,
+        val alertHistoryEndedFormat: String,
         val alertAgeSecSuffix: String,
         val alertAgeMinSuffix: String,
         val alertAgeHrSuffix: String,
@@ -233,7 +236,18 @@ object Strings {
         val iconSetClassicLabel: String,
         val iconSetPhotoLabel: String,
         val iconSetArmyLabel: String,
-        val iconSetComicLabel: String
+        val iconSetComicLabel: String,
+        val shelterButtonLabel: String,
+        val shelterScreenTitle: String,
+        val shelterOpenInMaps: String,
+        val shelterEmpty: String,
+        val shelterSettingsTitle: String,
+        val shelterSettingsDesc: String,
+        val shelterDistanceM: String,
+        val shelterDistanceKm: String,
+        val shelterWalkMinutes: String,
+        val shelterWalkAdultLabel: String,
+        val shelterWalkKidLabel: String
     )
 
     data class Guide(
@@ -445,6 +459,7 @@ object Strings {
         val reliabilityUnknown: String get() = status.reliabilityUnknown
         val reliabilityLabel: String get() = status.reliabilityLabel
         val reliabilityShort: String get() = status.reliabilityShort
+        val alertsOffLabel: String get() = status.alertsOffLabel
         val speedUnit: String get() = status.speedUnit
         val groupLabel: String get() = status.groupLabel
         val uncertaintyLabel: String get() = status.uncertaintyLabel
@@ -475,6 +490,7 @@ object Strings {
         val checkForUpdates: String get() = updates.checkForUpdates
         val updateButton: String get() = updates.updateButton
         val updateAvailableButton: String get() = updates.updateAvailableButton
+        val updateAvailableOnOpen: String get() = updates.updateAvailableOnOpen
         val advisoryLabel: String get() = threat.advisoryLabel
         val areaOnlyLabel: String get() = threat.areaOnlyLabel
         val cardSkullNote: String get() = threat.cardSkullNote
@@ -535,6 +551,7 @@ object Strings {
         val alertHistoryOfficialLabel: String get() = misc.alertHistoryOfficialLabel
         val alertHistoryClear: String get() = misc.alertHistoryClear
         val alertHistoryAutoClearNote: String get() = misc.alertHistoryAutoClearNote
+        val alertHistoryEndedFormat: String get() = misc.alertHistoryEndedFormat
         val alertAgeSecSuffix: String get() = misc.alertAgeSecSuffix
         val alertAgeMinSuffix: String get() = misc.alertAgeMinSuffix
         val alertAgeHrSuffix: String get() = misc.alertAgeHrSuffix
@@ -555,6 +572,17 @@ object Strings {
         val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
         val iconSetArmyLabel: String get() = misc.iconSetArmyLabel
         val iconSetComicLabel: String get() = misc.iconSetComicLabel
+        val shelterButtonLabel: String get() = misc.shelterButtonLabel
+        val shelterScreenTitle: String get() = misc.shelterScreenTitle
+        val shelterOpenInMaps: String get() = misc.shelterOpenInMaps
+        val shelterEmpty: String get() = misc.shelterEmpty
+        val shelterSettingsTitle: String get() = misc.shelterSettingsTitle
+        val shelterSettingsDesc: String get() = misc.shelterSettingsDesc
+        val shelterDistanceM: String get() = misc.shelterDistanceM
+        val shelterDistanceKm: String get() = misc.shelterDistanceKm
+        val shelterWalkMinutes: String get() = misc.shelterWalkMinutes
+        val shelterWalkAdultLabel: String get() = misc.shelterWalkAdultLabel
+        val shelterWalkKidLabel: String get() = misc.shelterWalkKidLabel
         val guideTitle: String get() = guide.guideTitle
         val guideSettingsButton: String get() = guide.guideSettingsButton
         val guideCategoryMap: String get() = guide.guideCategoryMap
@@ -754,6 +782,7 @@ object Strings {
         reliabilityUnknown = "Достовірність: Невідома",
         reliabilityLabel = "Достовірність",
         reliabilityShort = "Д",
+        alertsOffLabel = "вимк",
         speedUnit = "кмг",
         groupLabel = "Хвиля",
         uncertaintyLabel = "Точність",
@@ -787,6 +816,7 @@ object Strings {
         checkForUpdates = "Перевірити оновлення",
         updateButton = "Оновити",
         updateAvailableButton = "Доступне оновлення",
+        updateAvailableOnOpen = "Доступне оновлення v%s — торкніться, щоб завантажити зараз, або відкрийте Налаштування пізніше",
     )
 
     private fun uaThreat() = Threat(
@@ -853,6 +883,7 @@ object Strings {
         alertHistoryOfficialLabel = "Офіційна тривога",
         alertHistoryClear = "Очистити",
         alertHistoryAutoClearNote = "Автоматично очищається через 6 годин",
+        alertHistoryEndedFormat = "завершено %1\$s тому",
         alertAgeSecSuffix = "сек",
         alertAgeMinSuffix = "хв",
         alertAgeHrSuffix = "год",
@@ -873,6 +904,17 @@ object Strings {
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
         iconSetComicLabel = "Комікс",
+        shelterButtonLabel = "До укриття",
+        shelterScreenTitle = "Укриття поруч",
+        shelterOpenInMaps = "Відкрити в мапах",
+        shelterEmpty = "Укриттів поруч не знайдено",
+        shelterSettingsTitle = "Кнопка укриття",
+        shelterSettingsDesc = "Кнопка «До укриття» на карті (дані Одеської міськради).",
+        shelterDistanceM = "%d м",
+        shelterDistanceKm = "%.1f км",
+        shelterWalkMinutes = "~%d хв",
+        shelterWalkAdultLabel = "дорослим",
+        shelterWalkKidLabel = "з дітьми",
     )
 
     private fun uaGuide() = Guide(
@@ -1121,6 +1163,7 @@ object Strings {
         reliabilityUnknown = "Reliability: Unknown",
         reliabilityLabel = "Reliability",
         reliabilityShort = "R",
+        alertsOffLabel = "off",
         speedUnit = "kmh",
         groupLabel = "Wave size",
         uncertaintyLabel = "Precision",
@@ -1154,6 +1197,7 @@ object Strings {
         checkForUpdates = "Check for updates",
         updateButton = "Update",
         updateAvailableButton = "Update available",
+        updateAvailableOnOpen = "Update v%s is available — tap to download now, or open Settings later",
     )
 
     private fun enThreat() = Threat(
@@ -1220,6 +1264,7 @@ object Strings {
         alertHistoryOfficialLabel = "Official alert",
         alertHistoryClear = "Clear",
         alertHistoryAutoClearNote = "Auto-clears after 6 hours",
+        alertHistoryEndedFormat = "ended %1\$s ago",
         alertAgeSecSuffix = "sec",
         alertAgeMinSuffix = "min",
         alertAgeHrSuffix = "hr",
@@ -1240,6 +1285,17 @@ object Strings {
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",
         iconSetComicLabel = "Comic",
+        shelterButtonLabel = "Go to shelter",
+        shelterScreenTitle = "Nearby shelters",
+        shelterOpenInMaps = "Open in maps",
+        shelterEmpty = "No shelters found nearby",
+        shelterSettingsTitle = "Shelter button",
+        shelterSettingsDesc = "\"Go to shelter\" button on the map (Odesa city council data).",
+        shelterDistanceM = "%d m",
+        shelterDistanceKm = "%.1f km",
+        shelterWalkMinutes = "~%d min",
+        shelterWalkAdultLabel = "adult",
+        shelterWalkKidLabel = "with kids",
     )
 
     private fun enGuide() = Guide(

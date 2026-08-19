@@ -2,10 +2,24 @@
 
 ## [Unreleased]
 
+- Shelters: a new "Go to shelter" (До укриття) button appears on the map when your location is within Odesa shelter coverage — solid red while an official alert is active, ghost-outlined otherwise — and opens a screen ranking the nearest shelters by distance with adult and kid walking times; each row opens the shelter in your maps app. The shelter list is bundled with the app and refreshes daily from the update server.
+- Settings → Additional: a toggle controls whether the "Go to shelter" button is shown on the map.
+
+- Alert history: when an alert has ended, its row now shows "ended 1-59 min ago" (завершено … тому) right after the fired-ago readout, so a settled alert is distinguishable from a still-ringing one. Entries that were still open when the app/process restarted are now stamped ended at load instead of looking active forever.
+- Alert history: an official oblast alert is now always logged when it starts, even when a zone alert posts on the same tick — so the official row (and its "ended" time) always appears in the log.
+- Notifications: tapping an alert notification while a city is pinned is hardened — invalid coordinates from a stale/corrupted notification are rejected before reaching the map, and the reveal camera-framing can no longer crash the app if the map isn't laid out yet or the framing box is out of range (it falls back to a plain centre-on-threat pan).
+- Settings → Card size: the small-card preview now shows the compact top-left chip (narrower, hugging the corner) just like it looks on the map, instead of a full-width card.
+- Settings → Alerts: the Night mode section is boxed in a subtle indigo-tinted panel with a border and the moon icon on its toggle, so the long section stands apart from the rest of the card.
+
+- Settings: every time it opens, the app checks for a new version — when one is available a tappable toast says "Update vX is available — tap to download now, or open Settings later" and tapping it opens the download dialog (an already-known version just re-toasts without another network hit).
+- Threat popup: the indicator next to the threat title when that type's alerts are off is now a crossed bell with a small "off" / "вимк" label, so it can't be mistaken for an active alert.
+- Threat popup: on the small card the metrics now start under the title (not under the icon), with the reliability and level gauges aligned beneath their "R" and skull headers; on the large card the reliability row is vertically centred against the "x sources" pill; the card-size toggle sits in the bottom-left corner on both sizes.
+
 - System status popup / connection pill: the NEPTUN logo is now the project's own emblem (vector drawable), replacing the old raster copies — the connection pill tints it green/red/amber per state instead of swapping separate PNGs.
 - Alert history: entries now auto-clear after 6 hours (was 3 days) and each row shows how long ago it fired — "1-59 sec" / "1-59min" / "1-6hrs" — grouped into second/minute/hour buckets; the connection log below keeps absolute timestamps.
 - Alert history: an official alert now shows the monitored city (GPS or pinned) even when the alert itself carries no target.
-- Map: death-strike projectiles now launch from the nearest major city to the target (falling back to your GPS position or pinned city) instead of from your GPS fix, and with "Follow the bullet" on the camera pans to the launching city, follows the projectile to the strike, and returns to your GPS/pinned-city position once the explosion finishes.
+- Map: death-strike projectiles now come from the nearest major city to the target (falling back to your GPS position or pinned city) instead of from your GPS fix — the bullet enters from just off the screen edge on the city's side, and the camera never scrolls to the city. With "Follow the bullet" on, the camera glides onto the strike during the flight and returns to your GPS/pinned-city position once the explosion finishes (unless you panned away).
+- Map: threat icons grow as you pinch-zoom in — flat up to zoom 10, scaling to 2.0× at zoom 16 and clamped there — instead of growing only while a threat's card is open; opening a card still centres the map on the threat.
 - System status popup: the "x" next to the NEPTUN URL is gone — the popup dismisses by swipe-down or tap-outside, exactly like the alert-zone panel.
 - Connection: the 30-second "connection wobble" grace is gone — a dropped connection is reported instantly, so every loss writes a connection-log entry the moment it's detected.
 - Map: long-press neutralization is now a permanent feature (was the temporary debug trigger); comments and naming updated accordingly.
@@ -13,7 +27,7 @@
 
 - Threat popup: the neutralizing card now shows a visible fade — after the projectile strikes, the card holds, then dissolves over the rest of the explosion instead of vanishing instantly — and the flourish text now reads "Neutralizing threat…" / "Threat neutralized" ("no longer tracked by the network") in both languages.
 - Threat popup: the small (non-selected) card is now a compact top-left chip — max 300dp wide, title/icon row with the "R"/skull gauge up top, one-line pills, and the distance/speed/metrics stacked below it — so the map stays visible beside the card instead of a full-width banner.
-- Threat popup: a selected threat's card is now capped to the same narrow width, and a selected threat keeps itself in the map's visible viewport — the map pans and zooms so the marker (and any strike) always sits in the area left visible below the popup card, and its icon grows to ~1.8× so the detail is readable.
+- Threat popup: a selected threat's card is now capped to the same narrow width, and a selected threat keeps itself in the map's visible viewport — the map pans and zooms so the marker (and any strike) always sits in the area left visible below the popup card, so the detail is readable.
 - Map: death strikes that land off-screen or hidden under the popup card are now centred in the viewport left visible below the card, so the explosion is never blocked by the popup.
 - Settings: Night mode moved into the Alerts section (it follows the same "when it's night" rule as the other night settings); the one-time explainer popups now snap the Settings scroller to the explained row and flash it blue.
 - Notifications: when "break through do not disturb" is on, override alerts also launch the app full-screen on top of DND (new `USE_FULL_SCREEN_INTENT` permission) — a missed siren can no longer hide behind the lock screen.
@@ -41,7 +55,7 @@
 - System status popup: the NEPTUN logo and an underlined `neptun.in.ua` link now sit in the popup header next to the status title (were at the bottom).
 - System status popup → Alerts: a "Clear" button wipes the alert history. Rows no longer show the ring duration (that was how long the siren rang, not arrival time) — only the distance. The tier dot is gone; the alert title itself is colored red/yellow/blue by tier. Alerts group by how long ago they fired (seconds/minutes/hours) with a divider between groups, and locality names transliterate to English in EN mode.
 
-- Settings → Additional: new "Follow the bullet" sub-setting under "Resolved-threat animation" (shown only while it's on) — the camera follows the projectile from its launching city to the strike and returns to where you were 0.3s after the explosion finishes; turn it off to keep the camera still while the animation plays.
+- Settings → Additional: new "Follow the bullet" sub-setting under "Resolved-threat animation" (shown only while it's on) — the camera glides onto the strike during the flight and returns to where you were 0.3s after the explosion finishes; turn it off to keep the camera still while the animation plays.
 - Settings: your place is saved — every section keeps its collapsed/expanded state and the scroll position across opening/closing Settings and app restarts (the zone-panel gear still jumps straight to the relevant section).
 - Settings → Threats: the " — tap to toggle" hint is gone from the title, the Map/Alerts toggles are compact icon buttons on one line, the rows are tighter, and each expanded type card now shows a large preview of its icon from the selected icon pack.
 - Threat strip: tapping a footer threat type now cycles through each threat of that type (nearest first) instead of always landing on the nearest.

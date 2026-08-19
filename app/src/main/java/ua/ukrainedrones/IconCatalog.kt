@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
@@ -133,6 +134,18 @@ object IconCatalog {
     }
 }
 
+/** Greys the photo/army/comic image itself (keeps its shape) instead of flat-tinting it. */
+private val DimmedPhotoFilter = ColorFilter.colorMatrix(
+    ColorMatrix(
+        floatArrayOf(
+            0.11f, 0.36f, 0.04f, 0f, 0f,
+            0.11f, 0.36f, 0.04f, 0f, 0f,
+            0.11f, 0.36f, 0.04f, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f
+        )
+    )
+)
+
 /**
  * Threat icon that letterboxes the photo set inside its square slot (the vector set draws
  * as-is). The photo assets are wide/short or narrow/tall, so they must keep their aspect
@@ -144,6 +157,7 @@ fun ThreatIcon(
     set: ThreatIconSet,
     size: Dp,
     tint: Color = Color.Unspecified,
+    dimmed: Boolean = false,
     contentDescription: String? = null
 ) {
     if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null) {
@@ -159,7 +173,11 @@ fun ThreatIcon(
                 painter = painterResource(id = IconCatalog.res(type, set)),
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Fit,
-                colorFilter = if (tint == Color.Unspecified) null else ColorFilter.tint(tint),
+                colorFilter = when {
+                    dimmed -> DimmedPhotoFilter
+                    tint == Color.Unspecified -> null
+                    else -> ColorFilter.tint(tint)
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }

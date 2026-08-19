@@ -57,9 +57,9 @@ private class ActiveDeath(
 
 /**
  * Playful "neutralized" flourish drawn on the map at a threat's last position: a small
- * projectile flies in — from the nearest major city (else your GPS position or pinned city)
- * when it's on screen, else from just outside the screen edge — and explodes on impact.
- * Rendered as an osmdroid overlay so the map's own
+ * projectile always enters from just off the screen edge, along the line from the nearest
+ * major city (else your GPS position or pinned city) through the target, and explodes on
+ * impact. Rendered as an osmdroid overlay so the map's own
  * projection places it exactly at the geo points (tracking pan/zoom) and `draw()` is re-invoked
  * on every invalidate — a per-frame ticker in the map view keeps it animating for
  * [DEATH_DURATION_MS].
@@ -150,10 +150,11 @@ class ThreatDeathOverlay : Overlay() {
                 canvas.restore()
             }
 
-            // Flight (0.5s-impact): a small projectile flies in from the origin (the nearest major city,
-            // else GPS position or pinned city) when it's on screen, else from just outside the
-            // screen edge along the line of travel, and detonates on impact — which lands at p=1
-            // exactly when the explosion below starts.
+            // Flight (0.5s-impact): a small projectile always enters from just off the screen edge,
+            // along the line from the origin (the nearest major city, else GPS position or
+            // pinned city) through the target — it glides in from the origin's side and never
+            // pops up at an on-screen city (and the camera never scrolls to the city either).
+            // Detonates on impact, which lands at p=1 exactly when the explosion below starts.
             if (t in 0.10f..boomT && d.origin != null) {
                 mapView.projection.toPixels(d.origin, reuseOrigin)
                 val ox = reuseOrigin.x.toFloat()
@@ -165,33 +166,25 @@ class ThreatDeathOverlay : Overlay() {
                 if (dist > 1f) {
                     val W = mapView.width.toFloat()
                     val H = mapView.height.toFloat()
-                    val originVisible = ox in 0f..W && oy in 0f..H
-                    var sx = ox
-                    var sy = oy
-                    var entryFound = true
-                    if (!originVisible) {
-                        // Slab test: where the ray origin→threat crosses the viewport. Start
-                        // the bullet a little outside that edge so it glides in, never popping
-                        // up mid-air (which happens when the GPS dot is far off-screen).
-                        var tnear = -Float.MAX_VALUE
-                        var tfar = Float.MAX_VALUE
-                        val t1x = -ox / dx
-                        val t2x = (W - ox) / dx
-                        tnear = maxOf(tnear, minOf(t1x, t2x))
-                        tfar = minOf(tfar, maxOf(t1x, t2x))
-                        val t1y = -oy / dy
-                        val t2y = (H - oy) / dy
-                        tnear = maxOf(tnear, minOf(t1y, t2y))
-                        tfar = minOf(tfar, maxOf(t1y, t2y))
-                        if (tfar >= tnear && tnear > 0f) {
-                            val inv = (10f * density) / dist
-                            sx = ox + dx * tnear - dx * inv
-                            sy = oy + dy * tnear - dy * inv
-                        } else {
-                            entryFound = false
-                        }
-                    }
-                    if (entryFound) {
+                    // Slab test: where the line origin→threat crosses the viewport rectangle.
+                    // When the origin is on-screen tnear is negative (the edge behind it), so
+                    // the bullet still crosses the whole viewport toward the target.
+                    var tnear = -Float.MAX_VALUE
+                    var tfar = Float.MAX_VALUE
+                    val t1x = -ox / dx
+                    val t2x = (W - ox) / dx
+                    tnear = maxOf(tnear, minOf(t1x, t2x))
+                    tfar = minOf(tfar, maxOf(t1x, t2x))
+                    val t1y = -oy / dy
+                    val t2y = (H - oy) / dy
+                    tnear = maxOf(tnear, minOf(t1y, t2y))
+                    tfar = minOf(tfar, maxOf(t1y, t2y))
+                    if (tfar > 0f && tnear.isFinite()) {
+                        // Start a little outside the edge so it glides in, never popping up
+                        // mid-air (which happens when the GPS dot is far off-screen).
+                        val inv = (10f * density) / dist
+                        val sx = ox + dx * tnear - dx * inv
+                        val sy = oy + dy * tnear - dy * inv
                         // A dud keeps going past the (already destroyed) target and exits the
                         // screen — extend the endpoint by the viewport diagonal so it always
                         // clears the edge regardless of pan/zoom.
@@ -207,21 +200,6 @@ class ThreatDeathOverlay : Overlay() {
                         val by = sy + (ty - sy) * p
                         val headX = tx - sx
                         val headY = ty - sy
-                        // Launch flash at the origin as the shot leaves (only when it's visible).
-                        if (originVisible && t < 0.25f) {
-                            val lf = ((t - 0.10f) / 0.15f).coerceIn(0f, 1f)
-                            flashPaint.shader = RadialGradient(
-                                ox, oy, (14f * density * lf).coerceAtLeast(0.01f),
-                                intArrayOf(
-                                    Color.argb((180 * (1f - lf)).toInt(), 255, 213, 0),
-                                    Color.argb(0, 255, 213, 0)
-                                ),
-                                floatArrayOf(0f, 1f),
-                                Shader.TileMode.CLAMP
-                            )
-                            canvas.drawCircle(ox, oy, 14f * density * lf, flashPaint)
-                            flashPaint.shader = null
-                        }
                         // Bullet: the projectile PNG, rotated to the heading.
                         canvas.save()
                         canvas.translate(bx, by)
