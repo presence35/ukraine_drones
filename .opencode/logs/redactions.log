@@ -1,6 +1,0 @@
-# redactions.log — generated 2026-08-13T15:10:57.388Z
-# 4409 new messages exported, 30 redactions
-number: 7  [480062612… | 41253217174… | 41253217174… | 41253217174… | 41253217174…]
-high-entropy: 13  [tool_fd318f9f200… | tool_fd31a585800… | tool_fd31a585800… | tool_fd31a585800… | android.permissi…]
-hex: 8  [5c7f2539e928bff4… | 5c7f2539e928bff4… | 5c7f2539e928bff4… | f785427dddbba9fb… | 5c680abb9db89955…]
-kv: 2  [password=1wp6f10… | apiKey: String)`…]
