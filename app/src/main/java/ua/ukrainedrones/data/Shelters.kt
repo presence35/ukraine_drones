@@ -2,12 +2,31 @@ package ua.ukrainedrones
 
 import org.json.JSONObject
 
+/** Classification of protective structures in Ukrainian civil defense. */
+enum class ShelterType {
+    BASIC,
+    MOBILE,
+    BUNKER;
+
+    companion object {
+        fun infer(name: String, iconStr: String = ""): ShelterType {
+            val lower = name.lowercase()
+            return when {
+                lower.contains("мобільн") || lower.contains("первинн") -> MOBILE
+                name.contains("ЗСЦЗ") || iconStr.contains("195861") || iconStr.contains("195862") -> BUNKER
+                else -> BASIC
+            }
+        }
+    }
+}
+
 /** One protective structure from the Odesa city shelter layer (map-shelter, type=36). */
 data class Shelter(
     val id: String,
     val name: String,
     val lat: Double,
-    val lon: Double
+    val lon: Double,
+    val type: ShelterType = ShelterType.infer(name)
 ) {
     /** Straight-line distance to a query point, in meters (Haversine). */
     fun distanceMeters(fromLat: Double, fromLon: Double): Double =
@@ -87,7 +106,10 @@ class ShelterIndex private constructor(
                 val lat = coordStr.substring(0, comma).trim().toDoubleOrNull() ?: continue
                 val lon = coordStr.substring(comma + 1).trim().toDoubleOrNull() ?: continue
                 if (lat !in MIN_LAT..MAX_LAT || lon !in MIN_LON..MAX_LON) continue
-                list += Shelter(row.optString(0), row.optString(3), lat, lon)
+                val iconStr = row.optString(2)
+                val name = row.optString(3)
+                val type = ShelterType.infer(name, iconStr)
+                list += Shelter(row.optString(0), name, lat, lon, type)
             }
             ShelterIndex(list)
         }.getOrNull()

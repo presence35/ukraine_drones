@@ -326,20 +326,55 @@ private fun ShelterCard(
     onOpenInMaps: () -> Unit
 ) {
     val name = if (lang == AppLanguage.EN) shelterNameEn(row.shelter.name) else row.shelter.name
+    val type = row.shelter.type
+    val typeColor = when (type) {
+        ShelterType.MOBILE -> androidx.compose.ui.graphics.Color(0xFFFFA000)
+        ShelterType.BUNKER -> androidx.compose.ui.graphics.Color(0xFF2196F3)
+        ShelterType.BASIC -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
+    }
+    val typeLabel = when (type) {
+        ShelterType.MOBILE -> s.shelterTypeMobile
+        ShelterType.BUNKER -> s.shelterTypeBunker
+        ShelterType.BASIC -> s.shelterTypeBasic
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(typeColor)
+                    )
+                    Text(
+                        typeLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = typeColor
+                    )
+                }
+                Text(
+                    formatDistance(row.distanceMeters, s),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
                 name,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                formatDistance(row.distanceMeters, s),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.height(8.dp))
             Row(

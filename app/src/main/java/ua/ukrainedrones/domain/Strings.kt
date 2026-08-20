@@ -281,7 +281,14 @@ object Strings {
         val calibratingGps: String,
         val lastGpsFixFormat: String,
         val gpsFixJustNow: String,
-        val networkLocationOnly: String
+        val gpsStatusTitle: String,
+        val networkLocationOnly: String,
+        val updatingPreciseGpsToast: String,
+        val shelterViewListLabel: String,
+        val shelterViewListDesc: String,
+        val shelterTypeBasic: String,
+        val shelterTypeMobile: String,
+        val shelterTypeBunker: String
     )
 
     data class Guide(
@@ -721,7 +728,14 @@ object Strings {
         val calibratingGps: String get() = misc.calibratingGps
         val lastGpsFixFormat: String get() = misc.lastGpsFixFormat
         val gpsFixJustNow: String get() = misc.gpsFixJustNow
+        val gpsStatusTitle: String get() = misc.gpsStatusTitle
         val networkLocationOnly: String get() = misc.networkLocationOnly
+        val updatingPreciseGpsToast: String get() = misc.updatingPreciseGpsToast
+        val shelterViewListLabel: String get() = misc.shelterViewListLabel
+        val shelterViewListDesc: String get() = misc.shelterViewListDesc
+        val shelterTypeBasic: String get() = misc.shelterTypeBasic
+        val shelterTypeMobile: String get() = misc.shelterTypeMobile
+        val shelterTypeBunker: String get() = misc.shelterTypeBunker
         val guideTitle: String get() = guide.guideTitle
         val guideSettingsButton: String get() = guide.guideSettingsButton
         val guideCategoryMap: String get() = guide.guideCategoryMap
@@ -1092,7 +1106,14 @@ object Strings {
         calibratingGps = "Пошук GPS…",
         lastGpsFixFormat = "Точний GPS: %s",
         gpsFixJustNow = "щойно",
+        gpsStatusTitle = "Точний GPS",
         networkLocationOnly = "Мережева локація (вежі зв'язку)",
+        updatingPreciseGpsToast = "Оновлення точного GPS…",
+        shelterViewListLabel = "Список укриттів (довідник)",
+        shelterViewListDesc = "Переглянути повний список усіх укриттів міста",
+        shelterTypeBasic = "Найпростіше укриття",
+        shelterTypeMobile = "Мобільне укриття",
+        shelterTypeBunker = "Бомбосховище (ЗСЦЗ)",
     )
 
     private fun uaGuide() = Guide(
@@ -1513,7 +1534,14 @@ object Strings {
         calibratingGps = "Acquiring GPS…",
         lastGpsFixFormat = "Precise GPS: %s",
         gpsFixJustNow = "just now",
+        gpsStatusTitle = "Precise GPS",
         networkLocationOnly = "Cell tower location only",
+        updatingPreciseGpsToast = "Updating precise GPS…",
+        shelterViewListLabel = "Shelter directory (reference)",
+        shelterViewListDesc = "Browse the full directory of all city shelters",
+        shelterTypeBasic = "Basic shelter",
+        shelterTypeMobile = "Mobile shelter",
+        shelterTypeBunker = "Civil defense bunker (CDPS)",
     )
 
     private fun enGuide() = Guide(

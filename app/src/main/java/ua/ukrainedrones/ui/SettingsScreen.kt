@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
@@ -152,6 +154,7 @@ fun SettingsScreen(
     showMapScale: Boolean,
     showTtaLines: Boolean,
     sheltersEnabled: Boolean,
+    sheltersWithKids: Boolean = false,
     periodicGps: Boolean,
     deathAnimationEnabled: Boolean,
     followBullet: Boolean,
@@ -200,6 +203,8 @@ fun SettingsScreen(
     onShowMapScaleChange: (Boolean) -> Unit,
     onShowTtaLinesChange: (Boolean) -> Unit,
     onSheltersEnabledChange: (Boolean) -> Unit,
+    onSheltersWithKidsChange: (Boolean) -> Unit = {},
+    onOpenShelterList: () -> Unit = {},
     onDeathAnimationChange: (Boolean) -> Unit,
     onFollowBulletChange: (Boolean) -> Unit,
     onNeutralizedTallyChange: (Boolean) -> Unit,
@@ -489,6 +494,42 @@ fun SettingsScreen(
                                 icon = painterResource(R.drawable.ic_adult_kid),
                                 iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onOpenShelterList() }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.LocationOn,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(Modifier.width(14.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        s.shelterViewListLabel,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        s.shelterViewListDesc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1536,9 +1577,10 @@ private fun GpsCalibrationRow(
         }
     }
 
-    val statusText = if (lastPreciseFixMs != null) {
+    val preciseFixMs = lastPreciseFixMs
+    val statusText = if (preciseFixMs != null) {
         val now = System.currentTimeMillis()
-        val age = formatAlertAge(now, lastPreciseFixMs, s)
+        val age = formatAlertAge(now, preciseFixMs, s)
         String.format(s.lastGpsFixFormat, if (age.isBlank()) s.gpsFixJustNow else age)
     } else if (lastFixMs != null) {
         s.networkLocationOnly

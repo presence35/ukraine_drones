@@ -1,10 +1,15 @@
 package ua.ukrainedrones
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -228,6 +233,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 showMapScale = uiState.showMapScale,
                 showTtaLines = uiState.showTtaLines,
                 sheltersEnabled = uiState.sheltersEnabled,
+                sheltersWithKids = uiState.sheltersWithKids,
                 periodicGps = uiState.periodicGps,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
@@ -276,6 +282,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onShowTtaLinesChange = { viewModel.setShowTtaLines(it) },
                 onSheltersEnabledChange = { viewModel.setSheltersEnabled(it) },
+                onSheltersWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
+                onOpenShelterList = { screen = Screen.SHELTERS },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
                 onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
@@ -729,11 +737,41 @@ private fun MapScreen(
     onOpenShelters: () -> Unit
 ) {
     val s = Strings.get(uiState.language)
+    val context = LocalContext.current
     var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
+    var showNearbyShelters by remember { mutableStateOf(false) }
+    var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
+
+    val fineLocLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            LocationTracker.forceRefresh()
+        }
+    }
+
+    val onToggleShelters: () -> Unit = {
+        val willShow = !showNearbyShelters
+        showNearbyShelters = willShow
+        if (!willShow) {
+            selectedShelter = null
+        } else {
+            Toast.makeText(context, s.updatingPreciseGpsToast, Toast.LENGTH_SHORT).show()
+            val hasFine = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasFine) {
+                fineLocLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            LocationTracker.forceRefresh()
+        }
+    }
+
     // Last strip-tapped threat id per type, so repeated taps cycle through each of that type.
     val stripCycle = remember { mutableStateMapOf<ThreatType, String>() }
     // The zones sheet edits whatever the map is currently showing.
@@ -756,6 +794,7 @@ private fun MapScreen(
     }
 
     // Back closes the popup first, then exits — fixes "back stuck on home page".
+    BackHandler(enabled = selectedShelter != null) { selectedShelter = null }
     BackHandler(enabled = uiState.selectedThreat != null) { onDismissPopup() }
     BackHandler(enabled = showZonesSheet) { onShowZonesSheetChange(false) }
 
@@ -854,8 +893,14 @@ private fun MapScreen(
                         lang = uiState.language,
                         iconSet = uiState.iconSet,
                         onScaleChange = { scaleMpp = it },
-                        onThreatTapped = onThreatTapped,
-                        onMapTapped = onMapTapped,
+                        onThreatTapped = {
+                            selectedShelter = null
+                            onThreatTapped(it)
+                        },
+                        onMapTapped = {
+                            selectedShelter = null
+                            onMapTapped()
+                        },
                         fitUkraineTick = fitUkraineTick,
                         zoomZone = zoomZone,
                         zoomTick = zoomTick,
@@ -863,6 +908,11 @@ private fun MapScreen(
                         revealRequest = uiState.revealRequest,
                         paused = settingsOpen,
                         onNeutralize = onNeutralize,
+                        showNearbyShelters = showNearbyShelters,
+                        shelterIndex = uiState.shelterIndex,
+                        withKids = uiState.sheltersWithKids,
+                        selectedShelter = selectedShelter,
+                        onShelterTapped = { selectedShelter = it },
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -894,7 +944,7 @@ private fun MapScreen(
                         ShelterButton(
                             alertActive = uiState.focusOblastAlertActive,
                             label = s.shelterButtonLabel,
-                            onClick = onOpenShelters,
+                            onClick = onToggleShelters,
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
                                 .padding(start = 12.dp, bottom = 4.dp)

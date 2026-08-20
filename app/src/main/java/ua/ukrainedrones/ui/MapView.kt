@@ -302,6 +302,186 @@ private const val NEW_RING_MS = 8_000L
 private const val REVEAL_MIN_SPAN_LAT = 0.10
 private const val REVEAL_MIN_SPAN_LON = 0.16
 
+private val shelterBitmapCache = mutableMapOf<String, Bitmap>()
+
+/** Custom shield marker icon bitmap with color and stroke thickness based on ShelterType. */
+private fun shelterMarkerBitmap(
+    context: Context,
+    type: ShelterType,
+    walkMin: Int?,
+    isSelected: Boolean
+): Bitmap {
+    val key = "${type.name}_${walkMin}_$isSelected"
+    shelterBitmapCache[key]?.let { return it }
+
+    val density = context.resources.displayMetrics.density
+    val strokeWidthDp = when (type) {
+        ShelterType.MOBILE -> 2.5f // Medium stroke
+        ShelterType.BASIC -> 2.0f  // Standard stroke
+        ShelterType.BUNKER -> 3.5f // Thick heavy reinforced stroke
+    }
+    val typeColor = when (type) {
+        ShelterType.MOBILE -> Color.rgb(255, 160, 0)  // Amber / Orange
+        ShelterType.BASIC -> Color.rgb(76, 175, 80)   // Emerald Green
+        ShelterType.BUNKER -> Color.rgb(33, 150, 243) // Royal Blue
+    }
+
+    val shieldW = 26f * density
+    val shieldH = 30f * density
+    val pillH = if (walkMin != null) 15f * density else 0f
+    val pillGap = 2f * density
+
+    val totalW = (38f * density).toInt().coerceAtLeast(1)
+    val totalH = ((if (walkMin != null) pillH + pillGap else 0f) + shieldH + 6f * density).toInt().coerceAtLeast(1)
+
+    val bmp = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val cx = totalW / 2f
+
+    // 1. Draw walking time pill above shield if present
+    var shieldTop = 2f * density
+    if (walkMin != null) {
+        val pillText = "${walkMin}m"
+        val textPaint = Paint().apply {
+            isAntiAlias = true
+            textSize = 9.5f * density
+            color = Color.WHITE
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.CENTER
+        }
+        val textBounds = android.graphics.Rect()
+        textPaint.getTextBounds(pillText, 0, pillText.length, textBounds)
+        val pillW = (textBounds.width() + 10f * density).coerceAtLeast(20f * density)
+        val pillRect = android.graphics.RectF(
+            cx - pillW / 2f,
+            2f * density,
+            cx + pillW / 2f,
+            2f * density + pillH
+        )
+
+        // Pill background
+        canvas.drawRoundRect(pillRect, pillH / 2f, pillH / 2f, Paint().apply {
+            isAntiAlias = true
+            style = Paint.Style.FILL
+            color = Color.argb(235, 18, 22, 28)
+        })
+        // Pill border
+        canvas.drawRoundRect(pillRect, pillH / 2f, pillH / 2f, Paint().apply {
+            isAntiAlias = true
+            style = Paint.Style.STROKE
+            strokeWidth = 1f * density
+            color = typeColor
+        })
+        // Pill text
+        val textY = pillRect.centerY() - (textBounds.top + textBounds.bottom) / 2f
+        canvas.drawText(pillText, cx, textY, textPaint)
+
+        shieldTop += pillH + pillGap
+    }
+
+    // 2. Build Heraldic Shield Path
+    val left = cx - shieldW / 2f
+    val right = cx + shieldW / 2f
+    val bottom = shieldTop + shieldH
+    val midY = shieldTop + shieldH * 0.52f
+
+    val shieldPath = Path().apply {
+        moveTo(left, shieldTop)
+        lineTo(right, shieldTop)
+        lineTo(right, midY)
+        cubicTo(right, bottom * 0.85f, cx + shieldW * 0.2f, bottom, cx, bottom)
+        cubicTo(cx - shieldW * 0.2f, bottom, left, bottom * 0.85f, left, midY)
+        lineTo(left, shieldTop)
+        close()
+    }
+
+    // 3. Selection halo if selected
+    if (isSelected) {
+        canvas.drawCircle(cx, (shieldTop + bottom) / 2f, shieldW * 0.75f, Paint().apply {
+            isAntiAlias = true
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f * density
+            color = Color.WHITE
+        })
+    }
+
+    // 4. Shield Fill (Dark translucent base)
+    canvas.drawPath(shieldPath, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = Color.argb(240, 22, 26, 32)
+    })
+
+    // 5. Inner Tint Fill
+    canvas.drawPath(shieldPath, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.FILL
+        color = when (type) {
+            ShelterType.MOBILE -> Color.argb(55, 255, 160, 0)
+            ShelterType.BASIC -> Color.argb(55, 76, 175, 80)
+            ShelterType.BUNKER -> Color.argb(65, 33, 150, 243)
+        }
+    })
+
+    // 6. Shield Outer Stroke (colored & thickness by type)
+    canvas.drawPath(shieldPath, Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeWidth = strokeWidthDp * density
+        color = typeColor
+    })
+
+    // 7. Emblem inside shield
+    when (type) {
+        ShelterType.BUNKER -> {
+            val innerInset = 3.2f * density
+            val innerPath = Path().apply {
+                val iLeft = left + innerInset
+                val iRight = right - innerInset
+                val iTop = shieldTop + innerInset
+                val iBottom = bottom - innerInset * 1.2f
+                val iMid = iTop + (iBottom - iTop) * 0.52f
+                moveTo(iLeft, iTop)
+                lineTo(iRight, iTop)
+                lineTo(iRight, iMid)
+                cubicTo(iRight, iBottom * 0.9f, cx + (iRight - cx) * 0.4f, iBottom, cx, iBottom)
+                cubicTo(cx - (iRight - cx) * 0.4f, iBottom, iLeft, iBottom * 0.9f, iLeft, iMid)
+                lineTo(iLeft, iTop)
+                close()
+            }
+            canvas.drawPath(innerPath, Paint().apply {
+                isAntiAlias = true
+                style = Paint.Style.STROKE
+                strokeWidth = 1.2f * density
+                color = Color.argb(210, 255, 255, 255)
+            })
+        }
+        ShelterType.MOBILE -> {
+            val mPaint = Paint().apply {
+                isAntiAlias = true
+                textSize = 9.5f * density
+                color = Color.WHITE
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                textAlign = Paint.Align.CENTER
+            }
+            val mBounds = android.graphics.Rect()
+            mPaint.getTextBounds("M", 0, 1, mBounds)
+            val centerY = (shieldTop + midY) / 2f + 2f * density
+            canvas.drawText("M", cx, centerY, mPaint)
+        }
+        ShelterType.BASIC -> {
+            canvas.drawCircle(cx, (shieldTop + midY) / 2f + 1f * density, 2.5f * density, Paint().apply {
+                isAntiAlias = true
+                style = Paint.Style.FILL
+                color = Color.WHITE
+            })
+        }
+    }
+
+    shelterBitmapCache[key] = bmp
+    return bmp
+}
+
 /** Framing box for a notification reveal: focus near the top, threat near the bottom, with a
  *  clamped span so a huge gap (or a zero gap) still yields a valid, zoomable box. */
 private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox {
@@ -343,6 +523,11 @@ fun NeptunMapView(
     revealRequest: RevealRequest? = null,
     paused: Boolean = false,
     onNeutralize: (String) -> Unit = {},
+    showNearbyShelters: Boolean = false,
+    shelterIndex: ShelterIndex? = null,
+    withKids: Boolean = false,
+    selectedShelter: NearestShelter? = null,
+    onShelterTapped: (NearestShelter) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -359,6 +544,11 @@ fun NeptunMapView(
         append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
         append('O').append(uiState.focusOblastAlertActive)
         append('T').append(uiState.showTtaLines)
+        append('S').append(showNearbyShelters)
+        if (showNearbyShelters) {
+            append('K').append(withKids)
+            append('L').append(selectedShelter?.shelter?.id)
+        }
         for (token in uiState.activeRegionTokens) append('R').append(token).append(';')
         for (t in uiState.mapThreats) appendThreatKey(t, System.currentTimeMillis())
     }
@@ -710,6 +900,29 @@ fun NeptunMapView(
 
                 // Reveal ring above the threat icons (added only while its 8s window is live).
                 placeRing()
+
+                // Nearby shelters — rendered when toggled on, centered around the user/pinned focus.
+                if (showNearbyShelters && focus != null && shelterIndex != null) {
+                    val nearList = shelterIndex.nearest(focus.lat, focus.lon, limit = 25)
+                    for (nearItem in nearList) {
+                        val walkMin = if (withKids) nearItem.walkMinutesKid else nearItem.walkMinutesAdult
+                        val isSelected = selectedShelter?.shelter?.id == nearItem.shelter.id
+                        mapView.overlays.add(Marker(mapView).apply {
+                            position = GeoPoint(nearItem.shelter.lat, nearItem.shelter.lon)
+                            setAnchor(Marker.ANCHOR_CENTER, 1.0f)
+                            icon = BitmapDrawable(
+                                context.resources,
+                                shelterMarkerBitmap(context, nearItem.shelter.type, walkMin, isSelected)
+                            )
+                            title = nearItem.shelter.name
+                            setInfoWindow(null)
+                            setOnMarkerClickListener { _, _ ->
+                                onShelterTapped(nearItem)
+                                true
+                            }
+                        })
+                    }
+                }
 
                 // GPS dot — a plain marker driven by LocationTracker's coarse fix. No separate
                 // location provider here (that was the battery-heavy blue accuracy circle).

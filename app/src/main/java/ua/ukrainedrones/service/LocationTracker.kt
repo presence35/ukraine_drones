@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import ua.ukrainedrones.domain.ZonePrefs
 
 /**
  * Shared, battery-first device location. One listener owned by the foreground service so the
