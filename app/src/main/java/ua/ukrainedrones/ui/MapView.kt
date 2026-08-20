@@ -94,30 +94,7 @@ private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
     append(if (t.isStale(now)) 'S' else 'L').append(';')
 }
 
-/**
- * Marker drawable for a threat in the given icon set. The vector set is used at its intrinsic
- * size; the shahed.webp photo and the whole photo set are larger, so they're scaled down to a
- * marker-sized bitmap.
- */
-private fun threatIcon(context: Context, type: ThreatType, iconSet: ThreatIconSet): Drawable {
-    val res = IconCatalog.res(type, iconSet)
-    if (iconSet == ThreatIconSet.CLASSIC && type != ThreatType.SHAHED) {
-        return ContextCompat.getDrawable(context, res)!!
-    }
-    val src = ContextCompat.getDrawable(context, res)!!
-    val targetW = (32 * context.resources.displayMetrics.density).toInt()
-    val iw = src.intrinsicWidth.coerceAtLeast(1)
-    val ih = src.intrinsicHeight.coerceAtLeast(1)
-    val w = targetW
-    val h = (ih.toFloat() * targetW / iw).toInt().coerceAtLeast(1)
-    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bmp)
-    src.setBounds(0, 0, w, h)
-    src.draw(canvas)
-    return BitmapDrawable(context.resources, bmp)
-}
-
-/** Same marker icon, rendered `scale`× larger — used to grow the selected threat's icon. */
+/** Same marker icon, rendered `scale`× larger — sized from the zoom-derived scale. */
 private fun scaledThreatIcon(
     context: Context,
     type: ThreatType,
@@ -145,14 +122,19 @@ private fun threatIconFor(
     iconSet: ThreatIconSet,
     scale: Float
 ): Drawable =
-    if (scale <= 1.001f) threatIcon(context, type, iconSet)
-    else scaledThreatIcon(context, type, iconSet, scale)
+    scaledThreatIcon(context, type, iconSet, scale)
 
-/** Icon growth from map zoom: icons keep pace with the map's magnification as you zoom in
- *  (the threat visibly grows), clamped so it never balloons. Flat at 1.0× up to zoom 10,
- *  2.0× at zoom 12, capped at 3.0× (reached around zoom 13.2) and flat beyond. */
-private fun zoomIconScale(zoom: Double): Float =
-    minOf(3.0, 2.0.pow(((zoom - 10.0) * 0.5).coerceAtLeast(0.0))).toFloat()
+/** Icon growth from map zoom: small when zoomed out, growing as you zoom in, capped once the
+ *  viewport is roughly 5 km wide (~z14.5 at Odesa's latitude) so it never balloons — 0.55× at
+ *  z8 and below, linear to 2.0× at z14.5, flat beyond. */
+private fun zoomIconScale(zoom: Double): Float {
+    val minZ = 8.0
+    val maxZ = 14.5
+    if (zoom <= minZ) return 0.55f
+    if (zoom >= maxZ) return 2.0f
+    val t = ((zoom - minZ) / (maxZ - minZ)).toFloat()
+    return 0.55f + (2.0f - 0.55f) * t
+}
 
 private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
     ThreatZone.INNER -> Color.rgb(255, 82, 82)
@@ -279,180 +261,52 @@ private const val REVEAL_MIN_SPAN_LON = 0.16
 
 private val shelterBitmapCache = mutableMapOf<String, Bitmap>()
 
-/** Custom shield marker icon bitmap with color and stroke thickness based on ShelterType. */
+/** Minimal hand-drawn chevron marker, stroke-only so it reads as a pin pointing at the spot.
+ *  Selected (its card is open) switches to white; otherwise the shelter's type color. */
 private fun shelterMarkerBitmap(
     context: Context,
     type: ShelterType,
-    walkMin: Int?,
     isSelected: Boolean
 ): Bitmap {
-    val key = "${type.name}_${walkMin}_$isSelected"
+    val key = "${type.name}_$isSelected"
     shelterBitmapCache[key]?.let { return it }
 
     val density = context.resources.displayMetrics.density
-    val strokeWidthDp = when (type) {
-        ShelterType.MOBILE -> 2.5f // Medium stroke
-        ShelterType.BASIC -> 2.0f  // Standard stroke
-        ShelterType.BUNKER -> 3.5f // Thick heavy reinforced stroke
-    }
     val typeColor = when (type) {
         ShelterType.MOBILE -> Color.rgb(255, 160, 0)  // Amber / Orange
         ShelterType.BASIC -> Color.rgb(76, 175, 80)   // Emerald Green
         ShelterType.BUNKER -> Color.rgb(33, 150, 243) // Royal Blue
     }
+    val markerColor = if (isSelected) Color.WHITE else typeColor
 
-    val shieldW = 26f * density
-    val shieldH = 30f * density
-    val pillH = if (walkMin != null) 15f * density else 0f
-    val pillGap = 2f * density
-
-    val totalW = (38f * density).toInt().coerceAtLeast(1)
-    val totalH = ((if (walkMin != null) pillH + pillGap else 0f) + shieldH + 6f * density).toInt().coerceAtLeast(1)
+    val strokeW = 2.2f * density
+    val chevronW = 12f * density
+    val chevronH = 7f * density
+    val pad = 3f * density
+    val totalW = (chevronW + 2f * pad).toInt().coerceAtLeast(1)
+    val totalH = (chevronH + 2f * pad).toInt().coerceAtLeast(1)
 
     val bmp = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
-    val cx = totalW / 2f
+    val left = pad
+    val right = totalW - pad
+    val top = pad
+    val bottom = totalH - pad
 
-    // 1. Draw walking time pill above shield if present
-    var shieldTop = 2f * density
-    if (walkMin != null) {
-        val pillText = "${walkMin}min"
-        val textPaint = Paint().apply {
-            isAntiAlias = true
-            textSize = 9.5f * density
-            color = Color.WHITE
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            textAlign = Paint.Align.CENTER
-        }
-        val textBounds = android.graphics.Rect()
-        textPaint.getTextBounds(pillText, 0, pillText.length, textBounds)
-        val pillW = (textBounds.width() + 10f * density).coerceAtLeast(20f * density)
-        val pillRect = android.graphics.RectF(
-            cx - pillW / 2f,
-            2f * density,
-            cx + pillW / 2f,
-            2f * density + pillH
-        )
-
-        // Pill background
-        canvas.drawRoundRect(pillRect, pillH / 2f, pillH / 2f, Paint().apply {
-            isAntiAlias = true
-            style = Paint.Style.FILL
-            color = Color.argb(235, 18, 22, 28)
-        })
-        // Pill border
-        canvas.drawRoundRect(pillRect, pillH / 2f, pillH / 2f, Paint().apply {
-            isAntiAlias = true
-            style = Paint.Style.STROKE
-            strokeWidth = 1f * density
-            color = typeColor
-        })
-        // Pill text
-        val textY = pillRect.centerY() - (textBounds.top + textBounds.bottom) / 2f
-        canvas.drawText(pillText, cx, textY, textPaint)
-
-        shieldTop += pillH + pillGap
+    // Chevron: legs meet at the bottom-centre tip, which is anchored on the shelter spot.
+    val chevron = Path().apply {
+        moveTo(left, top)
+        lineTo((left + right) / 2f, bottom)
+        lineTo(right, top)
     }
-
-    // 2. Build Heraldic Shield Path
-    val left = cx - shieldW / 2f
-    val right = cx + shieldW / 2f
-    val bottom = shieldTop + shieldH
-    val midY = shieldTop + shieldH * 0.52f
-
-    val shieldPath = Path().apply {
-        moveTo(left, shieldTop)
-        lineTo(right, shieldTop)
-        lineTo(right, midY)
-        cubicTo(right, bottom * 0.85f, cx + shieldW * 0.2f, bottom, cx, bottom)
-        cubicTo(cx - shieldW * 0.2f, bottom, left, bottom * 0.85f, left, midY)
-        lineTo(left, shieldTop)
-        close()
-    }
-
-    // 3. Selection halo if selected — tinted with the shelter's type color so the selected
-    // marker reads as highlighted instead of a bare white circle.
-    if (isSelected) {
-        canvas.drawCircle(cx, (shieldTop + bottom) / 2f, shieldW * 0.75f, Paint().apply {
-            isAntiAlias = true
-            style = Paint.Style.STROKE
-            strokeWidth = 3f * density
-            color = typeColor
-        })
-    }
-
-    // 4. Shield Fill (Dark translucent base)
-    canvas.drawPath(shieldPath, Paint().apply {
-        isAntiAlias = true
-        style = Paint.Style.FILL
-        color = Color.argb(240, 22, 26, 32)
-    })
-
-    // 5. Inner Tint Fill
-    canvas.drawPath(shieldPath, Paint().apply {
-        isAntiAlias = true
-        style = Paint.Style.FILL
-        color = when (type) {
-            ShelterType.MOBILE -> Color.argb(55, 255, 160, 0)
-            ShelterType.BASIC -> Color.argb(55, 76, 175, 80)
-            ShelterType.BUNKER -> Color.argb(65, 33, 150, 243)
-        }
-    })
-
-    // 6. Shield Outer Stroke (colored & thickness by type)
-    canvas.drawPath(shieldPath, Paint().apply {
+canvas.drawPath(chevron, Paint().apply {
         isAntiAlias = true
         style = Paint.Style.STROKE
-        strokeWidth = strokeWidthDp * density
-        color = typeColor
+        strokeWidth = strokeW
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        this.color = markerColor
     })
-
-    // 7. Emblem inside shield
-    when (type) {
-        ShelterType.BUNKER -> {
-            val innerInset = 3.2f * density
-            val innerPath = Path().apply {
-                val iLeft = left + innerInset
-                val iRight = right - innerInset
-                val iTop = shieldTop + innerInset
-                val iBottom = bottom - innerInset * 1.2f
-                val iMid = iTop + (iBottom - iTop) * 0.52f
-                moveTo(iLeft, iTop)
-                lineTo(iRight, iTop)
-                lineTo(iRight, iMid)
-                cubicTo(iRight, iBottom * 0.9f, cx + (iRight - cx) * 0.4f, iBottom, cx, iBottom)
-                cubicTo(cx - (iRight - cx) * 0.4f, iBottom, iLeft, iBottom * 0.9f, iLeft, iMid)
-                lineTo(iLeft, iTop)
-                close()
-            }
-            canvas.drawPath(innerPath, Paint().apply {
-                isAntiAlias = true
-                style = Paint.Style.STROKE
-                strokeWidth = 1.2f * density
-                color = Color.argb(210, 255, 255, 255)
-            })
-        }
-        ShelterType.MOBILE -> {
-            val mPaint = Paint().apply {
-                isAntiAlias = true
-                textSize = 9.5f * density
-                color = Color.WHITE
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                textAlign = Paint.Align.CENTER
-            }
-            val mBounds = android.graphics.Rect()
-            mPaint.getTextBounds("M", 0, 1, mBounds)
-            val centerY = (shieldTop + midY) / 2f + 2f * density
-            canvas.drawText("M", cx, centerY, mPaint)
-        }
-        ShelterType.BASIC -> {
-            canvas.drawCircle(cx, (shieldTop + midY) / 2f + 1f * density, 2.5f * density, Paint().apply {
-                isAntiAlias = true
-                style = Paint.Style.FILL
-                color = Color.WHITE
-            })
-        }
-    }
 
     shelterBitmapCache[key] = bmp
     return bmp
@@ -500,10 +354,10 @@ fun NeptunMapView(
     paused: Boolean = false,
     mapVisible: Boolean = true,
     shelterZoomTick: Int = 0,
+    shelterSelectTick: Int = 0,
     onNeutralize: (String) -> Unit = {},
     showNearbyShelters: Boolean = false,
     shelterIndex: ShelterIndex? = null,
-    withKids: Boolean = false,
     selectedShelter: NearestShelter? = null,
     onShelterTapped: (NearestShelter) -> Unit = {},
     modifier: Modifier = Modifier
@@ -523,7 +377,6 @@ fun NeptunMapView(
         append('O').append(uiState.focusOblastAlertActive)
         append('S').append(showNearbyShelters)
         if (showNearbyShelters) {
-            append('K').append(withKids)
             append('L').append(selectedShelter?.shelter?.id)
         }
         for (token in uiState.activeRegionTokens) append('R').append(token).append(';')
@@ -534,6 +387,7 @@ fun NeptunMapView(
     val lastFollow = remember { mutableStateOf<LatLng?>(null) }
     val lastZoomTick = remember { mutableStateOf(-1) }
     val lastShelterZoomTick = remember { mutableStateOf(-1) }
+    val lastShelterSelectTick = remember { mutableStateOf(-1) }
     val lastFitZonesTick = remember { mutableStateOf(-1) }
     val lastRevealTick = remember { mutableStateOf(-1) }
     val newRingState = remember { mutableStateOf<NewRingState?>(null) }
@@ -591,7 +445,7 @@ fun NeptunMapView(
                 setMultiTouchControls(true)
                 // No +/– buttons — everyone uses pinch. Contours stay clean on the map.
                 setBuiltInZoomControls(false)
-                maxZoomLevel = 17.0
+                maxZoomLevel = 19.0
                 // Clamp the viewport to Ukraine (incl. Crimea) plus a small margin so
                 // the map can't pan out into foreign territory.
                 setScrollableAreaLimitDouble(UA_VIEW_LIMITS)
@@ -717,7 +571,17 @@ fun NeptunMapView(
             if (shelterZoomTick != lastShelterZoomTick.value) {
                 lastShelterZoomTick.value = shelterZoomTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
-                mapView.controller.animateTo(center, 16.5, 400L)
+                mapView.controller.animateTo(center, 18.0, 400L)
+            }
+
+            // Shelter marker tapped: zoom in on the shelter so its close neighbours separate.
+            if (shelterSelectTick != lastShelterSelectTick.value) {
+                lastShelterSelectTick.value = shelterSelectTick
+                selectedShelter?.let { sh ->
+                    mapView.controller.animateTo(
+                        GeoPoint(sh.shelter.lat, sh.shelter.lon), 19.0, 300L
+                    )
+                }
             }
 
             // Alert-zones panel opened: centre + zoom so the whole yellow zone sits in
@@ -870,14 +734,13 @@ fun NeptunMapView(
                 if (showNearbyShelters && focus != null && shelterIndex != null) {
                     val nearList = shelterIndex.nearest(focus.lat, focus.lon, limit = 25)
                     for (nearItem in nearList) {
-                        val walkMin = if (withKids) nearItem.walkMinutesKid else nearItem.walkMinutesAdult
                         val isSelected = selectedShelter?.shelter?.id == nearItem.shelter.id
                         mapView.overlays.add(Marker(mapView).apply {
                             position = GeoPoint(nearItem.shelter.lat, nearItem.shelter.lon)
                             setAnchor(Marker.ANCHOR_CENTER, 1.0f)
                             icon = BitmapDrawable(
                                 context.resources,
-                                shelterMarkerBitmap(context, nearItem.shelter.type, walkMin, isSelected)
+                                shelterMarkerBitmap(context, nearItem.shelter.type, isSelected)
                             )
                             title = nearItem.shelter.name
                             setInfoWindow(null)

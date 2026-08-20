@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.text.SpannableString
 import android.text.style.StyleSpan
-import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import java.io.File
@@ -1010,7 +1009,11 @@ val uiState: StateFlow<UiState> = combine(
         val rest = if (mapToast) s.mapToggleHintRest else s.alertToggleHintRest
         val message = SpannableString(prefix + rest)
         message.setSpan(StyleSpan(Typeface.BOLD), 0, prefix.length, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE)
-        Toast.makeText(getApplication(), message, Toast.LENGTH_SHORT).show()
+        showToast(
+            getApplication(),
+            message,
+            cardVisible = uiState.value.mapVisible && uiState.value.selectedThreat != null
+        )
     }
 
     fun setDisclaimerCollapsed(collapsed: Boolean) {
@@ -1178,14 +1181,14 @@ val uiState: StateFlow<UiState> = combine(
                     latestVersionFlow.value = null
                     updateStateFlow.value = UpdateState.Idle
                     if (notify) {
-                        Toast.makeText(getApplication(), s.updateUpToDate, Toast.LENGTH_SHORT).show()
+                        showToast(getApplication(), s.updateUpToDate, cardVisible = false)
                     }
                 }
                 is UpdateState.Failed -> {
                     updateStateFlow.value = UpdateState.Idle
                     if (notify) {
                         val message = result.message?.let { ": $it" }.orEmpty()
-                        Toast.makeText(getApplication(), s.updateCheckFailed + message, Toast.LENGTH_SHORT).show()
+                        showToast(getApplication(), s.updateCheckFailed + message, cardVisible = false)
                     }
                 }
                 else -> Unit

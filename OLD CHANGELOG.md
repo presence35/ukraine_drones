@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+- Map: threat icons now stay small when you zoom out and grow as you zoom in — 0.55× at the country view, growing linearly to a 2.0× cap once the viewport is roughly 5 km wide, and flat beyond (was: fixed 1.0× below zoom 10, up to 3.0× at zoom 13).
+- Shelters: the adult and adult+kid walk times now sit on one line in the shelter list rows, and the maps button reads just "Open" / «Відкрити» (the location icon still leads it).
+- Settings → Night mode: the extra moon icon next to the on/off toggle is gone, the whole section sits in a darker-purple boxed panel again, and the section subtitle appends "· Night zones" / « · Нічні зони» when separate night zones are on.
+- Map: shelter chevrons render in their type color again (a paint self-assignment had made them invisible black strokes).
+
+- Settings: a search box at the top now finds settings instantly — typing filters the section cards and standalone buttons, auto-expands the matching sections, and matches text in both UA and EN (including every threat type's name/description). Empty query shows the full list.
+- Settings: every open starts fully collapsed (Location, Night mode, Alerts, Threats, System) — no saved up/down state to get lost in; the threat-popup shortcut still expands the section it scrolls to.
+- Settings: the disclaimer card's body now reads as separate paragraphs with the first line bolded, no bullet marks.
+- Toasts: every app toast (GPS, toggle hints, update results, shelter tip) now shows at the top, just under the header — and when a threat/shelter popup card is open it drops to the bottom above the floating buttons instead of covering the card.
+
+- Map: shelter markers are now tiny hand-drawn chevrons (stroke-only, colored by shelter type) — the big shield icons and the walk-time pill are gone (distance reads naturally); the selected shelter's chevron turns white while its info card is open.
+- Shelters: long-pressing the map shelter button opens the shelter list screen; the first 3 taps show a tip toast about it.
+- GPS: shelter mode now reuses a fix younger than 5 minutes — toggling the markers on/off no longer forces a precise-fix refresh (and its permission prompt) every time; the shelter list screen keeps the manual refresh button.
+
+- First-run wizard: the icon-pack picker moved from page 1 to page 2 (under the "What matters" threat grid, now 4 cards per row), the "?" unknown-icon stays visible when a type is deselected, and page 1 hides its tips behind an OK button — the tips appear and Next unlocks only after you read the intro (Later stays available).
+- First-run wizard: "Replay first launch" from Settings now returns to the map when the setup finishes, not back to Settings.
+- Shelters: the info card no longer has an X — tapping anywhere on the card closes it ("Open in maps" still opens the route).
+- Shelters: the map now zooms in deeper — max zoom raised to 19, the shelter-mode view zooms to 18, and tapping a shelter marker zooms onto it at 19 so closely spaced shelters separate.
+- Shelters: the adult and adult+kid walking-time icons are larger in the info card and the list rows.
+
+- Map: the neutralizing flourish (popup fade + projectile) now plays only while the map screen is open and no alert is active — switching to Settings/Shelters/Guide or an active zone/oblast alert suppresses it, so the animation can't fire in the background or under a siren.
+- Connectivity: a 5-second grace absorbs brief connection blips — the offline pill, the offline notification wording and the connection log ignore drops that recover within 5 seconds (the one-shot alert notification already waited out the grace).
+
+- Shelters: the "Directory" row in Settings → Shelter is now reachable even when the map button is off, and the "With kids" toggle moved from Settings onto the shelter screen right above the list.
+- Shelters: the map button now zooms the map onto your position when it opens, glows with the app accent while active, and tapping a shelter marker opens its info card; shelter mode cancels itself when a new threat arrives or you tap a threat.
+- Shelters: the fake pull-to-refresh gesture is gone from the shelter list; the GPS-age header reads "GPS fix is fresh" right after a fix and counts precise age in full minutes ("GPS fix is 5 minutes old" / «GPS-фікс застарілий на 5 хвилин»).
+- Threat popup: the crossed "off" bell icons now use the same neutral gray as the toggle's off state instead of white.
+
 - Settings: removed the "time-to-arrival lines" option — the red/yellow predictive course lines for fast threats no longer render on the map. Fast-threat zone alerts (ETA-based tiering) are unchanged.
 
 - Icon packs: a new "Russian" (Російські) set — 7 hand-drawn threat icons in the same direction-oriented style as the Army set — is selectable in Settings → Icon style. Its icons come from a single AI-generated sprite sheet, split and normalized into uniform 512×512 assets (see the `russian` pack in `app/src/main/iconpacks/`).

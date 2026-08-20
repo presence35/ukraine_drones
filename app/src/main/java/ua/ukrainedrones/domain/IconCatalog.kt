@@ -177,7 +177,7 @@ fun ThreatIcon(
     dimmed: Boolean = false,
     contentDescription: String? = null
 ) {
-    if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null && IconCatalog.russianRes(type) == null) {
+    if (type != ThreatType.UNKNOWN && (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null && IconCatalog.russianRes(type) == null)) {
         Icon(
             painter = painterResource(id = IconCatalog.res(type, set)),
             contentDescription = contentDescription,

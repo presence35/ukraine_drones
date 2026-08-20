@@ -44,6 +44,7 @@ class ZonePrefs(private val context: Context) {
     private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
     private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
     private val threatToggleHintRemainingKey = intPreferencesKey("threat_toggle_hint_remaining")
+    private val shelterTipRemainingKey = intPreferencesKey("shelter_tip_remaining")
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
     private val threatIconSetKey = stringPreferencesKey("threat_icon_set")
     private val showMapScaleKey = booleanPreferencesKey("show_map_scale")
@@ -279,6 +280,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setThreatToggleHintRemaining(remaining: Int) {
         context.dataStore.edit { it[threatToggleHintRemainingKey] = remaining.coerceAtLeast(0) }
+    }
+
+    /** How many more shelter-button taps should show the "long press for the shelter list" tip. */
+    fun shelterTipRemaining(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[shelterTipRemainingKey] ?: 3 }
+
+    suspend fun setShelterTipRemaining(remaining: Int) {
+        context.dataStore.edit { it[shelterTipRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
     /** Density of the threat detail popup. */

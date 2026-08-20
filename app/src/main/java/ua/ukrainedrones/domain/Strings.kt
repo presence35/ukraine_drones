@@ -30,7 +30,10 @@ object Strings {
         val wizardCareOff: String,
         val wizardStartButton: String,
         val wizardShelterTitle: String,
-        val wizardShelterDesc: String
+        val wizardShelterDesc: String,
+        val settingsSearchHint: String,
+        val settingsSearchClear: String,
+        val settingsNoResults: String
     )
 
     data class Settings(
@@ -283,6 +286,7 @@ object Strings {
         val gpsStatusTitle: String,
         val networkLocationOnly: String,
         val updatingPreciseGpsToast: String,
+        val shelterLongPressTip: String,
         val shelterViewListLabel: String,
         val shelterViewListDesc: String,
         val shelterTypeBasic: String,
@@ -406,6 +410,9 @@ object Strings {
         val appTitle: String get() = onboarding.appTitle
         val officialAlertBanner: String get() = onboarding.officialAlertBanner
         val settingsTitle: String get() = onboarding.settingsTitle
+        val settingsSearchHint: String get() = onboarding.settingsSearchHint
+        val settingsSearchClear: String get() = onboarding.settingsSearchClear
+        val settingsNoResults: String get() = onboarding.settingsNoResults
         val settingsButton: String get() = onboarding.settingsButton
         val backButton: String get() = onboarding.backButton
         val languageLabel: String get() = onboarding.languageLabel
@@ -495,7 +502,7 @@ object Strings {
                 if (language == AppLanguage.UA) "Ручне позиціонування" else "Manual location"
             }
 
-        fun nightSubtitle(enabled: Boolean, startMin: Int, endMin: Int, sirenOverride: Boolean): String =
+        fun nightSubtitle(enabled: Boolean, startMin: Int, endMin: Int, sirenOverride: Boolean, useCustomZones: Boolean): String =
             if (!enabled) {
                 if (language == AppLanguage.UA) "Вимкнено · Стандартний радіус тривог" else "Disabled · Standard alert radius"
             } else {
@@ -503,7 +510,10 @@ object Strings {
                 val sirenStr = if (sirenOverride) {
                     if (language == AppLanguage.UA) " · Сирена завжди" else " · Siren override ON"
                 } else ""
-                if (language == AppLanguage.UA) "Увімкнено · $timeStr$sirenStr" else "Active · $timeStr$sirenStr"
+                val zonesStr = if (useCustomZones) {
+                    if (language == AppLanguage.UA) " · Нічні зони" else " · Night zones"
+                } else ""
+                if (language == AppLanguage.UA) "Увімкнено · $timeStr$sirenStr$zonesStr" else "Active · $timeStr$sirenStr$zonesStr"
             }
 
         fun alertsSubtitle(officialAlerts: Boolean, sirenOverride: Boolean, shelters: Boolean): String {
@@ -730,6 +740,7 @@ object Strings {
         val gpsStatusTitle: String get() = misc.gpsStatusTitle
         val networkLocationOnly: String get() = misc.networkLocationOnly
         val updatingPreciseGpsToast: String get() = misc.updatingPreciseGpsToast
+        val shelterLongPressTip: String get() = misc.shelterLongPressTip
         val shelterViewListLabel: String get() = misc.shelterViewListLabel
         val shelterViewListDesc: String get() = misc.shelterViewListDesc
         val shelterTypeBasic: String get() = misc.shelterTypeBasic
@@ -855,6 +866,9 @@ object Strings {
         wizardStartButton = "Будьте в безпеці…",
         wizardShelterTitle = "Укриття поруч",
         wizardShelterDesc = "Кнопка «Укриття» показує найближчі укриття та час пішки — швидкий шлях до безпеки під час тривоги.",
+        settingsSearchHint = "Пошук налаштувань",
+        settingsSearchClear = "Очистити пошук",
+        settingsNoResults = "Нічого не знайдено",
     )
 
     private fun uaSettings() = Settings(
@@ -906,7 +920,7 @@ object Strings {
         alertToggleHintPrefix = "Сповіщення",
         alertToggleHintRest = " вимкнені — лишають тип на мапі, лише затемненим.",
         disclaimerTitle = "Застереження",
-        disclaimerBody = "Завжди керуйся офіційними сигналами повітряної тривоги — цей застосунок не є офіційним джерелом тривог.\n• Координати, відстані, ETA та швидкість — приблизні: противник не транслює дані точно, навіть коли фіксація позначена як підтверджена.\n• Показник рівня загрози (0–10) — приблизна оцінка, а не офіційний рейтинг.\n• Тривоги залежать від приблизного місцезнаходження телефона — неправильна точка означає неправильну зону.\n• Застосунок не може гарантувати вашу безпеку. Все це лише орієнтир.",
+        disclaimerBody = "Завжди керуйся офіційними сигналами повітряної тривоги — цей застосунок не є офіційним джерелом тривог.\n\nКоординати, відстані, ETA та швидкість — приблизні: противник не транслює дані точно, навіть коли фіксація позначена як підтверджена.\n\nПоказник рівня загрози (0–10) — приблизна оцінка, а не офіційний рейтинг.\n\nТривоги залежать від приблизного місцезнаходження телефона — неправильна точка означає неправильну зону.\n\nЗастосунок не може гарантувати вашу безпеку. Все це лише орієнтир.",
         exitButton = "Зупинити моніторинг і вийти",
         systemSectionTitle = "Система та інтерфейс",
         locationSectionTitle = "Локація та фокус",
@@ -1084,7 +1098,7 @@ object Strings {
         iconSetRussianLabel = "Російські",
         shelterButtonLabel = "Укриття",
         shelterScreenTitle = "Укриття поруч",
-        shelterOpenInMaps = "Відкрити в мапах",
+        shelterOpenInMaps = "Відкрити",
         shelterEmpty = "Укриттів поруч не знайдено",
         shelterSettingsTitle = "Кнопка укриття",
         shelterSettingsDesc = "Кнопка «До укриття» на карті (дані Одеської міськради).",
@@ -1107,6 +1121,7 @@ object Strings {
         gpsStatusTitle = "Точний GPS",
         networkLocationOnly = "Мережева локація (вежі зв'язку)",
         updatingPreciseGpsToast = "Оновлення точного GPS…",
+        shelterLongPressTip = "Тривале натискання відкриває список укриттів",
         shelterViewListLabel = "Список укриттів (довідник)",
         shelterViewListDesc = "Переглянути повний список усіх укриттів міста",
         shelterTypeBasic = "Найпростіше укриття",
@@ -1282,6 +1297,9 @@ object Strings {
         wizardStartButton = "Stay safe…",
         wizardShelterTitle = "Nearby shelters",
         wizardShelterDesc = "The \"Shelter\" button shows the nearest shelters with walking times — your quick route to safety during an alert.",
+        settingsSearchHint = "Search settings",
+        settingsSearchClear = "Clear search",
+        settingsNoResults = "Nothing found",
     )
 
     private fun enSettings() = Settings(
@@ -1333,7 +1351,7 @@ object Strings {
         alertToggleHintPrefix = "Alerts",
         alertToggleHintRest = " off keeps it on the map, just dimmed.",
         disclaimerTitle = "Disclaimers",
-        disclaimerBody = "Always follow official air-raid signals — this app is not an official alert source.\n• Positions, distances, ETA and speeds are approximate: the enemy isn't broadcasting precisely, even when a fix is marked confirmed.\n• The skull threat level (0–10) is a rough estimate, not an official rating.\n• Alerts depend on your phone's coarse location — a wrong fix means a wrong zone.\n• This app cannot guarantee your safety. Treat everything as an approximate guide.",
+        disclaimerBody = "Always follow official air-raid signals — this app is not an official alert source.\n\nPositions, distances, ETA and speeds are approximate: the enemy isn't broadcasting precisely, even when a fix is marked confirmed.\n\nThe skull threat level (0–10) is a rough estimate, not an official rating.\n\nAlerts depend on your phone's coarse location — a wrong fix means a wrong zone.\n\nThis app cannot guarantee your safety. Treat everything as an approximate guide.",
         exitButton = "Stop Monitoring & Exit",
         systemSectionTitle = "System & Display",
         locationSectionTitle = "Location & Focus",
@@ -1511,7 +1529,7 @@ object Strings {
         iconSetRussianLabel = "Russian",
         shelterButtonLabel = "Shelter",
         shelterScreenTitle = "Nearby shelters",
-        shelterOpenInMaps = "Open in maps",
+        shelterOpenInMaps = "Open",
         shelterEmpty = "No shelters found nearby",
         shelterSettingsTitle = "Shelter button",
         shelterSettingsDesc = "\"Go to shelter\" button on the map (Odesa city council data).",
@@ -1534,6 +1552,7 @@ object Strings {
         gpsStatusTitle = "Precise GPS",
         networkLocationOnly = "Cell tower location only",
         updatingPreciseGpsToast = "Updating precise GPS…",
+        shelterLongPressTip = "Long press to open the shelter list",
         shelterViewListLabel = "Shelter directory (reference)",
         shelterViewListDesc = "Browse the full directory of all city shelters",
         shelterTypeBasic = "Basic shelter",

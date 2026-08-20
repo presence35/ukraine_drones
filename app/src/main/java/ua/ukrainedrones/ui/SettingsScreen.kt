@@ -27,12 +27,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.*
@@ -79,17 +81,18 @@ import kotlin.math.roundToInt
 
 private val UkraineBlue = Color(0xFF005BBB)
 
-/** Night mode's boxed section inside the Alerts card: a subtle indigo tint + border. */
-private val NightSectionBg = Color(0xFF14142A)
-private val NightSectionBorder = Color(0xFF2C3A66)
+/** Night mode's boxed section inside the Alerts card: a darker purple tint + border. */
+private val NightSectionBg = Color(0xFF1A1130)
+private val NightSectionBorder = Color(0xFF44357A)
 
-/** Collapse state of the Settings sections, hoisted to MainScreen and saved across switches. */
+/** Collapse state of the Settings sections, hoisted to MainScreen. Reset to all-collapsed on
+ *  every Settings open (see `openSettings`), so the user always lands on a clean list. */
 data class SettingsCollapseState(
-    val location: Boolean = true,
-    val nightMode: Boolean = true,
-    val alerts: Boolean = true,
-    val threats: Boolean = true,
-    val system: Boolean = true
+    val location: Boolean = false,
+    val nightMode: Boolean = false,
+    val alerts: Boolean = false,
+    val threats: Boolean = false,
+    val system: Boolean = false
 ) {
     companion object {
         val Saver = Saver<SettingsCollapseState, BooleanArray>(
@@ -98,14 +101,96 @@ data class SettingsCollapseState(
                 this[3] = s.threats; this[4] = s.system
             } } },
             restore = { b -> SettingsCollapseState(
-                location = b.getOrElse(0) { true },
-                nightMode = b.getOrElse(1) { true },
-                alerts = b.getOrElse(2) { true },
-                threats = b.getOrElse(3) { true },
-                system = b.getOrElse(4) { true }
+                location = b.getOrElse(0) { false },
+                nightMode = b.getOrElse(1) { false },
+                alerts = b.getOrElse(2) { false },
+                threats = b.getOrElse(3) { false },
+                system = b.getOrElse(4) { false }
             ) }
         )
     }
+}
+
+/** The five collapsible section cards, in LazyColumn order (item 0 is the search box, item 1
+ *  the disclaimer card). `index` is the section's LazyColumn position with the full list shown. */
+private enum class SettingsSection(val index: Int) {
+    LOCATION(2), NIGHT(3), ALERTS(4), THREATS(5), SYSTEM(6)
+}
+
+/** Standalone action buttons below the section cards, also matched by the search box. */
+private enum class StandaloneSetting { RELAUNCH, GUIDE, UPDATE, EXIT }
+
+/** Searchable text for every section, in both app languages (the active set and the other one),
+ *  so a query matches regardless of which language the UI is showing. */
+private fun settingsSearchTexts(lang: AppLanguage): Map<SettingsSection, List<String>> {
+    val s = Strings.get(lang)
+    val o = Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA)
+    fun both(vararg getters: (Strings.StringSet) -> String): List<String> =
+        listOf(s, o).flatMap { ss -> getters.map { it(ss) } }.map { it.lowercase() }
+    val groupTitles = (if (lang == AppLanguage.UA) listOf(lang, AppLanguage.EN)
+        else listOf(lang, AppLanguage.UA))
+        .flatMap { fastAndSlowGroups(it).map { g -> g.second.lowercase() } }
+    val threatInfo = ThreatTypeCatalog.INFO.values.flatMap { info ->
+        listOf(info.labelUa, info.labelEn, info.descriptionUa, info.descriptionEn,
+            info.detailsUa, info.detailsEn)
+    }.map { it.lowercase() }
+    return mapOf(
+        SettingsSection.LOCATION to both(
+            { it.locationSectionTitle }, { it.followMeTitle }, { it.followMeDesc },
+            { it.pinCityTitle }, { it.pinCityDesc }, { it.periodicGpsTitle }, { it.periodicGpsDesc },
+            { it.gpsStatusTitle }, { it.calibrateGpsNow }, { it.networkLocationOnly },
+            { it.shelterGpsUnknown }, { it.lastGpsFixFormat }, { it.gpsFixJustNow }
+        ),
+        SettingsSection.NIGHT to both(
+            { it.nightModeLabel }, { it.nightModeDesc }, { it.nightStartTimeLabel },
+            { it.nightEndTimeLabel }, { it.nightSoundLabel }, { it.nightZoneSirenOverrideTitle },
+            { it.nightZoneSirenOverrideDesc }, { it.nightOfficialSirenOverrideTitle },
+            { it.nightOfficialSirenOverrideDesc }, { it.nightCustomZonesTitle }, { it.nightCustomZonesDesc },
+            { it.nightVibrationLabel }, { it.nightVibrationDesc }, { it.nightMuteExitNote },
+            { it.slowSectionLabel }, { it.fastSectionLabel }, { it.dayShortLabel },
+            { it.kmUnit }, { it.minUnit }, { it.alertsBellToggle }
+        ) + groupTitles,
+        SettingsSection.ALERTS to both(
+            { it.alertsLabel }, { it.officialAlertsTitle }, { it.officialAlertsDesc },
+            { it.officialAlertsRedTridentNote }, { it.sirenOverrideTitle }, { it.sirenOverrideDesc },
+            { it.shelterSettingsTitle }, { it.shelterSettingsDesc }, { it.shelterViewListLabel },
+            { it.shelterViewListDesc }, { it.neutralizedTallyTitle }, { it.neutralizedTallyDesc },
+            { it.vibrationTitle }, { it.vibrationDesc }, { it.fastGroupLabel }, { it.slowGroupLabel },
+            { it.vibrationOff }, { it.vibrationSoft }, { it.vibrationMedium }, { it.vibrationUrgent },
+            { it.vibrationStrong }
+        ),
+        SettingsSection.THREATS to both(
+            { it.threatsLabel }, { it.threatMapLabel }, { it.threatAlertLabel },
+            { it.fastGroupLabel }, { it.slowGroupLabel }, { it.fastGroupIconDesc },
+            { it.slowGroupIconDesc }, { it.moreInfoLabel }, { it.speedUnit }
+        ) + groupTitles + threatInfo,
+        SettingsSection.SYSTEM to both(
+            { it.systemSectionTitle }, { it.languageLabel }, { it.cardSizeLabel },
+            { it.cardSizeSmallLabel }, { it.cardSizeLargeLabel }, { it.cardSkullNote },
+            { it.approxNote }, { it.iconSetTitle }, { it.iconSetClassicLabel },
+            { it.iconSetPhotoLabel }, { it.iconSetArmyLabel }, { it.iconSetComicLabel },
+            { it.iconSetRussianLabel }, { it.showMapScaleTitle }, { it.showMapScaleDesc },
+            { it.deathAnimationTitle }, { it.deathAnimationDesc }, { it.followBulletTitle },
+            { it.followBulletDesc }, { it.batteryTitle }, { it.batteryBody }, { it.batteryGranted },
+            { it.batteryAllowButton }, { it.madeBy }
+        )
+    )
+}
+
+/** Searchable text for the standalone action buttons, in both app languages. */
+private fun settingsStandaloneTexts(lang: AppLanguage): Map<StandaloneSetting, List<String>> {
+    val s = Strings.get(lang)
+    val o = Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA)
+    fun both(vararg getters: (Strings.StringSet) -> String): List<String> =
+        listOf(s, o).flatMap { ss -> getters.map { it(ss) } }.map { it.lowercase() }
+    return mapOf(
+        StandaloneSetting.RELAUNCH to both({ it.relaunchSetupTitle }),
+        StandaloneSetting.GUIDE to both({ it.guideSettingsButton }),
+        StandaloneSetting.UPDATE to both(
+            { it.updateButton }, { it.updateAvailableButton }, { it.checkForUpdates }
+        ),
+        StandaloneSetting.EXIT to both({ it.exitButton })
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -212,6 +297,22 @@ fun SettingsScreen(
     onRelaunchSetup: () -> Unit
 ) {
     val s = Strings.get(lang)
+    // Search box: filters sections + standalone actions, auto-expands matches. Query lives in
+    // plain remember so it clears itself every time the screen is reopened.
+    var searchQuery by remember { mutableStateOf("") }
+    val searchNorm = searchQuery.trim().lowercase()
+    val searching = searchNorm.isNotEmpty()
+    val sectionTexts = remember(lang) { settingsSearchTexts(lang) }
+    val matchedSections = remember(searchNorm, sectionTexts) {
+        if (searching) sectionTexts.filterValues { texts -> texts.any { it.contains(searchNorm) } }.keys
+        else emptySet()
+    }
+    val standaloneTexts = remember(lang) { settingsStandaloneTexts(lang) }
+    val matchedStandalone = remember(searchNorm, standaloneTexts) {
+        if (searching) standaloneTexts.filterValues { texts -> texts.any { it.contains(searchNorm) } }.keys
+        else emptySet()
+    }
+    val noSearchResults = searching && matchedSections.isEmpty() && matchedStandalone.isEmpty()
     val appContext = LocalContext.current
     var batteryOptimized by remember { mutableStateOf(BatteryOptimization.isIgnoringBatteryOptimizations(appContext)) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -249,12 +350,12 @@ fun SettingsScreen(
     // border pulse so they re-anchor where they were.
     var flashId by remember { mutableStateOf<String?>(null) }
     val sectionOfExplainer: (String) -> Int = { id -> when (id) {
-        "followMe" -> 1          // Location & Focus
-        "nightMode" -> 2         // Night mode
-        "officialAlerts", "sirenOverride" -> 3 // Alerts
-        "threatToggles" -> 4     // Threats
-        "cardSize" -> 5          // System & Display
-        else -> 3
+        "followMe" -> SettingsSection.LOCATION.index
+        "nightMode" -> SettingsSection.NIGHT.index
+        "officialAlerts", "sirenOverride" -> SettingsSection.ALERTS.index
+        "threatToggles" -> SettingsSection.THREATS.index
+        "cardSize" -> SettingsSection.SYSTEM.index
+        else -> SettingsSection.ALERTS.index
     } }
     val dismissExplainer: () -> Unit = {
         val exp = activeExplainer
@@ -282,7 +383,9 @@ fun SettingsScreen(
     // Scroll to section when requested by external triggers (e.g. ZonesSheet night mode badge).
     LaunchedEffect(scrollToThreatsTick) {
         if (scrollToThreatsTick > 0) {
-            listState.animateScrollToItem(if (scrollToNightMode) 2 else 4)
+            listState.animateScrollToItem(
+                if (scrollToNightMode) SettingsSection.NIGHT.index else SettingsSection.THREATS.index
+            )
             onThreatsScrollHandled()
         }
     }
@@ -307,6 +410,27 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(s.settingsSearchHint) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = s.settingsSearchClear)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+            }
+
             item {
                 // "Official signals come first" — first, default expanded, needs two taps to collapse.
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -337,22 +461,28 @@ fun SettingsScreen(
                             Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 Spacer(Modifier.height(12.dp))
-                                Text(
-                                    s.disclaimerBody,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                val paragraphs = s.disclaimerBody.split("\n\n")
+                                paragraphs.forEachIndexed { i, p ->
+                                    Text(
+                                        p,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (i == 0) FontWeight.Bold else null,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (i != paragraphs.lastIndex) Spacer(Modifier.height(10.dp))
+                                }
                             }
                         }
                     }
                 }
             }
 
+            if (searching.not() || SettingsSection.LOCATION in matchedSections) {
             item {
                 CollapsibleSectionCard(
                     title = s.locationSectionTitle,
                     icon = rememberVectorPainter(Icons.Default.LocationOn),
-                    expanded = collapse.location,
+                    expanded = if (searching) true else collapse.location,
                     subtitle = s.locationSubtitle(followMe, pinnedCity?.name(lang), periodicGps),
                     onToggle = { onCollapseChange(collapse.copy(location = !collapse.location)) }
                 ) {
@@ -385,16 +515,19 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (searching.not() || SettingsSection.NIGHT in matchedSections) {
             item {
                 CollapsibleSectionCard(
                     title = s.nightModeLabel,
                     icon = painterResource(R.drawable.ic_moon),
-                    expanded = collapse.nightMode,
+                    expanded = if (searching) true else collapse.nightMode,
                     subtitle = s.nightSubtitle(
                         nightEnabled,
                         nightStartMin,
                         nightEndMin,
-                        nightZoneSirenOverride || nightOfficialSirenOverride
+                        nightZoneSirenOverride || nightOfficialSirenOverride,
+                        nightUseCustomZones
                     ),
                     onToggle = { onCollapseChange(collapse.copy(nightMode = !collapse.nightMode)) }
                 ) {
@@ -443,11 +576,13 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (searching.not() || SettingsSection.ALERTS in matchedSections) {
             item {
                 CollapsibleSectionCard(
                     title = s.alertsLabel,
                     icon = rememberVectorPainter(Icons.Default.Notifications),
-                    expanded = collapse.alerts,
+                    expanded = if (searching) true else collapse.alerts,
                     subtitle = s.alertsSubtitle(officialAlertsEnabled, sirenOverride, sheltersEnabled),
                     onToggle = { onCollapseChange(collapse.copy(alerts = !collapse.alerts)) }
                 ) {
@@ -558,11 +693,13 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (searching.not() || SettingsSection.THREATS in matchedSections) {
             item {
                 CollapsibleSectionCard(
                     title = s.threatsLabel,
                     icon = rememberVectorPainter(Icons.Default.Warning),
-                    expanded = collapse.threats,
+                    expanded = if (searching) true else collapse.threats,
                     subtitle = s.threatsSubtitle(hiddenTypes.size, silencedTypes.size),
                     onToggle = { onCollapseChange(collapse.copy(threats = !collapse.threats)) }
                 ) {
@@ -653,11 +790,13 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (searching.not() || SettingsSection.SYSTEM in matchedSections) {
             item {
                 CollapsibleSectionCard(
                     title = s.systemSectionTitle,
                     icon = painterResource(id = R.drawable.ic_language),
-                    expanded = collapse.system,
+                    expanded = if (searching) true else collapse.system,
                     subtitle = s.systemSubtitle(lang, threatCardSize, iconSet),
                     onToggle = { onCollapseChange(collapse.copy(system = !collapse.system)) }
                 ) {
@@ -815,6 +954,21 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (noSearchResults) {
+                item {
+                    Text(
+                        s.settingsNoResults,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (searching.not() || StandaloneSetting.RELAUNCH in matchedStandalone) {
             item {
                 OutlinedButton(
                     onClick = onRelaunchSetup,
@@ -830,6 +984,8 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (searching.not() || StandaloneSetting.GUIDE in matchedStandalone) {
             item {
                 OutlinedButton(
                     onClick = onOpenGuide,
@@ -839,10 +995,12 @@ fun SettingsScreen(
                 }
             }
 
+            }
             item {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
 
+            if (searching.not() || StandaloneSetting.UPDATE in matchedStandalone) {
             item {
                 if (isChecking) {
                     Button(
@@ -889,6 +1047,8 @@ fun SettingsScreen(
                 }
             }
 
+            }
+            if (searching.not() || StandaloneSetting.EXIT in matchedStandalone) {
             item {
                 Button(
                     onClick = onExit,
@@ -902,6 +1062,7 @@ fun SettingsScreen(
                 }
             }
 
+            }
             item {
                 Text(
                     "${s.madeBy} · v$versionName",
@@ -972,13 +1133,20 @@ private fun NightModeCard(
     val s = Strings.get(lang)
     var editing by remember { mutableStateOf<String?>(null) }  // "start" | "end" | null
 
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = NightSectionBg,
+        border = BorderStroke(1.dp, NightSectionBorder)
+    ) {
     Column {
         AlertToggleRow(
             title = s.nightModeLabel,
             description = s.nightModeDesc,
             checked = enabled,
             onCheckedChange = onEnabledChange,
-            icon = painterResource(R.drawable.ic_moon),
             flash = flash
         )
         if (enabled) {
@@ -1129,6 +1297,7 @@ private fun NightModeCard(
                 }
             }
         }
+    }
     }
 
     if (editing != null) {

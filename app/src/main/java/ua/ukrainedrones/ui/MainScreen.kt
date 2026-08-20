@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,10 +13,12 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -50,6 +51,7 @@ import androidx.compose.ui.semantics.contentDescription as semanticsContentDescr
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -122,10 +124,12 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val prefs = remember { ZonePrefs(context.applicationContext) }
     var settingsHintRemaining by remember { mutableStateOf(0) }
+    var shelterTipRemaining by remember { mutableStateOf(0) }
     var guideFeatureId by remember { mutableStateOf<String?>(null) }
     var guideFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
     var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
+    var wizardFromSettings by remember { mutableStateOf(false) }
     var wizardSettleDeadline by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(3000); wizardSettleDeadline = true }
     val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
@@ -135,6 +139,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val editingNight = uiState.nightActive && uiState.nightUseCustomZones
     LaunchedEffect(Unit) {
         settingsHintRemaining = prefs.settingsHintRemaining().first()
+        shelterTipRemaining = prefs.shelterTipRemaining().first()
     }
 
     val onExit: () -> Unit = {
@@ -149,6 +154,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             scope.launch { prefs.setSettingsHintRemaining(settingsHintRemaining) }
         }
         screen = Screen.SETTINGS
+        // Settings always opens fully collapsed — no saved open/closed state across visits.
+        settingsCollapse = SettingsCollapseState()
         viewModel.checkForUpdatesOnSettingsOpen()
     }
 
@@ -167,6 +174,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onOpenSettings = openSettings,
             onOpenThreatSettings = {
                 openSettings()
+                // The shortcut scrolls to the night/threats card: expand it so the landing
+                // isn't an empty collapsed header.
+                settingsCollapse = if (uiState.nightActive) settingsCollapse.copy(nightMode = true)
+                else settingsCollapse.copy(threats = true)
                 scrollToThreatsTick++
             },
             onThreatTapped = { showConnectionInfo = false; showZonesSheet = false; viewModel.selectThreat(it) },
@@ -188,7 +199,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onShowConnectionInfoChange = { showConnectionInfo = it },
             showZonesSheet = showZonesSheet,
             onShowZonesSheetChange = { showZonesSheet = it },
-            onOpenShelters = { screen = Screen.SHELTERS }
+            onOpenShelters = { screen = Screen.SHELTERS },
+            shelterTipRemaining = shelterTipRemaining,
+            onShelterTipShown = {
+                val r = shelterTipRemaining - 1
+                shelterTipRemaining = r
+                scope.launch { prefs.setShelterTipRemaining(r) }
+            }
         )
         if (screen == Screen.SETTINGS) {
             // Composed after MapScreen, so its handler is checked first on Back.
@@ -294,6 +311,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onRelaunchSetup = {
                     viewModel.relaunchSetup()
                     wizardOpenedDuringAlert = true
+                    wizardFromSettings = true
                 },
                 onOpenGuide = {
                     guideFromSettings = true
@@ -379,8 +397,20 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onChoose = { viewModel.setLanguage(it) },
             onIconSetChange = { viewModel.setThreatIconSet(it) },
             onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
-            onComplete = { viewModel.skipLanguageChoose() },
-            onLater = { viewModel.laterLanguageChoose() }
+            onComplete = {
+                viewModel.skipLanguageChoose()
+                if (wizardFromSettings) {
+                    wizardFromSettings = false
+                    screen = Screen.MAP
+                }
+            },
+            onLater = {
+                viewModel.laterLanguageChoose()
+                if (wizardFromSettings) {
+                    wizardFromSettings = false
+                    screen = Screen.MAP
+                }
+            }
         )
     }
 
@@ -420,6 +450,7 @@ private fun FirstLaunchWizard(
     val s = Strings.get(current)
     val other = if (current == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA
     var step by remember { mutableStateOf(0) }
+    var tipsRevealed by remember { mutableStateOf(false) }
     BackHandler(enabled = step > 0) { step-- }
     val stepTitle = when (step) {
         0 -> Strings.get(other).languageChooseTitle
@@ -460,27 +491,40 @@ private fun FirstLaunchWizard(
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        if (!tipsRevealed) {
+                            Spacer(Modifier.height(20.dp))
+                            Button(
+                                onClick = { tipsRevealed = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(s.okButton, fontWeight = FontWeight.SemiBold)
+                            }
+                        } else {
+                            Spacer(Modifier.height(16.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Spacer(Modifier.height(12.dp))
+                            OnboardingTipRow(
+                                iconRes = IconCatalog.photoRes(ThreatType.SHAHED) ?: R.drawable.ic_threat_shahed,
+                                iconTint = Color.Unspecified,
+                                text = s.onboardingTipTap
+                            )
+                            OnboardingTipRow(
+                                iconRes = R.drawable.ic_settings_ua,
+                                iconTint = Color.Unspecified,
+                                text = s.onboardingTipSettings
+                            )
+                            OnboardingTipRow(
+                                iconRes = R.drawable.ic_volume_up,
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = s.onboardingTipSiren
+                            )
+                        }
+                    }
+                    1 -> {
+                        WizardThreatGrid(current, iconSet, hiddenTypes, silencedTypes, onThreatEnabledToggle)
+                        Spacer(Modifier.height(20.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Spacer(Modifier.height(16.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(Modifier.height(12.dp))
-                        OnboardingTipRow(
-                            iconRes = IconCatalog.photoRes(ThreatType.SHAHED) ?: R.drawable.ic_threat_shahed,
-                            iconTint = Color.Unspecified,
-                            text = s.onboardingTipTap
-                        )
-                        OnboardingTipRow(
-                            iconRes = R.drawable.ic_settings_ua,
-                            iconTint = Color.Unspecified,
-                            text = s.onboardingTipSettings
-                        )
-                        OnboardingTipRow(
-                            iconRes = R.drawable.ic_volume_up,
-                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            text = s.onboardingTipSiren
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(Modifier.height(24.dp))
                         Text(
                             s.iconSetTitle,
                             style = MaterialTheme.typography.titleSmall,
@@ -495,7 +539,6 @@ private fun FirstLaunchWizard(
                             slot = 28.dp
                         )
                     }
-                    1 -> WizardThreatGrid(current, iconSet, hiddenTypes, silencedTypes, onThreatEnabledToggle)
                     else -> SetupFeaturesStep(s)
                 }
             }
@@ -512,6 +555,7 @@ private fun FirstLaunchWizard(
                 }
                 Button(
                     onClick = { if (step < 2) step++ else onComplete() },
+                    enabled = step != 0 || tipsRevealed,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(if (step < 2) s.nextButton else s.wizardStartButton, fontWeight = FontWeight.SemiBold)
@@ -581,12 +625,12 @@ private fun WizardThreatGrid(
                 )
             }
             Spacer(Modifier.height(10.dp))
-            types.toList().chunked(2).forEach { pair ->
+            types.toList().chunked(4).forEach { row ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    pair.forEach { type ->
+                    row.forEach { type ->
                         val on = type !in hiddenTypes && type !in silencedTypes
                         val info = ThreatTypeCatalog.INFO.getValue(type)
                         val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
@@ -604,7 +648,7 @@ private fun WizardThreatGrid(
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .clickable { onThreatEnabledToggle(type, !on) }
-                                .padding(vertical = 14.dp, horizontal = 8.dp)
+                                .padding(vertical = 14.dp, horizontal = 6.dp)
                         ) {
                             ThreatIcon(
                                 type = type,
@@ -619,7 +663,9 @@ private fun WizardThreatGrid(
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (on) onColor else offColor,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -733,16 +779,20 @@ private fun MapScreen(
     onShowConnectionInfoChange: (Boolean) -> Unit,
     showZonesSheet: Boolean,
     onShowZonesSheetChange: (Boolean) -> Unit,
-    onOpenShelters: () -> Unit
+    onOpenShelters: () -> Unit,
+    shelterTipRemaining: Int,
+    onShelterTipShown: () -> Unit
 ) {
     val s = Strings.get(uiState.language)
     val context = LocalContext.current
+    val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
     var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
     var shelterZoomTick by remember { mutableStateOf(0) }
+    var shelterSelectTick by remember { mutableStateOf(0) }
     var showNearbyShelters by remember { mutableStateOf(false) }
     var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
 
@@ -768,21 +818,38 @@ private fun MapScreen(
     }
 
     val onToggleShelters: () -> Unit = {
+        if (shelterTipRemaining > 0) {
+            onShelterTipShown()
+            showToast(
+                context,
+                s.shelterLongPressTip,
+                cardVisible = uiState.selectedThreat != null || selectedShelter != null || showZonesSheet
+            )
+        }
         val willShow = !showNearbyShelters
         showNearbyShelters = willShow
         if (!willShow) {
             selectedShelter = null
         } else {
             shelterZoomTick++
-            Toast.makeText(context, s.updatingPreciseGpsToast, Toast.LENGTH_SHORT).show()
-            val hasFine = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!hasFine) {
-                fineLocLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            // A fix younger than 5 minutes is fine to reuse — repeated toggling in a red
+            // alert shouldn't hammer the GPS; the shelter list screen can force a fresh fix.
+            val fixAgeMs = lastPreciseFixMs?.let { uiState.now - it }
+            if (fixAgeMs == null || fixAgeMs >= 5 * 60_000L) {
+                showToast(
+                    context,
+                    s.updatingPreciseGpsToast,
+                    cardVisible = uiState.selectedThreat != null || selectedShelter != null || showZonesSheet
+                )
+                val hasFine = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+                if (!hasFine) {
+                    fineLocLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+                LocationTracker.forceRefresh()
             }
-            LocationTracker.forceRefresh()
         }
     }
 
@@ -924,14 +991,15 @@ private fun MapScreen(
                         paused = settingsOpen,
                         mapVisible = mapVisible,
                         shelterZoomTick = shelterZoomTick,
+                        shelterSelectTick = shelterSelectTick,
                         onNeutralize = onNeutralize,
                         showNearbyShelters = showNearbyShelters,
                         shelterIndex = uiState.shelterIndex,
-                        withKids = uiState.sheltersWithKids,
                         selectedShelter = selectedShelter,
                         onShelterTapped = {
                             onDismissPopup()
                             selectedShelter = it
+                            shelterSelectTick++
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -966,6 +1034,7 @@ private fun MapScreen(
                             active = showNearbyShelters,
                             label = s.shelterButtonLabel,
                             onClick = onToggleShelters,
+                            onLongClick = onOpenShelters,
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
                                 .padding(start = 12.dp, bottom = 4.dp)
@@ -1310,12 +1379,14 @@ private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: 
 /** "Shelter" pill: filled red while an official alert is active; when the shelter markers are
  *  shown on the map it carries a primary border/tint so the on/off state is obvious; otherwise
  *  ghost-outlined. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ShelterButton(
     alertActive: Boolean,
     active: Boolean,
     label: String,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(50)
@@ -1334,7 +1405,7 @@ private fun ShelterButton(
         shape = shape,
         color = bg,
         border = border,
-        modifier = modifier.clickable(onClick = onClick)
+        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),

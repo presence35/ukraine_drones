@@ -313,16 +313,18 @@ private fun ShelterCard(
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     WalkRow(
                         icon = R.drawable.ic_adult,
                         text = String.format(s.shelterWalkMinutes, row.walkMinutesAdult),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (withKids) {
-                        Spacer(Modifier.height(6.dp))
                         WalkRow(
                             icon = R.drawable.ic_adult_kid,
                             text = String.format(s.shelterWalkMinutes, row.walkMinutesKid),
@@ -330,6 +332,7 @@ private fun ShelterCard(
                         )
                     }
                 }
+                Spacer(Modifier.weight(1f))
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -363,7 +366,7 @@ private fun WalkRow(icon: Int, text: String, tint: androidx.compose.ui.graphics.
             painter = painterResource(icon),
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(24.dp)
         )
         Spacer(Modifier.width(8.dp))
         Text(

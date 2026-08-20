@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -51,7 +50,8 @@ fun ShelterPopupCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clickable(onClick = onDismiss),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF1E2124)
@@ -98,17 +98,6 @@ fun ShelterPopupCard(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
                 }
             }
 
@@ -141,7 +130,7 @@ fun ShelterPopupCard(
                             painter = painterResource(R.drawable.ic_adult),
                             contentDescription = null,
                             tint = Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
@@ -157,7 +146,7 @@ fun ShelterPopupCard(
                                 painter = painterResource(R.drawable.ic_adult_kid),
                                 contentDescription = null,
                                 tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
