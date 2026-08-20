@@ -70,6 +70,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var screen by remember { mutableStateOf(Screen.MAP) }
+    // The neutralizing card + map death flourish only run while the map is the visible
+    // screen — off-map (Settings/Shelters/Guide) the popup just closes silently.
+    LaunchedEffect(screen) { viewModel.setMapVisible(screen == Screen.MAP) }
     var showConnectionInfo by remember { mutableStateOf(false) }
     var showZonesSheet by remember { mutableStateOf(false) }
     var activeExplainer by remember { mutableStateOf<Explainer?>(null) }
@@ -160,6 +163,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         MapScreen(
             uiState = uiState,
             settingsOpen = screen == Screen.SETTINGS,
+            mapVisible = screen == Screen.MAP,
             onOpenSettings = openSettings,
             onOpenThreatSettings = {
                 openSettings()
@@ -231,9 +235,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 threatCardSize = uiState.threatCardSize,
                 iconSet = uiState.iconSet,
                 showMapScale = uiState.showMapScale,
-                showTtaLines = uiState.showTtaLines,
                 sheltersEnabled = uiState.sheltersEnabled,
-                sheltersWithKids = uiState.sheltersWithKids,
                 periodicGps = uiState.periodicGps,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
@@ -280,9 +282,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
                 onIconSetChange = { viewModel.setThreatIconSet(it) },
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
-                onShowTtaLinesChange = { viewModel.setShowTtaLines(it) },
                 onSheltersEnabledChange = { viewModel.setSheltersEnabled(it) },
-                onSheltersWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
                 onOpenShelterList = { screen = Screen.SHELTERS },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
@@ -318,9 +318,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 index = uiState.shelterIndex,
                 withKids = uiState.sheltersWithKids,
                 onWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
-                shelterRefreshing = uiState.shelterRefreshing,
                 now = uiState.now,
-                onRefresh = { viewModel.refreshShelters() },
                 onBack = { screen = Screen.MAP }
             )
         }
@@ -713,6 +711,7 @@ private fun OnboardingTipRow(iconRes: Int, iconTint: Color, text: String) {
 private fun MapScreen(
     uiState: UiState,
     settingsOpen: Boolean,
+    mapVisible: Boolean,
     onOpenSettings: () -> Unit,
     onOpenThreatSettings: () -> Unit,
     onThreatTapped: (Threat) -> Unit,
@@ -743,8 +742,22 @@ private fun MapScreen(
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
     var zoomTick by remember { mutableStateOf(0) }
     var fitZonesTick by remember { mutableStateOf(0) }
+    var shelterZoomTick by remember { mutableStateOf(0) }
     var showNearbyShelters by remember { mutableStateOf(false) }
     var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
+
+    // Shelter mode is for the calm map: the moment a genuinely new threat appears, drop the
+    // markers and their popup so the threat takes over the screen.
+    val threatIdKey = uiState.mapThreats.map { it.id }.sorted().joinToString(",")
+    val lastThreatIds = remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(threatIdKey) {
+        val ids = uiState.mapThreats.map { it.id }.toSet()
+        if ((ids - lastThreatIds.value).isNotEmpty() && showNearbyShelters) {
+            showNearbyShelters = false
+            selectedShelter = null
+        }
+        lastThreatIds.value = ids
+    }
 
     val fineLocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -760,6 +773,7 @@ private fun MapScreen(
         if (!willShow) {
             selectedShelter = null
         } else {
+            shelterZoomTick++
             Toast.makeText(context, s.updatingPreciseGpsToast, Toast.LENGTH_SHORT).show()
             val hasFine = ContextCompat.checkSelfPermission(
                 context,
@@ -894,6 +908,7 @@ private fun MapScreen(
                         iconSet = uiState.iconSet,
                         onScaleChange = { scaleMpp = it },
                         onThreatTapped = {
+                            showNearbyShelters = false
                             selectedShelter = null
                             onThreatTapped(it)
                         },
@@ -907,12 +922,17 @@ private fun MapScreen(
                         fitZonesTick = fitZonesTick,
                         revealRequest = uiState.revealRequest,
                         paused = settingsOpen,
+                        mapVisible = mapVisible,
+                        shelterZoomTick = shelterZoomTick,
                         onNeutralize = onNeutralize,
                         showNearbyShelters = showNearbyShelters,
                         shelterIndex = uiState.shelterIndex,
                         withKids = uiState.sheltersWithKids,
                         selectedShelter = selectedShelter,
-                        onShelterTapped = { selectedShelter = it },
+                        onShelterTapped = {
+                            onDismissPopup()
+                            selectedShelter = it
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -943,6 +963,7 @@ private fun MapScreen(
                     ) {
                         ShelterButton(
                             alertActive = uiState.focusOblastAlertActive,
+                            active = showNearbyShelters,
                             label = s.shelterButtonLabel,
                             onClick = onToggleShelters,
                             modifier = Modifier
@@ -1115,6 +1136,20 @@ private fun MapScreen(
                 }
             }
 
+            // Shelter info card: tapping a shelter marker on the map opens it here (the same
+            // data as the list rows); tapping the map or the back button closes it.
+            selectedShelter?.let { sh ->
+                ShelterPopupCard(
+                    lang = uiState.language,
+                    shelter = sh,
+                    withKids = uiState.sheltersWithKids,
+                    onDismiss = { selectedShelter = null },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                )
+            }
+
             // Alert-zone editor: a non-modal bottom panel over the live map so the
             // red/yellow circles update while you drag, and the map above stays pannable.
             // Every control (sliders + Fast/Slow group toggles) is visible at once.
@@ -1272,18 +1307,29 @@ private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: 
     }
 }
 
-/** "Shelter" pill: filled red while an official alert is active, dimmed gray otherwise. */
+/** "Shelter" pill: filled red while an official alert is active; when the shelter markers are
+ *  shown on the map it carries a primary border/tint so the on/off state is obvious; otherwise
+ *  ghost-outlined. */
 @Composable
 private fun ShelterButton(
     alertActive: Boolean,
+    active: Boolean,
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(50)
     val bg = if (alertActive) AlertRed else MaterialTheme.colorScheme.surface
-    val fg = if (alertActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-    val border = if (alertActive) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    val fg = when {
+        alertActive -> Color.White
+        active -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val border = when {
+        alertActive -> null
+        active -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
     Surface(
         shape = shape,
         color = bg,

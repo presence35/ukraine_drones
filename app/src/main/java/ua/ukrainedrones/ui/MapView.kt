@@ -46,7 +46,7 @@ import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
-import org.osmdroid.views.overlay.Polyline
+
 import java.io.File
 import kotlin.math.cos
 import kotlin.math.pow
@@ -242,31 +242,6 @@ private fun circlePoints(center: GeoPoint, radiusMeters: Double, segments: Int =
     }
 }
 
-/** Destination point [distMeters] along [bearingDeg] from [start] (great-circle, small-step). */
-private fun destinationPoint(start: GeoPoint, bearingDeg: Double, distMeters: Double): GeoPoint {
-    val earthR = 6_371_000.0
-    val d = distMeters / earthR
-    val theta = Math.toRadians(bearingDeg)
-    val phi1 = Math.toRadians(start.latitude)
-    val lam1 = Math.toRadians(start.longitude)
-    val phi2 = Math.asin(
-        sin(phi1) * cos(d) + cos(phi1) * sin(d) * cos(theta)
-    )
-    val lam2 = lam1 + Math.atan2(
-        sin(theta) * sin(d) * cos(phi1),
-        cos(d) - sin(phi1) * sin(phi2)
-    )
-    return GeoPoint(Math.toDegrees(phi2), Math.toDegrees(lam2))
-}
-
-/** A time-to-arrival course segment (red to the red threshold, yellow onward). */
-private fun ttaLine(color: Int, density: Float): Polyline = Polyline().apply {
-    outlinePaint.color = color
-    outlinePaint.style = Paint.Style.STROKE
-    outlinePaint.strokeWidth = 2.5f * density
-    setInfoWindow(null)
-}
-
 /** Green ring highlighting the threat a notification just revealed (transparent centre). */
 private fun newRingBitmap(context: Context): Bitmap {
     val density = context.resources.displayMetrics.density
@@ -341,7 +316,7 @@ private fun shelterMarkerBitmap(
     // 1. Draw walking time pill above shield if present
     var shieldTop = 2f * density
     if (walkMin != null) {
-        val pillText = "${walkMin}m"
+        val pillText = "${walkMin}min"
         val textPaint = Paint().apply {
             isAntiAlias = true
             textSize = 9.5f * density
@@ -395,13 +370,14 @@ private fun shelterMarkerBitmap(
         close()
     }
 
-    // 3. Selection halo if selected
+    // 3. Selection halo if selected — tinted with the shelter's type color so the selected
+    // marker reads as highlighted instead of a bare white circle.
     if (isSelected) {
         canvas.drawCircle(cx, (shieldTop + bottom) / 2f, shieldW * 0.75f, Paint().apply {
             isAntiAlias = true
             style = Paint.Style.STROKE
-            strokeWidth = 2.5f * density
-            color = Color.WHITE
+            strokeWidth = 3f * density
+            color = typeColor
         })
     }
 
@@ -522,6 +498,8 @@ fun NeptunMapView(
     fitZonesTick: Int = 0,
     revealRequest: RevealRequest? = null,
     paused: Boolean = false,
+    mapVisible: Boolean = true,
+    shelterZoomTick: Int = 0,
     onNeutralize: (String) -> Unit = {},
     showNearbyShelters: Boolean = false,
     shelterIndex: ShelterIndex? = null,
@@ -543,7 +521,6 @@ fun NeptunMapView(
         append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
         append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
         append('O').append(uiState.focusOblastAlertActive)
-        append('T').append(uiState.showTtaLines)
         append('S').append(showNearbyShelters)
         if (showNearbyShelters) {
             append('K').append(withKids)
@@ -556,6 +533,7 @@ fun NeptunMapView(
     val lastFitUkraineTick = remember { mutableStateOf(-1) }
     val lastFollow = remember { mutableStateOf<LatLng?>(null) }
     val lastZoomTick = remember { mutableStateOf(-1) }
+    val lastShelterZoomTick = remember { mutableStateOf(-1) }
     val lastFitZonesTick = remember { mutableStateOf(-1) }
     val lastRevealTick = remember { mutableStateOf(-1) }
     val newRingState = remember { mutableStateOf<NewRingState?>(null) }
@@ -564,8 +542,9 @@ fun NeptunMapView(
     val lastPinnedCity = remember { mutableStateOf<String?>(null) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
     val markerRefs = remember { mutableStateOf<MutableMap<String, Marker>>(mutableMapOf()) }
-    val ttaRefs = remember { mutableStateOf<MutableMap<String, Pair<Polyline, Polyline>>>(mutableMapOf()) }
     val pausedState by rememberUpdatedState(paused)
+    val mapVisibleState by rememberUpdatedState(mapVisible)
+    val alertActiveState by rememberUpdatedState(uiState.alertActive)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
     val iconSetState by rememberUpdatedState(uiState.iconSet)
@@ -733,6 +712,14 @@ fun NeptunMapView(
                 mapView.zoomToBoundingBox(zoneBoundingBox(center, radiusKm), true)
             }
 
+            // Shelter button pressed: zoom the camera down onto the focus point (GPS or pinned
+            // city) so the nearby-shelter markers are actually visible.
+            if (shelterZoomTick != lastShelterZoomTick.value) {
+                lastShelterZoomTick.value = shelterZoomTick
+                val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
+                mapView.controller.animateTo(center, 16.5, 400L)
+            }
+
             // Alert-zones panel opened: centre + zoom so the whole yellow zone sits in
             // the visible area ABOVE the panel. The bbox is extended downward so the
             // zone occupies the top 60% of the viewport (the sheet covers ~40% below).
@@ -786,7 +773,6 @@ fun NeptunMapView(
 
                 mapView.overlays.clear()
                 markerRefs.value.clear()
-                ttaRefs.value.clear()
 
                 // Bottom-most overlay: single-tap on empty map closes the popup, while
                 // markers added after it keep tap priority. Long-press is handled by the
@@ -875,27 +861,6 @@ fun NeptunMapView(
                     }
                     mapView.overlays.add(marker)
                     markerRefs.value[t.id] = marker
-                    if (uiState.showTtaLines && !t.areaOnly && t.type in FastThreatTypes && predicted != null) {
-                        val speedMps = ThreatSpeedTracker.estimate(t.id, t) ?: 0.0
-                        val bearing = t.bearingDeg ?: t.heading
-                        if (speedMps > 0.0 && bearing != null) {
-                            val p = uiState.activeZoneParams
-                            val density = context.resources.displayMetrics.density
-                            val redEnd = destinationPoint(predicted, bearing, speedMps * p.fastRedMin * 60)
-                            val yellowEnd = destinationPoint(
-                                redEnd, bearing, speedMps * (p.fastYellowMin - p.fastRedMin) * 60
-                            )
-                            val redLine = ttaLine(Color.argb(210, 255, 60, 60), density).apply {
-                                setPoints(listOf(predicted, redEnd))
-                            }
-                            val yellowLine = ttaLine(Color.argb(200, 255, 213, 0), density).apply {
-                                setPoints(listOf(redEnd, yellowEnd))
-                            }
-                            mapView.overlays.add(redLine)
-                            mapView.overlays.add(yellowLine)
-                            ttaRefs.value[t.id] = redLine to yellowLine
-                        }
-                    }
                 }
 
                 // Reveal ring above the threat icons (added only while its 8s window is live).
@@ -1038,10 +1003,13 @@ fun NeptunMapView(
         // without a live marker, fall back to the raw fix + a fresh icon.
         LaunchedEffect(Unit) {
             NeptunClient.removedThreats.collect { r ->
-                // Skip resolutions that arrived while the map wasn't visible (Settings open or
-                // app backgrounded): no stale half-consumed animations on return, and no
-                // "bullet to nowhere" duds from threats that appeared and resolved unseen.
-                if (pausedState || lifecycle.currentState < Lifecycle.State.STARTED) return@collect
+                // Skip resolutions that arrived while the map wasn't visible (Settings open,
+                // Shelter/Guide covering it, or app backgrounded) or while an alert is live:
+                // no stale half-consumed animations on return, and no "bullet to nowhere"
+                // duds from threats that appeared and resolved unseen.
+                if (pausedState || !mapVisibleState || alertActiveState ||
+                    lifecycle.currentState < Lifecycle.State.STARTED
+                ) return@collect
                 if (r.type in hiddenTypesState || !deathAnimationEnabledState) return@collect
                 val marker = markerRefs.value[r.id]
                 val anchor0 = GeoPoint(r.lat, r.lon)
@@ -1141,20 +1109,6 @@ fun NeptunMapView(
                 ) {
                     marker.position = predicted
                     dirty = true
-                }
-                val tta = ttaRefs.value[t.id]
-                if (tta != null && !t.areaOnly && t.type in FastThreatTypes) {
-                    val bearing = t.bearingDeg ?: t.heading
-                    if (bearing != null) {
-                        val p = uiState.activeZoneParams
-                        val redEnd = destinationPoint(predicted, bearing, speed * p.fastRedMin * 60)
-                        val yellowEnd = destinationPoint(
-                            redEnd, bearing, speed * (p.fastYellowMin - p.fastRedMin) * 60
-                        )
-                        tta.first.setPoints(listOf(predicted, redEnd))
-                        tta.second.setPoints(listOf(redEnd, yellowEnd))
-                        dirty = true
-                    }
                 }
             }
             if (dirty) mapView.invalidate()

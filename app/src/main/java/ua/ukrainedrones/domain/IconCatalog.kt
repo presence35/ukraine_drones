@@ -40,6 +40,7 @@ object IconCatalog {
         ThreatIconSet.PHOTO -> photoRes(type) ?: classicRes(type)
         ThreatIconSet.ARMY -> armyRes(type) ?: classicRes(type)
         ThreatIconSet.COMIC -> comicRes(type) ?: classicRes(type)
+        ThreatIconSet.RUSSIAN -> russianRes(type) ?: classicRes(type)
     }
 
     /** Army icon for [type], or null when the set has no asset (UNKNOWN). */
@@ -62,6 +63,18 @@ object IconCatalog {
         ThreatType.KAB -> R.drawable.threat_photo_kab
         ThreatType.AVIATION -> R.drawable.threat_photo_aviation
         ThreatType.RECON -> R.drawable.threat_photo_recon
+        ThreatType.UNKNOWN -> null
+    }
+
+    /** Russian icon for [type], or null when the set has no asset (UNKNOWN). */
+    internal fun russianRes(type: ThreatType): Int? = when (type) {
+        ThreatType.SHAHED -> R.drawable.threat_russian_shahed
+        ThreatType.FPV_LOITERING -> R.drawable.threat_russian_fpv
+        ThreatType.CRUISE_MISSILE -> R.drawable.threat_russian_cruise
+        ThreatType.BALLISTIC -> R.drawable.threat_russian_ballistic
+        ThreatType.KAB -> R.drawable.threat_russian_kab
+        ThreatType.AVIATION -> R.drawable.threat_russian_aviation
+        ThreatType.RECON -> R.drawable.threat_russian_recon
         ThreatType.UNKNOWN -> null
     }
 
@@ -125,11 +138,15 @@ object IconCatalog {
      */
     fun comicBaseDeg(type: ThreatType): Float = armyBaseDeg(type)
 
+    /** Direction each russian icon's subject faces as baked into the image (same orientation as army). */
+    fun russianBaseDeg(type: ThreatType): Float = armyBaseDeg(type)
+
     /** Baked-in facing direction for the active set (0° for the rotation-free classic set). */
     fun baseDeg(type: ThreatType, set: ThreatIconSet): Float = when (set) {
         ThreatIconSet.PHOTO -> photoBaseDeg(type)
         ThreatIconSet.ARMY -> armyBaseDeg(type)
         ThreatIconSet.COMIC -> comicBaseDeg(type)
+        ThreatIconSet.RUSSIAN -> russianBaseDeg(type)
         ThreatIconSet.CLASSIC -> 0f
     }
 }
@@ -160,7 +177,7 @@ fun ThreatIcon(
     dimmed: Boolean = false,
     contentDescription: String? = null
 ) {
-    if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null) {
+    if (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null && IconCatalog.russianRes(type) == null) {
         Icon(
             painter = painterResource(id = IconCatalog.res(type, set)),
             contentDescription = contentDescription,

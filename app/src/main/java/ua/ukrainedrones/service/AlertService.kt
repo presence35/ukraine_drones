@@ -422,7 +422,9 @@ private var notif3minShown = false
         // Offline tracking: fire a one-shot alert on drop (immediately when an official
         // alert is active at drop or during the 30s grace, else after the grace), and switch
         // the ongoing status notification to the offline wording with a Retry action.
-        val offline = state.offlineElapsedSec
+        // Short blips (drops that recover inside the shared grace) never reach the status
+        // wording — the one-shot alert below re-verifies the drop after the delay.
+        val offline = state.offlineElapsedSec?.takeIf { it * 1000 >= NeptunClient.OFFLINE_GRACE_MS }
         if (state.connected) {
             offlineNotifShown = false
             offlineAlertJob?.cancel()

@@ -44,11 +44,12 @@ private data class PillSpec(
     val contentDescription: String?
 )
 
-/** Grey crossed bell marking a type whose alerts are switched off in Settings. */
+/** Grey crossed bell marking a type whose alerts are switched off in Settings. The tint
+ *  matches the toggles' own "off" gray (onSurfaceVariant) so the chip reads as one family. */
 @Composable
 internal fun AlertsOffBell(
     size: Dp = 14.dp,
-    tint: Color = Color(0xFF9E9E9E),
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     contentDescription: String? = null
 ) {
     Icon(
@@ -68,7 +69,7 @@ internal fun AlertsOffChip(s: Strings.StringSet) {
         Text(
             s.alertsOffLabel,
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF9E9E9E)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

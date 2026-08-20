@@ -152,9 +152,7 @@ fun SettingsScreen(
     threatCardSize: ThreatCardSize,
     iconSet: ThreatIconSet,
     showMapScale: Boolean,
-    showTtaLines: Boolean,
     sheltersEnabled: Boolean,
-    sheltersWithKids: Boolean = false,
     periodicGps: Boolean,
     deathAnimationEnabled: Boolean,
     followBullet: Boolean,
@@ -201,9 +199,7 @@ fun SettingsScreen(
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
-    onShowTtaLinesChange: (Boolean) -> Unit,
     onSheltersEnabledChange: (Boolean) -> Unit,
-    onSheltersWithKidsChange: (Boolean) -> Unit = {},
     onOpenShelterList: () -> Unit = {},
     onDeathAnimationChange: (Boolean) -> Unit,
     onFollowBulletChange: (Boolean) -> Unit,
@@ -483,54 +479,43 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.ic_shelter),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    AnimatedVisibility(visible = sheltersEnabled) {
-                        Column {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            AlertToggleRow(
-                                title = s.shelterWithKidsTitle,
-                                description = s.shelterWithKidsDesc,
-                                checked = sheltersWithKids,
-                                onCheckedChange = onSheltersWithKidsChange,
-                                icon = painterResource(R.drawable.ic_adult_kid),
-                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // The directory row is always reachable, even when the map button toggle
+                    // is off — turning the button off must not hide the list of shelters.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenShelterList() }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                s.shelterViewListLabel,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onOpenShelterList() }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.LocationOn,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(Modifier.width(14.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        s.shelterViewListLabel,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        s.shelterViewListDesc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                s.shelterViewListDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     AlertToggleRow(
@@ -757,15 +742,6 @@ fun SettingsScreen(
                         checked = showMapScale,
                         onCheckedChange = onShowMapScaleChange,
                         icon = painterResource(R.drawable.ic_scale),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.showTtaLinesTitle,
-                        description = s.showTtaLinesDesc,
-                        checked = showTtaLines,
-                        onCheckedChange = onShowTtaLinesChange,
-                        icon = painterResource(R.drawable.ic_explosion),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1819,6 +1795,13 @@ internal fun IconSetSelector(
             label = s.iconSetComicLabel,
             selected = selected == ThreatIconSet.COMIC,
             onClick = { onChange(ThreatIconSet.COMIC) },
+            slot = slot
+        )
+        IconSetTile(
+            set = ThreatIconSet.RUSSIAN,
+            label = s.iconSetRussianLabel,
+            selected = selected == ThreatIconSet.RUSSIAN,
+            onClick = { onChange(ThreatIconSet.RUSSIAN) },
             slot = slot
         )
     }

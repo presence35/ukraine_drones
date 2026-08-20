@@ -104,12 +104,11 @@ data class UiState(
     val slowGroupCollapsed: Boolean = false,
     val fastVibrationLevel: Int = 3,
     val slowVibrationLevel: Int = 3,
-    val showTtaLines: Boolean = false,
     val sheltersEnabled: Boolean = true,
     val sheltersWithKids: Boolean = true,
     val periodicGps: Boolean = false,
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
-    val shelterRefreshing: Boolean = false,        // pull-to-refresh in-flight on the shelter screen
+    val mapVisible: Boolean = true,          // the map screen is the visible screen (not settings/shelters/guide)
     val alertActive: Boolean = false,        // any threat or official alert live right now
     val lastFrameAt: Long = 0,               // epoch millis of the last live frame — 0 until the feed settles
     val now: Long = 0L                       // wall-clock epoch millis of this snapshot (shelter header age)
@@ -158,8 +157,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val updateReminderTick: StateFlow<Int> get() = updateReminderFlow
     private val nowFlow = MutableStateFlow(System.currentTimeMillis())
     private val shelterIndexFlow = MutableStateFlow<ShelterIndex?>(null)
-    private val shelterRefreshingFlow = MutableStateFlow(false)
-    private val shelterDataFlow = combine(shelterIndexFlow, shelterRefreshingFlow) { idx, refreshing -> idx to refreshing }
+    /** Whether the map screen is the visible screen — the neutralizing animation and death
+     *  flourish only run while it is, so no stale half-consumed animations play on return. */
+    private val mapVisibleFlow = MutableStateFlow(true)
     private var isChecking = false
 
     private val zonesFlow = combine(
@@ -263,7 +263,6 @@ val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
         val fastVibrationLevel: Int,
         val slowVibrationLevel: Int,
-        val showTtaLines: Boolean,
         val sheltersEnabled: Boolean,
         val sheltersWithKids: Boolean,
         val periodicGps: Boolean,
@@ -281,7 +280,8 @@ val fastGroupCollapsed: Boolean,
         val selected: Threat?,
         val now: Long,
         val reveal: RevealRequest?,
-        val neutralizedId: String?
+        val neutralizedId: String?,
+        val mapVisible: Boolean
     )
 
     private data class UpdateUi(
@@ -303,8 +303,7 @@ val fastGroupCollapsed: Boolean,
         val followBullet: Boolean,
         val neutralizedTallyEnabled: Boolean,
         val fastGroupCollapsed: Boolean,
-        val slowGroupCollapsed: Boolean,
-        val showTtaLines: Boolean
+        val slowGroupCollapsed: Boolean
     )
 
     private val liveSnapshot = combine(
@@ -314,7 +313,8 @@ val fastGroupCollapsed: Boolean,
         selectedThreatFlow,
         nowFlow,
         revealFlow,
-        neutralizedFlow
+        neutralizedFlow,
+        mapVisibleFlow
     ) { values: Array<Any?> ->
         val neptun = values[0] as NeptunState
         val radii = values[1] as ZoneParams
@@ -323,10 +323,11 @@ val fastGroupCollapsed: Boolean,
         val now = values[4] as Long
         val reveal = values[5] as RevealRequest?
         val neutralizedId = values[6] as String?
+        val mapVisible = values[7] as Boolean
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, selected, now, reveal, neutralizedId
+            location, selected, now, reveal, neutralizedId, mapVisible
         )
     }
 
@@ -353,12 +354,11 @@ val fastGroupCollapsed: Boolean,
             prefs.followBullet(),
             prefs.neutralizedTallyEnabled(),
             prefs.fastGroupCollapsed(),
-            prefs.slowGroupCollapsed(),
-            prefs.showTtaLines()
+            prefs.slowGroupCollapsed()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4],
-                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12], flags[13]
+                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12]
             )
         },
         combine(
@@ -455,7 +455,6 @@ combine(
             slowGroupCollapsed = b.slowGroupCollapsed,
             fastVibrationLevel = vib.first,
             slowVibrationLevel = vib.second,
-            showTtaLines = b.showTtaLines,
             sheltersEnabled = c.sheltersEnabled,
             sheltersWithKids = c.sheltersWithKids,
             periodicGps = c.periodicGps,
@@ -509,7 +508,6 @@ combine(
         prefs.nightVibrationEnabled().first()
         prefs.nightFastVibrationLevel().first()
         prefs.nightSlowVibrationLevel().first()
-        prefs.showTtaLines().first()
         prefs.deathAnimationEnabled().first()
         prefs.followBullet().first()
         emit(Unit)
@@ -520,8 +518,8 @@ val uiState: StateFlow<UiState> = combine(
         liveSnapshot,
         prefsSnapshot,
         updateUiFlow,
-        shelterDataFlow
-    ) { _, live, prefs, updateUi, shelterPair ->
+        shelterIndexFlow
+    ) { _, live, prefs, updateUi, shelterIndex ->
         val nightActive = isNightActive(
             NightConfig(prefs.night.window.enabled, prefs.night.window.startMin, prefs.night.window.endMin),
             live.now
@@ -562,7 +560,8 @@ val uiState: StateFlow<UiState> = combine(
             now = live.now,
             reveal = live.reveal,
             neutralizedId = live.neutralizedId,
-            deathAnimationEnabled = prefs.deathAnimationEnabled
+            deathAnimationEnabled = prefs.deathAnimationEnabled,
+            mapVisible = live.mapVisible
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
@@ -613,12 +612,10 @@ val uiState: StateFlow<UiState> = combine(
             slowGroupCollapsed = prefs.slowGroupCollapsed,
             fastVibrationLevel = prefs.fastVibrationLevel,
             slowVibrationLevel = prefs.slowVibrationLevel,
-            showTtaLines = prefs.showTtaLines,
             sheltersEnabled = prefs.sheltersEnabled,
             sheltersWithKids = prefs.sheltersWithKids,
             periodicGps = prefs.periodicGps,
-            shelterIndex = shelterPair.first,
-            shelterRefreshing = shelterPair.second
+            shelterIndex = shelterIndex
         )
     }.stateIn(
         viewModelScope,
@@ -643,7 +640,8 @@ val uiState: StateFlow<UiState> = combine(
         now: Long,
         reveal: RevealRequest?,
         neutralizedId: String?,
-        deathAnimationEnabled: Boolean
+        deathAnimationEnabled: Boolean,
+        mapVisible: Boolean
     ): UiState {
         val animOn = deathAnimationEnabled
         val params = effectiveParams
@@ -687,7 +685,7 @@ val uiState: StateFlow<UiState> = combine(
         val mapThreats = evaluation.mapThreats
         val threatScores = evaluation.threatScores
 
-        // keep the selected threat pointer fresh (position/status may have updated)
+        // Keep the selected threat pointer fresh (position/status may have updated)
         val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
         // The selected threat is gone (removed by the server, marked resolved/area-only, a ghost
         // past the hard cap, or long-pressed) — show a brief neutralized card, then drop
@@ -699,10 +697,13 @@ val uiState: StateFlow<UiState> = combine(
             )
         // With the death animation disabled the card never flips to the "Neutralized" compact
         // form nor auto-dismisses: it stays open on the last-known snapshot until the user
-        // closes it, so nothing animates anywhere.
-        val neutralizedThreat = if (selectedGone && animOn) selected else null
-
+        // closes it, so nothing animates anywhere. The neutralize flourish also only runs while
+        // the map is the visible screen and no alert is live — off-map or mid-alert the popup
+        // just closes silently (no stale half-consumed animation on return).
         val activeZone = evaluation.activeZone
+        val alertActive = activeZone != null || focusOblastAlertActive
+        val neutralizedThreat =
+            if (selectedGone && animOn && mapVisible && !alertActive) selected else null
 
         val proximity = ThreatEvaluator.computeProximity(
             t = refreshedSelected,
@@ -711,9 +712,14 @@ val uiState: StateFlow<UiState> = combine(
             now = now
         )
 
+        // Short socket blips (drops that recover inside the shared grace window) are invisible
+        // here — the pill and status text stay "online" instead of flashing on every handoff.
+        val neptunDown = neptun.neptunDown && (neptun.offlineSince == null ||
+            now - neptun.offlineSince >= NeptunClient.OFFLINE_GRACE_MS)
+
         return UiState(
             connected = neptun.connected,
-            neptunDown = neptun.neptunDown,
+            neptunDown = neptunDown,
             forceOffline = neptun.forceOffline,
             backupActive = neptun.backupActive,
             backupUp = neptun.backupUp,
@@ -745,7 +751,7 @@ val uiState: StateFlow<UiState> = combine(
             neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
-            alertActive = activeZone != null || focusOblastAlertActive,
+            alertActive = alertActive,
             now = now
         )
     }
@@ -887,16 +893,18 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setNightSlowVibrationLevel(level) }
     }
 
-    fun setShowTtaLines(show: Boolean) {
-        viewModelScope.launch { prefs.setShowTtaLines(show) }
-    }
-
     fun setSheltersEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setSheltersEnabled(enabled) }
     }
 
     fun setSheltersWithKidsEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setSheltersWithKidsEnabled(enabled) }
+    }
+
+    /** Tracks which screen is visible so map-only work (neutralizing animation, death
+     *  flourish) can be skipped while the map is covered by Settings/Shelters/Guide. */
+    fun setMapVisible(visible: Boolean) {
+        mapVisibleFlow.value = visible
     }
 
     /** Loads the bundled Odesa shelter snapshot, then refreshes it from the update server daily. */
@@ -918,24 +926,6 @@ val uiState: StateFlow<UiState> = combine(
                     cacheFile.writeText(fresh)
                 }
             }
-        }
-    }
-
-    /** Pull-to-refresh on the shelter screen: re-fetches shelters.json from the update server,
-     *  bypassing the daily cache, and updates the in-memory index when a fresh copy arrives. */
-    fun refreshShelters() {
-        viewModelScope.launch {
-            shelterRefreshingFlow.value = true
-            val fresh = updateManager.fetchSheltersJson()
-            if (fresh != null) {
-                ShelterIndex.fromJson(fresh)?.let {
-                    shelterIndexFlow.value = it
-                    runCatching {
-                        File(getApplication<Application>().filesDir, SHELTERS_CACHE_FILE).writeText(fresh)
-                    }
-                }
-            }
-            shelterRefreshingFlow.value = false
         }
     }
 

@@ -246,8 +246,6 @@ object Strings {
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
         val showMapScaleDesc: String,
-        val showTtaLinesTitle: String,
-        val showTtaLinesDesc: String,
         val deathAnimationTitle: String,
         val deathAnimationDesc: String,
         val followBulletTitle: String,
@@ -259,6 +257,7 @@ object Strings {
         val iconSetPhotoLabel: String,
         val iconSetArmyLabel: String,
         val iconSetComicLabel: String,
+        val iconSetRussianLabel: String,
         val shelterButtonLabel: String,
         val shelterScreenTitle: String,
         val shelterOpenInMaps: String,
@@ -273,7 +272,6 @@ object Strings {
         val shelterSectionTitle: String,
         val shelterWithKidsTitle: String,
         val shelterWithKidsDesc: String,
-        val shelterGpsAge: String,
         val shelterGpsUnknown: String,
         val periodicGpsTitle: String,
         val periodicGpsDesc: String,
@@ -281,6 +279,7 @@ object Strings {
         val calibratingGps: String,
         val lastGpsFixFormat: String,
         val gpsFixJustNow: String,
+        val gpsFixFresh: String,
         val gpsStatusTitle: String,
         val networkLocationOnly: String,
         val updatingPreciseGpsToast: String,
@@ -544,6 +543,7 @@ object Strings {
                 ThreatIconSet.PHOTO -> iconSetPhotoLabel
                 ThreatIconSet.ARMY -> iconSetArmyLabel
                 ThreatIconSet.COMIC -> iconSetComicLabel
+                ThreatIconSet.RUSSIAN -> iconSetRussianLabel
             }
             return "$langName · $sizeName · $iconName"
         }
@@ -693,8 +693,6 @@ object Strings {
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
         val showMapScaleDesc: String get() = misc.showMapScaleDesc
-        val showTtaLinesTitle: String get() = misc.showTtaLinesTitle
-        val showTtaLinesDesc: String get() = misc.showTtaLinesDesc
         val deathAnimationTitle: String get() = misc.deathAnimationTitle
         val deathAnimationDesc: String get() = misc.deathAnimationDesc
         val followBulletTitle: String get() = misc.followBulletTitle
@@ -706,6 +704,7 @@ object Strings {
         val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
         val iconSetArmyLabel: String get() = misc.iconSetArmyLabel
         val iconSetComicLabel: String get() = misc.iconSetComicLabel
+        val iconSetRussianLabel: String get() = misc.iconSetRussianLabel
         val shelterButtonLabel: String get() = misc.shelterButtonLabel
         val shelterScreenTitle: String get() = misc.shelterScreenTitle
         val shelterOpenInMaps: String get() = misc.shelterOpenInMaps
@@ -720,7 +719,6 @@ object Strings {
         val shelterSectionTitle: String get() = misc.shelterSectionTitle
         val shelterWithKidsTitle: String get() = misc.shelterWithKidsTitle
         val shelterWithKidsDesc: String get() = misc.shelterWithKidsDesc
-        val shelterGpsAge: String get() = misc.shelterGpsAge
         val shelterGpsUnknown: String get() = misc.shelterGpsUnknown
         val periodicGpsTitle: String get() = misc.periodicGpsTitle
         val periodicGpsDesc: String get() = misc.periodicGpsDesc
@@ -728,6 +726,7 @@ object Strings {
         val calibratingGps: String get() = misc.calibratingGps
         val lastGpsFixFormat: String get() = misc.lastGpsFixFormat
         val gpsFixJustNow: String get() = misc.gpsFixJustNow
+        val gpsFixFresh: String get() = misc.gpsFixFresh
         val gpsStatusTitle: String get() = misc.gpsStatusTitle
         val networkLocationOnly: String get() = misc.networkLocationOnly
         val updatingPreciseGpsToast: String get() = misc.updatingPreciseGpsToast
@@ -1071,8 +1070,6 @@ object Strings {
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
         showMapScaleDesc = "Масштабна шкала в нижньому правому куті карти.",
-        showTtaLinesTitle = "Лінії часу до прильоту",
-        showTtaLinesDesc = "Для швидких загроз: червона лінія по курсу, де об'єкт буде через червону межу часу, і жовта — де через жовту.",
         deathAnimationTitle = "Анімація завершення загрози",
         deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу перестають відстежувати. Просто для розваги.",
         followBulletTitle = "Слідувати за снарядом",
@@ -1084,6 +1081,7 @@ object Strings {
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
         iconSetComicLabel = "Комікс",
+        iconSetRussianLabel = "Російські",
         shelterButtonLabel = "Укриття",
         shelterScreenTitle = "Укриття поруч",
         shelterOpenInMaps = "Відкрити в мапах",
@@ -1098,7 +1096,6 @@ object Strings {
         shelterSectionTitle = "Укриття",
         shelterWithKidsTitle = "З дітьми",
         shelterWithKidsDesc = "З дітьми йдуть повільніше — час ходьби рахуємо трохи довше.",
-        shelterGpsAge = "GPS: %s",
         shelterGpsUnknown = "GPS: —",
         periodicGpsTitle = "Періодична GPS-синхронізація (15 хв)",
         periodicGpsDesc = "Звичайне фонове відстеження використовує вежі зв'язку для збереження батареї. Синхронізація вмикає GPS на кілька секунд кожні 15 хвилин, щоб уникнути зміщення дистанції до загроз та розрахунку укриттів.",
@@ -1106,6 +1103,7 @@ object Strings {
         calibratingGps = "Пошук GPS…",
         lastGpsFixFormat = "Точний GPS: %s",
         gpsFixJustNow = "щойно",
+        gpsFixFresh = "GPS-фікс свіжий",
         gpsStatusTitle = "Точний GPS",
         networkLocationOnly = "Мережева локація (вежі зв'язку)",
         updatingPreciseGpsToast = "Оновлення точного GPS…",
@@ -1499,8 +1497,6 @@ object Strings {
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
         showMapScaleDesc = "Scale bar in the map's bottom-right corner.",
-        showTtaLinesTitle = "Time-to-arrival lines",
-        showTtaLinesDesc = "For fast threats: a red line along the course to where it will be at the red time threshold, and yellow at the yellow one.",
         deathAnimationTitle = "Resolved-threat animation",
         deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is no longer tracked. Just for fun.",
         followBulletTitle = "Follow the bullet",
@@ -1512,6 +1508,7 @@ object Strings {
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",
         iconSetComicLabel = "Comic",
+        iconSetRussianLabel = "Russian",
         shelterButtonLabel = "Shelter",
         shelterScreenTitle = "Nearby shelters",
         shelterOpenInMaps = "Open in maps",
@@ -1526,7 +1523,6 @@ object Strings {
         shelterSectionTitle = "Shelter",
         shelterWithKidsTitle = "With kids",
         shelterWithKidsDesc = "Kids walk slower — the walking time is calculated a bit longer.",
-        shelterGpsAge = "GPS: %s",
         shelterGpsUnknown = "GPS: —",
         periodicGpsTitle = "Periodic GPS sync (15 min)",
         periodicGpsDesc = "Normal background monitoring uses low-power cell towers. Periodic sync wakes GPS for a few seconds every 15 min to prevent cell-tower drift from skewing threat distance and shelter walking times.",
@@ -1534,6 +1530,7 @@ object Strings {
         calibratingGps = "Acquiring GPS…",
         lastGpsFixFormat = "Precise GPS: %s",
         gpsFixJustNow = "just now",
+        gpsFixFresh = "GPS fix is fresh",
         gpsStatusTitle = "Precise GPS",
         networkLocationOnly = "Cell tower location only",
         updatingPreciseGpsToast = "Updating precise GPS…",
@@ -1747,6 +1744,25 @@ fun resolvedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
             else -> "загроз"
         }
         "Завершено $count $form"
+    }
+}
+
+/**
+ * Age of the last precise GPS fix on the shelter screen, with proper plurals per language.
+ * English: "GPS fix is 1 minute old" / "3 minutes old". Ukrainian: "GPS-фікс застарілий на
+ * 1 хвилину" / "3 хвилини" / "5 хвилин" (21, 22-24, 25-30… follow the same rule).
+ */
+fun preciseGpsAgePhrase(minutes: Long, lang: AppLanguage): String = when (lang) {
+    AppLanguage.EN -> if (minutes == 1L) "GPS fix is 1 minute old" else "GPS fix is $minutes minutes old"
+    AppLanguage.UA -> {
+        val n10 = minutes % 10
+        val n100 = minutes % 100
+        val form = when {
+            n10 == 1L && n100 != 11L -> "хвилину"
+            n10 in 2L..4L && n100 !in 12L..14L -> "хвилини"
+            else -> "хвилин"
+        }
+        "GPS-фікс застарілий на $minutes $form"
     }
 }
 

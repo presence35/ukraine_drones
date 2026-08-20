@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,32 +25,21 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** Nearest-shelter list: ranks the Odesa dataset by distance to the focus point and hands the
- *  chosen one off to the system map app. Pull down to re-fetch the list; the header shows how
- *  fresh the location fix is and forces a precise GPS one-shot. */
+ *  chosen one off to the system map app. The header shows how fresh the location fix is and
+ *  forces a precise GPS one-shot. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShelterScreen(
@@ -60,9 +48,7 @@ fun ShelterScreen(
     index: ShelterIndex?,
     withKids: Boolean,
     onWithKidsChange: (Boolean) -> Unit,
-    shelterRefreshing: Boolean,
     now: Long,
-    onRefresh: () -> Unit,
     onBack: () -> Unit
 ) {
     val s = Strings.get(lang)
@@ -116,106 +102,53 @@ fun ShelterScreen(
             )
         }
     ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = shelterRefreshing,
-            onRefresh = onRefresh,
-            modifier = Modifier.padding(padding).fillMaxSize()
+        LazyColumn(
+            state = rememberLazyListState(),
+            modifier = Modifier.padding(padding).fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            LazyColumn(
-                state = rememberLazyListState(),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            item {
+                GpsHeaderRow(
+                    lastFixMs = lastFixMs,
+                    lastPreciseFixMs = lastPreciseFixMs,
+                    isRefreshing = gpsRefreshing || trackerRefreshing,
+                    now = now,
+                    lang = lang,
+                    s = s,
+                    withKids = withKids,
+                    onWithKidsChange = onWithKidsChange,
+                    onForceRefresh = forceGps
+                )
+            }
+            if (near.isEmpty()) {
                 item {
-                    GpsHeaderRow(
-                        lastFixMs = lastFixMs,
-                        lastPreciseFixMs = lastPreciseFixMs,
-                        isRefreshing = gpsRefreshing || trackerRefreshing,
-                        now = now,
-                        s = s,
-                        withKids = withKids,
-                        onWithKidsChange = onWithKidsChange,
-                        onForceRefresh = forceGps
+                    Text(
+                        s.shelterEmpty,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp, horizontal = 24.dp)
                     )
                 }
-                if (near.isEmpty()) {
-                    item {
-                        Text(
-                            s.shelterEmpty,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 48.dp, horizontal = 24.dp)
-                        )
-                    }
-                } else {
-                    items(near) { row ->
-                        val point = row.shelter
-                        val uri = "geo:${point.lat},${point.lon}?q=${point.lat},${point.lon}"
-                        ShelterCard(
-                            lang = lang,
-                            row = row,
-                            s = s,
-                            withKids = withKids,
-                            onOpenInMaps = {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
-                            }
-                        )
-                    }
+            } else {
+                items(near) { row ->
+                    val point = row.shelter
+                    val uri = "geo:${point.lat},${point.lon}?q=${point.lat},${point.lon}"
+                    ShelterCard(
+                        lang = lang,
+                        row = row,
+                        s = s,
+                        withKids = withKids,
+                        onOpenInMaps = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))
+                        }
+                    )
                 }
             }
         }
-    }
-}
-
-/** Minimal pull-to-refresh: a nested-scroll connection turns a pull at the top of the child into an
- *  [onRefresh] call and shows a spinner that follows the drag. No dependency beyond foundation. */
-@Composable
-private fun PullToRefreshBox(
-    isRefreshing: Boolean,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    val pullOffset = remember { Animatable(0f) }
-    val threshold = with(LocalDensity.current) { 80.dp.toPx() }
-    val isRefreshingUpdated by rememberUpdatedState(isRefreshing)
-    val onRefreshUpdated by rememberUpdatedState(onRefresh)
-    val connection = remember {
-        object : NestedScrollConnection {
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && available.y > 0) {
-                    scope.launch { pullOffset.snapTo(pullOffset.value + available.y) }
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (pullOffset.value >= threshold && !isRefreshingUpdated) {
-                    onRefreshUpdated()
-                    pullOffset.snapTo(0f)
-                } else {
-                    pullOffset.animateTo(0f)
-                }
-                return Velocity.Zero
-            }
-        }
-    }
-    Box(modifier.nestedScroll(connection)) {
-        content()
-        val pull = pullOffset.value
-        val alpha = if (isRefreshing) 1f else (pull / threshold).coerceIn(0f, 1f)
-        CircularProgressIndicator(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .graphicsLayer { translationY = if (isRefreshing) 0f else pull }
-                .alpha(alpha)
-                .size(28.dp)
-        )
     }
 }
 
@@ -225,14 +158,15 @@ private fun GpsHeaderRow(
     lastPreciseFixMs: Long?,
     isRefreshing: Boolean,
     now: Long,
+    lang: AppLanguage,
     s: Strings.StringSet,
     withKids: Boolean,
     onWithKidsChange: (Boolean) -> Unit,
     onForceRefresh: () -> Unit
 ) {
     val label = if (lastPreciseFixMs != null) {
-        val age = formatAlertAge(now, lastPreciseFixMs, s)
-        String.format(s.lastGpsFixFormat, if (age.isBlank()) s.gpsFixJustNow else age)
+        val ageMin = ((now - lastPreciseFixMs) / 60_000).coerceAtLeast(0)
+        if (ageMin <= 0) s.gpsFixFresh else preciseGpsAgePhrase(ageMin, lang)
     } else if (lastFixMs != null) {
         s.networkLocationOnly
     } else {

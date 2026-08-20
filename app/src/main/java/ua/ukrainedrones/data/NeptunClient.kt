@@ -119,10 +119,12 @@ object NeptunClient {
     const val BACKUP_HEALTHY_MS = 90_000L
 
     /**
-     * Shared "off" grace window. Zero: every drop is logged and alerted immediately — the
-     * connection log and offline notification never swallow a lost connection, however brief.
+     * Shared "off" grace window: drops shorter than this are treated as blips and are invisible
+     * everywhere (UI pill, connection log, offline notification). Anything longer is a real
+     * outage — logged and alerted (the offline alert re-verifies the drop after the grace, so
+     * a blip that recovers inside the window never fires).
      */
-    const val OFFLINE_GRACE_MS = 0L
+    const val OFFLINE_GRACE_MS = 5_000L
 
     /** How long a user-shot drone stays "remembered": a same-id respawn inside this window
      *  is the same drone coming back (no new alert); after it, a fresh appearance is a new threat. */

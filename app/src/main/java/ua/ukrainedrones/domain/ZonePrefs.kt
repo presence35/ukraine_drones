@@ -20,7 +20,7 @@ enum class AppLanguage { UA, EN }
 enum class ThreatCardSize { SMALL, LARGE }
 
 /** Which visual style is used for threat icons everywhere (map, strip, popups, toggles). */
-enum class ThreatIconSet { CLASSIC, PHOTO, ARMY, COMIC }
+enum class ThreatIconSet { CLASSIC, PHOTO, ARMY, COMIC, RUSSIAN }
 
 class ZonePrefs(private val context: Context) {
 
@@ -79,7 +79,6 @@ class ZonePrefs(private val context: Context) {
     private val nightVibrationEnabledKey = booleanPreferencesKey("night_vibration_enabled")
     private val nightFastVibrationLevelKey = intPreferencesKey("night_fast_vibration_level")
     private val nightSlowVibrationLevelKey = intPreferencesKey("night_slow_vibration_level")
-    private val showTtaLinesKey = booleanPreferencesKey("show_tta_lines")
     private val sheltersEnabledKey = booleanPreferencesKey("shelters_enabled")
     private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
     private val periodicGpsKey = booleanPreferencesKey("periodic_gps_enabled")
@@ -312,14 +311,6 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setShowMapScale(show: Boolean) {
         context.dataStore.edit { it[showMapScaleKey] = show }
-    }
-
-    /** Whether fast-threat time-to-arrival course lines render on the map — default on. */
-    fun showTtaLines(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[showTtaLinesKey] ?: true }
-
-    suspend fun setShowTtaLines(show: Boolean) {
-        context.dataStore.edit { it[showTtaLinesKey] = show }
     }
 
     /** Whether the "Go to shelter" button shows on the map — default on. */

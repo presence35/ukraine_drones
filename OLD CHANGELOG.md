@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Settings: removed the "time-to-arrival lines" option — the red/yellow predictive course lines for fast threats no longer render on the map. Fast-threat zone alerts (ETA-based tiering) are unchanged.
+
+- Icon packs: a new "Russian" (Російські) set — 7 hand-drawn threat icons in the same direction-oriented style as the Army set — is selectable in Settings → Icon style. Its icons come from a single AI-generated sprite sheet, split and normalized into uniform 512×512 assets (see the `russian` pack in `app/src/main/iconpacks/`).
+
 - Threat popup (EN UI): common words in a course assessment are now translated, not transliterated — "БпЛА над морем" reads "UAV over the sea" instead of "UAV over morem", "курсом на Чорне море" → "heading toward Black Sea". The dictionary covers sea/coast, border, airspace, settlement and attack vocabulary (with the usual case forms); place names are still transliterated, never translated.
 
 - Map: threat icons now keep pace with the map as you pinch-zoom in — flat up to zoom 10, 2× at zoom 12, capped at 3× around zoom 13.2 and flat beyond — so a threat visibly grows while you zoom closer instead of shrinking against the map.

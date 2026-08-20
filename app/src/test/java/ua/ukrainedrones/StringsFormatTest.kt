@@ -34,4 +34,18 @@ class StringsFormatTest {
         assertEquals("5 сек", formatAlertAge(5_000L, 0L, ua))
         assertEquals("1 min", formatAlertAge(60_000L, 0L, en))
     }
+
+    @Test
+    fun `precise gps age uses proper plurals per language`() {
+        assertEquals("GPS fix is 1 minute old", preciseGpsAgePhrase(1, AppLanguage.EN))
+        assertEquals("GPS fix is 3 minutes old", preciseGpsAgePhrase(3, AppLanguage.EN))
+        assertEquals("GPS fix is 21 minutes old", preciseGpsAgePhrase(21, AppLanguage.EN))
+        assertEquals("GPS-фікс застарілий на 1 хвилину", preciseGpsAgePhrase(1, AppLanguage.UA))
+        assertEquals("GPS-фікс застарілий на 3 хвилини", preciseGpsAgePhrase(3, AppLanguage.UA))
+        assertEquals("GPS-фікс застарілий на 5 хвилин", preciseGpsAgePhrase(5, AppLanguage.UA))
+        assertEquals("GPS-фікс застарілий на 11 хвилин", preciseGpsAgePhrase(11, AppLanguage.UA))
+        assertEquals("GPS-фікс застарілий на 21 хвилину", preciseGpsAgePhrase(21, AppLanguage.UA))
+        assertEquals("GPS-фікс застарілий на 22 хвилини", preciseGpsAgePhrase(22, AppLanguage.UA))
+        assertEquals("GPS-фікс застарілий на 25 хвилин", preciseGpsAgePhrase(25, AppLanguage.UA))
+    }
 }
