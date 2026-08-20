@@ -73,6 +73,7 @@ fun FeatureDiagram(kind: GuideDiagram, modifier: Modifier = Modifier) {
             GuideDiagram.TOGGLES -> drawToggles()
             GuideDiagram.FOLLOW -> drawFollow(t)
             GuideDiagram.PIN -> drawPin()
+            GuideDiagram.SHELTER -> drawShelter(t)
             GuideDiagram.CARD_SIZE -> drawCardSize(t)
             GuideDiagram.CARD_READ -> drawCardRead()
             GuideDiagram.THREAT_TOGGLES -> drawThreatToggles()
@@ -340,3 +341,22 @@ private fun DrawScope.drawNight() {
     drawCircle(Yellow, 5.dp.toPx(), Offset(fx, y0 + (y1 - y0) * 0.3f))
     bell(size.width * 0.5f, size.height * 0.48f, Yellow)
 }
+
+private fun DrawScope.drawShelter(t: Float) {
+    bg()
+    val cx = size.width * 0.5f
+    val cy = size.height * 0.5f
+    val r = size.height * 0.32f
+    drawCircle(GridGrey, r, Offset(cx, cy))
+    drawCircle(Green.copy(alpha = 0.22f), r * (0.85f + 0.15f * t), Offset(cx, cy))
+    drawCircle(Green, r, Offset(cx, cy), style = Stroke(2.dp.toPx()))
+    val arch = Path().apply {
+        moveTo(cx - r * 0.5f, cy + r * 0.45f)
+        lineTo(cx - r * 0.5f, cy - r * 0.1f)
+        cubicTo(cx - r * 0.5f, cy - r * 0.55f, cx + r * 0.5f, cy - r * 0.55f, cx + r * 0.5f, cy - r * 0.1f)
+        lineTo(cx + r * 0.5f, cy + r * 0.45f)
+    }
+    drawPath(arch, White, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round))
+    drawCircle(Green, 3.dp.toPx(), Offset(cx, cy + r * 0.1f))
+}
+

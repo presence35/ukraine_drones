@@ -181,7 +181,7 @@ object ThreatSpeedTracker {
 
     /** Speed plus where it came from: server/measured fixes = RECORDED, per-type = TYPICAL. */
     fun estimateWithSource(id: String, t: Threat): Pair<Double, SpeedSource>? {
-        t.speedKmh?.let { s -> if (s in 5.0..2000.0) return s / 3.6 to SpeedSource.RECORDED }
+        t.speedKmh?.let { s -> if (s >= 5.0) return s / 3.6 to SpeedSource.RECORDED }
         synchronized(fixes) {
             val q = fixes[id]
             if (q != null && q.size >= 2) {
@@ -190,7 +190,7 @@ object ThreatSpeedTracker {
                 val dt = (b.t - a.t) / 1000.0
                 if (dt in 2.0..600.0) {
                     val v = distanceMeters(a.lat, a.lon, b.lat, b.lon) / dt
-                    if (v in 5.0..400.0) return v to SpeedSource.RECORDED
+                    if (v >= 5.0) return v to SpeedSource.RECORDED
                 }
             }
         }
@@ -201,7 +201,7 @@ object ThreatSpeedTracker {
                 val dt = (b.tMillis - a.tMillis) / 1000.0
                 if (dt in 5.0..600.0) {
                     val v = distanceMeters(a.lat, a.lon, b.lat, b.lon) / dt
-                    if (v in 5.0..400.0) return v to SpeedSource.RECORDED
+                    if (v >= 5.0) return v to SpeedSource.RECORDED
                 }
             }
         }

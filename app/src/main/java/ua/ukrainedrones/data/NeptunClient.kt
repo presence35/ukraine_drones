@@ -144,6 +144,8 @@ object NeptunClient {
     private val connectInFlight = AtomicBoolean(false)
     private var reconnectJob: Job? = null
 
+    private var started = false
+
     private val _state = MutableStateFlow(NeptunState())
     val state: StateFlow<NeptunState> = _state.asStateFlow()
 
@@ -151,7 +153,11 @@ object NeptunClient {
     val removedThreats: SharedFlow<ThreatRemoved> = _removedThreats.asSharedFlow()
 
     fun start() {
-        if (ws != null) return
+        if (started) {
+            if (ws == null && !manuallyStopped) connect()
+            return
+        }
+        started = true
         if (!scope.isActive) {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         }
@@ -166,6 +172,7 @@ object NeptunClient {
 
     fun stop() {
         manuallyStopped = true
+        started = false
         reconnectJob?.cancel()
         reconnectJob = null
         ws?.close(1000, "client stop")

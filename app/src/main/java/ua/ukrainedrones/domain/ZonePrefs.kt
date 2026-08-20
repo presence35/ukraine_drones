@@ -82,6 +82,7 @@ class ZonePrefs(private val context: Context) {
     private val showTtaLinesKey = booleanPreferencesKey("show_tta_lines")
     private val sheltersEnabledKey = booleanPreferencesKey("shelters_enabled")
     private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
+    private val periodicGpsKey = booleanPreferencesKey("periodic_gps_enabled")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 2–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -335,6 +336,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setSheltersWithKidsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[sheltersWithKidsEnabledKey] = enabled }
+    }
+
+    /** Whether the app periodically snaps a one-shot GPS fix (every 15 min) to prevent cell drift. Default false. */
+    fun periodicGps(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[periodicGpsKey] ?: false }
+
+    suspend fun setPeriodicGps(enabled: Boolean) {
+        context.dataStore.edit { it[periodicGpsKey] = enabled }
     }
 
     /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */

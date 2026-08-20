@@ -83,7 +83,11 @@ object Strings {
         val alertToggleHintRest: String,
         val disclaimerTitle: String,
         val disclaimerBody: String,
-        val exitButton: String
+        val exitButton: String,
+        val systemSectionTitle: String,
+        val locationSectionTitle: String,
+        val cardSizeSmallLabel: String,
+        val cardSizeLargeLabel: String
     )
 
     data class Status(
@@ -270,7 +274,14 @@ object Strings {
         val shelterWithKidsTitle: String,
         val shelterWithKidsDesc: String,
         val shelterGpsAge: String,
-        val shelterGpsUnknown: String
+        val shelterGpsUnknown: String,
+        val periodicGpsTitle: String,
+        val periodicGpsDesc: String,
+        val calibrateGpsNow: String,
+        val calibratingGps: String,
+        val lastGpsFixFormat: String,
+        val gpsFixJustNow: String,
+        val networkLocationOnly: String
     )
 
     data class Guide(
@@ -376,6 +387,7 @@ object Strings {
     )
 
     data class StringSet(
+        val language: AppLanguage,
         val onboarding: Onboarding,
         val settings: Settings,
         val status: Status,
@@ -459,6 +471,75 @@ object Strings {
         val disclaimerTitle: String get() = settings.disclaimerTitle
         val disclaimerBody: String get() = settings.disclaimerBody
         val exitButton: String get() = settings.exitButton
+        val systemSectionTitle: String get() = settings.systemSectionTitle
+        val locationSectionTitle: String get() = settings.locationSectionTitle
+        val cardSizeSmallLabel: String get() = settings.cardSizeSmallLabel
+        val cardSizeLargeLabel: String get() = settings.cardSizeLargeLabel
+
+        fun locationSubtitle(followMe: Boolean, pinnedCityName: String?, periodicGps: Boolean = false): String =
+            if (followMe) {
+                if (periodicGps) {
+                    if (language == AppLanguage.UA) "GPS слідування · 15-хв синхронізація" else "GPS follow me · 15m sync"
+                } else {
+                    if (language == AppLanguage.UA) "GPS слідування увімкнено" else "GPS follow me active"
+                }
+            } else if (!pinnedCityName.isNullOrBlank()) {
+                if (language == AppLanguage.UA) "Закріплено: $pinnedCityName" else "Pinned: $pinnedCityName"
+            } else {
+                if (language == AppLanguage.UA) "Ручне позиціонування" else "Manual location"
+            }
+
+        fun nightSubtitle(enabled: Boolean, startMin: Int, endMin: Int, sirenOverride: Boolean): String =
+            if (!enabled) {
+                if (language == AppLanguage.UA) "Вимкнено · Стандартний радіус тривог" else "Disabled · Standard alert radius"
+            } else {
+                val timeStr = String.format(java.util.Locale.US, "%02d:%02d–%02d:%02d", startMin / 60, startMin % 60, endMin / 60, endMin % 60)
+                val sirenStr = if (sirenOverride) {
+                    if (language == AppLanguage.UA) " · Сирена завжди" else " · Siren override ON"
+                } else ""
+                if (language == AppLanguage.UA) "Увімкнено · $timeStr$sirenStr" else "Active · $timeStr$sirenStr"
+            }
+
+        fun alertsSubtitle(officialAlerts: Boolean, sirenOverride: Boolean, shelters: Boolean): String {
+            val isUa = language == AppLanguage.UA
+            val parts = mutableListOf<String>()
+            parts.add(if (isUa) "Офіційні: " + (if (officialAlerts) "УВІМК" else "ВИМК") else "Official: " + (if (officialAlerts) "ON" else "OFF"))
+            if (sirenOverride) {
+                parts.add(if (isUa) "Сирена завжди: УВІМК" else "Siren override: ON")
+            }
+            if (shelters) {
+                parts.add(if (isUa) "Укриття: УВІМК" else "Shelters: ON")
+            }
+            return parts.joinToString(" · ")
+        }
+
+        fun threatsSubtitle(hiddenCount: Int, silencedCount: Int, totalCount: Int = 8): String {
+            val isUa = language == AppLanguage.UA
+            return if (hiddenCount == 0 && silencedCount == 0) {
+                if (isUa) "Усі $totalCount типів активні" else "All $totalCount types active"
+            } else if (hiddenCount > 0 && silencedCount > 0) {
+                if (isUa) "Приховано: $hiddenCount · Без звуку: $silencedCount" else "Hidden: $hiddenCount · Silenced: $silencedCount"
+            } else if (hiddenCount > 0) {
+                if (isUa) "Приховано на мапі: $hiddenCount" else "Hidden on map: $hiddenCount"
+            } else {
+                if (isUa) "Без звуку: $silencedCount" else "Silenced: $silencedCount"
+            }
+        }
+
+        fun systemSubtitle(appLang: AppLanguage, cardSize: ThreatCardSize, iconSet: ThreatIconSet): String {
+            val langName = if (appLang == AppLanguage.UA) "Українська" else "English"
+            val sizeName = when (cardSize) {
+                ThreatCardSize.SMALL -> cardSizeSmallLabel
+                ThreatCardSize.LARGE -> cardSizeLargeLabel
+            }
+            val iconName = when (iconSet) {
+                ThreatIconSet.CLASSIC -> iconSetClassicLabel
+                ThreatIconSet.PHOTO -> iconSetPhotoLabel
+                ThreatIconSet.ARMY -> iconSetArmyLabel
+                ThreatIconSet.COMIC -> iconSetComicLabel
+            }
+            return "$langName · $sizeName · $iconName"
+        }
         val redZoneAlert: String get() = status.redZoneAlert
         val yellowZoneAlert: String get() = status.yellowZoneAlert
         val notifOngoingTitle: String get() = status.notifOngoingTitle
@@ -634,6 +715,13 @@ object Strings {
         val shelterWithKidsDesc: String get() = misc.shelterWithKidsDesc
         val shelterGpsAge: String get() = misc.shelterGpsAge
         val shelterGpsUnknown: String get() = misc.shelterGpsUnknown
+        val periodicGpsTitle: String get() = misc.periodicGpsTitle
+        val periodicGpsDesc: String get() = misc.periodicGpsDesc
+        val calibrateGpsNow: String get() = misc.calibrateGpsNow
+        val calibratingGps: String get() = misc.calibratingGps
+        val lastGpsFixFormat: String get() = misc.lastGpsFixFormat
+        val gpsFixJustNow: String get() = misc.gpsFixJustNow
+        val networkLocationOnly: String get() = misc.networkLocationOnly
         val guideTitle: String get() = guide.guideTitle
         val guideSettingsButton: String get() = guide.guideSettingsButton
         val guideCategoryMap: String get() = guide.guideCategoryMap
@@ -807,6 +895,10 @@ object Strings {
         disclaimerTitle = "Застереження",
         disclaimerBody = "Завжди керуйся офіційними сигналами повітряної тривоги — цей застосунок не є офіційним джерелом тривог.\n• Координати, відстані, ETA та швидкість — приблизні: противник не транслює дані точно, навіть коли фіксація позначена як підтверджена.\n• Показник рівня загрози (0–10) — приблизна оцінка, а не офіційний рейтинг.\n• Тривоги залежать від приблизного місцезнаходження телефона — неправильна точка означає неправильну зону.\n• Застосунок не може гарантувати вашу безпеку. Все це лише орієнтир.",
         exitButton = "Зупинити моніторинг і вийти",
+        systemSectionTitle = "Система та інтерфейс",
+        locationSectionTitle = "Локація та фокус",
+        cardSizeSmallLabel = "Компактні картки",
+        cardSizeLargeLabel = "Великі картки",
     )
 
     private fun uaStatus() = Status(
@@ -994,6 +1086,13 @@ object Strings {
         shelterWithKidsDesc = "З дітьми йдуть повільніше — час ходьби рахуємо трохи довше.",
         shelterGpsAge = "GPS: %s",
         shelterGpsUnknown = "GPS: —",
+        periodicGpsTitle = "Періодична GPS-синхронізація (15 хв)",
+        periodicGpsDesc = "Звичайне фонове відстеження використовує вежі зв'язку для збереження батареї. Синхронізація вмикає GPS на кілька секунд кожні 15 хвилин, щоб уникнути зміщення дистанції до загроз та розрахунку укриттів.",
+        calibrateGpsNow = "Оновити GPS",
+        calibratingGps = "Пошук GPS…",
+        lastGpsFixFormat = "Точний GPS: %s",
+        gpsFixJustNow = "щойно",
+        networkLocationOnly = "Мережева локація (вежі зв'язку)",
     )
 
     private fun uaGuide() = Guide(
@@ -1128,6 +1227,7 @@ object Strings {
     )
 
     private val UA = StringSet(
+        AppLanguage.UA,
         uaOnboarding(),
         uaSettings(),
         uaStatus(),
@@ -1216,6 +1316,10 @@ object Strings {
         disclaimerTitle = "Disclaimers",
         disclaimerBody = "Always follow official air-raid signals — this app is not an official alert source.\n• Positions, distances, ETA and speeds are approximate: the enemy isn't broadcasting precisely, even when a fix is marked confirmed.\n• The skull threat level (0–10) is a rough estimate, not an official rating.\n• Alerts depend on your phone's coarse location — a wrong fix means a wrong zone.\n• This app cannot guarantee your safety. Treat everything as an approximate guide.",
         exitButton = "Stop Monitoring & Exit",
+        systemSectionTitle = "System & Display",
+        locationSectionTitle = "Location & Focus",
+        cardSizeSmallLabel = "Small cards",
+        cardSizeLargeLabel = "Large cards",
     )
 
     private fun enStatus() = Status(
@@ -1403,6 +1507,13 @@ object Strings {
         shelterWithKidsDesc = "Kids walk slower — the walking time is calculated a bit longer.",
         shelterGpsAge = "GPS: %s",
         shelterGpsUnknown = "GPS: —",
+        periodicGpsTitle = "Periodic GPS sync (15 min)",
+        periodicGpsDesc = "Normal background monitoring uses low-power cell towers. Periodic sync wakes GPS for a few seconds every 15 min to prevent cell-tower drift from skewing threat distance and shelter walking times.",
+        calibrateGpsNow = "Calibrate GPS",
+        calibratingGps = "Acquiring GPS…",
+        lastGpsFixFormat = "Precise GPS: %s",
+        gpsFixJustNow = "just now",
+        networkLocationOnly = "Cell tower location only",
     )
 
     private fun enGuide() = Guide(
@@ -1537,6 +1648,7 @@ object Strings {
     )
 
     private val EN = StringSet(
+        AppLanguage.EN,
         enOnboarding(),
         enSettings(),
         enStatus(),
@@ -1567,6 +1679,7 @@ val SHELTER_NAME_GLOSSARY: Map<String, String> = mapOf(
     "провулок" to "lane",
     "пров" to "Ln",
     "жк" to "complex",
+    "перлина" to "Pearl",
     "пляж" to "beach",
     "парк" to "park",
 )

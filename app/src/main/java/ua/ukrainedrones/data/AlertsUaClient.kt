@@ -2,6 +2,7 @@ package ua.ukrainedrones
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -45,6 +46,7 @@ object AlertsUaClient {
         .build()
 
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var pollJob: Job? = null
     private val inFlight = AtomicBoolean(false)
     private var manuallyStopped = false
 
@@ -57,8 +59,9 @@ object AlertsUaClient {
         }
         manuallyStopped = false
         pollNow()
-        scope.launch {
-            while (true) {
+        pollJob?.cancel()
+        pollJob = scope.launch {
+            while (isActive && !manuallyStopped) {
                 delay(POLL_MS)
                 if (manuallyStopped) return@launch
                 pollNow()
@@ -68,6 +71,8 @@ object AlertsUaClient {
 
     fun stop() {
         manuallyStopped = true
+        pollJob?.cancel()
+        pollJob = null
         scope.cancel()
     }
 

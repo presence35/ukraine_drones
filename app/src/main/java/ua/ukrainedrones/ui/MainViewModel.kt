@@ -107,6 +107,7 @@ data class UiState(
     val showTtaLines: Boolean = false,
     val sheltersEnabled: Boolean = true,
     val sheltersWithKids: Boolean = true,
+    val periodicGps: Boolean = false,
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
     val shelterRefreshing: Boolean = false,        // pull-to-refresh in-flight on the shelter screen
     val alertActive: Boolean = false,        // any threat or official alert live right now
@@ -203,7 +204,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet,
         val sheltersEnabled: Boolean,
-        val sheltersWithKids: Boolean
+        val sheltersWithKids: Boolean,
+        val periodicGps: Boolean
     )
 
     /** Night-mode window prefs (raw, day values untouched). */
@@ -264,6 +266,7 @@ val fastGroupCollapsed: Boolean,
         val showTtaLines: Boolean,
         val sheltersEnabled: Boolean,
         val sheltersWithKids: Boolean,
+        val periodicGps: Boolean,
         val night: NightPrefs
     )
 
@@ -361,21 +364,26 @@ val fastGroupCollapsed: Boolean,
         combine(
             combine(
                 combine(
-                    prefs.pinnedCity(),
-                    prefs.languageChosen(),
-                    prefs.batteryOnboardShown(),
-                    prefs.threatCardSize(),
-                    prefs.threatIconSet()
-                ) { pinned, chosen, batteryShown, card, iconSet ->
-                    PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true)
+                    combine(
+                        prefs.pinnedCity(),
+                        prefs.languageChosen(),
+                        prefs.batteryOnboardShown(),
+                        prefs.threatCardSize(),
+                        prefs.threatIconSet()
+                    ) { pinned, chosen, batteryShown, card, iconSet ->
+                        PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true, false)
+                    },
+                    prefs.sheltersEnabled()
+                ) { quad, shelters ->
+                    quad.copy(sheltersEnabled = shelters)
                 },
-                prefs.sheltersEnabled()
-            ) { quad, shelters ->
-                quad.copy(sheltersEnabled = shelters)
+                prefs.sheltersWithKidsEnabled()
+            ) { quad, kids ->
+                quad.copy(sheltersWithKids = kids)
             },
-            prefs.sheltersWithKidsEnabled()
-        ) { quad, kids ->
-            quad.copy(sheltersWithKids = kids)
+            prefs.periodicGps()
+        ) { quad, periodic ->
+            quad.copy(periodicGps = periodic)
         },
         combine(
             prefs.fastVibrationLevel(),
@@ -450,6 +458,7 @@ combine(
             showTtaLines = b.showTtaLines,
             sheltersEnabled = c.sheltersEnabled,
             sheltersWithKids = c.sheltersWithKids,
+            periodicGps = c.periodicGps,
             night = night
         )
     }
@@ -607,6 +616,7 @@ val uiState: StateFlow<UiState> = combine(
             showTtaLines = prefs.showTtaLines,
             sheltersEnabled = prefs.sheltersEnabled,
             sheltersWithKids = prefs.sheltersWithKids,
+            periodicGps = prefs.periodicGps,
             shelterIndex = shelterPair.first,
             shelterRefreshing = shelterPair.second
         )
@@ -664,55 +674,18 @@ val uiState: StateFlow<UiState> = combine(
             }
         }
 
-        // Red zone tier: threats inside the red band (slow: within slowRedKm, fast: ETA ≤ fastRedMin).
-        val inInner = mutableListOf<Threat>()
-        // Yellow ring tier: threats inside the yellow band (slow: within slowYellowKm, fast: ETA ≤ fastYellowMin).
-        val inOuter = mutableListOf<Threat>()
-        // All active threats across the whole country, shown while any air-raid alert is
-        // active — lets the user pan to other regions during alerts.
-        val mapThreats = mutableListOf<Threat>()
-        // Per-threat scores feeding the experimental overall threat-level gauge.
-        val threatScores = mutableListOf<Double>()
-
-        for (t in neptun.threats.values) {
-            // Truly gone: resolved by the server (or a remove frame), area-only, or a ghost
-            // past the hard cap. Everything else — including stale/expired threats — stays on
-            // the map, just dimmed.
-            if (t.status == "resolved" || t.areaOnly || t.isGhost(now)) continue
-            if (t.type !in mapEnabledTypes) continue
-            val stale = t.isStale(now)
-            if (!stale) {
-                ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-            }
-            val predicted = ThreatSpeedTracker.estimate(t.id, t)
-                ?.let { predictPosition(t, it, now) } ?: GeoPoint(t.lat, t.lon)
-            if (neptun.oblastAlerts.isNotEmpty()) mapThreats.add(t)
-            // Stale threats stay on the map but never feed counts, tiers, or the gauge.
-            if (stale || focusLocation == null) continue
-            // Advisory = NEPTUN observation, never an alert — shown on the map only.
-            if (t.advisory) continue
-            val tierLat = if (t.type in FastThreatTypes) predicted.latitude else t.lat
-            val tierLon = if (t.type in FastThreatTypes) predicted.longitude else t.lon
-            val distKm = distanceMeters(
-                focusLocation.lat, focusLocation.lon, tierLat, tierLon
-            ) / 1000.0
-            val speedKmh = ThreatSpeedTracker.estimate(t.id, t)?.times(3.6)
-            val tier = zoneTier(t, distKm, speedKmh, params)
-            if (tier != null) {
-                val eta = etaMinutes(distKm, speedKmh)
-                val (redVal, yellowVal) =
-                    if (t.type in FastThreatTypes) params.fastRedMin to params.fastYellowMin
-                    else params.slowRedKm to params.slowYellowKm
-                threatScores.add(
-                    ThreatLevelModel.scoreOf(t, distKm, eta, redVal, yellowVal, now)
-                )
-            }
-            when (tier) {
-                ThreatZone.INNER -> inInner.add(t)
-                ThreatZone.OUTER -> inOuter.add(t)
-                null -> {}
-            }
-        }
+        val evaluation = ThreatEvaluator.evaluate(
+            neptun = neptun,
+            params = params,
+            focusLocation = focusLocation,
+            mapEnabledTypes = mapEnabledTypes,
+            alertEnabledTypes = alertedTypes,
+            now = now
+        )
+        val inInner = evaluation.threatsInner
+        val inOuter = evaluation.threatsOuter
+        val mapThreats = evaluation.mapThreats
+        val threatScores = evaluation.threatScores
 
         // keep the selected threat pointer fresh (position/status may have updated)
         val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
@@ -729,37 +702,14 @@ val uiState: StateFlow<UiState> = combine(
         // closes it, so nothing animates anywhere.
         val neutralizedThreat = if (selectedGone && animOn) selected else null
 
-        val activeZone = when {
-            inInner.isNotEmpty() -> ThreatZone.INNER
-            inOuter.isNotEmpty() -> ThreatZone.OUTER
-            else -> null
-        }
+        val activeZone = evaluation.activeZone
 
-        val proximity = refreshedSelected?.let { t ->
-            if (t.areaOnly) {
-                null
-            } else {
-                ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-                val speedPair = ThreatSpeedTracker.estimateWithSource(t.id, t)
-                val speed = speedPair?.first
-                val predicted = speed?.let { predictPosition(t, it, now) }
-                    ?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(t.lat, t.lon)
-                val distUser = focusLocation?.let {
-                    distanceMeters(it.lat, it.lon, predicted.lat, predicted.lon) / 1000.0
-                }
-                val etaUser = if (distUser != null && speed != null && speed > 0.0) {
-                    distUser / (speed * 3.6) * 60.0
-                } else null
-                ThreatProximity(
-                    predicted = predicted,
-                    distToUserKm = distUser,
-                    etaToUserMin = etaUser,
-                    params = params,
-                    speedSource = speedPair?.second ?: SpeedSource.TYPICAL,
-                    speedKmh = speedPair?.first?.let { it * 3.6 }
-                )
-            }
-        }
+        val proximity = ThreatEvaluator.computeProximity(
+            t = refreshedSelected,
+            focusLocation = focusLocation,
+            params = params,
+            now = now
+        )
 
         return UiState(
             connected = neptun.connected,
@@ -992,6 +942,16 @@ val uiState: StateFlow<UiState> = combine(
     /** Follow-me toggle: switching it back on resumes GPS-centered zones/camera. */
     fun setFollowMe(follow: Boolean) {
         viewModelScope.launch { prefs.setFollowMe(follow) }
+    }
+
+    /** Periodic 15-min GPS sync toggle to prevent cell-tower drift. */
+    fun setPeriodicGps(enabled: Boolean) {
+        viewModelScope.launch { prefs.setPeriodicGps(enabled) }
+    }
+
+    /** Manual one-shot GPS calibration/refresh trigger. */
+    fun forceGpsRefresh(onComplete: (() -> Unit)? = null) {
+        LocationTracker.forceRefresh(onComplete)
     }
 
     /** TEMP test toggle: force the app to simulate NEPTUN being offline. */

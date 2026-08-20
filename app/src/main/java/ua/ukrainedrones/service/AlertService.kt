@@ -358,7 +358,7 @@ private var notif3minShown = false
                     neptun.oblastAlerts.any { it.inOblast(token) }
                 } == true
                 val (officialReason, officialReasonThreatId) = if (officialActive) {
-                    buildReason(
+                    ThreatEvaluator.buildOfficialReason(
                         neptun, attribution.token, lang, focus,
                         effectiveParams, now,
                         tail.enabled,
@@ -376,7 +376,7 @@ private var notif3minShown = false
                     focusPinned = !followMe && pinned != null,
                     officialReason = officialReason,
                     officialReasonThreatId = officialReasonThreatId,
-                    zoneThreats = zoneThreats(neptun, effectiveParams, focus, tail.enabled, now),
+                    zoneThreats = ThreatEvaluator.zoneThreats(neptun, effectiveParams, focus, tail.enabled, now),
                     params = effectiveParams,
                     lang = lang,
                     slowRedArmed = armed.slowRed,
@@ -408,38 +408,6 @@ private var notif3minShown = false
             }
         }
         return s.notifBodyRegion
-    }
-
-    /**
-     * Active threats inside either tier (INNER > OUTER), keyed by id. Tiers follow
-     * [zoneTier]: slow threats by distance, fast threats by time-to-arrival, both around the
-     * focus point (GPS or pinned city). Advisory (NEPTUN observation) threats, disabled types
-     * and out-of-reach types are skipped.
-     */
-    private fun zoneThreats(
-        st: NeptunState,
-        params: ZoneParams,
-        focus: LatLng?,
-        enabled: Set<ThreatType>,
-        now: Long
-    ): Map<String, ThreatZone> {
-        if (focus == null) return emptyMap()
-        val map = LinkedHashMap<String, ThreatZone>()
-        for (t in st.threats.values) {
-            if (t.status == "resolved" || t.status == "stale" || isExpired(t, now) || t.areaOnly) continue
-            if (t.type !in enabled) continue
-            if (t.advisory) continue
-            ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-            val estimate = ThreatSpeedTracker.estimate(t.id, t)
-            val p = estimate?.let { predictPosition(t, it, now) }
-            val lat = if (t.type in FastThreatTypes) (p?.latitude ?: t.lat) else t.lat
-            val lon = if (t.type in FastThreatTypes) (p?.longitude ?: t.lon) else t.lon
-            val distKm = distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0
-            val speedKmh = estimate?.times(3.6)
-            val zone = zoneTier(t, distKm, speedKmh, params) ?: continue
-            map[t.id] = zone
-        }
-        return map
     }
 
     private suspend fun handleState(state: MonitorEvent.State) {
@@ -623,7 +591,7 @@ notifyMonitor(
             // gets its own alert on the very next tick instead of being silently absorbed.
             val (id, zone) = newEntries.first()
             val t = all[id]
-            val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
+            val body = t?.let { ThreatEvaluator.threatBody(it, state.lang) } ?: s.notifBodyRegion
             postAlert(
                 zone, bannerFor(zone, s), body, state.zoneSirenOverride, revealThreat = t,
                 vibrationLevel = if (t?.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
@@ -754,81 +722,12 @@ if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAler
         ThreatZone.OUTER -> s.yellowZoneAlert
     }
 
-    private fun threatBody(t: Threat, lang: AppLanguage): String {
-        val info = ThreatTypeCatalog.INFO.getValue(t.type)
-        val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
-        val where = t.locality ?: t.district ?: t.region
-        val whereText = if (where == null) null else if (lang == AppLanguage.UA) where
-            else Cities.byUa[where]?.nameEn ?: Transliteration.transliterate(where)
-        return if (whereText != null) "$label — $whereText" else label
-    }
-
     /** Approx. distance from the focus point (GPS/pin) to a threat, km — for the alert history. */
     private fun distanceFromFocusKm(t: Threat?, state: MonitorEvent.State): Double? {
         val focus = state.focusLocation ?: return null
         if (t == null) return null
         return distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
     }
-
-    /**
-     * Reason line for the official oblast alert: the highest-priority active, non-advisory,
-     * non-area-only threat whose region/district/locality sits in the focus oblast, ordered
-     * by ThreatLevelModel.scoreOf. Returns the localized reason text and the threat id that
-     * produced it (id null when no qualifying threat exists — then a region-level fallback
-     * template is returned).
-     */
-    private fun buildReason(
-        st: NeptunState,
-        token: String?,
-        lang: AppLanguage,
-        focus: LatLng?,
-        params: ZoneParams,
-        now: Long,
-        enabled: Set<ThreatType>,
-        regionFallback: String
-    ): Pair<String?, String?> {
-        var best: Threat? = null
-        var bestScore = -1.0
-        for (t in st.threats.values) {
-            if (t.status != "active" || t.advisory || t.areaOnly || t.type !in enabled ||
-                isExpired(t, now) || !inFocusOblast(t, token)
-            ) continue
-            ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
-            val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
-            val lat = predicted?.latitude ?: t.lat
-            val lon = predicted?.longitude ?: t.lon
-            val distKm = if (focus != null) distanceMeters(focus.lat, focus.lon, lat, lon) / 1000.0 else null
-            val speed = ThreatSpeedTracker.estimate(t.id, t)
-            val eta = if (speed != null && speed > 0.0 && distKm != null) distKm / (speed * 3.6) * 60.0 else null
-            val score = if (distKm != null) {
-                val (redVal, yellowVal) =
-                    if (t.type in FastThreatTypes) params.fastRedMin to params.fastYellowMin
-                    else params.slowRedKm to params.slowYellowKm
-                ThreatLevelModel.scoreOf(t, distKm, eta, redVal, yellowVal, now)
-            } else 0.0
-            if (score > bestScore) {
-                bestScore = score
-                best = t
-            }
-        }
-        return if (best != null) {
-            val reason = translateCourseAssessment(best.explanationShort, lang) ?: threatBody(best, lang)
-            reason to best.id
-        } else {
-            String.format(Strings.get(lang).notifReasonFormat, regionFallback) to null
-        }
-    }
-
-    /** True when any of the threat's region/district/locality names sits in the focus oblast. */
-    private fun inFocusOblast(t: Threat, token: String?): Boolean {
-        if (token == null) return false
-        return (t.region != null && inOblastText(t.region, token)) ||
-            (t.district != null && inOblastText(t.district, token)) ||
-            (t.locality != null && inOblastText(t.locality, token))
-    }
-
-    private fun inOblastText(text: String, token: String): Boolean =
-        text.startsWith(token, ignoreCase = true) || Cities.cityOblast[text] == token
 
     /** Small source tag appended to the official-alert body when it came from the backup. */
     private fun sourceTag(source: AlertSource?, s: Strings.StringSet): String = when (source) {

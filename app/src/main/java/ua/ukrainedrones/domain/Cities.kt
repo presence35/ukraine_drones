@@ -16,7 +16,9 @@ data class City(
     val lon: Double,
     val major: Boolean,
     val nameEn: String = Transliteration.transliterate(nameUa)
-)
+) {
+    fun name(lang: AppLanguage): String = if (lang == AppLanguage.UA) nameUa else nameEn
+}
 
 /**
  * Curated city list (no hoods/villages) so users get a sense of distance/scale while zooming.

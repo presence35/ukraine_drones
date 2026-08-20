@@ -228,7 +228,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 showMapScale = uiState.showMapScale,
                 showTtaLines = uiState.showTtaLines,
                 sheltersEnabled = uiState.sheltersEnabled,
-                sheltersWithKids = uiState.sheltersWithKids,
+                periodicGps = uiState.periodicGps,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
@@ -268,6 +268,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onNightSlowVibrationChange = { viewModel.setNightSlowVibrationLevel(it) },
                 onFollowMeChange = { viewModel.setFollowMe(it) },
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
+                onPeriodicGpsChange = { viewModel.setPeriodicGps(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
                 onDisclaimerShown = { viewModel.onDisclaimerShown() },
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
@@ -275,7 +276,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onShowTtaLinesChange = { viewModel.setShowTtaLines(it) },
                 onSheltersEnabledChange = { viewModel.setSheltersEnabled(it) },
-                onSheltersWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
                 onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
@@ -309,6 +309,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 focus = uiState.focusLocation,
                 index = uiState.shelterIndex,
                 withKids = uiState.sheltersWithKids,
+                onWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
                 shelterRefreshing = uiState.shelterRefreshing,
                 now = uiState.now,
                 onRefresh = { viewModel.refreshShelters() },
@@ -626,7 +627,7 @@ private fun WizardThreatGrid(
 @Composable
 private fun SetupFeaturesStep(s: Strings.StringSet) {
     val features = remember(s) {
-        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "night", "follow") }
+        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "night", "follow", "shelter") }
     }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         features.forEach { f ->
@@ -882,9 +883,22 @@ private fun MapScreen(
                                 text = String.format(s.mapPillPinned, cityName),
                                 modifier = Modifier
                                     .align(Alignment.BottomStart)
-                                    .padding(start = 12.dp, bottom = if (alertsOff) 100.dp else 40.dp)
+                                    .padding(start = 12.dp, bottom = if (alertsOff) 100.dp else 48.dp)
                             )
                         }
+                    }
+                    val shelterFocus = uiState.focusLocation
+                    if (uiState.sheltersEnabled && uiState.shelterIndex != null && shelterFocus != null &&
+                        uiState.shelterIndex!!.withinRegion(shelterFocus.lat, shelterFocus.lon)
+                    ) {
+                        ShelterButton(
+                            alertActive = uiState.focusOblastAlertActive,
+                            label = s.shelterButtonLabel,
+                            onClick = onOpenShelters,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 12.dp, bottom = 4.dp)
+                        )
                     }
                     ZoneButtons(
                         redArmed = uiState.activeSlowRedArmed || uiState.activeFastRedArmed,
@@ -899,19 +913,6 @@ private fun MapScreen(
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 4.dp)
                     )
-                    val shelterFocus = uiState.focusLocation
-                    if (uiState.sheltersEnabled && uiState.shelterIndex != null && shelterFocus != null &&
-                        uiState.shelterIndex!!.withinRegion(shelterFocus.lat, shelterFocus.lon)
-                    ) {
-                        ShelterButton(
-                            alertActive = uiState.focusOblastAlertActive,
-                            label = s.shelterButtonLabel,
-                            onClick = onOpenShelters,
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = 12.dp, bottom = if (uiState.showMapScale) 72.dp else 12.dp)
-                        )
-                    }
                 }
 
                 Surface(tonalElevation = 2.dp) {
@@ -1221,7 +1222,7 @@ private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: 
     }
 }
 
-/** "Go to shelter" pill: filled red while an official alert is active, ghost otherwise. */
+/** "Shelter" pill: filled red while an official alert is active, dimmed gray otherwise. */
 @Composable
 private fun ShelterButton(
     alertActive: Boolean,
@@ -1231,11 +1232,12 @@ private fun ShelterButton(
 ) {
     val shape = RoundedCornerShape(50)
     val bg = if (alertActive) AlertRed else MaterialTheme.colorScheme.surface
-    val fg = if (alertActive) Color.White else MaterialTheme.colorScheme.primary
+    val fg = if (alertActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+    val border = if (alertActive) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     Surface(
         shape = shape,
         color = bg,
-        border = if (alertActive) null else BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+        border = border,
         modifier = modifier.clickable(onClick = onClick)
     ) {
         Row(
@@ -1243,10 +1245,10 @@ private fun ShelterButton(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Outlined.Home,
+                painter = painterResource(R.drawable.ic_run),
                 contentDescription = null,
                 tint = fg,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
             Spacer(Modifier.width(6.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, color = fg)

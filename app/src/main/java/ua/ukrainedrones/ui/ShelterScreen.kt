@@ -24,9 +24,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -44,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Nearest-shelter list: ranks the Odesa dataset by distance to the focus point and hands the
@@ -56,6 +59,7 @@ fun ShelterScreen(
     focus: LatLng?,
     index: ShelterIndex?,
     withKids: Boolean,
+    onWithKidsChange: (Boolean) -> Unit,
     shelterRefreshing: Boolean,
     now: Long,
     onRefresh: () -> Unit,
@@ -64,13 +68,40 @@ fun ShelterScreen(
     val s = Strings.get(lang)
     val context = LocalContext.current
     val lastFixMs by LocationTracker.lastFixAtMs.collectAsState()
+    val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
+    val trackerRefreshing by LocationTracker.isRefreshing.collectAsState()
+    var gpsRefreshing by remember { mutableStateOf(false) }
+
+    // Reset GPS spinner when a new fix arrives or tracker finishes
+    LaunchedEffect(lastFixMs, trackerRefreshing) {
+        if (!trackerRefreshing) {
+            gpsRefreshing = false
+        }
+    }
+
+    // Auto-reset GPS spinner after 10s timeout if no fix received
+    LaunchedEffect(gpsRefreshing) {
+        if (gpsRefreshing) {
+            delay(10_000)
+            gpsRefreshing = false
+        }
+    }
+
     val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) LocationTracker.forceRefresh()
+        if (granted) {
+            gpsRefreshing = true
+            LocationTracker.forceRefresh { gpsRefreshing = false }
+        }
     }
     val forceGps: () -> Unit = {
-        if (fineGranted) LocationTracker.forceRefresh() else permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (fineGranted) {
+            gpsRefreshing = true
+            LocationTracker.forceRefresh { gpsRefreshing = false }
+        } else {
+            permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
     }
     val near = if (focus != null && index != null) index.nearest(focus.lat, focus.lon, 30) else emptyList()
     Scaffold(
@@ -97,7 +128,16 @@ fun ShelterScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
-                    GpsHeaderRow(lastFixMs = lastFixMs, now = now, s = s, onForceRefresh = forceGps)
+                    GpsHeaderRow(
+                        lastFixMs = lastFixMs,
+                        lastPreciseFixMs = lastPreciseFixMs,
+                        isRefreshing = gpsRefreshing || trackerRefreshing,
+                        now = now,
+                        s = s,
+                        withKids = withKids,
+                        onWithKidsChange = onWithKidsChange,
+                        onForceRefresh = forceGps
+                    )
                 }
                 if (near.isEmpty()) {
                     item {
@@ -182,35 +222,95 @@ private fun PullToRefreshBox(
 @Composable
 private fun GpsHeaderRow(
     lastFixMs: Long?,
+    lastPreciseFixMs: Long?,
+    isRefreshing: Boolean,
     now: Long,
     s: Strings.StringSet,
+    withKids: Boolean,
+    onWithKidsChange: (Boolean) -> Unit,
     onForceRefresh: () -> Unit
 ) {
-    val label = if (lastFixMs == null) s.shelterGpsUnknown
-    else String.format(s.shelterGpsAge, formatAlertAge(now, lastFixMs, s))
+    val label = if (lastPreciseFixMs != null) {
+        val age = formatAlertAge(now, lastPreciseFixMs, s)
+        String.format(s.lastGpsFixFormat, if (age.isBlank()) s.gpsFixJustNow else age)
+    } else if (lastFixMs != null) {
+        s.networkLocationOnly
+    } else {
+        s.shelterGpsUnknown
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Place,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(onClick = onForceRefresh) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = s.shelterButtonLabel,
-                    tint = MaterialTheme.colorScheme.primary
+                    imageVector = Icons.Filled.Place,
+                    contentDescription = null,
+                    tint = if (lastPreciseFixMs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isRefreshing) {
+                    Box(
+                        modifier = Modifier.size(40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onForceRefresh, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = s.calibrateGpsNow,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 6.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_adult_kid),
+                    contentDescription = null,
+                    tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        s.shelterWithKidsTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        s.shelterWithKidsDesc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Switch(
+                    checked = withKids,
+                    onCheckedChange = onWithKidsChange
                 )
             }
         }
@@ -225,58 +325,63 @@ private fun ShelterCard(
     withKids: Boolean,
     onOpenInMaps: () -> Unit
 ) {
-    val name = if (lang == AppLanguage.EN) Transliteration.transliterate(row.shelter.name) else row.shelter.name
+    val name = if (lang == AppLanguage.EN) shelterNameEn(row.shelter.name) else row.shelter.name
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(
                 name,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 formatDistance(row.distanceMeters, s),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.primary
             )
-            Spacer(Modifier.height(6.dp))
-            WalkRow(
-                icon = R.drawable.ic_adult,
-                text = String.format(s.shelterWalkMinutes, row.walkMinutesAdult) + " (${s.shelterWalkAdultLabel})",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (withKids) {
-                Spacer(Modifier.height(4.dp))
-                WalkRow(
-                    icon = R.drawable.ic_adult_kid,
-                    text = String.format(s.shelterWalkMinutes, row.walkMinutesKid) + " (${s.shelterWalkKidLabel})",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
             Spacer(Modifier.height(8.dp))
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable(onClick = onOpenInMaps)
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.LocationOn,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    s.shelterOpenInMaps,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    WalkRow(
+                        icon = R.drawable.ic_adult,
+                        text = String.format(s.shelterWalkMinutes, row.walkMinutesAdult),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (withKids) {
+                        Spacer(Modifier.height(6.dp))
+                        WalkRow(
+                            icon = R.drawable.ic_adult_kid,
+                            text = String.format(s.shelterWalkMinutes, row.walkMinutesKid),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable(onClick = onOpenInMaps)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.LocationOn,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        s.shelterOpenInMaps,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
@@ -289,12 +394,12 @@ private fun WalkRow(icon: Int, text: String, tint: androidx.compose.ui.graphics.
             painter = painterResource(icon),
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(20.dp)
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
             text,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

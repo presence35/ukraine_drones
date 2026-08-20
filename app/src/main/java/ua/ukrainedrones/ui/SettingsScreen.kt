@@ -1,8 +1,12 @@
 package ua.ukrainedrones
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.VibrationEffect
 import android.os.Vibrator
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -62,6 +66,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -76,26 +81,26 @@ private val UkraineBlue = Color(0xFF005BBB)
 private val NightSectionBg = Color(0xFF14142A)
 private val NightSectionBorder = Color(0xFF2C3A66)
 
-/** Collapse state of the Settings sections, hoisted to MainScreen and saved across switches.
- *  Night mode is part of the Alerts section, so it has no collapse flag of its own. */
+/** Collapse state of the Settings sections, hoisted to MainScreen and saved across switches. */
 data class SettingsCollapseState(
-    val language: Boolean = true,
-    val mapCenter: Boolean = true,
-    val cardSize: Boolean = true,
-    val threats: Boolean = true,
+    val location: Boolean = true,
+    val nightMode: Boolean = true,
     val alerts: Boolean = true,
-    val shelter: Boolean = true,
-    val additional: Boolean = true
+    val threats: Boolean = true,
+    val system: Boolean = true
 ) {
     companion object {
         val Saver = Saver<SettingsCollapseState, BooleanArray>(
-            save = { it.let { s -> BooleanArray(7).apply {
-                this[0] = s.language; this[1] = s.mapCenter; this[2] = s.cardSize
-                this[3] = s.threats; this[4] = s.alerts; this[5] = s.shelter; this[6] = s.additional
+            save = { it.let { s -> BooleanArray(5).apply {
+                this[0] = s.location; this[1] = s.nightMode; this[2] = s.alerts
+                this[3] = s.threats; this[4] = s.system
             } } },
             restore = { b -> SettingsCollapseState(
-                language = b[0], mapCenter = b[1], cardSize = b[2], threats = b[3],
-                alerts = b[4], shelter = b.getOrElse(5) { true }, additional = b.getOrElse(6) { true }
+                location = b.getOrElse(0) { true },
+                nightMode = b.getOrElse(1) { true },
+                alerts = b.getOrElse(2) { true },
+                threats = b.getOrElse(3) { true },
+                system = b.getOrElse(4) { true }
             ) }
         )
     }
@@ -147,7 +152,7 @@ fun SettingsScreen(
     showMapScale: Boolean,
     showTtaLines: Boolean,
     sheltersEnabled: Boolean,
-    sheltersWithKids: Boolean,
+    periodicGps: Boolean,
     deathAnimationEnabled: Boolean,
     followBullet: Boolean,
     neutralizedTallyEnabled: Boolean,
@@ -187,6 +192,7 @@ fun SettingsScreen(
     onNightSlowVibrationChange: (Int) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
+    onPeriodicGpsChange: (Boolean) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
     onDisclaimerShown: () -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
@@ -194,7 +200,6 @@ fun SettingsScreen(
     onShowMapScaleChange: (Boolean) -> Unit,
     onShowTtaLinesChange: (Boolean) -> Unit,
     onSheltersEnabledChange: (Boolean) -> Unit,
-    onSheltersWithKidsChange: (Boolean) -> Unit,
     onDeathAnimationChange: (Boolean) -> Unit,
     onFollowBulletChange: (Boolean) -> Unit,
     onNeutralizedTallyChange: (Boolean) -> Unit,
@@ -243,10 +248,12 @@ fun SettingsScreen(
     // border pulse so they re-anchor where they were.
     var flashId by remember { mutableStateOf<String?>(null) }
     val sectionOfExplainer: (String) -> Int = { id -> when (id) {
-        "followMe" -> 2          // Map centre
-        "cardSize" -> 3          // Card size
+        "followMe" -> 1          // Location & Focus
+        "nightMode" -> 2         // Night mode
+        "officialAlerts", "sirenOverride" -> 3 // Alerts
         "threatToggles" -> 4     // Threats
-        else -> 5                // Alerts (officialAlerts, sirenOverride, nightMode)
+        "cardSize" -> 5          // System & Display
+        else -> 3
     } }
     val dismissExplainer: () -> Unit = {
         val exp = activeExplainer
@@ -271,13 +278,10 @@ fun SettingsScreen(
         onDisclaimerCollapse(!disclaimerExpanded)
     }
 
-    // The Threats/Alerts section headers are fixed item indices in this LazyColumn; scroll
-    // to one when the zones-sheet gear asks (ZonesSheet → Settings). Alerts (index 5, which
-    // now holds night mode) when the night window is active, Threats (index 4) otherwise.
-    // The tick is consumed after the jump so a later plain open keeps the last scroll position.
+    // Scroll to section when requested by external triggers (e.g. ZonesSheet night mode badge).
     LaunchedEffect(scrollToThreatsTick) {
         if (scrollToThreatsTick > 0) {
-            listState.animateScrollToItem(if (scrollToNightMode) 5 else 4)
+            listState.animateScrollToItem(if (scrollToNightMode) 2 else 4)
             onThreatsScrollHandled()
         }
     }
@@ -344,42 +348,12 @@ fun SettingsScreen(
             }
 
             item {
-                // Inverted like the flags: the header names the language you'd switch to,
-                // not the one currently active.
                 CollapsibleSectionCard(
-                    title = Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA).languageLabel,
-                    icon = painterResource(id = R.drawable.ic_language),
-expanded = collapse.language,
-                onToggle = { onCollapseChange(collapse.copy(language = !collapse.language)) }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        LanguageFlag(
-                            emoji = "\uD83C\uDDFA\uD83C\uDDE6",
-                            active = lang == AppLanguage.UA,
-                            onClick = { onLanguageChange(AppLanguage.UA) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        LanguageFlag(
-                            emoji = "\uD83C\uDDE8\uD83C\uDDE6",
-                            active = lang == AppLanguage.EN,
-                            onClick = { onLanguageChange(AppLanguage.EN) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-
-            item {
-                CollapsibleSectionCard(
-                    title = s.mapCenterLabel,
+                    title = s.locationSectionTitle,
                     icon = rememberVectorPainter(Icons.Default.LocationOn),
-expanded = collapse.mapCenter,
-                onToggle = { onCollapseChange(collapse.copy(mapCenter = !collapse.mapCenter)) }
+                    expanded = collapse.location,
+                    subtitle = s.locationSubtitle(followMe, pinnedCity?.name(lang), periodicGps),
+                    onToggle = { onCollapseChange(collapse.copy(location = !collapse.location)) }
                 ) {
                     AlertToggleRow(
                         title = s.followMeTitle,
@@ -395,43 +369,164 @@ expanded = collapse.mapCenter,
                         pinnedCity = pinnedCity,
                         onChange = onPinnedCityChange
                     )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.periodicGpsTitle,
+                        description = s.periodicGpsDesc,
+                        checked = periodicGps,
+                        onCheckedChange = onPeriodicGpsChange
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    GpsCalibrationRow(
+                        lang = lang,
+                        s = s
+                    )
                 }
             }
 
             item {
                 CollapsibleSectionCard(
-                    title = s.cardSizeLabel,
-                    icon = painterResource(R.drawable.ic_card_size),
-expanded = collapse.cardSize,
-                onToggle = { onCollapseChange(collapse.copy(cardSize = !collapse.cardSize)) }
+                    title = s.nightModeLabel,
+                    icon = painterResource(R.drawable.ic_moon),
+                    expanded = collapse.nightMode,
+                    subtitle = s.nightSubtitle(
+                        nightEnabled,
+                        nightStartMin,
+                        nightEndMin,
+                        nightZoneSirenOverride || nightOfficialSirenOverride
+                    ),
+                    onToggle = { onCollapseChange(collapse.copy(nightMode = !collapse.nightMode)) }
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp).explainerFlash(flashId == "cardSize")) {
-                        ThreatCardSizeSelector(
-                            lang = lang,
-                            selected = threatCardSize,
-                            onChange = { v -> showExplainer("cardSize"); onThreatCardSizeChange(v) }
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(Modifier.height(10.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_skull),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                s.cardSkullNote,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    NightModeCard(
+                        lang = lang,
+                        enabled = nightEnabled,
+                        startMin = nightStartMin,
+                        endMin = nightEndMin,
+                        useCustomZones = nightUseCustomZones,
+                        slowRedKm = nightSlowRedKm,
+                        slowYellowKm = nightSlowYellowKm,
+                        fastRedMin = nightFastRedMin,
+                        fastYellowMin = nightFastYellowMin,
+                        slowRedArmed = nightSlowRedArmed,
+                        slowYellowArmed = nightSlowYellowArmed,
+                        fastRedArmed = nightFastRedArmed,
+                        fastYellowArmed = nightFastYellowArmed,
+                        zoneSirenOverride = nightZoneSirenOverride,
+                        officialSirenOverride = nightOfficialSirenOverride,
+                        vibrationEnabled = nightVibrationEnabled,
+                        fastVibrationLevel = nightFastVibrationLevel,
+                        slowVibrationLevel = nightSlowVibrationLevel,
+                        daySlowRedKm = slowRedKm,
+                        daySlowYellowKm = slowYellowKm,
+                        dayFastRedMin = fastRedMin,
+                        dayFastYellowMin = fastYellowMin,
+                        onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
+                        onStartChange = onNightStartChange,
+                        onEndChange = onNightEndChange,
+                        onUseCustomZonesChange = onNightUseCustomZonesChange,
+                        onSlowRedChange = onNightSlowRedChange,
+                        onSlowYellowChange = onNightSlowYellowChange,
+                        onFastRedChange = onNightFastRedChange,
+                        onFastYellowChange = onNightFastYellowChange,
+                        onSlowRedArmedChange = onNightSlowRedArmedChange,
+                        onSlowYellowArmedChange = onNightSlowYellowArmedChange,
+                        onFastRedArmedChange = onNightFastRedArmedChange,
+                        onFastYellowArmedChange = onNightFastYellowArmedChange,
+                        onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
+                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
+                        onVibrationEnabledChange = onNightVibrationEnabledChange,
+                        onFastVibrationChange = onNightFastVibrationChange,
+                        onSlowVibrationChange = onNightSlowVibrationChange,
+                        flash = flashId == "nightMode"
+                    )
+                }
+            }
+
+            item {
+                CollapsibleSectionCard(
+                    title = s.alertsLabel,
+                    icon = rememberVectorPainter(Icons.Default.Notifications),
+                    expanded = collapse.alerts,
+                    subtitle = s.alertsSubtitle(officialAlertsEnabled, sirenOverride, sheltersEnabled),
+                    onToggle = { onCollapseChange(collapse.copy(alerts = !collapse.alerts)) }
+                ) {
+                    AlertToggleRow(
+                        title = s.officialAlertsTitle,
+                        description = s.officialAlertsDesc,
+                        checked = officialAlertsEnabled,
+                        onCheckedChange = { v -> showExplainer("officialAlerts"); onOfficialAlertsChange(v) },
+                        icon = painterResource(R.drawable.ic_trident),
+                        note = s.officialAlertsRedTridentNote,
+                        flash = flashId == "officialAlerts"
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.sirenOverrideTitle,
+                        description = s.sirenOverrideDesc,
+                        checked = sirenOverride,
+                        onCheckedChange = { v -> showExplainer("sirenOverride"); onSirenOverrideChange(v) },
+                        icon = painterResource(R.drawable.ic_volume_up),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        flash = flashId == "sirenOverride"
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.shelterSettingsTitle,
+                        description = s.shelterSettingsDesc,
+                        checked = sheltersEnabled,
+                        onCheckedChange = onSheltersEnabledChange,
+                        icon = painterResource(R.drawable.ic_shelter),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    AnimatedVisibility(visible = sheltersEnabled) {
+                        Column {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            AlertToggleRow(
+                                title = s.shelterWithKidsTitle,
+                                description = s.shelterWithKidsDesc,
+                                checked = sheltersWithKids,
+                                onCheckedChange = onSheltersWithKidsChange,
+                                icon = painterResource(R.drawable.ic_adult_kid),
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.neutralizedTallyTitle,
+                        description = s.neutralizedTallyDesc,
+                        checked = neutralizedTallyEnabled,
+                        onCheckedChange = onNeutralizedTallyChange,
+                        icon = rememberVectorPainter(Icons.Default.Notifications),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                         Text(
-                            s.approxNote,
+                            s.vibrationTitle,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            s.vibrationDesc,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        VibrationSliderRow(
+                            label = s.fastGroupLabel,
+                            level = fastVibrationLevel,
+                            accent = Color(0xFFE57373),
+                            levelName = { vibrationLevelName(s, it) },
+                            onLevelChange = onFastVibrationChange
+                        )
+                        VibrationSliderRow(
+                            label = s.slowGroupLabel,
+                            level = slowVibrationLevel,
+                            accent = Color(0xFFF9A825),
+                            levelName = { vibrationLevelName(s, it) },
+                            onLevelChange = onSlowVibrationChange
                         )
                     }
                 }
@@ -441,8 +536,9 @@ expanded = collapse.cardSize,
                 CollapsibleSectionCard(
                     title = s.threatsLabel,
                     icon = rememberVectorPainter(Icons.Default.Warning),
-expanded = collapse.threats,
-                onToggle = { onCollapseChange(collapse.copy(threats = !collapse.threats)) }
+                    expanded = collapse.threats,
+                    subtitle = s.threatsSubtitle(hiddenTypes.size, silencedTypes.size),
+                    onToggle = { onCollapseChange(collapse.copy(threats = !collapse.threats)) }
                 ) {
                     fastAndSlowGroups(lang).forEachIndexed { index, (groupIcon, groupTitle, types) ->
                         if (index == 1) {
@@ -531,269 +627,171 @@ expanded = collapse.threats,
                 }
             }
 
-item {
+            item {
                 CollapsibleSectionCard(
-                    title = s.alertsLabel,
-                    icon = rememberVectorPainter(Icons.Default.Notifications),
-expanded = collapse.alerts,
-                onToggle = { onCollapseChange(collapse.copy(alerts = !collapse.alerts)) }
+                    title = s.systemSectionTitle,
+                    icon = painterResource(id = R.drawable.ic_language),
+                    expanded = collapse.system,
+                    subtitle = s.systemSubtitle(lang, threatCardSize, iconSet),
+                    onToggle = { onCollapseChange(collapse.copy(system = !collapse.system)) }
                 ) {
-                    AlertToggleRow(
-                        title = s.officialAlertsTitle,
-                        description = s.officialAlertsDesc,
-                        checked = officialAlertsEnabled,
-                        onCheckedChange = { v -> showExplainer("officialAlerts"); onOfficialAlertsChange(v) },
-                        icon = painterResource(R.drawable.ic_trident),
-                        note = s.officialAlertsRedTridentNote,
-                        flash = flashId == "officialAlerts"
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.sirenOverrideTitle,
-                        description = s.sirenOverrideDesc,
-                        checked = sirenOverride,
-                        onCheckedChange = { v -> showExplainer("sirenOverride"); onSirenOverrideChange(v) },
-                        icon = painterResource(R.drawable.ic_volume_up),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        flash = flashId == "sirenOverride"
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.neutralizedTallyTitle,
-                        description = s.neutralizedTallyDesc,
-                        checked = neutralizedTallyEnabled,
-                        onCheckedChange = onNeutralizedTallyChange,
-                        icon = rememberVectorPainter(Icons.Default.Notifications),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Text(
-                            s.vibrationTitle,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleMedium
+                    // Language Switcher
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        LanguageFlag(
+                            emoji = "\uD83C\uDDFA\uD83C\uDDE6",
+                            active = lang == AppLanguage.UA,
+                            onClick = { onLanguageChange(AppLanguage.UA) },
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            s.vibrationDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        VibrationSliderRow(
-                            label = s.fastGroupLabel,
-                            level = fastVibrationLevel,
-                            accent = Color(0xFFE57373),
-                            levelName = { vibrationLevelName(s, it) },
-                            onLevelChange = onFastVibrationChange
-                        )
-                        VibrationSliderRow(
-                            label = s.slowGroupLabel,
-                            level = slowVibrationLevel,
-                            accent = Color(0xFFF9A825),
-                            levelName = { vibrationLevelName(s, it) },
-                            onLevelChange = onSlowVibrationChange
+                        LanguageFlag(
+                            emoji = "\uD83C\uDDE8\uD83C\uDDE6",
+                            active = lang == AppLanguage.EN,
+                            onClick = { onLanguageChange(AppLanguage.EN) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    NightModeCard(
-                        lang = lang,
-                        enabled = nightEnabled,
-                        startMin = nightStartMin,
-                        endMin = nightEndMin,
-                        useCustomZones = nightUseCustomZones,
-                        slowRedKm = nightSlowRedKm,
-                        slowYellowKm = nightSlowYellowKm,
-                        fastRedMin = nightFastRedMin,
-                        fastYellowMin = nightFastYellowMin,
-                        slowRedArmed = nightSlowRedArmed,
-                        slowYellowArmed = nightSlowYellowArmed,
-                        fastRedArmed = nightFastRedArmed,
-                        fastYellowArmed = nightFastYellowArmed,
-                        zoneSirenOverride = nightZoneSirenOverride,
-                        officialSirenOverride = nightOfficialSirenOverride,
-                        vibrationEnabled = nightVibrationEnabled,
-                        fastVibrationLevel = nightFastVibrationLevel,
-                        slowVibrationLevel = nightSlowVibrationLevel,
-                        daySlowRedKm = slowRedKm,
-                        daySlowYellowKm = slowYellowKm,
-                        dayFastRedMin = fastRedMin,
-                        dayFastYellowMin = fastYellowMin,
-                        onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
-                        onStartChange = onNightStartChange,
-                        onEndChange = onNightEndChange,
-                        onUseCustomZonesChange = onNightUseCustomZonesChange,
-                        onSlowRedChange = onNightSlowRedChange,
-                        onSlowYellowChange = onNightSlowYellowChange,
-                        onFastRedChange = onNightFastRedChange,
-                        onFastYellowChange = onNightFastYellowChange,
-                        onSlowRedArmedChange = onNightSlowRedArmedChange,
-                        onSlowYellowArmedChange = onNightSlowYellowArmedChange,
-                        onFastRedArmedChange = onNightFastRedArmedChange,
-                        onFastYellowArmedChange = onNightFastYellowArmedChange,
-                        onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
-                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
-                        onVibrationEnabledChange = onNightVibrationEnabledChange,
-                        onFastVibrationChange = onNightFastVibrationChange,
-                        onSlowVibrationChange = onNightSlowVibrationChange,
-flash = flashId == "nightMode"
-                    )
-                }
-            }
-
-            item {
-                CollapsibleSectionCard(
-                    title = s.shelterSectionTitle,
-                    icon = painterResource(id = R.drawable.ic_shelter),
-                    expanded = collapse.shelter,
-                    onToggle = { onCollapseChange(collapse.copy(shelter = !collapse.shelter)) }
-                ) {
+                    // Card Size & Detail
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp).explainerFlash(flashId == "cardSize")) {
+                        Text(
+                            s.cardSizeLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        ThreatCardSizeSelector(
+                            lang = lang,
+                            selected = threatCardSize,
+                            onChange = { v -> showExplainer("cardSize"); onThreatCardSizeChange(v) }
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_skull),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                s.cardSkullNote,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            s.approxNote,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // Icon Style Picker
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(
+                            s.iconSetTitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        IconSetSelector(
+                            lang = lang,
+                            selected = iconSet,
+                            onChange = onIconSetChange
+                        )
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // Visual map toggles
                     AlertToggleRow(
-                        title = s.shelterSettingsTitle,
-                        description = s.shelterSettingsDesc,
-                        checked = sheltersEnabled,
-                        onCheckedChange = onSheltersEnabledChange,
-                        icon = painterResource(R.drawable.ic_shelter),
+                        title = s.showMapScaleTitle,
+                        description = s.showMapScaleDesc,
+                        checked = showMapScale,
+                        onCheckedChange = onShowMapScaleChange,
+                        icon = painterResource(R.drawable.ic_scale),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     AlertToggleRow(
-                        title = s.shelterWithKidsTitle,
-                        description = s.shelterWithKidsDesc,
-                        checked = sheltersWithKids,
-                        onCheckedChange = onSheltersWithKidsChange,
-                        icon = painterResource(R.drawable.ic_adult_kid),
+                        title = s.showTtaLinesTitle,
+                        description = s.showTtaLinesDesc,
+                        checked = showTtaLines,
+                        onCheckedChange = onShowTtaLinesChange,
+                        icon = painterResource(R.drawable.ic_explosion),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-            }
-
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onCollapseChange(collapse.copy(additional = !collapse.additional)) }
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                s.additionalSettingsTitle,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Icon(
-                                imageVector = if (collapse.additional) Icons.Default.KeyboardArrowUp
-                                else Icons.Default.KeyboardArrowDown,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.deathAnimationTitle,
+                        description = s.deathAnimationDesc,
+                        checked = deathAnimationEnabled,
+                        onCheckedChange = onDeathAnimationChange,
+                        icon = painterResource(R.drawable.ic_explosion),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    AnimatedVisibility(visible = deathAnimationEnabled) {
+                        Column(modifier = Modifier.padding(start = 24.dp)) {
+                            AlertToggleRow(
+                                title = s.followBulletTitle,
+                                description = s.followBulletDesc,
+                                checked = followBullet,
+                                onCheckedChange = onFollowBulletChange,
+                                icon = painterResource(R.drawable.ic_explosion),
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        AnimatedVisibility(visible = collapse.additional) {
-                            Column {
-                                AlertToggleRow(
-                                    title = s.deathAnimationTitle,
-                                    description = s.deathAnimationDesc,
-                                    checked = deathAnimationEnabled,
-                                    onCheckedChange = onDeathAnimationChange,
-                                    icon = painterResource(R.drawable.ic_explosion),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // Battery Optimization
+                    if (batteryOptimized) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_check),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                AnimatedVisibility(visible = deathAnimationEnabled) {
-                                    Column(modifier = Modifier.padding(start = 24.dp)) {
-                                        AlertToggleRow(
-                                            title = s.followBulletTitle,
-                                            description = s.followBulletDesc,
-                                            checked = followBullet,
-                                            onCheckedChange = onFollowBulletChange,
-                                            icon = painterResource(R.drawable.ic_explosion),
-                                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                AlertToggleRow(
-                                    title = s.showMapScaleTitle,
-                                    description = s.showMapScaleDesc,
-                                    checked = showMapScale,
-                                    onCheckedChange = onShowMapScaleChange,
-                                    icon = painterResource(R.drawable.ic_scale),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    s.batteryGranted,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
                                 )
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                AlertToggleRow(
-                                    title = s.showTtaLinesTitle,
-                                    description = s.showTtaLinesDesc,
-                                    checked = showTtaLines,
-                                    onCheckedChange = onShowTtaLinesChange,
-                                    icon = painterResource(R.drawable.ic_explosion),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                    Text(
-                                        s.iconSetTitle,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(Modifier.height(10.dp))
-                                    IconSetSelector(
-                                        lang = lang,
-                                        selected = iconSet,
-                                        onChange = onIconSetChange
-                                    )
-                                }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                if (batteryOptimized) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_check),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                s.batteryGranted,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            s.batteryBody,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Text(
-                                            s.batteryTitle,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            s.batteryBody,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-                                        Button(
-                                            onClick = { BatteryOptimization.requestExemption(appContext) },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
-                                        }
-                                    }
-                                }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                s.batteryBody,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                s.batteryTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                s.batteryBody,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { BatteryOptimization.requestExemption(appContext) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -957,24 +955,16 @@ private fun NightModeCard(
     val s = Strings.get(lang)
     var editing by remember { mutableStateOf<String?>(null) }  // "start" | "end" | null
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = NightSectionBg,
-        border = BorderStroke(1.dp, NightSectionBorder)
-    ) {
-        Column {
-            AlertToggleRow(
-                title = s.nightModeLabel,
-                description = s.nightModeDesc,
-                checked = enabled,
-                onCheckedChange = onEnabledChange,
-                icon = painterResource(R.drawable.ic_moon),
-                flash = flash
-            )
-            if (enabled) {
+    Column {
+        AlertToggleRow(
+            title = s.nightModeLabel,
+            description = s.nightModeDesc,
+            checked = enabled,
+            onCheckedChange = onEnabledChange,
+            icon = painterResource(R.drawable.ic_moon),
+            flash = flash
+        )
+        if (enabled) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(
                 modifier = Modifier
@@ -1121,7 +1111,6 @@ private fun NightModeCard(
                     }
                 }
             }
-        }
         }
     }
 
@@ -1508,6 +1497,113 @@ private fun PinCityRow(
     }
 }
 
+@Composable
+private fun GpsCalibrationRow(
+    lang: AppLanguage,
+    s: Strings.StringSet
+) {
+    val context = LocalContext.current
+    val lastFixMs by LocationTracker.lastFixAtMs.collectAsState()
+    val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
+    val isRefreshing by LocationTracker.isRefreshing.collectAsState()
+    var localRefreshing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(lastFixMs, isRefreshing) {
+        if (!isRefreshing) localRefreshing = false
+    }
+
+    LaunchedEffect(localRefreshing) {
+        if (localRefreshing) {
+            delay(10_000)
+            localRefreshing = false
+        }
+    }
+
+    val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+        PackageManager.PERMISSION_GRANTED
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            localRefreshing = true
+            LocationTracker.forceRefresh { localRefreshing = false }
+        }
+    }
+    val forceGps: () -> Unit = {
+        if (fineGranted) {
+            localRefreshing = true
+            LocationTracker.forceRefresh { localRefreshing = false }
+        } else {
+            permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    val statusText = if (lastPreciseFixMs != null) {
+        val now = System.currentTimeMillis()
+        val age = formatAlertAge(now, lastPreciseFixMs, s)
+        String.format(s.lastGpsFixFormat, if (age.isBlank()) s.gpsFixJustNow else age)
+    } else if (lastFixMs != null) {
+        s.networkLocationOnly
+    } else {
+        s.shelterGpsUnknown
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Place,
+            contentDescription = null,
+            tint = if (lastPreciseFixMs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                s.gpsStatusTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                statusText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        if (isRefreshing || localRefreshing) {
+            Box(
+                modifier = Modifier.size(40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        } else {
+            OutlinedButton(
+                onClick = forceGps,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    s.calibrateGpsNow,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+    }
+}
+
 /** Mock threat + proximity driving the live card-size previews. */
 private val PreviewThreat = Threat(
     id = "preview",
@@ -1749,6 +1845,7 @@ private fun CollapsibleSectionCard(
     icon: Painter,
     expanded: Boolean,
     onToggle: () -> Unit,
+    subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -1764,16 +1861,27 @@ private fun CollapsibleSectionCard(
                     painter = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (!expanded && !subtitle.isNullOrBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2
+                        )
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp
                     else Icons.Default.KeyboardArrowDown,
