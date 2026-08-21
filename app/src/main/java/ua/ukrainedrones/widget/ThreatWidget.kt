@@ -3,9 +3,9 @@ package ua.ukrainedrones
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.DpSize
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.LocalSize
@@ -143,7 +143,7 @@ class ThreatWidget : GlanceAppWidget() {
     private fun UpdatedLine(snapshot: WidgetSnapshot, strings: Strings.StringSet, detailed: Boolean) {
         if (snapshot.updatedAtMs <= 0L) return
         Text(
-            text = strings.widget.updatedFormat(formatWidgetTime(snapshot.updatedAtMs)),
+            text = String.format(strings.widget.updatedFormat, formatWidgetTime(snapshot.updatedAtMs)),
             style = TextStyle(
                 color = ColorProvider(MUTED),
                 fontSize = if (detailed) 12.sp else 11.sp

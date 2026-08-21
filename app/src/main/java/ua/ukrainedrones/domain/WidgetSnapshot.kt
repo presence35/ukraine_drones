@@ -54,7 +54,7 @@ fun computeWidgetSnapshot(
         count++
         if (focus != null) {
             val d = distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
-            if (nearestKm == null || d < nearestKm!!) nearestKm = d
+            if (nearestKm == null || d < nearestKm) nearestKm = d
         }
     }
     nearestKm = nearestKm?.let { it.coerceAtMost(WidgetSnapshot.NEAREST_CAP_KM).roundToInt().toDouble() }

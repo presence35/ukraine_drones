@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Widget: a new home-screen widget shows the current threat state at a glance — active threat count, red/yellow zone status, nearest distance and the official alert for your area, plus the connection source. One responsive widget: compact (2×1) shows the count and status dot, standard (4×2) adds the zone line, detailed (4×3) adds the source line; it updates automatically while the app monitors and tapping it opens the map.
+- Settings → Location + Shelters: the "Calibrate GPS" / refresh buttons now re-prompt for precise location correctly — they request both fine and coarse permissions together, which Android 12+ requires to show the Precise/Approximate upgrade dialog once you've chosen approximate (a fine-only re-request was silently ignored, so no popup appeared).
+- Shelters: the GPS refresh button is now the same labeled "Calibrate GPS" button as in Settings (was a bare refresh icon), and it shows the "finding you" toast while acquiring a precise fix.
+- Map: long-pressing a threat to shoot it down no longer moves the camera — the strike animation plays in place (the "follow the bullet" camera glide still applies to passive resolutions when that setting is on).
+- Fix: the common-word "морі" (locative of "sea") now translates to "the sea" instead of being transliterated, e.g. "БпЛА над морі" reads "UAV over the sea".
+
 - First-run wizard: the three tips on the language step now use bigger icons and larger text, and the threat cards on the second step use compact one-line labels (Cruise / Guided / Recon — «Крилата» / «КАБ» / «Розвідка») so all cards are the same height.
 - Settings → Alerts: the per-zone vibration strength sliders (Fast/Slow) and the separate night-vibration sliders are gone — zone alerts vibrate at a fixed strong level, official alerts stay urgent.
 - Small threat card: redesigned — only the time-to-arrival and distance pills remain (speed pill dropped), and the "R" (reliability) and threat-level (skull) indicators are now horizontal bars under the pills.

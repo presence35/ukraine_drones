@@ -74,8 +74,11 @@ fun ShelterScreen(
 
     val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
+    // Android 12+ drops a re-request of ACCESS_FINE_LOCATION alone once the user already
+    // picked approximate (COARSE granted) — it must be requested together with COARSE to
+    // show the Precise/Approximate upgrade dialog.
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
             gpsRefreshing = true
             LocationTracker.forceRefresh { gpsRefreshing = false }
         }
@@ -85,7 +88,9 @@ fun ShelterScreen(
             gpsRefreshing = true
             LocationTracker.forceRefresh { gpsRefreshing = false }
         } else {
-            permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            permLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
         }
     }
     val near = if (focus != null && index != null) index.nearest(focus.lat, focus.lon, 30) else emptyList()
@@ -163,6 +168,11 @@ private fun GpsHeaderRow(
     onWithKidsChange: (Boolean) -> Unit,
     onForceRefresh: () -> Unit
 ) {
+    val context = LocalContext.current
+    val onCalibrate: () -> Unit = {
+        showToast(context, s.calibratingGps, cardVisible = false)
+        onForceRefresh()
+    }
     val label = if (lastPreciseFixMs != null) {
         val ageMin = ((now - lastPreciseFixMs) / 60_000).coerceAtLeast(0)
         if (ageMin <= 0) s.gpsFixFresh else preciseGpsAgePhrase(ageMin, lang)
@@ -203,11 +213,19 @@ private fun GpsHeaderRow(
                         )
                     }
                 } else {
-                    IconButton(onClick = onForceRefresh, modifier = Modifier.size(40.dp)) {
+                    OutlinedButton(
+                        onClick = onCalibrate,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = s.calibrateGpsNow,
-                            tint = MaterialTheme.colorScheme.primary
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            s.calibrateGpsNow,
+                            style = MaterialTheme.typography.labelMedium
                         )
                     }
                 }

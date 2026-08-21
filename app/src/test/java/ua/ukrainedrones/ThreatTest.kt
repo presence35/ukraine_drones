@@ -146,6 +146,10 @@ class ThreatTest {
             translateCourseAssessment("БпЛА над морем", AppLanguage.EN)
         )
         assertEquals(
+            "UAV over the sea",
+            translateCourseAssessment("БпЛА над морі", AppLanguage.EN)
+        )
+        assertEquals(
             "UAV heading toward Black Sea",
             translateCourseAssessment("БпЛА курсом на Чорне море", AppLanguage.EN)
         )

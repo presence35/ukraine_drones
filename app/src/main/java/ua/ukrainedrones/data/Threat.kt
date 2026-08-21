@@ -524,6 +524,7 @@ private val COMMON_WORDS: Map<String, String> = mapOf(
     "акваторії" to "the water area",
     "акваторією" to "the water area",
     "морем" to "the sea",
+    "морі" to "the sea",
     "моря" to "the sea",
     "море" to "the sea",
     "берег" to "the coast",

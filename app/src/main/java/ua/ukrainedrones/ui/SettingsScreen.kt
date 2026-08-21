@@ -1813,8 +1813,11 @@ private fun GpsCalibrationRow(
 
     val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
+    // Android 12+ drops a re-request of ACCESS_FINE_LOCATION alone once the user already
+    // picked approximate (COARSE granted) — it must be requested together with COARSE to
+    // show the Precise/Approximate upgrade dialog.
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
             localRefreshing = true
             showToast(context, s.calibratingGps, cardVisible = false)
             LocationTracker.forceRefresh { localRefreshing = false }
@@ -1826,7 +1829,9 @@ private fun GpsCalibrationRow(
             showToast(context, s.calibratingGps, cardVisible = false)
             LocationTracker.forceRefresh { localRefreshing = false }
         } else {
-            permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            permLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
         }
     }
 

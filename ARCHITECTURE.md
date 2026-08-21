@@ -187,6 +187,12 @@ Treat these as a contract. If you change one, update **every** place that relies
   `effectiveZoneParams`/`effectiveArmed` resolved per tick (`now`); a new
   night knob needs only a pref + a `NightMode.kt` change. Vibration is fixed, not per-night.
 
+- **Widgets read snapshots, never evaluate.** The home-screen widget is a passive renderer of
+  `WidgetSnapshot`, computed solely by `WidgetUpdater` via `computeWidgetSnapshot` — which calls
+  the shared domain functions (`ThreatEvaluator.evaluate`, `distanceMeters`, `focusAttribution`,
+  `inOblast`). A change to zone/tier/prediction logic must **not** be reimplemented in the widget
+  layer; update `computeWidgetSnapshot` instead. Counts mirror footer-strip semantics.
+
 - **Threat type gating.** `threatMapFlow` gates map rendering, `threatAlertFlow` gates alerts —
   decoupled toggles: map-off doesn't silence alerts; alerts-on auto-enables map visibility (an
   armed alert is never hidden). A type hidden from the map is dropped from the map and the

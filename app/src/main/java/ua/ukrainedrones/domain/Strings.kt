@@ -444,6 +444,7 @@ object Strings {
         val status: Status,
         val updates: Updates,
         val threat: Threat,
+        val misc: Misc,
         val widget: Widget,
         val guide: Guide,
         val explainers: ExplainerStrings
@@ -1242,7 +1243,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         threatsLabel = "Загрози",
         noThreats = "Загроз немає",
         active = "АКТИВНО",
-        updatedFormat = "Оновлено %1$s",
+        updatedFormat = "Оновлено %1\$s",
         refreshLabel = "Оновити",
     )
 
@@ -1715,7 +1716,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         threatsLabel = "Threats",
         noThreats = "No threats",
         active = "ACTIVE",
-        updatedFormat = "Updated %1$s",
+        updatedFormat = "Updated %1\$s",
         refreshLabel = "Refresh",
     )
 

@@ -871,7 +871,8 @@ fun NeptunMapView(
                                         // flies off-screen instead of exploding twice.
                                         deathFx.spawnDud(pressedId, target, origin)
                                     } else {
-                                        followStrike(mapView, target, origin)
+                                        // User-initiated strike: never move the camera — the
+                                        // user is already looking at the threat they shot.
                                         deathFx.spawn(
                                             id = pressedId,
                                             geo = target,

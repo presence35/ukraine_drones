@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,7 +100,7 @@ object WidgetUpdater {
     private suspend fun persist(context: Context, snapshot: WidgetSnapshot, lang: AppLanguage) {
         context.widgetSnapshotStore.edit { prefs ->
             prefs[Keys.threatCount] = snapshot.threatCount
-            prefs[Keys.activeZone] = snapshot.activeZone?.name
+            prefs[Keys.activeZone] = snapshot.activeZone?.name.orEmpty()
             prefs[Keys.nearestKm] = snapshot.nearestKm?.toInt() ?: -1
             prefs[Keys.officialAlert] = snapshot.officialAlert
             prefs[Keys.sourceOnline] = snapshot.sourceOnline

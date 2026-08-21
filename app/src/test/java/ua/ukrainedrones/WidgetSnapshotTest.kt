@@ -61,8 +61,8 @@ class WidgetSnapshotTest {
     fun `official alert matches the focus oblast token`() {
         val alert = OblastAlert(key = "k", name = "Одеська область", oblast = "Одеська", since = "x")
         val s = NeptunState(neptunAlerts = listOf(alert))
-        assertTrue(computeWidgetSnapshot(s, focus, "odesa", params, allTypes, now).officialAlert)
-        assertFalse(computeWidgetSnapshot(s, focus, "kyivska", params, allTypes, now).officialAlert)
+        assertTrue(computeWidgetSnapshot(s, focus, "Одеськ", params, allTypes, now).officialAlert)
+        assertFalse(computeWidgetSnapshot(s, focus, "Київськ", params, allTypes, now).officialAlert)
     }
 
     @Test
