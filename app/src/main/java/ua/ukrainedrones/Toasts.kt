@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
  * at the top (threat/shelter popup, zones sheet), the toast drops to the bottom instead,
  * above the floating zone/shelter buttons.
  */
-fun showToast(context: Context, text: CharSequence, cardVisible: Boolean) {
+fun showToast(context: Context, text: CharSequence, cardVisible: Boolean = false) {
     val res = context.resources
     fun systemDimen(idName: String): Int {
         val id = res.getIdentifier(idName, "dimen", "android")
@@ -19,13 +19,8 @@ fun showToast(context: Context, text: CharSequence, cardVisible: Boolean) {
     }
     val density = res.displayMetrics.density
     fun dp(value: Float) = (value * density).roundToInt()
-    val (gravity, yOffset) = if (cardVisible) {
-        Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL to
-            (systemDimen("navigation_bar_height") + dp(64f))
-    } else {
-        Gravity.TOP or Gravity.CENTER_HORIZONTAL to
-            (systemDimen("status_bar_height") + dp(56f))
-    }
+    val gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+    val yOffset = systemDimen("status_bar_height") + dp(56f)
     Toast.makeText(context, text, Toast.LENGTH_SHORT)
         .apply { setGravity(gravity, 0, yOffset) }
         .show()

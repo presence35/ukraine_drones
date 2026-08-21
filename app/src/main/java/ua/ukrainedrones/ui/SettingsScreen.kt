@@ -122,7 +122,7 @@ data class SettingsCollapseState(
 /** The collapsible section cards, in LazyColumn order (item 0 is the disclaimer card).
  *  `index` is the section's LazyColumn position with the full list shown. */
 private enum class SettingsSection(val index: Int) {
-    LOCATION(1), NIGHT(2), ALERTS(3), SHELTERS(4), THREATS(5), SYSTEM(6)
+    LOCATION(1), ALERTS(2), NIGHT(3), SHELTERS(4), THREATS(5), SYSTEM(6)
 }
 
 /** Standalone action buttons below the section cards, also matched by the search box. */
@@ -694,63 +694,6 @@ fun SettingsScreen(
             }
 
             }
-            if (searching.not() || SettingsSection.NIGHT in matchedSections) {
-            item {
-                CollapsibleSectionCard(
-                    title = s.nightModeLabel,
-                    icon = painterResource(R.drawable.ic_moon),
-                    expanded = collapse.nightMode,
-                    subtitle = s.nightSubtitle(
-                        nightEnabled,
-                        nightStartMin,
-                        nightEndMin,
-                        nightZoneSirenOverride || nightOfficialSirenOverride,
-                        nightUseCustomZones
-                    ),
-                    onToggle = { onCollapseChange(collapse.copy(nightMode = !collapse.nightMode)) },
-                    cardColor = NightSectionBg,
-                    cardBorder = NightSectionBorder
-                ) {
-                    NightModeCard(
-                        lang = lang,
-                        enabled = nightEnabled,
-                        startMin = nightStartMin,
-                        endMin = nightEndMin,
-                        useCustomZones = nightUseCustomZones,
-                        slowRedKm = nightSlowRedKm,
-                        slowYellowKm = nightSlowYellowKm,
-                        fastRedMin = nightFastRedMin,
-                        fastYellowMin = nightFastYellowMin,
-                        slowRedArmed = nightSlowRedArmed,
-                        slowYellowArmed = nightSlowYellowArmed,
-                        fastRedArmed = nightFastRedArmed,
-                        fastYellowArmed = nightFastYellowArmed,
-                        zoneSirenOverride = nightZoneSirenOverride,
-                        officialSirenOverride = nightOfficialSirenOverride,
-                        daySlowRedKm = slowRedKm,
-                        daySlowYellowKm = slowYellowKm,
-                        dayFastRedMin = fastRedMin,
-                        dayFastYellowMin = fastYellowMin,
-                        onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
-                        onStartChange = onNightStartChange,
-                        onEndChange = onNightEndChange,
-                        onUseCustomZonesChange = onNightUseCustomZonesChange,
-                        onSlowRedChange = onNightSlowRedChange,
-                        onSlowYellowChange = onNightSlowYellowChange,
-                        onFastRedChange = onNightFastRedChange,
-                        onFastYellowChange = onNightFastYellowChange,
-                        onSlowRedArmedChange = onNightSlowRedArmedChange,
-                        onSlowYellowArmedChange = onNightSlowYellowArmedChange,
-                        onFastRedArmedChange = onNightFastRedArmedChange,
-                        onFastYellowArmedChange = onNightFastYellowArmedChange,
-                        onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
-                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
-                        flash = flashId == "nightMode"
-                    )
-                }
-            }
-
-            }
             if (searching.not() || SettingsSection.ALERTS in matchedSections) {
             item {
                 CollapsibleSectionCard(
@@ -847,6 +790,63 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
+
+            }
+            if (searching.not() || SettingsSection.NIGHT in matchedSections) {
+            item {
+                CollapsibleSectionCard(
+                    title = s.nightModeLabel,
+                    icon = painterResource(R.drawable.ic_moon),
+                    expanded = collapse.nightMode,
+                    subtitle = s.nightSubtitle(
+                        nightEnabled,
+                        nightStartMin,
+                        nightEndMin,
+                        nightZoneSirenOverride || nightOfficialSirenOverride,
+                        nightUseCustomZones
+                    ),
+                    onToggle = { onCollapseChange(collapse.copy(nightMode = !collapse.nightMode)) },
+                    cardColor = NightSectionBg,
+                    cardBorder = NightSectionBorder
+                ) {
+                    NightModeCard(
+                        lang = lang,
+                        enabled = nightEnabled,
+                        startMin = nightStartMin,
+                        endMin = nightEndMin,
+                        useCustomZones = nightUseCustomZones,
+                        slowRedKm = nightSlowRedKm,
+                        slowYellowKm = nightSlowYellowKm,
+                        fastRedMin = nightFastRedMin,
+                        fastYellowMin = nightFastYellowMin,
+                        slowRedArmed = nightSlowRedArmed,
+                        slowYellowArmed = nightSlowYellowArmed,
+                        fastRedArmed = nightFastRedArmed,
+                        fastYellowArmed = nightFastYellowArmed,
+                        zoneSirenOverride = nightZoneSirenOverride,
+                        officialSirenOverride = nightOfficialSirenOverride,
+                        daySlowRedKm = slowRedKm,
+                        daySlowYellowKm = slowYellowKm,
+                        dayFastRedMin = fastRedMin,
+                        dayFastYellowMin = fastYellowMin,
+                        onEnabledChange = { v -> showExplainer("nightMode"); onNightEnabledChange(v) },
+                        onStartChange = onNightStartChange,
+                        onEndChange = onNightEndChange,
+                        onUseCustomZonesChange = onNightUseCustomZonesChange,
+                        onSlowRedChange = onNightSlowRedChange,
+                        onSlowYellowChange = onNightSlowYellowChange,
+                        onFastRedChange = onNightFastRedChange,
+                        onFastYellowChange = onNightFastYellowChange,
+                        onSlowRedArmedChange = onNightSlowRedArmedChange,
+                        onSlowYellowArmedChange = onNightSlowYellowArmedChange,
+                        onFastRedArmedChange = onNightFastRedArmedChange,
+                        onFastYellowArmedChange = onNightFastYellowArmedChange,
+                        onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
+                        onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
+                        flash = flashId == "nightMode"
+                    )
                 }
             }
 
@@ -1113,8 +1113,8 @@ fun SettingsScreen(
                                 description = s.followBulletDesc,
                                 checked = followBullet,
                                 onCheckedChange = onFollowBulletChange,
-                                icon = painterResource(R.drawable.ic_bullet),
-                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                icon = painterResource(R.drawable.bullet),
+                                iconTint = null
                             )
                         }
                     }
@@ -1273,7 +1273,7 @@ fun SettingsScreen(
                         Image(
                             painter = painterResource(R.drawable.ic_telegram),
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     Text(
