@@ -45,11 +45,12 @@ private data class PillSpec(
 )
 
 /** Grey crossed bell marking a type whose alerts are switched off in Settings. The tint
- *  matches the toggles' own "off" gray (onSurfaceVariant) so the chip reads as one family. */
+ *  matches the toggles' own "off" gray (the standard 0xFF9E9E9E) so the chip reads as one
+ *  family, on a subtle grey fill so it stays visible on the dark card. */
 @Composable
 internal fun AlertsOffBell(
     size: Dp = 14.dp,
-    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    tint: Color = Color(0xFF9E9E9E),
     contentDescription: String? = null
 ) {
     Icon(
@@ -63,14 +64,22 @@ internal fun AlertsOffBell(
 /** Crossed bell + small "off" chip shown next to the popup title when the type's alerts are off. */
 @Composable
 internal fun AlertsOffChip(s: Strings.StringSet) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AlertsOffBell(size = fontAware(14.dp))
-        Spacer(Modifier.width(3.dp))
-        Text(
-            s.alertsOffLabel,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(0xFF2A2A2A)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AlertsOffBell(size = fontAware(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(
+                s.alertsOffLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF9E9E9E)
+            )
+        }
     }
 }
 
@@ -191,9 +200,9 @@ fun ThreatPopupCard(
         tonalElevation = 8.dp
     ) {
         when (cardSize) {
-            // Narrow, top-left card: icon + title with "R"/skull on the title row, the first
-            // metric pill flanked by two same-height vertical gauges (reliability + 0-10 level),
-            // the remaining metrics stacked below, and "seen ago" in the bottom-left corner.
+            // Narrow, top-left card: icon + type on the title row, the ETA + distance pills
+            // in one row, horizontal reliability and threat-level bars underneath, and
+            // "seen ago" at the bottom.
             ThreatCardSize.SMALL -> {
                 val distUser = proximity?.distToUserKm
                 if (distUser != null) {
@@ -201,15 +210,12 @@ fun ThreatPopupCard(
                     val distCd = if (cityName != null) {
                         String.format(s.pillDistanceCd, cityName, distUser.roundToInt())
                     } else null
-                    // The metric trio (ETA / distance / speed) in display order.
+                    // The metric pair (ETA / distance) in display order.
                     val pillSpecs = buildList {
                         proximity?.etaToUserMin?.let { eta ->
                             add(PillSpec(formatEtaMinutes(eta), s.etaUnit, GpsDot, null))
                         }
                         add(PillSpec(formatKm(distUser), s.kmUnit, null, distCd))
-                        proximity?.takeIf { it.speedSource == SpeedSource.RECORDED }?.speedKmh?.let { speed ->
-                            add(PillSpec(speed.roundToInt().toString(), s.speedUnit, null, null))
-                        }
                     }
                     // Stacked metrics can't wrap — cap the font scale like the old single-line pills.
                     val density = LocalDensity.current
@@ -243,50 +249,29 @@ fun ThreatPopupCard(
                                         AlertsOffChip(s)
                                     }
                                 }
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    s.reliabilityShort,
-                                    fontWeight = FontWeight.Medium,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color(0xFF9E9E9E)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
                             }
                             Spacer(Modifier.height(8.dp))
-                            val barHeight = fontAware(56.dp)
-                            // Metrics start under the title (icon 40dp + gap 12dp), not under the
-                            // icon, and the first row's vertical gauges land at the right edge
-                            // directly under the "R" and skull of the header row.
-                            val metricIndent = 52.dp
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                pillSpecs.forEachIndexed { index, p ->
-                                    if (index == 0) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Spacer(Modifier.width(metricIndent))
-                                            MetricPill(
-                                                number = p.number,
-                                                unit = p.unit,
-                                                contentDescription = p.contentDescription,
-                                                dotColor = p.dotColor
-                                            )
-                                            Spacer(Modifier.weight(1f))
-                                            VerticalReliabilityBar(reliability = threat.reliability, height = barHeight)
-                                            Spacer(Modifier.width(6.dp))
-                                            VerticalLevelBar(level = threatLevel, height = barHeight)
-                                        }
-                                    } else {
-                                        Row {
-                                            Spacer(Modifier.width(metricIndent))
-                                            MetricPill(
-                                                number = p.number,
-                                                unit = p.unit,
-                                                contentDescription = p.contentDescription,
-                                                dotColor = p.dotColor
-                                            )
-                                        }
-                                    }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                pillSpecs.forEach { p ->
+                                    MetricPill(
+                                        number = p.number,
+                                        unit = p.unit,
+                                        contentDescription = p.contentDescription,
+                                        dotColor = p.dotColor
+                                    )
                                 }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ReliabilityBar(reliability = threat.reliability, s = s, compact = true)
+                                HorizontalLevelBar(level = threatLevel)
                             }
                             Spacer(Modifier.height(8.dp))
                             Text(
@@ -317,15 +302,6 @@ fun ThreatPopupCard(
                                     color = Color.White
                                 )
                             }
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                s.reliabilityShort,
-                                fontWeight = FontWeight.Medium,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFF9E9E9E)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            LevelSkullIcon(level = threatLevel, size = fontAware(22.dp))
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
@@ -501,60 +477,27 @@ private fun LevelSkullIcon(level: Double, size: Dp = 30.dp) {
     )
 }
 
-/** Compact vertical 0–10 level bar, filled from the bottom (the small card's right gauge). */
+/** Compact horizontal 0–10 level bar: skull icon + a bar that fills with the level. */
 @Composable
-private fun VerticalLevelBar(level: Double, height: Dp) {
+private fun HorizontalLevelBar(level: Double) {
     val fraction = (level / 10.0).coerceIn(0.0, 1.0)
-    val barWidth = fontAware(8.dp)
-    Box(
-        modifier = Modifier
-            .width(barWidth)
-            .height(height)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0xFF3A3A3A))
-    ) {
+    val barWidth = fontAware(64.dp)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        LevelSkullIcon(level = level, size = fontAware(18.dp))
+        Spacer(Modifier.width(6.dp))
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .width(barWidth)
-                .fillMaxHeight(fraction.toFloat().coerceAtLeast(0.02f))
+                .height(fontAware(8.dp))
                 .clip(RoundedCornerShape(4.dp))
-                .background(levelColor(level))
-        )
-    }
-}
-
-/** Compact vertical reliability bar: 3 segments, filled from the bottom, LOW → HIGH. */
-@Composable
-private fun VerticalReliabilityBar(reliability: Reliability, height: Dp) {
-    val level = when (reliability) {
-        Reliability.HIGH -> 3
-        Reliability.MEDIUM -> 2
-        Reliability.LOW -> 1
-        Reliability.UNKNOWN -> 0
-    }
-    val color = when (reliability) {
-        Reliability.HIGH -> DistUserGreen
-        Reliability.MEDIUM -> DistUserAmber
-        Reliability.LOW -> ReliabilityRed
-        Reliability.UNKNOWN -> Color(0xFF9E9E9E)
-    }
-    val barWidth = fontAware(8.dp)
-    Column(
-        modifier = Modifier
-            .width(barWidth)
-            .height(height),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        // Render top segment first; a segment is filled when `level` reaches up to it.
-        repeat(3) { i ->
-            val segFromBottom = 2 - i
+                .background(Color(0xFF3A3A3A))
+        ) {
             Box(
                 modifier = Modifier
-                    .width(barWidth)
-                    .weight(1f)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(if (level > segFromBottom) color else UncertaintyEmpty)
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction.toFloat().coerceAtLeast(0.02f))
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(levelColor(level))
             )
         }
     }

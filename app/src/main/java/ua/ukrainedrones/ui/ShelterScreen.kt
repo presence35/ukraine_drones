@@ -223,7 +223,7 @@ private fun GpsHeaderRow(
                 val (adultIcon, childIcon) = walkIconPair(withKids)
                 val tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.width(26.dp)
                 ) {
@@ -371,7 +371,7 @@ private fun ShelterCard(
 private fun WalkRow(adultIcon: Int, childIcon: Int?, text: String, tint: androidx.compose.ui.graphics.Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             WalkFigureIcon(adultIcon, height = 24.dp, tint = tint)

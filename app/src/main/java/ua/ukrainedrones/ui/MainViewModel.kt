@@ -65,9 +65,6 @@ data class UiState(
     val nightFastYellowArmed: Boolean = true,
     val nightZoneSirenOverride: Boolean = false,
     val nightOfficialSirenOverride: Boolean = false,
-    val nightVibrationEnabled: Boolean = false,
-    val nightFastVibrationLevel: Int = 3,
-    val nightSlowVibrationLevel: Int = 3,
     val officialAlertsEnabled: Boolean = true,
     val sirenOverride: Boolean = false,
     val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
@@ -102,8 +99,6 @@ data class UiState(
     val neutralizedTallyAllUkraine: Boolean = false,
     val fastGroupCollapsed: Boolean = false,
     val slowGroupCollapsed: Boolean = false,
-    val fastVibrationLevel: Int = 3,
-    val slowVibrationLevel: Int = 3,
     val sheltersEnabled: Boolean = true,
     val sheltersWithKids: Boolean = true,
     val periodicGps: Boolean = false,
@@ -160,8 +155,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether the map screen is the visible screen — the neutralizing animation and death
      *  flourish only run while it is, so no stale half-consumed animations play on return. */
     private val mapVisibleFlow = MutableStateFlow(true)
+    /** Whether the shelter overlay is showing on the map — the resolved-threat flourish and
+     *  neutralizing card are suppressed while it is (nothing should steal the user's focus). */
+    private val shelterModeFlow = MutableStateFlow(false)
     private var isChecking = false
-
     private val zonesFlow = combine(
         prefs.slowRedKm(), prefs.slowYellowKm(), prefs.fastRedMin(), prefs.fastYellowMin()
     ) { slowRed, slowYellow, fastRed, fastYellow ->
@@ -232,9 +229,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private data class NightPrefs(
         val window: NightWindowPrefs,
-        val zones: NightZonesPrefs,
-        val vibrationEnabled: Boolean,
-        val vibration: NightVibration
+        val zones: NightZonesPrefs
     )
 
     private data class PrefsSnapshot(
@@ -262,8 +257,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val neutralizedTallyAllUkraine: Boolean,
 val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
-        val fastVibrationLevel: Int,
-        val slowVibrationLevel: Int,
         val sheltersEnabled: Boolean,
         val sheltersWithKids: Boolean,
         val periodicGps: Boolean,
@@ -282,7 +275,8 @@ val fastGroupCollapsed: Boolean,
         val now: Long,
         val reveal: RevealRequest?,
         val neutralizedId: String?,
-        val mapVisible: Boolean
+        val mapVisible: Boolean,
+        val shelterModeActive: Boolean
     )
 
     private data class UpdateUi(
@@ -316,7 +310,8 @@ val fastGroupCollapsed: Boolean,
         nowFlow,
         revealFlow,
         neutralizedFlow,
-        mapVisibleFlow
+        mapVisibleFlow,
+        shelterModeFlow
     ) { values: Array<Any?> ->
         val neptun = values[0] as NeptunState
         val radii = values[1] as ZoneParams
@@ -326,10 +321,11 @@ val fastGroupCollapsed: Boolean,
         val reveal = values[5] as RevealRequest?
         val neutralizedId = values[6] as String?
         val mapVisible = values[7] as Boolean
+        val shelterModeActive = values[8] as Boolean
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, selected, now, reveal, neutralizedId, mapVisible
+            location, selected, now, reveal, neutralizedId, mapVisible, shelterModeActive
         )
     }
 
@@ -390,10 +386,6 @@ val fastGroupCollapsed: Boolean,
             quad.copy(periodicGps = periodic)
         },
         combine(
-            prefs.fastVibrationLevel(),
-            prefs.slowVibrationLevel()
-        ) { fast, slow -> fast to slow },
-        combine(
             combine(
                 prefs.nightEnabled(), prefs.nightStartMin(), prefs.nightEndMin(),
                 prefs.nightUseCustomZones()
@@ -423,16 +415,11 @@ combine(
                         zoneSirenOverride = flags[4],
                         officialSirenOverride = flags[5]
                     )
-                },
-        combine(
-            prefs.nightVibrationEnabled(),
-            prefs.nightFastVibrationLevel(),
-            prefs.nightSlowVibrationLevel()
-        ) { enabled, fast, slow -> enabled to NightVibration(fast, slow) }
-    ) { window, zones, vib ->
-        NightPrefs(window, zones, vib.first, vib.second)
+                }
+    ) { window, zones ->
+        NightPrefs(window, zones)
     }
-    ) { a, b, c, vib, night ->
+    ) { a, b, c, night ->
         PrefsSnapshot(
             mapEnabled = a.map,
             alertEnabled = a.alert,
@@ -458,8 +445,6 @@ combine(
             neutralizedTallyAllUkraine = b.neutralizedTallyAllUkraine,
             fastGroupCollapsed = b.fastGroupCollapsed,
             slowGroupCollapsed = b.slowGroupCollapsed,
-            fastVibrationLevel = vib.first,
-            slowVibrationLevel = vib.second,
             sheltersEnabled = c.sheltersEnabled,
             sheltersWithKids = c.sheltersWithKids,
             periodicGps = c.periodicGps,
@@ -494,8 +479,6 @@ combine(
         prefs.pinnedCity().first()
         prefs.languageChosen().first()
         prefs.batteryOnboardShown().first()
-        prefs.fastVibrationLevel().first()
-        prefs.slowVibrationLevel().first()
         prefs.nightEnabled().first()
         prefs.nightStartMin().first()
         prefs.nightEndMin().first()
@@ -510,9 +493,6 @@ combine(
         prefs.nightFastYellowZoneArmed().first()
         prefs.nightZoneSirenOverride().first()
         prefs.nightOfficialSirenOverride().first()
-        prefs.nightVibrationEnabled().first()
-        prefs.nightFastVibrationLevel().first()
-        prefs.nightSlowVibrationLevel().first()
         prefs.deathAnimationEnabled().first()
         prefs.followBullet().first()
         emit(Unit)
@@ -566,7 +546,8 @@ val uiState: StateFlow<UiState> = combine(
             reveal = live.reveal,
             neutralizedId = live.neutralizedId,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
-            mapVisible = live.mapVisible
+            mapVisible = live.mapVisible,
+            shelterModeActive = live.shelterModeActive
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
@@ -602,9 +583,6 @@ val uiState: StateFlow<UiState> = combine(
             nightFastYellowArmed = prefs.night.zones.fastYellowArmed,
             nightZoneSirenOverride = prefs.night.zones.zoneSirenOverride,
             nightOfficialSirenOverride = prefs.night.zones.officialSirenOverride,
-            nightVibrationEnabled = prefs.night.vibrationEnabled,
-            nightFastVibrationLevel = prefs.night.vibration.fast,
-            nightSlowVibrationLevel = prefs.night.vibration.slow,
             languageChosen = prefs.languageChosen,
             batteryOnboardShown = prefs.batteryOnboardShown,
             threatCardSize = prefs.cardSize,
@@ -616,8 +594,6 @@ val uiState: StateFlow<UiState> = combine(
             neutralizedTallyAllUkraine = prefs.neutralizedTallyAllUkraine,
             fastGroupCollapsed = prefs.fastGroupCollapsed,
             slowGroupCollapsed = prefs.slowGroupCollapsed,
-            fastVibrationLevel = prefs.fastVibrationLevel,
-            slowVibrationLevel = prefs.slowVibrationLevel,
             sheltersEnabled = prefs.sheltersEnabled,
             sheltersWithKids = prefs.sheltersWithKids,
             periodicGps = prefs.periodicGps,
@@ -647,7 +623,8 @@ val uiState: StateFlow<UiState> = combine(
         reveal: RevealRequest?,
         neutralizedId: String?,
         deathAnimationEnabled: Boolean,
-        mapVisible: Boolean
+        mapVisible: Boolean,
+        shelterModeActive: Boolean
     ): UiState {
         val animOn = deathAnimationEnabled
         val params = effectiveParams
@@ -709,7 +686,7 @@ val uiState: StateFlow<UiState> = combine(
         val activeZone = evaluation.activeZone
         val alertActive = activeZone != null || focusOblastAlertActive
         val neutralizedThreat =
-            if (selectedGone && animOn && mapVisible && !alertActive) selected else null
+            if (selectedGone && animOn && mapVisible && !shelterModeActive && !alertActive) selected else null
 
         val proximity = ThreatEvaluator.computeProximity(
             t = refreshedSelected,
@@ -819,14 +796,6 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setSirenOverride(override) }
     }
 
-    fun setFastVibrationLevel(level: Int) {
-        viewModelScope.launch { prefs.setFastVibrationLevel(level) }
-    }
-
-    fun setSlowVibrationLevel(level: Int) {
-        viewModelScope.launch { prefs.setSlowVibrationLevel(level) }
-    }
-
     fun setBatteryOnboardShown(shown: Boolean) {
         viewModelScope.launch { prefs.setBatteryOnboardShown(shown) }
     }
@@ -887,18 +856,6 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setNightOfficialSirenOverride(override) }
     }
 
-    fun setNightVibrationEnabled(enabled: Boolean) {
-        viewModelScope.launch { prefs.setNightVibrationEnabled(enabled) }
-    }
-
-    fun setNightFastVibrationLevel(level: Int) {
-        viewModelScope.launch { prefs.setNightFastVibrationLevel(level) }
-    }
-
-    fun setNightSlowVibrationLevel(level: Int) {
-        viewModelScope.launch { prefs.setNightSlowVibrationLevel(level) }
-    }
-
     fun setSheltersEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setSheltersEnabled(enabled) }
     }
@@ -911,6 +868,12 @@ val uiState: StateFlow<UiState> = combine(
      *  flourish) can be skipped while the map is covered by Settings/Shelters/Guide. */
     fun setMapVisible(visible: Boolean) {
         mapVisibleFlow.value = visible
+    }
+
+    /** Tracks whether the shelter overlay is up so the resolved-threat flourish and
+     *  neutralizing card are suppressed while it is. */
+    fun setShelterModeActive(active: Boolean) {
+        shelterModeFlow.value = active
     }
 
     /** Loads the bundled Odesa shelter snapshot, then refreshes it from the update server daily. */

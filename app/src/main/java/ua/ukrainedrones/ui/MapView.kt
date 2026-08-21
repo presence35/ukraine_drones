@@ -66,6 +66,13 @@ internal val DARK_TILE_SOURCE = XYTileSource(
 /** Odesa city centre — fallback camera target before the first GPS fix. */
 private val DEFAULT_CENTER = GeoPoint(46.4832, 30.7346)
 
+/** Max zoom outside shelter mode — the ~5 km threat-map viewport; deeper zoom is pointless
+ *  for the threat map and just bloats the tile cache. */
+private const val NORMAL_MAX_ZOOM = 14.5
+
+/** Deep zoom, unlocked only while the shelter overlay is up (street-level shelter detail). */
+private const val SHELTER_MAX_ZOOM = 19.0
+
 /** Ukraine (incl. Crimea) plus a ~0.5° margin — the map can't pan past this. */
 private val UA_VIEW_LIMITS = BoundingBox(52.7, 40.6, 43.9, 21.7)
 
@@ -83,6 +90,21 @@ private fun zoneBoundingBox(center: IGeoPoint, radiusKm: Double): BoundingBox {
         center.latitude - dLat,
         center.longitude - dLon
     )
+}
+
+/** Bounding box over the nearest shelters, padded so every marker is comfortably in view. */
+private fun sheltersBoundingBox(near: List<NearestShelter>): BoundingBox? {
+    if (near.isEmpty()) return null
+    var minLat = Double.MAX_VALUE
+    var maxLat = -Double.MAX_VALUE
+    var minLon = Double.MAX_VALUE
+    var maxLon = -Double.MAX_VALUE
+    for (n in near) {
+        minLat = minOf(minLat, n.shelter.lat); maxLat = maxOf(maxLat, n.shelter.lat)
+        minLon = minOf(minLon, n.shelter.lon); maxLon = maxOf(maxLon, n.shelter.lon)
+    }
+    val pad = maxOf((maxLat - minLat) * 0.15, (maxLon - minLon) * 0.15, 0.004)
+    return BoundingBox(maxLat + pad, maxLon + pad, minLat - pad, minLon - pad)
 }
 
 private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
@@ -355,6 +377,7 @@ fun NeptunMapView(
     zoomZone: ThreatZone? = null,
     zoomTick: Int = 0,
     fitZonesTick: Int = 0,
+    zonesSheetOpen: Boolean = false,
     revealRequest: RevealRequest? = null,
     paused: Boolean = false,
     mapVisible: Boolean = true,
@@ -391,20 +414,20 @@ fun NeptunMapView(
     val lastFitUkraineTick = remember { mutableStateOf(-1) }
     val lastFollow = remember { mutableStateOf<LatLng?>(null) }
     val lastZoomTick = remember { mutableStateOf(-1) }
-    val lastShelterZoomTick = remember { mutableStateOf(-1) }
     val lastShelterSelectTick = remember { mutableStateOf(-1) }
     val lastFitZonesTick = remember { mutableStateOf(-1) }
+    val lastFittedYellowKm = remember { mutableStateOf<Int?>(null) }
     val lastRevealTick = remember { mutableStateOf(-1) }
     val newRingState = remember { mutableStateOf<NewRingState?>(null) }
     val newRingMarker = remember { mutableStateOf<Marker?>(null) }
     val didDefaultFit = remember { mutableStateOf(false) }
-    val lastFittedYellowKm = remember { mutableStateOf<Int?>(null) }
     val lastPinnedCity = remember { mutableStateOf<String?>(null) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
     val markerRefs = remember { mutableStateOf<MutableMap<String, Marker>>(mutableMapOf()) }
     val pausedState by rememberUpdatedState(paused)
     val mapVisibleState by rememberUpdatedState(mapVisible)
     val alertActiveState by rememberUpdatedState(uiState.alertActive)
+    val showNearbySheltersState by rememberUpdatedState(showNearbyShelters)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
     val iconSetState by rememberUpdatedState(uiState.iconSet)
@@ -432,6 +455,20 @@ fun NeptunMapView(
             ?: (focusLocationState ?: LocationTracker.location.value)?.let { GeoPoint(it.lat, it.lon) }
     }
 
+    // Centre + zoom so the whole yellow zone sits in the visible area ABOVE the zones sheet.
+    // The bbox is extended downward so the zone occupies the top 60% of the viewport (the
+    // sheet covers ~40% below).
+    val fitZoneToPanel: (MapView, IGeoPoint) -> Unit = { mv, center ->
+        val zone = zoneBoundingBox(center, uiState.activeZoneParams.slowYellowKm.toDouble())
+        val visibleFrac = 0.6f
+        val dLat = zone.latNorth - center.latitude
+        val southPad = dLat * 2 * ((1f / visibleFrac) - 1f)
+        mv.zoomToBoundingBox(
+            BoundingBox(zone.latNorth, zone.lonEast, zone.latSouth - southPad, zone.lonWest),
+            true
+        )
+    }
+
     AndroidView(
         modifier = modifier.fillMaxSize(),
         factory = { ctx ->
@@ -451,7 +488,11 @@ fun NeptunMapView(
                 setMultiTouchControls(true)
                 // No +/– buttons — everyone uses pinch. Contours stay clean on the map.
                 setBuiltInZoomControls(false)
-                maxZoomLevel = 19.0
+                // Cap normal zoom at the ~5 km viewport level; deep zoom (street-level shelter
+                // detail) is unlocked only while the shelter overlay is up (see the shelter
+                // LaunchedEffect). This keeps the tile cache to the viewport the threat map
+                // actually needs.
+                maxZoomLevel = NORMAL_MAX_ZOOM
                 // Clamp the viewport to Ukraine (incl. Crimea) plus a small margin so
                 // the map can't pan out into foreign territory.
                 setScrollableAreaLimitDouble(UA_VIEW_LIMITS)
@@ -537,21 +578,6 @@ fun NeptunMapView(
             // yellow zone (camera then just follows it without re-zooming).
             if (!didDefaultFit.value && focus != null) {
                 didDefaultFit.value = true
-                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
-                mapView.zoomToBoundingBox(
-                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
-                    true
-                )
-            }
-
-            // Zone-slider change: the yellow circle grew (or shrank) on the map, so grow the
-            // camera to fit it again. Only re-fits once the initial default fit has happened
-            // and the focus point is known; a pinned-city change below handles its own refit.
-            val fitted = lastFittedYellowKm.value
-            if (didDefaultFit.value && focus != null && fitted != null &&
-                fitted != uiState.activeZoneParams.slowYellowKm
-            ) {
-                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
                 mapView.zoomToBoundingBox(
                     zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
                     true
@@ -562,7 +588,6 @@ fun NeptunMapView(
             val pinned = uiState.pinnedCity
             if (!uiState.followMe && pinned != null && lastPinnedCity.value != pinned.nameUa) {
                 lastPinnedCity.value = pinned.nameUa
-                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
                 mapView.zoomToBoundingBox(
                     zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
                     true
@@ -588,14 +613,6 @@ fun NeptunMapView(
                 mapView.zoomToBoundingBox(zoneBoundingBox(center, radiusKm), true)
             }
 
-            // Shelter button pressed: zoom the camera down onto the focus point (GPS or pinned
-            // city) so the nearby-shelter markers are actually visible.
-            if (shelterZoomTick != lastShelterZoomTick.value) {
-                lastShelterZoomTick.value = shelterZoomTick
-                val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
-                mapView.controller.animateTo(center, 18.0, 400L)
-            }
-
             // Shelter marker tapped: highlight + open its card, but keep the camera where it
             // is — panning onto every tapped shelter makes the map jump around.
             if (shelterSelectTick != lastShelterSelectTick.value) {
@@ -608,14 +625,19 @@ fun NeptunMapView(
             if (fitZonesTick != lastFitZonesTick.value) {
                 lastFitZonesTick.value = fitZonesTick
                 val center = focus?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
-                val zone = zoneBoundingBox(center, uiState.activeZoneParams.slowYellowKm.toDouble())
-                val visibleFrac = 0.6f
-                val dLat = zone.latNorth - center.latitude
-                val southPad = dLat * 2 * ((1f / visibleFrac) - 1f)
-                mapView.zoomToBoundingBox(
-                    BoundingBox(zone.latNorth, zone.lonEast, zone.latSouth - southPad, zone.lonWest),
-                    true
-                )
+                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
+                fitZoneToPanel(mapView, center)
+            }
+
+            // Zone-slider change while the sheet is open: the yellow circle grew (or shrank)
+            // on the map, so refit it into the visible area above the panel again. Only
+            // refits once the sheet is open and after the initial default fit.
+            val fitted = lastFittedYellowKm.value
+            if (zonesSheetOpen && didDefaultFit.value && focus != null && fitted != null &&
+                fitted != uiState.activeZoneParams.slowYellowKm
+            ) {
+                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
+                fitZoneToPanel(mapView, GeoPoint(focus.lat, focus.lon))
             }
 
             // Notification tap: pan + zoom so the focus point (GPS/city) sits near the top
@@ -879,16 +901,36 @@ fun NeptunMapView(
         }
     )
 
+    // Shelter mode: while the overlay is up, unlock deep zoom (street-level shelter detail)
+    // and zoom the camera to fit the full nearby-shelter range plus a buffer, so every marker
+    // is visible at a glance. Leaving shelter mode re-caps the zoom at the threat-map viewport.
+    // Runs as a dedicated effect (not inside the recompose-driven update block) so it fires
+    // reliably after the overlay rebuild has placed the shelter markers.
+    LaunchedEffect(showNearbyShelters, shelterZoomTick, focusLocationState, shelterIndex) {
+        val mapView = mapViewRef.value ?: return@LaunchedEffect
+        mapView.maxZoomLevel = if (showNearbyShelters) SHELTER_MAX_ZOOM else NORMAL_MAX_ZOOM
+        if (!showNearbyShelters) return@LaunchedEffect
+        val near = focusLocationState?.let { f -> shelterIndex?.nearest(f.lat, f.lon, limit = 25) }
+        val box = near?.let { sheltersBoundingBox(it) }
+        if (box != null) {
+            mapView.zoomToBoundingBox(box, true)
+        } else {
+            val center = focusLocationState?.let { GeoPoint(it.lat, it.lon) } ?: mapView.mapCenter
+            mapView.controller.animateTo(center, 18.0, 400L)
+        }
+    }
+
         // Death animations: real resolved/remove frames. The threat's own marker icon keeps
         // rendering in the overlay through the full flight and fades out across the explosion;
         // without a live marker, fall back to the raw fix + a fresh icon.
         LaunchedEffect(Unit) {
             NeptunClient.removedThreats.collect { r ->
                 // Skip resolutions that arrived while the map wasn't visible (Settings open,
-                // Shelter/Guide covering it, or app backgrounded) or while an alert is live:
-                // no stale half-consumed animations on return, and no "bullet to nowhere"
-                // duds from threats that appeared and resolved unseen.
-                if (pausedState || !mapVisibleState || alertActiveState ||
+                // Shelter/Guide covering it, or app backgrounded), while an alert is live, or
+                // while the shelter overlay is up — nothing should grab the user's attention
+                // away from the shelters: no stale half-consumed animations on return, and no
+                // "bullet to nowhere" duds from threats that appeared and resolved unseen.
+                if (pausedState || !mapVisibleState || alertActiveState || showNearbySheltersState ||
                     lifecycle.currentState < Lifecycle.State.STARTED
                 ) return@collect
                 if (r.type in hiddenTypesState || !deathAnimationEnabledState) return@collect

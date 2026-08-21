@@ -3,11 +3,13 @@ package ua.ukrainedrones
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.VibrationEffect
-import android.os.Vibrator
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -319,8 +321,6 @@ fun SettingsScreen(
     silencedTypes: Set<ThreatType>,
     officialAlertsEnabled: Boolean,
     sirenOverride: Boolean,
-    fastVibrationLevel: Int,
-    slowVibrationLevel: Int,
     nightEnabled: Boolean,
     nightStartMin: Int,
     nightEndMin: Int,
@@ -339,9 +339,6 @@ fun SettingsScreen(
     nightFastYellowArmed: Boolean,
     nightZoneSirenOverride: Boolean,
     nightOfficialSirenOverride: Boolean,
-    nightVibrationEnabled: Boolean,
-    nightFastVibrationLevel: Int,
-    nightSlowVibrationLevel: Int,
     disclaimerCollapsed: Boolean,
     disclaimerReadCount: Int,
     followMe: Boolean,
@@ -370,8 +367,6 @@ fun SettingsScreen(
     onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
-    onFastVibrationChange: (Int) -> Unit,
-    onSlowVibrationChange: (Int) -> Unit,
     onNightEnabledChange: (Boolean) -> Unit,
     onNightStartChange: (Int) -> Unit,
     onNightEndChange: (Int) -> Unit,
@@ -386,9 +381,6 @@ fun SettingsScreen(
     onNightFastYellowArmedChange: (Boolean) -> Unit,
     onNightZoneSirenOverrideChange: (Boolean) -> Unit,
     onNightOfficialSirenOverrideChange: (Boolean) -> Unit,
-    onNightVibrationEnabledChange: (Boolean) -> Unit,
-    onNightFastVibrationChange: (Int) -> Unit,
-    onNightSlowVibrationChange: (Int) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
     onPeriodicGpsChange: (Boolean) -> Unit,
@@ -540,6 +532,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.padding(bottom = 8.dp),
                 title = {
                     OutlinedTextField(
                         value = searchQuery,
@@ -557,7 +550,13 @@ fun SettingsScreen(
                             }
                         },
                         singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(50),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() })
                     )
@@ -570,36 +569,39 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            if (relatedChips.isNotEmpty() || didYouMeanChips.isNotEmpty()) {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        if (relatedChips.isNotEmpty()) {
-                            SearchChipsRow(
-                                label = s.settingsSearchRelated,
-                                chips = relatedChips,
-                                lang = lang,
-                                onChip = { searchQuery = it.query(lang) }
-                            )
-                        }
-                        if (didYouMeanChips.isNotEmpty()) {
-                            SearchChipsRow(
-                                label = s.settingsDidYouMean,
-                                chips = didYouMeanChips,
-                                lang = lang,
-                                onChip = { searchQuery = it.query(lang) }
-                            )
-                        }
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            AnimatedVisibility(
+                visible = relatedChips.isNotEmpty() || didYouMeanChips.isNotEmpty(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    if (relatedChips.isNotEmpty()) {
+                        SearchChipsRow(
+                            label = s.settingsSearchRelated,
+                            chips = relatedChips,
+                            lang = lang,
+                            onChip = { searchQuery = it.query(lang) }
+                        )
+                    }
+                    if (didYouMeanChips.isNotEmpty()) {
+                        SearchChipsRow(
+                            label = s.settingsDidYouMean,
+                            chips = didYouMeanChips,
+                            lang = lang,
+                            onChip = { searchQuery = it.query(lang) }
+                        )
                     }
                 }
             }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
 
             item {
                 // "Official signals come first" — first, default expanded, needs two taps to collapse.
@@ -725,9 +727,6 @@ fun SettingsScreen(
                         fastYellowArmed = nightFastYellowArmed,
                         zoneSirenOverride = nightZoneSirenOverride,
                         officialSirenOverride = nightOfficialSirenOverride,
-                        vibrationEnabled = nightVibrationEnabled,
-                        fastVibrationLevel = nightFastVibrationLevel,
-                        slowVibrationLevel = nightSlowVibrationLevel,
                         daySlowRedKm = slowRedKm,
                         daySlowYellowKm = slowYellowKm,
                         dayFastRedMin = fastRedMin,
@@ -746,9 +745,6 @@ fun SettingsScreen(
                         onFastYellowArmedChange = onNightFastYellowArmedChange,
                         onZoneSirenOverrideChange = onNightZoneSirenOverrideChange,
                         onOfficialSirenOverrideChange = onNightOfficialSirenOverrideChange,
-                        onVibrationEnabledChange = onNightVibrationEnabledChange,
-                        onFastVibrationChange = onNightFastVibrationChange,
-                        onSlowVibrationChange = onNightSlowVibrationChange,
                         flash = flashId == "nightMode"
                     )
                 }
@@ -801,35 +797,6 @@ fun SettingsScreen(
                             onCheckedChange = onNeutralizedTallyAllUkraineChange,
                             icon = rememberVectorPainter(Icons.Default.Notifications),
                             iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Text(
-                            s.vibrationTitle,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            s.vibrationDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        VibrationSliderRow(
-                            label = s.fastGroupLabel,
-                            level = fastVibrationLevel,
-                            accent = Color(0xFFE57373),
-                            levelName = { vibrationLevelName(s, it) },
-                            onLevelChange = onFastVibrationChange
-                        )
-                        VibrationSliderRow(
-                            label = s.slowGroupLabel,
-                            level = slowVibrationLevel,
-                            accent = Color(0xFFF9A825),
-                            levelName = { vibrationLevelName(s, it) },
-                            onLevelChange = onSlowVibrationChange
                         )
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -971,14 +938,12 @@ fun SettingsScreen(
                                 }
                                 .padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .semantics { semanticsContentDescription = if (groupIcon == "\u26A1\uFE0F") s.fastGroupIconDesc else s.slowGroupIconDesc },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(text = groupIcon, fontSize = 16.sp)
-                            }
+                            Icon(
+                                painter = painterResource(id = groupIcon),
+                                contentDescription = if (groupIcon == R.drawable.ic_lightning) s.fastGroupIconDesc else s.slowGroupIconDesc,
+                                tint = if (groupIcon == R.drawable.ic_turtle) TurtleGreen else Color.Unspecified,
+                                modifier = Modifier.size(18.dp)
+                            )
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 groupTitle,
@@ -1298,6 +1263,7 @@ fun SettingsScreen(
                 )
             }
         }
+        }
     }
 
     activeExplainer?.let { exp ->
@@ -1327,9 +1293,6 @@ private fun NightModeCard(
     fastYellowArmed: Boolean,
     zoneSirenOverride: Boolean,
     officialSirenOverride: Boolean,
-    vibrationEnabled: Boolean,
-    fastVibrationLevel: Int,
-    slowVibrationLevel: Int,
     daySlowRedKm: Int,
     daySlowYellowKm: Int,
     dayFastRedMin: Int,
@@ -1348,9 +1311,6 @@ private fun NightModeCard(
     onFastYellowArmedChange: (Boolean) -> Unit,
     onZoneSirenOverrideChange: (Boolean) -> Unit,
     onOfficialSirenOverrideChange: (Boolean) -> Unit,
-    onVibrationEnabledChange: (Boolean) -> Unit,
-    onFastVibrationChange: (Int) -> Unit,
-    onSlowVibrationChange: (Int) -> Unit,
     flash: Boolean = false
 ) {
     val s = Strings.get(lang)
@@ -1409,32 +1369,6 @@ private fun NightModeCard(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             AlertToggleRow(
-                title = s.nightVibrationLabel,
-                description = s.nightVibrationDesc,
-                checked = vibrationEnabled,
-                onCheckedChange = onVibrationEnabledChange
-            )
-            if (vibrationEnabled) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    VibrationSliderRow(
-                        label = s.fastGroupLabel,
-                        level = fastVibrationLevel,
-                        accent = Color(0xFFE57373),
-                        levelName = { vibrationLevelName(s, it) },
-                        onLevelChange = onFastVibrationChange
-                    )
-                    VibrationSliderRow(
-                        label = s.slowGroupLabel,
-                        level = slowVibrationLevel,
-                        accent = Color(0xFFF9A825),
-                        levelName = { vibrationLevelName(s, it) },
-                        onLevelChange = onSlowVibrationChange
-                    )
-                }
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AlertToggleRow(
                 title = s.nightCustomZonesTitle,
                 description = s.nightCustomZonesDesc,
                 checked = useCustomZones,
@@ -1444,7 +1378,7 @@ private fun NightModeCard(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
                     GroupedZoneSection {
-                        SectionCaption(s.slowSectionLabel, leading = "\uD83D\uDC22", leadingDesc = s.slowGroupIconDesc)
+                        SectionCaption(s.slowSectionLabel, leadingIcon = R.drawable.ic_turtle, leadingDesc = s.slowGroupIconDesc, leadingTint = TurtleGreen)
                         ZoneRow(
                             value = slowRedKm,
                             range = 2f..20f,
@@ -1473,7 +1407,7 @@ private fun NightModeCard(
                     }
                     Spacer(Modifier.height(12.dp))
                     GroupedZoneSection {
-                        SectionCaption(s.fastSectionLabel, leading = "\u26A1\uFE0F", leadingDesc = s.fastGroupIconDesc)
+                        SectionCaption(s.fastSectionLabel, leadingIcon = R.drawable.ic_lightning, leadingDesc = s.fastGroupIconDesc)
                         ZoneRow(
                             value = fastRedMin,
                             range = 2f..5f,
@@ -1625,14 +1559,6 @@ private fun AlertToggleRow(
     }
 }
 
-private fun vibrationLevelName(s: Strings.StringSet, level: Int): String = when (level) {
-    0 -> s.vibrationOff
-    1 -> s.vibrationSoft
-    2 -> s.vibrationMedium
-    4 -> s.vibrationUrgent
-    else -> s.vibrationStrong
-}
-
 /** Bordered, rounded box that visually groups a set of zone slider rows (night custom zones). */
 @Composable
 private fun GroupedZoneSection(content: @Composable ColumnScope.() -> Unit) {
@@ -1645,61 +1571,6 @@ private fun GroupedZoneSection(content: @Composable ColumnScope.() -> Unit) {
             .padding(horizontal = 12.dp, vertical = 8.dp),
         content = content
     )
-}
-
-/** One 0–4 vibration-strength slider (Fast/Slow), sized to fit the Alerts card. */
-@Composable
-private fun VibrationSliderRow(
-    label: String,
-    level: Int,
-    accent: Color,
-    levelName: (Int) -> String,
-    onLevelChange: (Int) -> Unit
-) {
-    val context = LocalContext.current
-    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
-    var lastPreviewed by remember { mutableIntStateOf(level) }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f)
-        )
-        Slider(
-            value = level.toFloat(),
-            onValueChange = { newValue ->
-                val newLevel = newValue.roundToInt()
-                onLevelChange(newLevel)
-                if (newLevel != lastPreviewed) {
-                    lastPreviewed = newLevel
-                    if (newLevel > 0) {
-                        vibrator?.vibrate(VibrationEffect.createWaveform(vibrationPattern(newLevel), -1))
-                    }
-                }
-            },
-            valueRange = 0f..4f,
-            steps = 3,
-            colors = SliderDefaults.colors(
-                thumbColor = accent,
-                activeTrackColor = accent
-            ),
-            modifier = Modifier.width(150.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            levelName(level),
-            color = accent,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.width(76.dp)
-        )
-    }
 }
 
 /** A single threat's settings card: icon + name/desc, compact Map/Alerts switches on the right. */

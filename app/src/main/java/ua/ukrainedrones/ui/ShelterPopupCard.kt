@@ -137,7 +137,7 @@ fun ShelterPopupCard(
                     }
 
                     if (withKids) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.Bottom) {
                             WalkFigureIcon(walkAdultIcon, height = 20.dp, tint = iconTint)
                             Spacer(Modifier.width(2.dp))
                             if (walkChildIcon != null) {

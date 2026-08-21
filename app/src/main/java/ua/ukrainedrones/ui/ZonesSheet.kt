@@ -15,15 +15,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 private val RedZoneColor = Color(0xFFD32F2F)
 private val YellowZoneColor = Color(0xFFF9A825)
+internal val TurtleGreen = Color(0xFF4CAF50)
 
 /** The red/yellow accent colors used by zone sliders everywhere (sheet + Settings). */
 internal val ZoneRedColor = RedZoneColor
@@ -95,8 +93,9 @@ fun ZonesPanel(
         Spacer(Modifier.height(6.dp))
         ZoneGroup(
             caption = s.slowSectionLabel,
-            leading = "\uD83D\uDC22",
-            leadingDesc = s.slowGroupIconDesc
+            leadingIcon = R.drawable.ic_turtle,
+            leadingDesc = s.slowGroupIconDesc,
+            leadingTint = TurtleGreen
         ) {
             ZoneRow(
                 value = slowRedKm,
@@ -127,7 +126,7 @@ Spacer(Modifier.height(10.dp))
         Spacer(Modifier.height(12.dp))
         ZoneGroup(
             caption = s.fastSectionLabel,
-            leading = "\u26A1\uFE0F",
+            leadingIcon = R.drawable.ic_lightning,
             leadingDesc = s.fastGroupIconDesc
         ) {
             ZoneRow(
@@ -163,8 +162,9 @@ Spacer(Modifier.height(10.dp))
 @Composable
 private fun ZoneGroup(
     caption: String,
-    leading: String,
+    leadingIcon: Int,
     leadingDesc: String,
+    leadingTint: Color? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
@@ -178,7 +178,7 @@ private fun ZoneGroup(
             )
             .padding(12.dp)
     ) {
-        SectionCaption(caption, leading = leading, leadingDesc = leadingDesc)
+        SectionCaption(caption, leadingIcon = leadingIcon, leadingDesc = leadingDesc, leadingTint = leadingTint)
         content()
     }
 }
@@ -186,24 +186,21 @@ private fun ZoneGroup(
 @Composable
 internal fun SectionCaption(
     text: String,
-    leading: String? = null,
-    leadingDesc: String? = null
+    leadingIcon: Int? = null,
+    leadingDesc: String? = null,
+    leadingTint: Color? = null
 ) {
     Row(
         modifier = Modifier.padding(bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (leading != null) {
-            Box(
-                modifier = Modifier
-                    .size(18.dp)
-                    .semantics {
-                        if (leadingDesc != null) contentDescription = leadingDesc
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(leading, fontSize = 16.sp)
-            }
+        if (leadingIcon != null) {
+            Icon(
+                painter = painterResource(id = leadingIcon),
+                contentDescription = leadingDesc,
+                tint = leadingTint ?: Color.Unspecified,
+                modifier = Modifier.size(18.dp)
+            )
             Spacer(Modifier.width(6.dp))
         }
         Text(

@@ -45,6 +45,8 @@ data class ThreatTypeInfo(
     val descriptionEn: String,
     val detailsUa: String,
     val detailsEn: String,
+    val shortLabelUa: String? = null,
+    val shortLabelEn: String? = null,
     val jokeUa: String = "",
     val jokeEn: String = ""
 )
@@ -70,6 +72,8 @@ object ThreatTypeCatalog {
         ThreatType.CRUISE_MISSILE to ThreatTypeInfo(
             labelUa = "Крилата ракета",
             labelEn = "Cruise missile",
+            shortLabelUa = "Крилата",
+            shortLabelEn = "Cruise",
             descriptionUa = "Крилаті ракети повітряного, морського та наземного базування.",
             descriptionEn = "Air-, sea-, and ground-launched cruise missiles.",
             detailsUa = "Калібр, Х-101/555, Іскандер-К — основа дальніх ударів. Летять низько (часто <100 м), огинаючи рельєф, ~850 км/год. Дальність 1000–2500+ км, БЧ 400–500 кг. Час польоту 30–90 хв — зазвичай є справжнє попередження. У залпі бувають порожні імітатори. Координати можуть бути приблизними — дій за офіційною сиреною.",
@@ -86,6 +90,8 @@ object ThreatTypeCatalog {
         ThreatType.KAB to ThreatTypeInfo(
             labelUa = "КАБ",
             labelEn = "Guided bomb",
+            shortLabelUa = "КАБ",
+            shortLabelEn = "Guided",
             descriptionUa = "Керовані авіабомби, що застосовуються поблизу лінії фронту.",
             descriptionEn = "Guided aerial bombs, used near the front line.",
             detailsUa = "Керовані плануючі бомби (ФАБ-250…1500 + УМПК) скидають за десятки км і планують на 40–70 км, здебільшого по фронту. БЧ — сотні кг, тому влучання руйнівні. ~900 км/год, але в глибокий тил не дістають. Тривога КАБ важлива для прифронтових/прикордонних регіонів.",
@@ -102,6 +108,8 @@ object ThreatTypeCatalog {
         ThreatType.RECON to ThreatTypeInfo(
             labelUa = "Розвідка",
             labelEn = "Reconnaissance",
+            shortLabelUa = "Розвідка",
+            shortLabelEn = "Recon",
             descriptionUa = "Розвідувальна активність, що передує ударам.",
             descriptionEn = "Reconnaissance activity that precedes strikes.",
             detailsUa = "Малі спостережні дрони (Орлан-10/30, ZALA, Supercam): 100–1500 м, 90–150 км/год, кілька годин у повітрі. БЧ не несуть — розвідка та коригування артилерії. Їхня поява часто передує ударам — це попередження. Для цивільних у глибокому тилу: ознака активності, а не пряма загроза.",

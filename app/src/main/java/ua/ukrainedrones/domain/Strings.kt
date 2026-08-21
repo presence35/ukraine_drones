@@ -67,8 +67,6 @@ object Strings {
         val nightOfficialSirenOverrideDesc: String,
         val nightCustomZonesTitle: String,
         val nightCustomZonesDesc: String,
-        val nightVibrationLabel: String,
-        val nightVibrationDesc: String,
         val nightMuteExitNote: String,
         val allAlertsOffLabel: String,
         val zoneButtonRed: String,
@@ -233,8 +231,6 @@ object Strings {
         val batteryGranted: String,
         val resetTipsTitle: String,
         val resetTipsDesc: String,
-        val vibrationTitle: String,
-        val vibrationDesc: String,
         val vibrationOff: String,
         val vibrationSoft: String,
         val vibrationMedium: String,
@@ -498,8 +494,6 @@ object Strings {
         val nightOfficialSirenOverrideDesc: String get() = settings.nightOfficialSirenOverrideDesc
         val nightCustomZonesTitle: String get() = settings.nightCustomZonesTitle
         val nightCustomZonesDesc: String get() = settings.nightCustomZonesDesc
-        val nightVibrationLabel: String get() = settings.nightVibrationLabel
-        val nightVibrationDesc: String get() = settings.nightVibrationDesc
         val nightMuteExitNote: String get() = settings.nightMuteExitNote
         val allAlertsOffLabel: String get() = settings.allAlertsOffLabel
         val zoneButtonRed: String get() = settings.zoneButtonRed
@@ -723,8 +717,6 @@ object Strings {
         val batteryGranted: String get() = misc.batteryGranted
         val resetTipsTitle: String get() = misc.resetTipsTitle
         val resetTipsDesc: String get() = misc.resetTipsDesc
-        val vibrationTitle: String get() = misc.vibrationTitle
-        val vibrationDesc: String get() = misc.vibrationDesc
         val vibrationOff: String get() = misc.vibrationOff
         val vibrationSoft: String get() = misc.vibrationSoft
         val vibrationMedium: String get() = misc.vibrationMedium
@@ -972,8 +964,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         nightOfficialSirenOverrideDesc = "Офіційна тривога вночі дзвонить навіть у вібро- чи беззвучному режимі.",
         nightCustomZonesTitle = "Окремі нічні зони",
         nightCustomZonesDesc = "Власні відстані/час і червона/жовта зони на час нічного вікна.",
-        nightVibrationLabel = "Вібрація вночі",
-        nightVibrationDesc = "Окрема сила вібрації для швидких і повільних загроз під час нічного вікна.",
         nightMuteExitNote = "Якщо справді хочеш повної тиші — скористайся кнопкою «Зупинити моніторинг і вийти» нижче; інакше легко забути повернути налаштування вранці.",
         allAlertsOffLabel = "Усі сповіщення вимкнено",
         zoneButtonRed = "Червона зона: натисни, щоб наблизити",
@@ -1138,8 +1128,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         batteryGranted = "Без обмежень у фоні",
         resetTipsTitle = "Скинути всі підказки",
         resetTipsDesc = "Показувати підказки першого запуску знову",
-        vibrationTitle = "Вібрація",
-        vibrationDesc = "Сила вібрації для швидких і повільних загроз. В Android інтенсивність визначається патерном вібрації: більше значення — довші та частіші імпульси.",
         vibrationOff = "Вимк",
         vibrationSoft = "М'яка",
         vibrationMedium = "Середня",
@@ -1437,8 +1425,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         nightOfficialSirenOverrideDesc = "Official oblast alerts ring at night even on vibrate/silent.",
         nightCustomZonesTitle = "Separate night zones",
         nightCustomZonesDesc = "Own distances/times and red/yellow zones for the night window.",
-        nightVibrationLabel = "Vibration at night",
-        nightVibrationDesc = "Separate vibration strength for fast and slow threats during the night window.",
         nightMuteExitNote = "If you truly want total silence, use \"Stop Monitoring & Exit\" below instead — otherwise you may forget to switch alerts back on tomorrow.",
         allAlertsOffLabel = "All alerts are off",
         zoneButtonRed = "Red zone: tap to zoom in",
@@ -1603,8 +1589,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         batteryGranted = "Unrestricted in background",
         resetTipsTitle = "Reset all tips",
         resetTipsDesc = "Show first-run hints again",
-        vibrationTitle = "Vibration",
-        vibrationDesc = "Vibration strength for fast and slow threats. Android expresses intensity as a vibration pattern: higher means longer, more frequent pulses.",
         vibrationOff = "Off",
         vibrationSoft = "Soft",
         vibrationMedium = "Medium",

@@ -15,20 +15,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /** The two threat groupings shown in Settings: fast (missiles, bombs) and slow (drones). */
-internal fun fastAndSlowGroups(lang: AppLanguage): List<Triple<String, String, Set<ThreatType>>> {
+internal fun fastAndSlowGroups(lang: AppLanguage): List<Triple<Int, String, Set<ThreatType>>> {
     val s = Strings.get(lang)
     val fast = FastThreatTypes
     val slow = ThreatType.values().toSet() - fast
     return listOf(
-        Triple("\u26A1\uFE0F", s.fastGroupLabel, fast),
-        Triple("\uD83D\uDC22", s.slowGroupLabel, slow)
+        Triple(R.drawable.ic_lightning, s.fastGroupLabel, fast),
+        Triple(R.drawable.ic_turtle, s.slowGroupLabel, slow)
     )
 }
 
@@ -127,17 +124,12 @@ fun SlimThreatToggles(
                     .padding(top = 6.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .semantics {
-                            contentDescription =
-                                if (groupIcon == "\u26A1\uFE0F") s.fastGroupIconDesc else s.slowGroupIconDesc
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = groupIcon, fontSize = 16.sp)
-                }
+                Icon(
+                    painter = painterResource(id = groupIcon),
+                    contentDescription = if (groupIcon == R.drawable.ic_lightning) s.fastGroupIconDesc else s.slowGroupIconDesc,
+                    tint = if (groupIcon == R.drawable.ic_turtle) TurtleGreen else Color.Unspecified,
+                    modifier = Modifier.size(18.dp)
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     groupTitle,

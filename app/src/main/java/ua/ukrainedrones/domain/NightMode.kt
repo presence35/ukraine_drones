@@ -31,12 +31,6 @@ data class NightZones(
     val fastYellowArmed: Boolean
 )
 
-/** Night-mode vibration strengths (0–4) for fast/slow zone alerts, applied while the window is active. */
-data class NightVibration(
-    val fast: Int,
-    val slow: Int
-)
-
 /**
  * True when [nowMillis] falls inside the night window. Overnight windows (start > end,
  * e.g. 22:00→07:00) wrap past midnight. start == end (or disabled) means never active.
@@ -79,17 +73,4 @@ fun effectiveArmed(
     )
 } else {
     day
-}
-
-/** The active vibration strengths: night values while the window is active and night vibration is on. */
-fun effectiveVibration(
-    dayFast: Int,
-    daySlow: Int,
-    night: NightVibration,
-    useNightVibration: Boolean,
-    nightActive: Boolean
-): NightVibration = if (nightActive && useNightVibration) {
-    night
-} else {
-    NightVibration(dayFast, daySlow)
 }

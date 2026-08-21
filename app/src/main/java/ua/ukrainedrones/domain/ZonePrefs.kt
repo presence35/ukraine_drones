@@ -61,8 +61,6 @@ class ZonePrefs(private val context: Context) {
     private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
     private val batteryOnboardShownKey = booleanPreferencesKey("battery_onboard_shown")
     private val permissionPromptDeferredKey = booleanPreferencesKey("permission_prompt_deferred")
-    private val fastVibrationLevelKey = intPreferencesKey("fast_vibration_level")
-    private val slowVibrationLevelKey = intPreferencesKey("slow_vibration_level")
     private val alertHistoryKey = stringPreferencesKey("alert_history")
     private val debugLogKey = stringPreferencesKey("debug_log")
     private val nightEnabledKey = booleanPreferencesKey("night_enabled")
@@ -79,9 +77,6 @@ class ZonePrefs(private val context: Context) {
     private val nightFastYellowArmedKey = booleanPreferencesKey("night_fast_yellow_armed")
     private val nightZoneSirenOverrideKey = booleanPreferencesKey("night_zone_siren_override")
     private val nightOfficialSirenOverrideKey = booleanPreferencesKey("night_official_siren_override")
-    private val nightVibrationEnabledKey = booleanPreferencesKey("night_vibration_enabled")
-    private val nightFastVibrationLevelKey = intPreferencesKey("night_fast_vibration_level")
-    private val nightSlowVibrationLevelKey = intPreferencesKey("night_slow_vibration_level")
     private val sheltersEnabledKey = booleanPreferencesKey("shelters_enabled")
     private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
     private val periodicGpsKey = booleanPreferencesKey("periodic_gps_enabled")
@@ -464,22 +459,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[permissionPromptDeferredKey] = deferred }
     }
 
-    /** Vibration strength 0–4 for fast (missile) zone alerts — default 3 (strong). */
-    fun fastVibrationLevel(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[fastVibrationLevelKey] ?: 3 }
-
-    suspend fun setFastVibrationLevel(level: Int) {
-        context.dataStore.edit { it[fastVibrationLevelKey] = level.coerceIn(0, 4) }
-    }
-
-    /** Vibration strength 0–4 for slow (drone) zone alerts — default 3 (strong). */
-    fun slowVibrationLevel(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[slowVibrationLevelKey] ?: 3 }
-
-    suspend fun setSlowVibrationLevel(level: Int) {
-        context.dataStore.edit { it[slowVibrationLevelKey] = level.coerceIn(0, 4) }
-    }
-
     /** Serialized fired-alert history ("at|end|tier|type|locality|distance" lines), for the status popup. */
     fun alertHistory(): Flow<String> =
         context.dataStore.data.map { prefs -> prefs[alertHistoryKey] ?: "" }
@@ -606,30 +585,6 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setNightOfficialSirenOverride(override: Boolean) {
         context.dataStore.edit { it[nightOfficialSirenOverrideKey] = override }
-    }
-
-    /** Whether night mode applies its own vibration strengths during the night window. Default off. */
-    fun nightVibrationEnabled(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[nightVibrationEnabledKey] ?: false }
-
-    suspend fun setNightVibrationEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[nightVibrationEnabledKey] = enabled }
-    }
-
-    /** Night vibration strength 0–4 for fast (missile) zone alerts — default 3 (strong). */
-    fun nightFastVibrationLevel(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[nightFastVibrationLevelKey] ?: 3 }
-
-    suspend fun setNightFastVibrationLevel(level: Int) {
-        context.dataStore.edit { it[nightFastVibrationLevelKey] = level.coerceIn(0, 4) }
-    }
-
-    /** Night vibration strength 0–4 for slow (drone) zone alerts — default 3 (strong). */
-    fun nightSlowVibrationLevel(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[nightSlowVibrationLevelKey] ?: 3 }
-
-    suspend fun setNightSlowVibrationLevel(level: Int) {
-        context.dataStore.edit { it[nightSlowVibrationLevelKey] = level.coerceIn(0, 4) }
     }
 }
 

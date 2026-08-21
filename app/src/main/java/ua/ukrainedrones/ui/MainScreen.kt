@@ -86,7 +86,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         if (updateReminderTick > 0) {
             val s = Strings.get(uiState.language)
             val result = snackbarHostState.showSnackbar(
-                message = String.format(s.updateAvailableOnOpen, "v${uiState.latestVersion.orEmpty()}"),
+                message = String.format(s.updateAvailableOnOpen, uiState.latestVersion.orEmpty()),
                 actionLabel = s.updateDownload,
                 duration = SnackbarDuration.Long
             )
@@ -127,6 +127,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var shelterTipRemaining by remember { mutableStateOf(0) }
     var guideFeatureId by remember { mutableStateOf<String?>(null) }
     var guideFromSettings by remember { mutableStateOf(false) }
+    var sheltersFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
     var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
     var wizardFromSettings by remember { mutableStateOf(false) }
@@ -199,11 +200,15 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onShowConnectionInfoChange = { showConnectionInfo = it },
             showZonesSheet = showZonesSheet,
             onShowZonesSheetChange = { showZonesSheet = it },
-            onOpenShelters = { screen = Screen.SHELTERS },
+            onOpenShelters = {
+                sheltersFromSettings = false
+                screen = Screen.SHELTERS
+            },
             onOpenDebug = {
                 showConnectionInfo = false
                 screen = Screen.DEBUG
             },
+            onShelterModeChange = { viewModel.setShelterModeActive(it) },
             shelterTipRemaining = shelterTipRemaining,
             onShelterTipShown = {
                 val r = shelterTipRemaining - 1
@@ -226,8 +231,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 silencedTypes = uiState.silencedTypes,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
                 sirenOverride = uiState.sirenOverride,
-                fastVibrationLevel = uiState.fastVibrationLevel,
-                slowVibrationLevel = uiState.slowVibrationLevel,
                 nightEnabled = uiState.nightEnabled,
                 nightStartMin = uiState.nightStartMin,
                 nightEndMin = uiState.nightEndMin,
@@ -246,9 +249,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 nightFastYellowArmed = uiState.nightFastYellowArmed,
                 nightZoneSirenOverride = uiState.nightZoneSirenOverride,
                 nightOfficialSirenOverride = uiState.nightOfficialSirenOverride,
-                nightVibrationEnabled = uiState.nightVibrationEnabled,
-                nightFastVibrationLevel = uiState.nightFastVibrationLevel,
-                nightSlowVibrationLevel = uiState.nightSlowVibrationLevel,
                 disclaimerCollapsed = uiState.disclaimerCollapsed,
                 disclaimerReadCount = uiState.disclaimerReadCount,
                 followMe = uiState.followMe,
@@ -277,8 +277,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
-                onFastVibrationChange = { viewModel.setFastVibrationLevel(it) },
-                onSlowVibrationChange = { viewModel.setSlowVibrationLevel(it) },
                 onNightEnabledChange = { viewModel.setNightEnabled(it) },
                 onNightStartChange = { viewModel.setNightStartMin(it) },
                 onNightEndChange = { viewModel.setNightEndMin(it) },
@@ -293,9 +291,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onNightFastYellowArmedChange = { viewModel.setNightFastYellowArmed(it) },
                 onNightZoneSirenOverrideChange = { viewModel.setNightZoneSirenOverride(it) },
                 onNightOfficialSirenOverrideChange = { viewModel.setNightOfficialSirenOverride(it) },
-                onNightVibrationEnabledChange = { viewModel.setNightVibrationEnabled(it) },
-                onNightFastVibrationChange = { viewModel.setNightFastVibrationLevel(it) },
-                onNightSlowVibrationChange = { viewModel.setNightSlowVibrationLevel(it) },
                 onFollowMeChange = { viewModel.setFollowMe(it) },
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onPeriodicGpsChange = { viewModel.setPeriodicGps(it) },
@@ -305,7 +300,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onIconSetChange = { viewModel.setThreatIconSet(it) },
                 onShowMapScaleChange = { viewModel.setShowMapScale(it) },
                 onSheltersEnabledChange = { viewModel.setSheltersEnabled(it) },
-                onOpenShelterList = { screen = Screen.SHELTERS },
+                onOpenShelterList = {
+                sheltersFromSettings = true
+                screen = Screen.SHELTERS
+            },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
                 onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
@@ -339,7 +337,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             )
         }
         if (screen == Screen.SHELTERS) {
-            BackHandler { screen = Screen.MAP }
+            BackHandler { screen = if (sheltersFromSettings) Screen.SETTINGS else Screen.MAP }
             ShelterScreen(
                 lang = uiState.language,
                 focus = uiState.focusLocation,
@@ -347,7 +345,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 withKids = uiState.sheltersWithKids,
                 onWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
                 now = uiState.now,
-                onBack = { screen = Screen.MAP }
+                onBack = { screen = if (sheltersFromSettings) Screen.SETTINGS else Screen.MAP }
             )
         }
         if (screen == Screen.DEBUG) {
@@ -358,7 +356,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onBack = { screen = Screen.MAP }
             )
         }
-        SnackbarHost(
+        SwipeableSnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -629,10 +627,11 @@ private fun WizardThreatGrid(
                 Spacer(Modifier.height(10.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    groupIcon,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                Icon(
+                    painter = painterResource(id = groupIcon),
+                    contentDescription = if (groupIcon == R.drawable.ic_lightning) s.fastGroupIconDesc else s.slowGroupIconDesc,
+                    tint = if (groupIcon == R.drawable.ic_turtle) TurtleGreen else Color.Unspecified,
+                    modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
@@ -651,7 +650,11 @@ private fun WizardThreatGrid(
                     row.forEach { type ->
                         val on = type !in hiddenTypes && type !in silencedTypes
                         val info = ThreatTypeCatalog.INFO.getValue(type)
-                        val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+                        val label = if (lang == AppLanguage.UA) {
+                            info.shortLabelUa ?: info.labelUa
+                        } else {
+                            info.shortLabelEn ?: info.labelEn
+                        }
                         val onColor = MaterialTheme.colorScheme.onSurface
                         val offColor = MaterialTheme.colorScheme.onSurfaceVariant
                         Column(
@@ -682,7 +685,7 @@ private fun WizardThreatGrid(
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (on) onColor else offColor,
                                 textAlign = TextAlign.Center,
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -759,12 +762,12 @@ private fun OnboardingTipRow(iconRes: Int, iconTint: Color, text: String) {
             tint = iconTint,
             modifier = Modifier
                 .padding(top = 1.dp)
-                .size(20.dp)
+                .size(28.dp)
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(12.dp))
         Text(
             text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -799,6 +802,7 @@ private fun MapScreen(
     onShowZonesSheetChange: (Boolean) -> Unit,
     onOpenShelters: () -> Unit,
     onOpenDebug: () -> Unit,
+    onShelterModeChange: (Boolean) -> Unit,
     shelterTipRemaining: Int,
     onShelterTipShown: () -> Unit
 ) {
@@ -814,6 +818,10 @@ private fun MapScreen(
     var shelterSelectTick by remember { mutableStateOf(0) }
     var showNearbyShelters by remember { mutableStateOf(false) }
     var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
+
+    // Surface shelter-mode to the ViewModel so the resolved-threat flourish/card is
+    // suppressed while the shelter overlay is up.
+    LaunchedEffect(showNearbyShelters) { onShelterModeChange(showNearbyShelters) }
 
     val fineLocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -994,6 +1002,7 @@ private fun MapScreen(
                         zoomZone = zoomZone,
                         zoomTick = zoomTick,
                         fitZonesTick = fitZonesTick,
+                        zonesSheetOpen = showZonesSheet,
                         revealRequest = uiState.revealRequest,
                         paused = settingsOpen,
                         mapVisible = mapVisible,
@@ -1039,6 +1048,8 @@ private fun MapScreen(
                         yellowArmed = uiState.activeSlowYellowArmed || uiState.activeFastYellowArmed,
                         lang = uiState.language,
                         onZoneTap = { zone ->
+                            showNearbyShelters = false
+                            selectedShelter = null
                             zoomZone = zone
                             zoomTick++
                         },
@@ -1713,5 +1724,31 @@ private fun UpdateDialog(
             )
         }
         else -> Unit
+    }
+}
+
+/** Snackbar host whose snackbars can be dismissed by swiping sideways. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableSnackbarHost(
+    hostState: SnackbarHostState,
+    modifier: Modifier = Modifier
+) {
+    SnackbarHost(hostState = hostState, modifier = modifier) { data ->
+        key(data) {
+            val dismissState = rememberSwipeToDismissBoxState(
+                confirmValueChange = { value ->
+                    if (value != SwipeToDismissBoxValue.Settled) data.dismiss()
+                    true
+                }
+            )
+            SwipeToDismissBox(
+                state = dismissState,
+                backgroundContent = {},
+                enableDismissFromStartToEnd = true,
+                enableDismissFromEndToStart = true,
+                content = { Snackbar(snackbarData = data) }
+            )
+        }
     }
 }

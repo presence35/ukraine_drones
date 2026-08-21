@@ -57,6 +57,8 @@ class AlertService : Service() {
         private const val CENTRE_ALERT_GRACE_MS = 60_000L
         /** Vibration level used for official alerts with no known reason threat (fixed, urgent). */
         private const val VIBRATION_STRONG = 4
+        /** Fixed vibration level used for all zone alerts (strong, was configurable). */
+        private const val VIBRATION_ZONE = 3
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, AlertService::class.java))
@@ -71,6 +73,7 @@ class AlertService : Service() {
     private var monitoringJob: Job? = null
 
     private var wasFocusAlertActive = false
+    private var officialRegionToken: String? = null
     private var wasOfficialAlertsEnabled = true
     private var currentReasonThreatId: String? = null
     private var knownZones: Map<String, ThreatZone> = emptyMap()
@@ -135,13 +138,11 @@ private var notif3minShown = false
         val followMe: Boolean
     )
 
-    /** Per-tick inputs merged with the threat-alert toggles: language, pin and vibration strengths. */
+    /** Per-tick inputs merged with the threat-alert toggles: language, pin. */
     private data class TailPrefs(
         val enabled: Set<ThreatType>,
         val lang: AppLanguage,
-        val pinned: String?,
-        val fastVibrationLevel: Int,
-        val slowVibrationLevel: Int
+        val pinned: String?
     )
 
     /** Night-mode window prefs (raw, day values untouched). */
@@ -157,9 +158,7 @@ private var notif3minShown = false
         val window: NightWindow,
         val zones: NightZones,
         val zoneSirenOverride: Boolean,
-        val officialSirenOverride: Boolean,
-        val vibrationEnabled: Boolean,
-        val vibration: NightVibration
+        val officialSirenOverride: Boolean
     )
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -286,11 +285,9 @@ private var notif3minShown = false
                 combine(
                     threatAlertFlow(prefs),
                     prefs.language(),
-                    prefs.pinnedCity(),
-                    prefs.fastVibrationLevel(),
-                    prefs.slowVibrationLevel()
-                ) { enabled, lang, pinned, fastVib, slowVib ->
-                    TailPrefs(enabled, lang, pinned, fastVib, slowVib)
+                    prefs.pinnedCity()
+                ) { enabled, lang, pinned ->
+                    TailPrefs(enabled, lang, pinned)
                 },
                 combine(
                     combine(
@@ -322,16 +319,9 @@ private var notif3minShown = false
                     },
                     combine(
                         prefs.nightZoneSirenOverride(), prefs.nightOfficialSirenOverride()
-                    ) { zoneOv, officialOv -> zoneOv to officialOv },
-                    combine(
-                        prefs.nightVibrationEnabled(),
-                        prefs.nightFastVibrationLevel(),
-                        prefs.nightSlowVibrationLevel()
-                    ) { enabled, fast, slow ->
-                        enabled to NightVibration(fast, slow)
-                    }
-                ) { window, zones, ov, vib ->
-                    NightSettings(window, zones, ov.first, ov.second, vib.first, vib.second)
+                    ) { zoneOv, officialOv -> zoneOv to officialOv }
+                ) { window, zones, ov ->
+                    NightSettings(window, zones, ov.first, ov.second)
                 }
             ) { core, params, config, tail, night ->
                 val neptun = core.first
@@ -357,10 +347,6 @@ private var notif3minShown = false
                 )
                 val zoneSirenOverride = if (nightActive) night.zoneSirenOverride else config.sirenOverride
                 val officialSirenOverride = if (nightActive) night.officialSirenOverride else config.sirenOverride
-                val effectiveVibration = effectiveVibration(
-                    tail.fastVibrationLevel, tail.slowVibrationLevel,
-                    night.vibration, night.vibrationEnabled, nightActive
-                )
                 val attribution = focusAttribution(followMe, gps, pinned)
                 val officialActive = attribution.token?.let { token ->
                     neptun.oblastAlerts.any { it.inOblast(token) }
@@ -397,8 +383,8 @@ private var notif3minShown = false
                     officialSirenOverride = officialSirenOverride,
                     connected = neptun.connected,
                     offlineElapsedSec = neptun.offlineElapsedSec,
-                    fastVibrationLevel = effectiveVibration.fast,
-                    slowVibrationLevel = effectiveVibration.slow,
+                    fastVibrationLevel = VIBRATION_ZONE,
+                    slowVibrationLevel = VIBRATION_ZONE,
                     focusLocation = focus,
                     nightActive = nightActive,
                     enabled = tail.enabled
@@ -698,6 +684,7 @@ notifyMonitor(
                 } ?: VIBRATION_STRONG
             )
             currentReasonThreatId = state.officialReasonThreatId
+            officialRegionToken = state.focusToken
             wasFocusAlertActive = true
         } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
             state.officialReasonThreatId != currentReasonThreatId
@@ -724,16 +711,22 @@ notifyMonitor(
         }
         // All clear: the official alert that was ringing has just ended. The cheerful chime
         // fires only for the official oblast alert — zone-threat clears stay silent — and
-        // never when the official-alert notifications are turned off. When no zone alert is
-        // active, cancel the lingering siren notification immediately instead of waiting for
-        // the 60s grace path below; if a zone alert is still ringing, leave it up.
-if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertActive) {
+        // never when the official-alert notifications are turned off. It fires only while we
+        // are still focused on the region whose alert was ringing: switching the focus away
+        // to a non-alerting region must NOT announce an all-clear for the old region (it's no
+        // longer relevant) — that's handled silently below. When no zone alert is active,
+        // cancel the lingering siren notification immediately instead of waiting for the 60s
+        // grace path; if a zone alert is still ringing, leave it up.
+        if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertActive &&
+            state.focusToken == officialRegionToken
+        ) {
             if (alertable.isEmpty()) {
                 cancelAlert()
             }
             AlertHistory.closeAlert("official", System.currentTimeMillis())
             postAllClear(s, state.focusBannerCity)
             currentReasonThreatId = null
+            officialRegionToken = null
             debugOfficialActive = false
             DebugLog.recordOfficial(
                 DebugLogKind.OFFICIAL_OFF,
@@ -748,6 +741,22 @@ if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAler
                 distanceKm = null,
                 now = System.currentTimeMillis()
             )
+        }
+        // Focus switched away from the region whose official alert was ringing, to a
+        // non-alerting region. Drop the active-alert tracking silently — no all-clear chime
+        // for the old region, no lingering siren — so returning to that still-alerting region
+        // re-announces (fresh siren) on the next tick.
+        if (wasFocusAlertActive && !state.focusOblastAlertActive &&
+            officialRegionToken != null && state.focusToken != officialRegionToken
+        ) {
+            if (alertable.isEmpty()) {
+                cancelAlert()
+            }
+            AlertHistory.closeAlert("official", System.currentTimeMillis())
+            currentReasonThreatId = null
+            debugOfficialActive = false
+            officialRegionToken = null
+            wasFocusAlertActive = false
         }
         // An alert that ends (or was never notified) while notifications are off must not leave
         // the "already notified" flag stuck on for a future alert.
@@ -770,6 +779,7 @@ if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAler
                 )
             }
             wasFocusAlertActive = false
+            officialRegionToken = null
         }
 
         // Debug verdict sweep: log every threat in the active region and why it did or
