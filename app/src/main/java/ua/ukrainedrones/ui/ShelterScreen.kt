@@ -30,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -222,24 +221,15 @@ private fun GpsHeaderRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val (adultIcon, childIcon) = walkIconPair(withKids)
+                val tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.width(44.dp)
+                    modifier = Modifier.width(26.dp)
                 ) {
-                    Icon(
-                        painter = painterResource(adultIcon),
-                        contentDescription = null,
-                        tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    WalkFigureIcon(adultIcon, height = 22.dp, tint = tint)
                     if (childIcon != null) {
-                        Icon(
-                            painter = painterResource(childIcon),
-                            contentDescription = null,
-                            tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        WalkFigureIcon(childIcon, height = 13.dp, tint = tint)
                     }
                 }
                 Spacer(Modifier.width(8.dp))
@@ -382,22 +372,11 @@ private fun WalkRow(adultIcon: Int, childIcon: Int?, text: String, tint: android
     Row(verticalAlignment = Alignment.CenterVertically) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            modifier = Modifier.width(52.dp)
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Icon(
-                painter = painterResource(adultIcon),
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(24.dp)
-            )
+            WalkFigureIcon(adultIcon, height = 24.dp, tint = tint)
             if (childIcon != null) {
-                Icon(
-                    painter = painterResource(childIcon),
-                    contentDescription = null,
-                    tint = tint,
-                    modifier = Modifier.size(24.dp)
-                )
+                WalkFigureIcon(childIcon, height = 14.dp, tint = tint)
             }
         }
         Spacer(Modifier.width(8.dp))

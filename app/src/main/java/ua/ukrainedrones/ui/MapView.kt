@@ -280,15 +280,16 @@ private fun shelterMarkerBitmap(
     val markerColor = if (isSelected) Color.WHITE else typeColor
 
 val strokeW = 2.6f * density
-    val totalW = (16f * density).toInt().coerceAtLeast(1)
-    val totalH = (13f * density).toInt().coerceAtLeast(1)
-    val pad = 2.5f * density
-    val left = pad
-    val right = totalW - pad
-    val top = pad
-    val bottom = totalH - pad
-    val cx = (left + right) / 2f
-    val r = (right - left) / 2f
+    // Bigger bitmap than the visible pin: osmdroid hit-tests the icon bounds, so the
+    // transparent margin above/around the teardrop makes the marker much easier to tap.
+    val totalW = (40f * density).toInt().coerceAtLeast(1)
+    val totalH = (36f * density).toInt().coerceAtLeast(1)
+    val chevW = 16f * density
+    val chevH = 18f * density
+    val cx = totalW / 2f
+    val bottom = totalH - 2f * density
+    val r = chevW / 2f
+    val top = bottom - chevH
     val bulbMidY = top + r
 
     val bmp = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)

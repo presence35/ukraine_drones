@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -123,64 +122,34 @@ fun ShelterPopupCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     val (walkAdultIcon, walkChildIcon) = walkIconPair(withKids)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.width(44.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(walkAdultIcon),
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        if (walkChildIcon != null) {
-                            Spacer(Modifier.width(2.dp))
-                            Icon(
-                                painter = painterResource(walkChildIcon),
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        String.format(s.shelterWalkMinutes, shelter.walkMinutesAdult),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.9f)
-                    )
-
-                    if (withKids) {
-                        Spacer(Modifier.width(12.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.width(44.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(walkAdultIcon),
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            if (walkChildIcon != null) {
-                                Spacer(Modifier.width(2.dp))
-                                Icon(
-                                    painter = painterResource(walkChildIcon),
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.8f),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
+                    val iconTint = Color.White.copy(alpha = 0.8f)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        WalkFigureIcon(walkAdultIcon, height = 20.dp, tint = iconTint)
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            String.format(s.shelterWalkMinutes, shelter.walkMinutesKid),
+                            String.format(s.shelterWalkMinutes, shelter.walkMinutesAdult),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.9f)
                         )
+                    }
+
+                    if (withKids) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            WalkFigureIcon(walkAdultIcon, height = 20.dp, tint = iconTint)
+                            Spacer(Modifier.width(2.dp))
+                            if (walkChildIcon != null) {
+                                WalkFigureIcon(walkChildIcon, height = 12.dp, tint = iconTint)
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                String.format(s.shelterWalkMinutes, shelter.walkMinutesKid),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
                     }
                 }
 

@@ -383,6 +383,9 @@
 - Shelter walk-time icons are now man/woman silhouettes — the adult is randomly a man or a woman, and a child appears beside them when "with kids" is on; the icon slots are a fixed width so toggling kids no longer shifts the text.
 - Shelter GPS header wording updated: "GPS fix is…" → "Precise GPS: …" (EN) / "Точний GPS: …" (UA).
 
+- Shelter walk icons are now sized at their true silhouette aspect ratio — no more squashed-wide figures, and the child renders noticeably shorter than the adult. The "With kids" toggle slot is a fixed compact width that fits both figures; the shelter-list rows size to their figures; the map popup's walk rows are compact so the "Open in maps" button never wraps.
+- Map shelter markers: tapping a marker no longer needs pinpoint precision — the tap target is much larger (bigger icon bounds, tip still on the spot). Shelter mode also stops auto-hiding when a new threat id appears; the markers/card stay until you toggle the Shelter button, tap a threat, or tap empty map.
+
 ## [0.3.9] — 2026-08-13
 
 - Map: city labels now turn red while an official air-raid alert is active for that city's oblast (from the live alerts stream), and show an active-threat count in brackets next to the name, e.g. "Kharkiv (2)". No new API calls — reuses the existing alerts + threat stream.

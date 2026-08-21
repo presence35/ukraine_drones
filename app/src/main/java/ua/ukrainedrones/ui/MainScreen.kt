@@ -815,19 +815,6 @@ private fun MapScreen(
     var showNearbyShelters by remember { mutableStateOf(false) }
     var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
 
-    // Shelter mode is for the calm map: the moment a genuinely new threat appears, drop the
-    // markers and their popup so the threat takes over the screen.
-    val threatIdKey = uiState.mapThreats.map { it.id }.sorted().joinToString(",")
-    val lastThreatIds = remember { mutableStateOf<Set<String>>(emptySet()) }
-    LaunchedEffect(threatIdKey) {
-        val ids = uiState.mapThreats.map { it.id }.toSet()
-        if ((ids - lastThreatIds.value).isNotEmpty() && showNearbyShelters) {
-            showNearbyShelters = false
-            selectedShelter = null
-        }
-        lastThreatIds.value = ids
-    }
-
     val fineLocLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
