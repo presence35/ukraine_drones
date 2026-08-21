@@ -39,6 +39,7 @@ class ZonePrefs(private val context: Context) {
     private val disclaimerCollapsedKey = booleanPreferencesKey("disclaimer_collapsed")
     private val disclaimerReadCountKey = intPreferencesKey("disclaimer_read_count")
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
+    private val lastNotifiedUpdateCodeKey = longPreferencesKey("last_notified_update_code")
     private val followMeKey = booleanPreferencesKey("follow_me")
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
     private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
@@ -81,36 +82,53 @@ class ZonePrefs(private val context: Context) {
     private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
     private val periodicGpsKey = booleanPreferencesKey("periodic_gps_enabled")
 
-    /** Red (inner) slow-threat distance threshold in km — slider range 2–20, default 20. */
+    /** Red (inner) slow-threat distance threshold in km — slider range 1–20, default 20. */
     fun slowRedKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[slowRedKmKey] ?: 20 }
 
     suspend fun setSlowRedKm(km: Int) {
-        context.dataStore.edit { it[slowRedKmKey] = km.coerceIn(2, 20) }
+        context.dataStore.edit { prefs ->
+            prefs[slowRedKmKey] = km.coerceIn(1, 20)
+            // Yellow tracks red: it can never dip below red+2, so a red raise pushes it up.
+            val red = prefs[slowRedKmKey] ?: 20
+            val yellow = prefs[slowYellowKmKey] ?: 50
+            prefs[slowYellowKmKey] = yellow.coerceIn(red + 2, 50)
+        }
     }
 
-    /** Yellow (outer) slow-threat distance threshold in km — slider range 21–50, default 50. */
+    /** Yellow (outer) slow-threat distance threshold in km — range red+2–50, default 50. */
     fun slowYellowKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[slowYellowKmKey] ?: 50 }
 
     suspend fun setSlowYellowKm(km: Int) {
-        context.dataStore.edit { it[slowYellowKmKey] = km.coerceIn(21, 50) }
+        context.dataStore.edit { prefs ->
+            val red = prefs[slowRedKmKey] ?: 20
+            prefs[slowYellowKmKey] = km.coerceIn(red + 2, 50)
+        }
     }
 
-    /** Red (inner) fast-threat time-to-arrival threshold in minutes — range 2–5, default 5. */
+    /** Red (inner) fast-threat time-to-arrival threshold in minutes — range 1–5, default 5. */
     fun fastRedMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[fastRedMinKey] ?: 5 }
 
     suspend fun setFastRedMin(min: Int) {
-        context.dataStore.edit { it[fastRedMinKey] = min.coerceIn(2, 5) }
+        context.dataStore.edit { prefs ->
+            prefs[fastRedMinKey] = min.coerceIn(1, 5)
+            val red = prefs[fastRedMinKey] ?: 5
+            val yellow = prefs[fastYellowMinKey] ?: 20
+            prefs[fastYellowMinKey] = yellow.coerceIn(red + 2, 20)
+        }
     }
 
-    /** Yellow (outer) fast-threat time-to-arrival threshold in minutes — range 6–20, default 20. */
+    /** Yellow (outer) fast-threat time-to-arrival threshold in minutes — range red+2–20, default 20. */
     fun fastYellowMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[fastYellowMinKey] ?: 20 }
 
     suspend fun setFastYellowMin(min: Int) {
-        context.dataStore.edit { it[fastYellowMinKey] = min.coerceIn(6, 20) }
+        context.dataStore.edit { prefs ->
+            val red = prefs[fastRedMinKey] ?: 5
+            prefs[fastYellowMinKey] = min.coerceIn(red + 2, 20)
+        }
     }
 
     /** Whether the slow red zone can fire urgent siren alerts. */
@@ -224,6 +242,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setLastUpdateCheck(ts: Long) {
         context.dataStore.edit { it[lastUpdateCheckKey] = ts }
+    }
+
+    /** Server versionCode last advertised by the daily update notification (0 = never). */
+    fun lastNotifiedUpdateCode(): Flow<Long> =
+        context.dataStore.data.map { prefs -> prefs[lastNotifiedUpdateCodeKey] ?: 0L }
+
+    suspend fun setLastNotifiedUpdateCode(code: Long) {
+        context.dataStore.edit { it[lastNotifiedUpdateCodeKey] = code }
     }
 
     /** Whether the map/zones follow the GPS position (false = pinned to a city). */
@@ -508,36 +534,52 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[nightUseCustomZonesKey] = use }
     }
 
-    /** Night red (inner) slow-threat distance threshold in km — range 2–20, default 20. */
+    /** Night red (inner) slow-threat distance threshold in km — range 1–20, default 20. */
     fun nightSlowRedKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightSlowRedKmKey] ?: 20 }
 
     suspend fun setNightSlowRedKm(km: Int) {
-        context.dataStore.edit { it[nightSlowRedKmKey] = km.coerceIn(2, 20) }
+        context.dataStore.edit { prefs ->
+            prefs[nightSlowRedKmKey] = km.coerceIn(1, 20)
+            val red = prefs[nightSlowRedKmKey] ?: 20
+            val yellow = prefs[nightSlowYellowKmKey] ?: 50
+            prefs[nightSlowYellowKmKey] = yellow.coerceIn(red + 2, 50)
+        }
     }
 
-    /** Night yellow (outer) slow-threat distance threshold in km — range 21–50, default 50. */
+    /** Night yellow (outer) slow-threat distance threshold in km — range red+2–50, default 50. */
     fun nightSlowYellowKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightSlowYellowKmKey] ?: 50 }
 
     suspend fun setNightSlowYellowKm(km: Int) {
-        context.dataStore.edit { it[nightSlowYellowKmKey] = km.coerceIn(21, 50) }
+        context.dataStore.edit { prefs ->
+            val red = prefs[nightSlowRedKmKey] ?: 20
+            prefs[nightSlowYellowKmKey] = km.coerceIn(red + 2, 50)
+        }
     }
 
-    /** Night red (inner) fast-threat ETA threshold in minutes — range 2–5, default 5. */
+    /** Night red (inner) fast-threat ETA threshold in minutes — range 1–5, default 5. */
     fun nightFastRedMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightFastRedMinKey] ?: 5 }
 
     suspend fun setNightFastRedMin(min: Int) {
-        context.dataStore.edit { it[nightFastRedMinKey] = min.coerceIn(2, 5) }
+        context.dataStore.edit { prefs ->
+            prefs[nightFastRedMinKey] = min.coerceIn(1, 5)
+            val red = prefs[nightFastRedMinKey] ?: 5
+            val yellow = prefs[nightFastYellowMinKey] ?: 20
+            prefs[nightFastYellowMinKey] = yellow.coerceIn(red + 2, 20)
+        }
     }
 
-    /** Night yellow (outer) fast-threat ETA threshold in minutes — range 6–20, default 20. */
+    /** Night yellow (outer) fast-threat ETA threshold in minutes — range red+2–20, default 20. */
     fun nightFastYellowMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightFastYellowMinKey] ?: 20 }
 
     suspend fun setNightFastYellowMin(min: Int) {
-        context.dataStore.edit { it[nightFastYellowMinKey] = min.coerceIn(6, 20) }
+        context.dataStore.edit { prefs ->
+            val red = prefs[nightFastRedMinKey] ?: 5
+            prefs[nightFastYellowMinKey] = min.coerceIn(red + 2, 20)
+        }
     }
 
     /** Whether the slow red zone can fire urgent siren alerts during the night window. */

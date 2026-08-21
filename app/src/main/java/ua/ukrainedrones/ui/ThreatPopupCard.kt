@@ -8,12 +8,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -34,7 +36,7 @@ private val AdvisoryAmber = Color(0xFFFFC107)
 private val DistUserRed = Color(0xFFE57373)
 private val DistUserAmber = Color(0xFFFFD54F)
 private val DistUserGreen = Color(0xFF81C784)
-private val GpsDot = Color(0xFF4FC3F7)
+private val GpsDot = Color(0xFF2196F3)
 
 /** One stacked metric pill on the small card: number + unit + optional dot/label. */
 private data class PillSpec(
@@ -238,8 +240,7 @@ fun ThreatPopupCard(
                                     typeLabel,
                                     fontWeight = FontWeight.SemiBold,
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White,
-                                    modifier = Modifier.weight(1f)
+                                    color = Color.White
                                 )
                                 if (alertsOff) {
                                     AlertsOffChip(s)
@@ -636,20 +637,35 @@ private fun MetricPill(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (dotColor != null) {
+                // Mirrors the map's GPS dot (same blue core + white ring) but with a much
+                // subtler radial glow so it reads as a card indicator, not a beacon.
                 Box(
                     modifier = Modifier
                         .size(fontAware(14.dp))
-                        .clip(CircleShape)
-                        .background(dotColor.copy(alpha = 0.22f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(fontAware(8.dp))
-                            .clip(CircleShape)
-                            .background(dotColor)
-                    )
-                }
+                        .drawBehind {
+                            val core = 4.2.dp.toPx()
+                            val haloR = size.minDimension / 2f
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colorStops = arrayOf(
+                                        0.5f to dotColor.copy(alpha = 0.14f),
+                                        1f to dotColor.copy(alpha = 0f)
+                                    ),
+                                    center = center,
+                                    radius = haloR
+                                ),
+                                radius = haloR,
+                                center = center
+                            )
+                            drawCircle(color = dotColor, radius = core, center = center)
+                            drawCircle(
+                                color = Color.White,
+                                radius = core * 0.55f,
+                                center = center,
+                                style = Stroke(width = 1.4.dp.toPx())
+                            )
+                        }
+                )
                 Spacer(Modifier.width(6.dp))
             }
             Text(

@@ -99,7 +99,7 @@ fun ZonesPanel(
         ) {
             ZoneRow(
                 value = slowRedKm,
-                range = 2f..20f,
+                range = 1f..20f,
                 unit = s.kmUnit,
                 accent = RedZoneColor,
                 armed = slowRedArmed,
@@ -112,7 +112,7 @@ fun ZonesPanel(
 Spacer(Modifier.height(10.dp))
             ZoneRow(
                 value = slowYellowKm,
-                range = 21f..50f,
+                range = (slowRedKm + 2).toFloat()..50f,
                 unit = s.kmUnit,
                 accent = YellowZoneColor,
                 armed = slowYellowArmed,
@@ -131,7 +131,7 @@ Spacer(Modifier.height(10.dp))
         ) {
             ZoneRow(
                 value = fastRedMin,
-                range = 2f..5f,
+                range = 1f..5f,
                 unit = s.minUnit,
                 accent = RedZoneColor,
                 armed = fastRedArmed,
@@ -144,7 +144,7 @@ Spacer(Modifier.height(10.dp))
 Spacer(Modifier.height(10.dp))
             ZoneRow(
                 value = fastYellowMin,
-                range = 6f..20f,
+                range = (fastRedMin + 2).toFloat()..20f,
                 unit = s.minUnit,
                 accent = YellowZoneColor,
                 armed = fastYellowArmed,

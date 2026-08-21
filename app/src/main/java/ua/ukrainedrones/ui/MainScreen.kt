@@ -165,6 +165,18 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         if (uiState.revealRequest != null && screen != Screen.MAP) screen = Screen.MAP
     }
 
+    // Tally-tap replay flourish: open the map and close every modal so nothing steals focus
+    // from the shot-down show (and nothing overlaps it).
+    LaunchedEffect(uiState.flourish?.tick) {
+        if (uiState.flourish != null) {
+            screen = Screen.MAP
+            showZonesSheet = false
+            showConnectionInfo = false
+            activeExplainer = null
+            viewModel.selectThreat(null)
+        }
+    }
+
     // The map stays composed under the Settings overlay so its camera and tiles are never
     // destroyed — returning from Settings used to reset the world into a low-zoom grid.
     Box(modifier = Modifier.fillMaxSize()) {
@@ -210,6 +222,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             },
             onShelterModeChange = { viewModel.setShelterModeActive(it) },
             shelterTipRemaining = shelterTipRemaining,
+            settingsHintRemaining = settingsHintRemaining,
             onShelterTipShown = {
                 val r = shelterTipRemaining - 1
                 shelterTipRemaining = r
@@ -465,12 +478,14 @@ private fun FirstLaunchWizard(
 ) {
     val s = Strings.get(current)
     val other = if (current == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA
+    val totalSteps = 4
     var step by remember { mutableStateOf(0) }
     var tipsRevealed by remember { mutableStateOf(false) }
     BackHandler(enabled = step > 0) { step-- }
     val stepTitle = when (step) {
         0 -> Strings.get(other).languageChooseTitle
         1 -> s.wizardCareTitle
+        2 -> s.wizardZonesTitle
         else -> s.onboardingFeaturesTitle
     }
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -486,11 +501,28 @@ private fun FirstLaunchWizard(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    "${step + 1}/3",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Page indicator: blue rounded segments that fill with yellow (Ukraine colours)
+                // as the user advances — one segment per wizard page.
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    repeat(totalSteps) { i ->
+                        val reached = i <= step
+                        Box(
+                            modifier = Modifier
+                                .width(20.dp)
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (reached) UkraineYellow
+                                    else UkraineBlue.copy(alpha = 0.55f)
+                                )
+                                .then(
+                                    if (reached) Modifier else Modifier.border(
+                                        1.dp, UkraineBlue.copy(alpha = 0.8f), RoundedCornerShape(50)
+                                    )
+                                )
+                        )
+                    }
+                }
             }
             Spacer(Modifier.height(10.dp))
             Column(
@@ -501,14 +533,14 @@ private fun FirstLaunchWizard(
                 when (step) {
                     0 -> {
                         SetupLanguageStep(current, onChoose)
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(24.dp))
                         Text(
                             s.onboardingIntro,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         if (!tipsRevealed) {
-                            Spacer(Modifier.height(20.dp))
+                            Spacer(Modifier.height(24.dp))
                             Button(
                                 onClick = { tipsRevealed = true },
                                 modifier = Modifier.fillMaxWidth()
@@ -516,9 +548,9 @@ private fun FirstLaunchWizard(
                                 Text(s.okButton, fontWeight = FontWeight.SemiBold)
                             }
                         } else {
-                            Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(28.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(16.dp))
                             OnboardingTipRow(
                                 iconRes = IconCatalog.photoRes(ThreatType.SHAHED) ?: R.drawable.ic_threat_shahed,
                                 iconTint = Color.Unspecified,
@@ -534,6 +566,9 @@ private fun FirstLaunchWizard(
                                 iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 text = s.onboardingTipSiren
                             )
+                            Spacer(Modifier.height(6.dp))
+                            OnboardingGradualTip(s.onboardingTipGradual)
+                            Spacer(Modifier.height(20.dp))
                         }
                     }
                     1 -> {
@@ -555,6 +590,7 @@ private fun FirstLaunchWizard(
                             slot = 28.dp
                         )
                     }
+                    2 -> SetupZoneControlsStep(s)
                     else -> SetupFeaturesStep(s)
                 }
             }
@@ -570,11 +606,14 @@ private fun FirstLaunchWizard(
                     OutlinedButton(onClick = onLater) { Text(s.languageChooseLater) }
                 }
                 Button(
-                    onClick = { if (step < 2) step++ else onComplete() },
+                    onClick = { if (step < totalSteps - 1) step++ else onComplete() },
                     enabled = step != 0 || tipsRevealed,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(if (step < 2) s.nextButton else s.wizardStartButton, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (step < totalSteps - 1) s.nextButton else s.wizardStartButton,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
@@ -616,7 +655,7 @@ private fun WizardThreatGrid(
     Column {
         Text(
             s.wizardCareSubtitle,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(14.dp))
@@ -700,7 +739,7 @@ private fun WizardThreatGrid(
 @Composable
 private fun SetupFeaturesStep(s: Strings.StringSet) {
     val features = remember(s) {
-        guideFeatures(s).filter { it.id in setOf("live", "zones", "notif", "night", "follow", "shelter") }
+        guideFeatures(s).filter { it.id in setOf("live", "zones", "night", "follow", "shelter") }
     }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         features.forEach { f ->
@@ -773,6 +812,97 @@ private fun OnboardingTipRow(iconRes: Int, iconTint: Color, text: String) {
     }
 }
 
+/** The "gradual tips" promise — visually distinct from the icon rows so it reads as a note. */
+@Composable
+private fun OnboardingGradualTip(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Settings,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+/** Wizard page showing the zone-controls live on the map: the three hover buttons and the sliders. */
+@Composable
+private fun SetupZoneControlsStep(s: Strings.StringSet) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(
+            s.wizardZonesSubtitle,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        FeatureDiagram(
+            kind = GuideDiagram.EDIT_ZONES,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(14.dp))
+        )
+        // The three floating buttons: red zone, yellow zone, edit gear.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            WizardZoneButton(Color(0xFFD32F2F), s.zoneButtonRed)
+            WizardZoneButton(Color(0xFFF9A825), s.zoneButtonYellow)
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = s.editZonesLabel,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+        Text(
+            s.wizardEditZonesHint,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** A colored circular zone button as it appears on the map, for the wizard illustration. */
+@Composable
+private fun WizardZoneButton(color: Color, contentDescription: String) {
+    Surface(
+        shape = CircleShape,
+        color = color.copy(alpha = 0.22f),
+        border = BorderStroke(2.dp, color)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(width = 16.dp, height = 18.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MapScreen(
@@ -804,11 +934,21 @@ private fun MapScreen(
     onOpenDebug: () -> Unit,
     onShelterModeChange: (Boolean) -> Unit,
     shelterTipRemaining: Int,
-    onShelterTipShown: () -> Unit
+    onShelterTipShown: () -> Unit,
+    settingsHintRemaining: Int = 0
 ) {
     val s = Strings.get(uiState.language)
     val context = LocalContext.current
     val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
+    // The settings gear does one slow spin while the "open Settings" hint is still active,
+    // drawing the eye to it (the old heart pulse is long gone).
+    val gearSpin = remember { Animatable(0f) }
+    LaunchedEffect(settingsHintRemaining) {
+        if (settingsHintRemaining > 0) {
+            gearSpin.snapTo(0f)
+            gearSpin.animateTo(360f, animationSpec = tween(durationMillis = 900))
+        }
+    }
     var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
@@ -975,7 +1115,9 @@ private fun MapScreen(
                         painter = painterResource(R.drawable.ic_settings_ua),
                         contentDescription = s.settingsButton,
                         tint = Color.Unspecified,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier
+                            .size(22.dp)
+                            .graphicsLayer { rotationZ = gearSpin.value }
                     )
                 }
             }
@@ -1068,7 +1210,10 @@ private fun MapScreen(
                     }
                     if (total == 0) {
                         Text(
-                            s.noThreatsMessage,
+                            noThreatsMessage(
+                                uiState.language,
+                                uiState.now / 86_400_000L
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color(0xFF4CAF50),
                             textAlign = TextAlign.Center,

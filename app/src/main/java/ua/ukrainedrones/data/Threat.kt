@@ -174,15 +174,16 @@ data class Threat(
         get() = bearingDeg != null && speedKmh != null && confirmedAtMillis != null && status == "active"
 
     /**
-     * Direction to display, mirroring `predictPosition`'s heading resolution (the velocity
-     * bearing when present, else the reported heading, else NEPTUN's deterministic A(id)
-     * pseudo-course — what their own map shows when no course is known). When no real course
-     * is reported but the course message names a destination ("…курсом на Київ"), the icon
-     * faces the bearing toward that city instead of a pseudo-random angle. 0 = north. Kept in
-     * lockstep with `predictPosition` so a marker that glides along its bearing always faces it.
+     * Direction to display, sharing the exact heading `predictPosition` glides along so a
+     * marker that moves always faces its motion. Both call the shared `motionHeading` (our
+     * measured track from recorded fixes, else the server's velocity bearing, else the
+     * reported heading) — when even that is unknown but the course message names a
+     * destination ("…курсом на Київ"), the icon faces the bearing toward that city instead of
+     * a pseudo-random angle; finally NEPTUN's deterministic A(id) pseudo-course applies.
+     * 0 = north.
      */
     val courseDeg: Double
-        get() = bearingDeg ?: heading ?: courseFromMessage() ?: fallbackCourse(id)
+        get() = motionHeading(this) ?: courseFromMessage() ?: fallbackCourse(id)
 
     /**
      * Best-effort course from the NEPTUN course text when the velocity bearing and heading
@@ -352,6 +353,10 @@ private val COURSE_PATTERNS: List<Pair<Regex, String>> = listOf(
     Regex("^(?:Ракета|Крилата ракета) (?:летить |рухається )?(?:у напрямку|в напрямку|на) (.+)$", RegexOption.IGNORE_CASE) to "Missile heading toward {X}",
     Regex("^Швидкісна ціль (?:у напрямку|в напрямку|на|курсом на) (.+)$", RegexOption.IGNORE_CASE) to "High-speed target heading toward {X}",
     Regex("^КАБи? (?:у напрямку|в напрямку|на|курсом на) (.+)$", RegexOption.IGNORE_CASE) to "Guided bomb heading toward {X}",
+    // A "swarm" loitering reads differently from a single UAV patrolling — keep the distinction.
+    Regex("^Рій БпЛА (?:баражує|барражує) над (.+)$", RegexOption.IGNORE_CASE) to "Swarm UAV loiters over {X}",
+    Regex("^Рій БпЛА (?:баражує|барражує) (?:в районі|у районі) (.+)$", RegexOption.IGNORE_CASE) to "Swarm UAV loiters in the area of {X}",
+    Regex("^Рій БпЛА (?:баражує|барражує) (.+)$", RegexOption.IGNORE_CASE) to "Swarm UAV loiters {X}",
     Regex("^(?:БпЛА|Шахед|Шахеди|Група БпЛА|Рій БпЛА) (?:баражує|барражує|баражують|баражуют|барражують|барражуют|патрулює|патрулюють) над (.+)$", RegexOption.IGNORE_CASE) to "UAV patrolling over {X}",
     Regex("^(?:БпЛА|Шахед|Шахеди|Група БпЛА|Рій БпЛА) (?:баражує|барражує|баражують|баражуют|барражують|барражуют|патрулює|патрулюють) (?:в районі|у районі) (.+)$", RegexOption.IGNORE_CASE) to "UAV patrolling in the area of {X}",
     Regex("^(?:БпЛА|Шахед|Шахеди|Група БпЛА|Рій БпЛА) (?:баражує|барражує|баражують|баражуют|барражують|барражуют|патрулює|патрулюють) (.+)$", RegexOption.IGNORE_CASE) to "UAV patrolling {X}",

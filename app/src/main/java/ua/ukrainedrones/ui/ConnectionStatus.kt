@@ -176,7 +176,7 @@ internal fun ConnectionStatus(
                             else -> Color(0xFFE57373)
                         },
                         name = s.connBackupLabel,
-                        active = backupActive && backupSeen,
+                        active = backupUp && backupSeen,
                         activeLabel = s.connActiveLabel
                     )
                     Text(

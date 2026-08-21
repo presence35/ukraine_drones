@@ -67,7 +67,9 @@ class AlertsUaTest {
     }
 
     @Test
-    fun `backup is authoritative for an oblast while the socket is down even if NEPTUN reported it`() {
+    fun `backup tags the alert while the socket is down even if NEPTUN reported it`() {
+        // NEPTUN's frozen snapshot still lists the oblast, but only the live backup confirms
+        // it — the source tag credits the live source, never a held NEPTUN alert.
         val st = NeptunState(
             connected = false,
             backupUp = true,
@@ -214,5 +216,51 @@ class AlertsUaTest {
     fun `backup inactive again once a fresh frame arrives`() {
         val st = NeptunState(connected = true, lastFrameAt = System.currentTimeMillis())
         assertFalse(st.backupActive)
+    }
+
+    @Test
+    fun `backup alerts merge even while NEPTUN is healthy and streaming`() {
+        // The core "prize" behavior: an official siren that alerts.com.ua reports before NEPTUN
+        // forwards it must ring immediately — both sources are always-on peers.
+        val st = NeptunState(
+            connected = true,
+            lastFrameAt = System.currentTimeMillis(),
+            backupUp = true,
+            neptunAlerts = listOf(OblastAlert("1", "Одеська область", "Одеська область", null)),
+            backupAlerts = listOf(OblastAlert("14", "Харківська область", "Харківська область", null))
+        )
+        assertFalse(st.backupActive)
+        assertTrue(st.oblastAlerts.any { it.inOblast("Одеськ") })
+        assertTrue(st.oblastAlerts.any { it.inOblast("Харківськ") })
+        assertEquals(AlertSource.NEPTUN, st.alertSourceFor("Одеськ"))
+        assertEquals(AlertSource.BACKUP, st.alertSourceFor("Харківськ"))
+    }
+
+    @Test
+    fun `both sources reporting the same oblast while connected tag BOTH`() {
+        val st = NeptunState(
+            connected = true,
+            lastFrameAt = System.currentTimeMillis(),
+            backupUp = true,
+            neptunAlerts = listOf(OblastAlert("1", "Одеська область", "Одеська область", null)),
+            backupAlerts = listOf(OblastAlert("14", "Одеська область", "Одеська область", null))
+        )
+        assertEquals(AlertSource.BOTH, st.alertSourceFor("Одеськ"))
+    }
+
+    @Test
+    fun `dead backup never merges while NEPTUN healthy and streaming`() {
+        // Stale-backup gating holds under the always-on merge: a backup that stopped polling
+        // must not resurrect its last payload while NEPTUN is fine.
+        val st = NeptunState(
+            connected = true,
+            lastFrameAt = System.currentTimeMillis(),
+            backupUp = false,
+            neptunAlerts = listOf(OblastAlert("1", "Одеська область", "Одеська область", null)),
+            backupAlerts = listOf(OblastAlert("14", "Харківська область", "Харківська область", null))
+        )
+        assertEquals(listOf("Одеська область"), st.oblastAlerts.map { it.oblast })
+        assertEquals(AlertSource.NEPTUN, st.alertSourceFor("Одеськ"))
+        assertNull(st.alertSourceFor("Харківськ"))
     }
 }

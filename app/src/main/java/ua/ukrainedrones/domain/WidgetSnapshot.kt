@@ -11,6 +11,7 @@ import kotlin.math.roundToInt
  */
 data class WidgetSnapshot(
     val threatCount: Int = 0,
+    val typeCounts: Map<ThreatType, Int> = emptyMap(),
     val activeZone: ThreatZone? = null,
     val nearestKm: Double? = null,
     val officialAlert: Boolean = false,
@@ -49,9 +50,11 @@ fun computeWidgetSnapshot(
 
     var count = 0
     var nearestKm: Double? = null
+    val typeCounts = LinkedHashMap<ThreatType, Int>()
     for (t in eval.mapThreats) {
         if (t.isStale(now)) continue
         count++
+        typeCounts[t.type] = (typeCounts[t.type] ?: 0) + 1
         if (focus != null) {
             val d = distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
             if (nearestKm == null || d < nearestKm) nearestKm = d
@@ -63,6 +66,7 @@ fun computeWidgetSnapshot(
 
     return WidgetSnapshot(
         threatCount = count,
+        typeCounts = typeCounts,
         activeZone = eval.activeZone,
         nearestKm = nearestKm,
         officialAlert = officialAlert,

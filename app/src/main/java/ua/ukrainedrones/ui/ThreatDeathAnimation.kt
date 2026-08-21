@@ -97,6 +97,11 @@ class ThreatDeathOverlay : Overlay() {
         )
     }
 
+    /** Drop every active death instantly — used when a red alert ejects the flourish. */
+    fun clear() {
+        deaths.clear()
+    }
+
     private val ringPaint = Paint().apply {
         isAntiAlias = true
         style = Paint.Style.STROKE

@@ -1,11 +1,14 @@
 package ua.ukrainedrones
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -77,13 +80,19 @@ fun ShelterScreen(
     // Android 12+ drops a re-request of ACCESS_FINE_LOCATION alone once the user already
     // picked approximate (COARSE granted) — it must be requested together with COARSE to
     // show the Precise/Approximate upgrade dialog.
+    var showSettingsFallback by remember { mutableStateOf(false) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            showSettingsFallback = false
             gpsRefreshing = true
             LocationTracker.forceRefresh { gpsRefreshing = false }
+        } else if (!ActivityCompat.shouldShowRequestPermissionRationale(context as Activity, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            // System no longer shows the dialog — route the user to Settings.
+            showSettingsFallback = true
         }
     }
     val forceGps: () -> Unit = {
+        showSettingsFallback = false
         if (fineGranted) {
             gpsRefreshing = true
             LocationTracker.forceRefresh { gpsRefreshing = false }
@@ -122,7 +131,13 @@ fun ShelterScreen(
                     s = s,
                     withKids = withKids,
                     onWithKidsChange = onWithKidsChange,
-                    onForceRefresh = forceGps
+                    onForceRefresh = forceGps,
+                    showSettingsFallback = showSettingsFallback,
+                    onOpenSettings = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                        )
+                    }
                 )
             }
             if (near.isEmpty()) {
@@ -166,7 +181,9 @@ private fun GpsHeaderRow(
     s: Strings.StringSet,
     withKids: Boolean,
     onWithKidsChange: (Boolean) -> Unit,
-    onForceRefresh: () -> Unit
+    onForceRefresh: () -> Unit,
+    showSettingsFallback: Boolean,
+    onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val onCalibrate: () -> Unit = {
@@ -269,6 +286,28 @@ private fun GpsHeaderRow(
                     checked = withKids,
                     onCheckedChange = onWithKidsChange
                 )
+            }
+            if (showSettingsFallback) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        s.gpsPreciseBlocked,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = onOpenSettings) {
+                        Text(s.gpsOpenSettings)
+                    }
+                }
             }
         }
     }

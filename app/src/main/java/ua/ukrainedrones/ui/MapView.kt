@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -164,8 +165,9 @@ private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
     null -> Color.rgb(158, 158, 158)
 }
 
-/** Classic "blue glowing dot" used as the GPS location icon. */
-private fun gpsDotBitmap(context: Context): Bitmap {
+/** Classic "blue glowing dot" used as the GPS location icon once a fix exists; a muted gray
+ *  dot stands in while the first fix hasn't arrived yet (the "locating you" state). */
+private fun gpsDotBitmap(context: Context, hasFix: Boolean): Bitmap {
     val density = context.resources.displayMetrics.density
     val coreR = 7f * density
     val glowR = coreR * 2.8f
@@ -174,10 +176,15 @@ private fun gpsDotBitmap(context: Context): Bitmap {
     val canvas = Canvas(bmp)
     val cx = size / 2f
     val cy = size / 2f
+    val (glowA, glowRgb) = if (hasFix) {
+        Color.argb(120, 33, 150, 243) to intArrayOf(33, 150, 243)
+    } else {
+        Color.argb(110, 158, 158, 158) to intArrayOf(158, 158, 158)
+    }
     val glow = Paint().apply {
         shader = RadialGradient(
             cx, cy, glowR,
-            intArrayOf(Color.argb(120, 33, 150, 243), Color.argb(0, 33, 150, 243)),
+            intArrayOf(glowA, Color.argb(0, glowRgb[0], glowRgb[1], glowRgb[2])),
             floatArrayOf(0.45f, 1f),
             Shader.TileMode.CLAMP
         )
@@ -185,7 +192,7 @@ private fun gpsDotBitmap(context: Context): Bitmap {
     canvas.drawCircle(cx, cy, glowR, glow)
     canvas.drawCircle(cx, cy, coreR, Paint().apply {
         isAntiAlias = true
-        color = Color.rgb(33, 150, 243)
+        color = if (hasFix) Color.rgb(33, 150, 243) else Color.rgb(158, 158, 158)
     })
     canvas.drawCircle(cx, cy, coreR * 0.55f, Paint().apply {
         style = Paint.Style.STROKE
@@ -277,6 +284,10 @@ private fun newRingBitmap(context: Context): Bitmap {
 private data class NewRingState(val id: String?, val position: LatLng, val activeUntilMs: Long)
 
 private const val NEW_RING_MS = 8_000L
+/** Gap between consecutive bullets in the tally-tap replay flourish. */
+private const val FLOURISH_STAGGER_MS = 420L
+/** How long the zone-slider camera refit waits after the value stops changing. */
+private const val ZONE_REFIT_DEBOUNCE_MS = 350L
 /** Floor for the reveal frame's lat/lon span — stops over-zoom on a very close threat. */
 private const val REVEAL_MIN_SPAN_LAT = 0.10
 private const val REVEAL_MIN_SPAN_LON = 0.16
@@ -365,6 +376,31 @@ private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox 
     )
 }
 
+/** Bounding box over every resolution in the replay flourish (plus the focus) so a single
+ *  zoom-out shows the whole show at once — never pans per bullet. */
+private fun flourishesBoundingBox(records: List<FlourishRecord>, focus: LatLng?): BoundingBox {
+    var minLat = Double.MAX_VALUE
+    var maxLat = -Double.MAX_VALUE
+    var minLon = Double.MAX_VALUE
+    var maxLon = -Double.MAX_VALUE
+    for (r in records) {
+        minLat = minOf(minLat, r.lat); maxLat = maxOf(maxLat, r.lat)
+        minLon = minOf(minLon, r.lon); maxLon = maxOf(maxLon, r.lon)
+    }
+    focus?.let {
+        minLat = minOf(minLat, it.lat); maxLat = maxOf(maxLat, it.lat)
+        minLon = minOf(minLon, it.lon); maxLon = maxOf(maxLon, it.lon)
+    }
+    val spanLat = maxOf(maxLat - minLat, REVEAL_MIN_SPAN_LAT)
+    val spanLon = maxOf(maxLon - minLon, REVEAL_MIN_SPAN_LON)
+    val latMid = (maxLat + minLat) / 2
+    val lonMid = (maxLon + minLon) / 2
+    return BoundingBox(
+        (latMid + spanLat / 2).coerceAtMost(85.0), lonMid + spanLon / 2,
+        (latMid - spanLat / 2).coerceAtLeast(-85.0), lonMid - spanLon / 2
+    )
+}
+
 @Composable
 fun NeptunMapView(
     uiState: UiState,
@@ -418,6 +454,7 @@ fun NeptunMapView(
     val lastFitZonesTick = remember { mutableStateOf(-1) }
     val lastFittedYellowKm = remember { mutableStateOf<Int?>(null) }
     val lastRevealTick = remember { mutableStateOf(-1) }
+    val lastFlourishTick = remember { mutableStateOf(-1) }
     val newRingState = remember { mutableStateOf<NewRingState?>(null) }
     val newRingMarker = remember { mutableStateOf<Marker?>(null) }
     val didDefaultFit = remember { mutableStateOf(false) }
@@ -438,13 +475,23 @@ fun NeptunMapView(
     val mapScope = rememberCoroutineScope()
     val deathFx = remember { ThreatDeathOverlay() }
     val vibrator = remember { context.getSystemService(Vibrator::class.java) }
+    // A pending "return the camera to where the user was" job — replaced by each new strike.
+    val cameraReturnJob = remember { mutableStateOf<Job?>(null) }
+    val zoneRefitJob = remember { mutableStateOf<Job?>(null) }
 
-    // Follow-the-bullet: with the setting on, the camera glides onto the strike; it never
-    // scrolls to the launching city, and it never returns anywhere after the explosion. Off:
-    // the camera stays still while the animation plays.
+    // Follow-the-bullet: with the setting on, the camera glides onto the strike, then pans
+    // back to where the user was once the explosion has finished. It never scrolls to the
+    // launching city. Off: the camera stays still while the animation plays. A fresh strike
+    // replaces any pending return so rapid successive shots don't fight over the camera.
     val followStrike: (MapView, GeoPoint, GeoPoint?) -> Unit = { mapView, geo, _ ->
         if (mapView.width > 0 && mapView.height > 0 && followBulletState) {
-            mapScope.launch { mapView.controller.animateTo(geo) }
+            val preCenter = mapView.mapCenter
+            cameraReturnJob.value?.cancel()
+            cameraReturnJob.value = mapScope.launch {
+                mapView.controller.animateTo(geo)
+                delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
+                mapViewRef.value?.controller?.animateTo(preCenter)
+            }
         }
     }
 
@@ -631,13 +678,20 @@ fun NeptunMapView(
 
             // Zone-slider change while the sheet is open: the yellow circle grew (or shrank)
             // on the map, so refit it into the visible area above the panel again. Only
-            // refits once the sheet is open and after the initial default fit.
+            // refits once the sheet is open and after the initial default fit. Debounced so a
+            // quick up-and-down drag doesn't make the camera jitter with every slider tick.
             val fitted = lastFittedYellowKm.value
             if (zonesSheetOpen && didDefaultFit.value && focus != null && fitted != null &&
                 fitted != uiState.activeZoneParams.slowYellowKm
             ) {
                 lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
-                fitZoneToPanel(mapView, GeoPoint(focus.lat, focus.lon))
+                zoneRefitJob.value?.cancel()
+                zoneRefitJob.value = mapScope.launch {
+                    delay(ZONE_REFIT_DEBOUNCE_MS)
+                    mapViewRef.value?.let { mv ->
+                        focusLocationState?.let { fitZoneToPanel(mv, GeoPoint(it.lat, it.lon)) }
+                    }
+                }
             }
 
             // Notification tap: pan + zoom so the focus point (GPS/city) sits near the top
@@ -795,13 +849,18 @@ fun NeptunMapView(
                 // GPS dot — a plain marker driven by LocationTracker's coarse fix. No separate
                 // location provider here (that was the battery-heavy blue accuracy circle).
                 // Only shown while following; when pinned to a city your real position (possibly
-                // far away) would just confuse the view.
+                // far away) would just confuse the view. Before the first fix it sits on the
+                // fallback focus (Odesa) in gray — the "locating you" state.
                 if (uiState.followMe) {
-                    uiState.userLocation?.let {
+                    val pos = uiState.userLocation?.let { GeoPoint(it.lat, it.lon) }
+                        ?: focus?.let { GeoPoint(it.lat, it.lon) }
+                    if (pos != null) {
                         mapView.overlays.add(Marker(mapView).apply {
-                            position = GeoPoint(it.lat, it.lon)
+                            position = pos
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                            icon = BitmapDrawable(context.resources, gpsDotBitmap(context))
+                            icon = BitmapDrawable(
+                                context.resources, gpsDotBitmap(context, uiState.gpsFixAvailable)
+                            )
                             setInfoWindow(null)
                         })
                     }
@@ -827,6 +886,10 @@ fun NeptunMapView(
                     MapEventsOverlay(object : MapEventsReceiver {
                         override fun singleTapConfirmedHelper(p: GeoPoint): Boolean = false
                         override fun longPressHelper(p: GeoPoint): Boolean {
+                            // Never let a playful kill during a red/official alert — the user
+                            // could accidentally shoot down the very object they need to watch,
+                            // and the 30s user-shot grace would keep its alerts quiet.
+                            if (alertActiveState) return false
                             val pressPx = Point()
                             mapView.projection.toPixels(p, pressPx)
                             val density = mapView.context.resources.displayMetrics.density
@@ -980,6 +1043,62 @@ fun NeptunMapView(
                         )
                     }
                 }
+            }
+        }
+
+        // Tally-tap replay flourish: zoom out to fit every remembered resolution at once, then
+        // fire the bullets 0.42s apart so it reads as a single show. The camera returns to where
+        // the user was only after the LAST bullet has exploded. Pure flourish — a red alert
+        // ejects it (see the ejection effect below).
+        val flourishShow = uiState.flourish
+        if (flourishShow != null && flourishShow.tick != lastFlourishTick.value) {
+            lastFlourishTick.value = flourishShow.tick
+            val mapView = mapViewRef.value
+            if (mapView != null && !pausedState && mapVisibleState && !alertActiveState &&
+                !showNearbySheltersState && deathAnimationEnabledState &&
+                lifecycle.currentState >= Lifecycle.State.STARTED
+            ) {
+                val records = flourishShow.records
+                if (records.isNotEmpty()) {
+                    val preCenter = mapView.mapCenter
+                    cameraReturnJob.value?.cancel()
+                    cameraReturnJob.value = mapScope.launch {
+                        // One zoom that fits the whole group — no per-threat panning.
+                        val box = flourishesBoundingBox(records, uiState.focusLocation)
+                        mapView.zoomToBoundingBox(box, true)
+                        records.forEachIndexed { i, rec ->
+                            delay(if (i == 0) 300L else FLOURISH_STAGGER_MS)
+                            val anchor = GeoPoint(rec.lat, rec.lon)
+                            val origin = strikeOrigin(anchor)
+                            val icon = threatIconFor(
+                                context, rec.type, iconSetState,
+                                zoomIconScale(mapView.zoomLevelDouble)
+                            )
+                            deathFx.spawn(
+                                id = "flourish:$i",
+                                geo = anchor,
+                                origin = origin,
+                                icon = icon,
+                                rotationDeg = 0f,
+                                alpha = 1f
+                            )
+                            mapView.invalidate()
+                        }
+                        // Wait for the last bullet to finish before returning the camera.
+                        delay((records.size - 1) * FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS +
+                            DEATH_EXPLOSION_LEN_MS + 300L)
+                        mapViewRef.value?.controller?.animateTo(preCenter)
+                    }
+                }
+            }
+        }
+
+        // A red alert ejects the flourish immediately: cancel the pending show and erase the
+        // already-drawn bullets so nothing playful distracts from the real alarm.
+        LaunchedEffect(uiState.alertActive) {
+            if (uiState.alertActive) {
+                cameraReturnJob.value?.cancel()
+                deathFx.clear()
             }
         }
 

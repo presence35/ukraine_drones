@@ -8,24 +8,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
+import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
+import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import kotlinx.coroutines.Dispatchers
@@ -44,130 +52,324 @@ class ThreatWidget : GlanceAppWidget() {
     )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val (snapshot, lang) = withContext(Dispatchers.IO) {
-            WidgetUpdater.readSnapshot(context) to WidgetUpdater.readLang(context)
+        val (snapshot, lang, iconSet) = withContext(Dispatchers.IO) {
+            Triple(
+                WidgetUpdater.readSnapshot(context),
+                WidgetUpdater.readLang(context),
+                WidgetUpdater.readIconSet(context)
+            )
         }
         provideContent {
-            WidgetContent(snapshot = snapshot, lang = lang)
+            WidgetContent(snapshot = snapshot, lang = lang, iconSet = iconSet)
         }
     }
 
     @Composable
-    private fun WidgetContent(snapshot: WidgetSnapshot, lang: AppLanguage) {
+    private fun WidgetContent(snapshot: WidgetSnapshot, lang: AppLanguage, iconSet: ThreatIconSet) {
         val strings = Strings.get(lang)
         val size = LocalSize.current
-        val detailed = size.height >= DETAILED.height - 20.dp
-        val standard = size.height >= STANDARD.height - 30.dp
+        val openApp = actionStartActivity<MainActivity>()
 
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(BG)
-                .padding(12.dp)
-                .clickable(actionStartActivity<MainActivity>()),
-            contentAlignment = Alignment.CenterStart
+                .clickable(openApp)
         ) {
-            Column(modifier = GlanceModifier.fillMaxSize()) {
-                HeaderRow(snapshot, strings, standard)
-                if (standard) ZoneLine(snapshot, strings)
-                if (detailed) StatusLine(snapshot, strings)
-                UpdatedLine(snapshot, strings, detailed)
+            when (size) {
+                COMPACT -> CompactLayout(snapshot, strings, iconSet)
+                STANDARD -> StandardLayout(snapshot, strings, iconSet)
+                else -> DetailedLayout(snapshot, strings, iconSet)
+            }
+        }
+    }
+
+    /** 2×1: accent bar, one icon, count, source dot. */
+    @Composable
+    private fun CompactLayout(snapshot: WidgetSnapshot, strings: Strings.StringSet, iconSet: ThreatIconSet) {
+        Row(
+            modifier = GlanceModifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AccentBar(snapshot)
+            Spacer(GlanceModifier.size(8.dp))
+            IconForTopType(snapshot, iconSet, 22.dp)
+            Spacer(GlanceModifier.size(8.dp))
+            Column(modifier = GlanceModifier.width(40.dp)) {
+                Text(
+                    text = "${snapshot.threatCount}",
+                    style = TextStyle(color = ColorProvider(TEXT), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = strings.widget.threatsLabel.lowercase(),
+                    style = TextStyle(color = ColorProvider(MUTED), fontSize = 9.sp),
+                    maxLines = 1
+                )
+            }
+            Spacer(GlanceModifier.width(2.dp))
+            SourceDot(snapshot)
+        }
+    }
+
+    /** 4×2: header (trident + title + status pill), icon + count, zone chip, updated (bottom-right). */
+    @Composable
+    private fun StandardLayout(snapshot: WidgetSnapshot, strings: Strings.StringSet, iconSet: ThreatIconSet) {
+        Column(modifier = GlanceModifier.fillMaxSize().padding(10.dp)) {
+            HeaderRow(snapshot, strings)
+            Spacer(GlanceModifier.size(6.dp))
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconForTopType(snapshot, iconSet, 28.dp)
+                Spacer(GlanceModifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "${snapshot.threatCount}",
+                        style = TextStyle(color = ColorProvider(TEXT), fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = strings.widget.threatsLabel.lowercase(),
+                        style = TextStyle(color = ColorProvider(MUTED), fontSize = 10.sp),
+                        maxLines = 1
+                    )
+                }
+            }
+            Spacer(GlanceModifier.size(5.dp))
+            ZoneChip(snapshot, strings)
+            Spacer(GlanceModifier.defaultWeight())
+            UpdatedLine(snapshot, strings)
+        }
+    }
+
+    /** 4×3: header + status pill, per-type icons with counts, zone chip, updated (bottom-right). */
+    @Composable
+    private fun DetailedLayout(snapshot: WidgetSnapshot, strings: Strings.StringSet, iconSet: ThreatIconSet) {
+        Column(modifier = GlanceModifier.fillMaxSize().padding(10.dp)) {
+            HeaderRow(snapshot, strings)
+            Spacer(GlanceModifier.size(8.dp))
+            TypeRow(snapshot, iconSet)
+            Spacer(GlanceModifier.size(6.dp))
+            ZoneChip(snapshot, strings)
+            Spacer(GlanceModifier.defaultWeight())
+            UpdatedLine(snapshot, strings)
+        }
+    }
+
+    @Composable
+    private fun HeaderRow(snapshot: WidgetSnapshot, strings: Strings.StringSet) {
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                provider = ImageProvider(R.drawable.ic_trident),
+                contentDescription = null,
+                modifier = GlanceModifier.size(20.dp, 28.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(GlanceModifier.width(8.dp))
+            Text(
+                text = strings.appTitle,
+                style = TextStyle(color = ColorProvider(GOLD), fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                modifier = GlanceModifier.defaultWeight()
+            )
+            SourcePill(snapshot, strings)
+        }
+    }
+
+    @Composable
+    private fun AccentBar(snapshot: WidgetSnapshot) {
+        val color = accentColor(snapshot)
+        Box(
+            modifier = GlanceModifier
+                .fillMaxHeight()
+                .width(6.dp)
+                .background(color)
+        ) {}
+    }
+
+    @Composable
+    private fun ZoneChip(snapshot: WidgetSnapshot, strings: Strings.StringSet) {
+        val (label, color) = zoneChip(snapshot, strings)
+        Text(
+            text = label,
+            style = TextStyle(
+                color = ColorProvider(Color.Black),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            ),
+            modifier = GlanceModifier
+                .background(color)
+                .cornerRadius(8.dp)
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        )
+    }
+
+    @Composable
+    private fun SourcePill(snapshot: WidgetSnapshot, strings: Strings.StringSet) {
+        val (label, color) = sourcePill(snapshot, strings)
+        Text(
+            text = label,
+            style = TextStyle(
+                color = ColorProvider(Color.Black),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            ),
+            modifier = GlanceModifier
+                .background(color)
+                .cornerRadius(10.dp)
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
+
+    @Composable
+    private fun SourceDot(snapshot: WidgetSnapshot) {
+        val color = when {
+            !snapshot.sourceOnline && !snapshot.sourceBackup -> RED
+            snapshot.sourceBackup -> BLUE
+            else -> GREEN
+        }
+        Box(
+            modifier = GlanceModifier.size(10.dp).background(color)
+        ) {}
+    }
+
+    /** Up to 4 present threat types as icon + count pairs, most severe first. */
+    @Composable
+    private fun TypeRow(snapshot: WidgetSnapshot, iconSet: ThreatIconSet) {
+        val types = snapshot.typeCounts.keys
+            .sortedBy { TYPE_PRIORITY.indexOf(it) }
+            .take(4)
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (type in types) {
+                Column(
+                    modifier = GlanceModifier
+                        .background(CARD)
+                        .cornerRadius(10.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Image(
+                        provider = ImageProvider(IconCatalog.res(type, iconSet)),
+                        contentDescription = null,
+                        modifier = GlanceModifier.size(22.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(GlanceModifier.size(2.dp))
+                    Text(
+                        text = "${snapshot.typeCounts[type]}",
+                        style = TextStyle(color = ColorProvider(TEXT), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    )
+                }
+                Spacer(GlanceModifier.width(6.dp))
             }
         }
     }
 
     @Composable
-    private fun HeaderRow(snapshot: WidgetSnapshot, strings: Strings.StringSet, standard: Boolean) {
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = strings.widget.threatsLabel,
-                style = TextStyle(
-                    color = ColorProvider(TEXT),
-                    fontSize = if (standard) 16.sp else 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+    private fun IconForTopType(snapshot: WidgetSnapshot, iconSet: ThreatIconSet, sizeDp: androidx.compose.ui.unit.Dp) {
+        val top = snapshot.typeCounts.keys.minByOrNull { TYPE_PRIORITY.indexOf(it) }
+        if (top == null) {
+            Box(
+                modifier = GlanceModifier.size(sizeDp).background(CARD).cornerRadius(sizeDp / 2)
+            ) {}
+        } else {
+            Image(
+                provider = ImageProvider(IconCatalog.res(top, iconSet)),
+                contentDescription = null,
+                modifier = GlanceModifier.size(sizeDp),
+                contentScale = ContentScale.Fit
             )
-            ZoneDot(snapshot.activeZone, snapshot.officialAlert)
         }
     }
 
     @Composable
-    private fun ZoneDot(zone: ThreatZone?, officialAlert: Boolean) {
-        val color = when {
-            officialAlert || zone == ThreatZone.INNER -> RED
-            zone == ThreatZone.OUTER -> YELLOW
-            else -> MUTED
+    private fun UpdatedLine(snapshot: WidgetSnapshot, strings: Strings.StringSet) {
+        if (snapshot.updatedAtMs <= 0L) return
+        val text = if (System.currentTimeMillis() - snapshot.updatedAtMs < 60_000L) {
+            strings.widget.updatedNowLabel
+        } else {
+            String.format(strings.widget.updatedFormat, relativeUpdated(snapshot.updatedAtMs, strings))
         }
-        Box(
-            modifier = GlanceModifier.size(14.dp).background(color)
-        ) {}
-    }
-
-    @Composable
-    private fun ZoneLine(snapshot: WidgetSnapshot, strings: Strings.StringSet) {
-        val zoneLabel = when (snapshot.activeZone) {
-            ThreatZone.INNER -> strings.redZoneLabel
-            ThreatZone.OUTER -> strings.yellowZoneLabel
-            null -> strings.widget.noThreats
-        }
-        val text = if (snapshot.threatCount > 0) {
-            snapshot.nearestKm?.let { "$zoneLabel · ~${it.toInt()} km" } ?: zoneLabel
-        } else zoneLabel
         Text(
             text = text,
-            style = TextStyle(color = ColorProvider(MUTED), fontSize = 13.sp),
+            style = TextStyle(color = ColorProvider(MUTED), fontSize = 10.sp, textAlign = TextAlign.End),
             modifier = GlanceModifier.fillMaxWidth()
         )
     }
 
-    @Composable
-    private fun StatusLine(snapshot: WidgetSnapshot, strings: Strings.StringSet) {
-        val source = when {
-            snapshot.officialAlert -> strings.officialAlertBanner
-            snapshot.sourceBackup -> strings.status.connBackup
-            snapshot.sourceOnline -> strings.status.connOnline
-            else -> strings.status.connOffline
-        }
-        val count = "${snapshot.threatCount} ${strings.widget.threatsLabel.lowercase()}"
-        Text(
-            text = "$count · $source",
-            style = TextStyle(color = ColorProvider(MUTED), fontSize = 12.sp),
-            modifier = GlanceModifier.fillMaxWidth()
-        )
+    private fun accentColor(snapshot: WidgetSnapshot): Color = when {
+        snapshot.officialAlert || snapshot.activeZone == ThreatZone.INNER -> RED
+        snapshot.activeZone == ThreatZone.OUTER -> AMBER
+        snapshot.threatCount > 0 -> BLUE
+        else -> GREEN
     }
 
-    @Composable
-    private fun UpdatedLine(snapshot: WidgetSnapshot, strings: Strings.StringSet, detailed: Boolean) {
-        if (snapshot.updatedAtMs <= 0L) return
-        Text(
-            text = String.format(strings.widget.updatedFormat, formatWidgetTime(snapshot.updatedAtMs)),
-            style = TextStyle(
-                color = ColorProvider(MUTED),
-                fontSize = if (detailed) 12.sp else 11.sp
-            ),
-            modifier = GlanceModifier.fillMaxWidth()
-        )
+    private fun zoneChip(snapshot: WidgetSnapshot, strings: Strings.StringSet): Pair<String, Color> = when {
+        snapshot.activeZone == ThreatZone.INNER -> strings.redZoneLabel to RED
+        snapshot.activeZone == ThreatZone.OUTER -> strings.yellowZoneLabel to AMBER
+        snapshot.officialAlert -> strings.widget.officialAlertLabel to RED
+        snapshot.threatCount > 0 -> strings.widget.threatsAwayFormat
+            .let { if (snapshot.nearestKm != null) String.format(it, snapshot.nearestKm.toInt()) else strings.widget.active } to BLUE
+        else -> strings.widget.noThreats to GREEN
     }
 
+    private fun sourcePill(snapshot: WidgetSnapshot, strings: Strings.StringSet): Pair<String, Color> = when {
+        !snapshot.sourceOnline && !snapshot.sourceBackup -> strings.status.connOffline to RED
+        snapshot.sourceBackup -> strings.status.connBackup to BLUE
+        else -> strings.status.connOnline to GREEN
+    }
+
+    /** Header title grows into free space (fills the Row, pushing the pill to the end). */
     companion object {
-        val COMPACT = DpSize(110.dp, 55.dp)
-        val STANDARD = DpSize(250.dp, 110.dp)
-        val DETAILED = DpSize(250.dp, 180.dp)
+        val COMPACT = DpSize(100.dp, 48.dp)
+        val STANDARD = DpSize(230.dp, 100.dp)
+        val DETAILED = DpSize(230.dp, 165.dp)
+
+        private val TYPE_PRIORITY = listOf(
+            ThreatType.BALLISTIC,
+            ThreatType.AVIATION,
+            ThreatType.CRUISE_MISSILE,
+            ThreatType.KAB,
+            ThreatType.SHAHED,
+            ThreatType.FPV_LOITERING,
+            ThreatType.RECON,
+            ThreatType.UNKNOWN
+        )
 
         private val BG = Color(0xFF121212)
+        private val CARD = Color(0xFF1C1C1E)
         private val TEXT = Color(0xFFE6E6E6)
         private val MUTED = Color(0xFF9E9E9E)
         private val RED = Color(0xFFE53935)
-        private val YELLOW = Color(0xFFFDD835)
+        private val AMBER = Color(0xFFFDD835)
+        private val GREEN = Color(0xFF43A047)
+        private val BLUE = Color(0xFF1E88E5)
+        private val GOLD = Color(0xFFFFD700)
     }
 }
 
-private fun formatWidgetTime(epochMs: Long): String {
-    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-    return sdf.format(java.util.Date(epochMs))
+private fun relativeUpdated(epochMs: Long, s: Strings.StringSet): String {
+    val minutes = ((System.currentTimeMillis() - epochMs) / 60_000L).coerceAtLeast(0L)
+    return when {
+        minutes < 60 -> "$minutes ${s.minutesAgoSuffix}"
+        minutes < 60 * 24 -> {
+            val h = minutes / 60
+            val m = minutes % 60
+            if (m == 0L) "$h ${s.hoursAgoSuffix}" else String.format(s.mixedTimeFormat, h, m)
+        }
+        else -> {
+            val d = minutes / (60 * 24)
+            val h = (minutes % (60 * 24)) / 60
+            if (h == 0L) "$d ${s.daysAgoSuffix}" else String.format(s.mixedTimeFormat, d, h)
+        }
+    }
 }
 
 /** The manifest-declared receiver for [ThreatWidget]. */

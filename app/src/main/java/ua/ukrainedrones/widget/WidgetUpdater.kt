@@ -35,6 +35,7 @@ object WidgetUpdater {
 
     object Keys {
         val threatCount = intPreferencesKey("threat_count")
+        val typeCounts = stringPreferencesKey("type_counts")
         val activeZone = stringPreferencesKey("active_zone")
         val nearestKm = intPreferencesKey("nearest_km")
         val officialAlert = booleanPreferencesKey("official_alert")
@@ -42,6 +43,7 @@ object WidgetUpdater {
         val sourceBackup = booleanPreferencesKey("source_backup")
         val updatedAtMs = longPreferencesKey("updated_at_ms")
         val lang = stringPreferencesKey("lang")
+        val iconSet = stringPreferencesKey("icon_set")
     }
 
     fun start(context: Context, scope: CoroutineScope) {
@@ -65,9 +67,10 @@ object WidgetUpdater {
                     prefs.fastRedMin(), prefs.fastYellowMin()
                 ) { sr, sy, fr, fy -> ZoneParams(sr, sy, fr, fy) },
                 combine(
-                    prefs.followMe(), prefs.pinnedCity(), prefs.language(), threatMapFlow(prefs)
-                ) { follow, pinned, lang, mapEnabled ->
-                    Tail(follow, pinned, lang, mapEnabled)
+                    prefs.followMe(), prefs.pinnedCity(), prefs.language(),
+                    prefs.threatIconSet(), threatMapFlow(prefs)
+                ) { follow, pinned, lang, iconSet, mapEnabled ->
+                    Tail(follow, pinned, lang, iconSet, mapEnabled)
                 }
             ) { core, params, tail ->
                 val pinnedCity = tail.pinned?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
@@ -81,9 +84,9 @@ object WidgetUpdater {
                     params = params,
                     mapEnabled = tail.mapEnabled,
                     now = core.third
-                ) to tail.lang
-            }.collect { (snapshot, lang) ->
-                persist(context, snapshot, lang)
+                ) to Pair(tail.lang, tail.iconSet)
+            }.collect { (snapshot, tail) ->
+                persist(context, snapshot, tail.first, tail.second)
                 if (hasPlacedWidgets(context)) {
                     ThreatWidget().updateAll(context)
                 }
@@ -97,9 +100,10 @@ object WidgetUpdater {
         return ids.isNotEmpty()
     }
 
-    private suspend fun persist(context: Context, snapshot: WidgetSnapshot, lang: AppLanguage) {
+    private suspend fun persist(context: Context, snapshot: WidgetSnapshot, lang: AppLanguage, iconSet: ThreatIconSet) {
         context.widgetSnapshotStore.edit { prefs ->
             prefs[Keys.threatCount] = snapshot.threatCount
+            prefs[Keys.typeCounts] = snapshot.typeCounts.entries.joinToString(",") { (type, n) -> "${type.name}=$n" }
             prefs[Keys.activeZone] = snapshot.activeZone?.name.orEmpty()
             prefs[Keys.nearestKm] = snapshot.nearestKm?.toInt() ?: -1
             prefs[Keys.officialAlert] = snapshot.officialAlert
@@ -107,6 +111,7 @@ object WidgetUpdater {
             prefs[Keys.sourceBackup] = snapshot.sourceBackup
             prefs[Keys.updatedAtMs] = snapshot.updatedAtMs
             prefs[Keys.lang] = lang.name
+            prefs[Keys.iconSet] = iconSet.name
         }
     }
 
@@ -114,6 +119,7 @@ object WidgetUpdater {
         val followMe: Boolean,
         val pinned: String?,
         val lang: AppLanguage,
+        val iconSet: ThreatIconSet,
         val mapEnabled: Set<ThreatType>
     )
 
@@ -121,6 +127,7 @@ object WidgetUpdater {
         val prefs = context.widgetSnapshotStore.data.first()
         return WidgetSnapshot(
             threatCount = prefs[Keys.threatCount] ?: 0,
+            typeCounts = parseTypeCounts(prefs[Keys.typeCounts].orEmpty()),
             activeZone = prefs[Keys.activeZone]?.let { zone ->
                 ThreatZone.values().firstOrNull { it.name == zone }
             },
@@ -137,4 +144,23 @@ object WidgetUpdater {
         return prefs[Keys.lang]?.let { lang -> AppLanguage.values().firstOrNull { it.name == lang } }
             ?: AppLanguage.EN
     }
+
+    suspend fun readIconSet(context: Context): ThreatIconSet {
+        val prefs = context.widgetSnapshotStore.data.first()
+        return prefs[Keys.iconSet]?.let { set -> ThreatIconSet.values().firstOrNull { it.name == set } }
+            ?: ThreatIconSet.PHOTO
+    }
+}
+
+private fun parseTypeCounts(serialized: String): Map<ThreatType, Int> {
+    if (serialized.isBlank()) return emptyMap()
+    val out = LinkedHashMap<ThreatType, Int>()
+    for (part in serialized.split(',')) {
+        val eq = part.indexOf('=')
+        if (eq <= 0) continue
+        val type = ThreatType.values().firstOrNull { it.name == part.substring(0, eq) } ?: continue
+        val n = part.substring(eq + 1).toIntOrNull() ?: continue
+        if (n > 0) out[type] = n
+    }
+    return out
 }

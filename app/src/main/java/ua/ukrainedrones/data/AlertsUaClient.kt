@@ -38,7 +38,7 @@ data class AlertsUaState(
 object AlertsUaClient {
 
     private const val URL = "https://alerts.com.ua/api/states"
-    private const val POLL_MS = 20_000L
+    private const val POLL_MS = 10_000L
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -84,9 +84,11 @@ object AlertsUaClient {
 
     private fun pollNow() {
         if (!inFlight.compareAndSet(false, true)) return
+        // No Cache-Control: no-store on purpose: the origin republishes the payload every
+        // ~5-7s behind Cloudflare's edge cache, so serving polls from that cache keeps the
+        // origin load near zero at identical freshness.
         val request = Request.Builder()
             .url(URL)
-            .header("Cache-Control", "no-store")
             .build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

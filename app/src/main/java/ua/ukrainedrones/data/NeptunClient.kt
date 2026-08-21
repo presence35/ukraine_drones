@@ -63,35 +63,33 @@ data class NeptunState(
             ?.let { (System.currentTimeMillis() - it) / 1000 }
 
     /**
-     * The backup (alerts.com.ua) is the effective source when NEPTUN is down ([neptunDown]),
-     * its own alert feed has gone quiet for over [NeptunClient.BACKUP_FALLBACK_MS], or the
-     * TEMP [forceOffline] test toggle is on. While NEPTUN is healthy it stays the sole source
-     * so we never second-guess a legitimate "no alert".
+     * True when NEPTUN is degraded (socket down, stream silent past
+     * [NeptunClient.BACKUP_FALLBACK_MS], or the TEMP [forceOffline] test toggle). This is a
+     * *connection-health* flag only — it drives the pill, the connection log and the widget's
+     * `sourceBackup` badge. It no longer gates the alert merge: the backup contributes its
+     * oblast alerts whenever it is up, healthy NEPTUN or not, so an official siren that
+     * alerts.com.ua reports before NEPTUN forwards it still rings immediately.
      */
     val backupActive: Boolean
         get() = neptunDown || (lastFrameAt > 0 &&
             System.currentTimeMillis() - lastFrameAt > NeptunClient.BACKUP_FALLBACK_MS)
 
     /**
-     * Union of NEPTUN + (when active) backup alerts — what the UI/notifications read. While the
-     * socket is actually down, the backup alone is the authoritative live source (NEPTUN's last
-     * snapshot can be stale — alerts it reported before the drop are never re-confirmed); the
-     * merge only applies while the stream is alive but merely silent. When the backup is also
-     * down, NEPTUN's last-known list is HELD rather than cleared: an outage must never look like
-     * "alert ended" (no fabricated all-clear, no banner flicker) — the truth arrives on
+     * Union of NEPTUN + backup oblast alerts — what the UI/notifications read. Both sources are
+     * always-on peers: an oblast rings as soon as *either* reports it and clears only when both
+     * have. The backup's contribution is gated on [backupUp] alone — a dead backup's stale last
+     * payload is never served, so a lagging backup can't fabricate an alert that ended. When the
+     * backup is down, NEPTUN's last-known list is HELD rather than cleared: an outage must never
+     * look like "alert ended" (no fabricated all-clear, no banner flicker) — the truth arrives on
      * reconnect. Held alerts are never source-tagged ([alertSourceFor] requires a live source).
      */
     val oblastAlerts: List<OblastAlert>
-        get() = when {
-            neptunDown -> if (backupUp) backupAlerts else neptunAlerts
-            backupActive -> if (backupUp) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
-            else -> neptunAlerts
-        }
+        get() = if (backupUp) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
 
     /** Which source(s) report an active official alert for the given oblast stem [token]. */
     fun alertSourceFor(token: String): AlertSource? {
         val n = connected && neptunAlerts.any { it.inOblast(token) }
-        val b = backupUp && backupActive && backupAlerts.any { it.inOblast(token) }
+        val b = backupUp && backupAlerts.any { it.inOblast(token) }
         return when {
             n && b -> AlertSource.BOTH
             n -> AlertSource.NEPTUN

@@ -1,10 +1,15 @@
 package ua.ukrainedrones
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -1402,7 +1407,7 @@ private fun NightModeCard(
                         SectionCaption(s.slowSectionLabel, leadingIcon = R.drawable.ic_turtle, leadingDesc = s.slowGroupIconDesc, leadingTint = TurtleGreen)
                         ZoneRow(
                             value = slowRedKm,
-                            range = 2f..20f,
+                            range = 1f..20f,
                             unit = s.kmUnit,
                             accent = ZoneRedColor,
                             armed = slowRedArmed,
@@ -1415,7 +1420,7 @@ private fun NightModeCard(
                         Spacer(Modifier.height(10.dp))
                         ZoneRow(
                             value = slowYellowKm,
-                            range = 21f..50f,
+                            range = (slowRedKm + 2).toFloat()..50f,
                             unit = s.kmUnit,
                             accent = ZoneYellowColor,
                             armed = slowYellowArmed,
@@ -1431,7 +1436,7 @@ private fun NightModeCard(
                         SectionCaption(s.fastSectionLabel, leadingIcon = R.drawable.ic_lightning, leadingDesc = s.fastGroupIconDesc)
                         ZoneRow(
                             value = fastRedMin,
-                            range = 2f..5f,
+                            range = 1f..5f,
                             unit = s.minUnit,
                             accent = ZoneRedColor,
                             armed = fastRedArmed,
@@ -1444,7 +1449,7 @@ private fun NightModeCard(
                         Spacer(Modifier.height(10.dp))
                         ZoneRow(
                             value = fastYellowMin,
-                            range = 6f..20f,
+                            range = (fastRedMin + 2).toFloat()..20f,
                             unit = s.minUnit,
                             accent = ZoneYellowColor,
                             armed = fastYellowArmed,
@@ -1816,14 +1821,20 @@ private fun GpsCalibrationRow(
     // Android 12+ drops a re-request of ACCESS_FINE_LOCATION alone once the user already
     // picked approximate (COARSE granted) — it must be requested together with COARSE to
     // show the Precise/Approximate upgrade dialog.
+    var showSettingsFallback by remember { mutableStateOf(false) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            showSettingsFallback = false
             localRefreshing = true
             showToast(context, s.calibratingGps, cardVisible = false)
             LocationTracker.forceRefresh { localRefreshing = false }
+        } else if (!ActivityCompat.shouldShowRequestPermissionRationale(context as Activity, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            // System no longer shows the dialog — route the user to Settings.
+            showSettingsFallback = true
         }
     }
     val forceGps: () -> Unit = {
+        showSettingsFallback = false
         if (fineGranted) {
             localRefreshing = true
             showToast(context, s.calibratingGps, cardVisible = false)
@@ -1846,18 +1857,21 @@ private fun GpsCalibrationRow(
         s.shelterGpsUnknown
     }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        Icon(
-            imageVector = Icons.Default.Place,
-            contentDescription = null,
-            tint = if (lastPreciseFixMs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Place,
+                contentDescription = null,
+                tint = if (lastPreciseFixMs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -1899,6 +1913,35 @@ private fun GpsCalibrationRow(
                     s.calibrateGpsNow,
                     style = MaterialTheme.typography.labelMedium
                 )
+            }
+        }
+        }
+        if (showSettingsFallback) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    s.gpsPreciseBlocked,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                        )
+                    }
+                ) {
+                    Text(s.gpsOpenSettings)
+                }
             }
         }
     }

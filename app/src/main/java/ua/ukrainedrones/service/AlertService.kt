@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import java.util.Calendar
 
 /**
  * Foreground, always-on monitoring. Owns the shared NeptunClient connection and
@@ -41,6 +42,10 @@ class AlertService : Service() {
         const val EXTRA_REVEAL_ID = "reveal_threat_id"
         const val EXTRA_REVEAL_LAT = "reveal_threat_lat"
         const val EXTRA_REVEAL_LON = "reveal_threat_lon"
+        const val EXTRA_SHOW_UPDATE = "show_update"
+        const val EXTRA_FLOURISH_LATS = "flourish_lats"
+        const val EXTRA_FLOURISH_LONS = "flourish_lons"
+        const val EXTRA_FLOURISH_TYPES = "flourish_types"
         private const val CHANNEL_MONITOR = "monitor"
         private const val CHANNEL_ALERTS = "alerts_siren2"
         private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer2"
@@ -49,12 +54,14 @@ class AlertService : Service() {
         private const val CHANNEL_ALERTS_OUTER_ALARM = "alerts_siren_outer_alarm"
         private const val CHANNEL_OFFLINE = "offline"
         private const val CHANNEL_NEUTRALIZED = "neutralized"
+        private const val CHANNEL_UPDATE = "updates"
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
         private const val NOTIF_ALLCLEAR = 3
         private const val NOTIF_OFFLINE = 4
         private const val NOTIF_MILESTONE = 5
         private const val NOTIF_NEUTRALIZED = 6
+        private const val NOTIF_UPDATE = 7
         private const val CENTRE_ALERT_GRACE_MS = 60_000L
         /** Vibration level used for official alerts with no known reason threat (fixed, urgent). */
         private const val VIBRATION_STRONG = 4
@@ -95,6 +102,10 @@ private var notif3minShown = false
     private var alertEpoch = 0
     private var neutralizedCount = 0
     private var lastNeutralizedType: ThreatType? = null
+    // Running memory of resolved threats (position + type) so tapping the tally notification can
+    // replay a shot-down show. Capped at 10; cleared when a red alert ejects the flourish.
+    private data class ResolvedRecord(val lat: Double, val lon: Double, val type: ThreatType)
+    private val resolvedMemory = ArrayDeque<ResolvedRecord>()
     @Volatile private var currentToken: String? = null
 
     private sealed class MonitorEvent {
@@ -193,6 +204,7 @@ private var notif3minShown = false
         LocationTracker.start(this)
         WidgetUpdater.start(this, scope)
         startForegroundCompat()
+        scope.launch { dailyUpdateCheckLoop() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -215,10 +227,19 @@ private var notif3minShown = false
             lastNeutralizedType = null
         }
         if (intent?.action == ACTION_NEUTRALIZED_TAP) {
+            // Replay the shot-down show when the app opens: ship the remembered resolutions
+            // (position + type) through the intent. The map zooms to fit them all at once.
+            val latArr = resolvedMemory.map { it.lat }.toDoubleArray()
+            val lonArr = resolvedMemory.map { it.lon }.toDoubleArray()
+            val typeArr = resolvedMemory.map { it.type.name }.toTypedArray()
+            resolvedMemory.clear()
             neutralizedCount = 0
             lastNeutralizedType = null
             val tapIntent = Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra(EXTRA_FLOURISH_LATS, latArr)
+                putExtra(EXTRA_FLOURISH_LONS, lonArr)
+                putExtra(EXTRA_FLOURISH_TYPES, typeArr)
             }
             startActivity(tapIntent)
             try { NotificationManagerCompat.from(this).cancel(NOTIF_NEUTRALIZED) } catch (_: SecurityException) {}
@@ -260,6 +281,10 @@ private var notif3minShown = false
                 }
                 neutralizedCount++
                 lastNeutralizedType = removed.type
+                // Remember the resolution so a later tally tap can replay the shot-down show.
+                // Keeps the last 10; a red alert clears the whole memory (safety outranks flourish).
+                resolvedMemory.addLast(ResolvedRecord(removed.lat, removed.lon, removed.type))
+                while (resolvedMemory.size > 10) resolvedMemory.removeFirst()
                 postNeutralizedTally(prefs.language().first())
             }
         }
@@ -591,6 +616,11 @@ notifyMonitor(
         val alertable = state.zoneThreats.entries
             .mapNotNull { (id, spatial) -> alertTier(id, spatial)?.let { id to it } }
             .toMap()
+        // A red alert ejects the pending tally flourish and erases its memory — safety always
+        // outranks the playful replay.
+        if (state.focusOblastAlertActive || alertable.any { it.value == ThreatZone.INNER }) {
+            if (resolvedMemory.isNotEmpty()) resolvedMemory.clear()
+        }
         var posted = false
         var postedId: String? = null
         val newEntries = alertable.entries
@@ -1055,6 +1085,68 @@ notifyMonitor(
         )
     }
 
+    /** Epoch millis of the next 16:20 after [from]. */
+    private fun nextUpdateCheckMillis(from: Long): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = from
+            set(Calendar.HOUR_OF_DAY, 16)
+            set(Calendar.MINUTE, 20)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (timeInMillis <= from) add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return cal.timeInMillis
+    }
+
+    /** Self-rescheduling daily 16:20 version check: notify once per new server versionCode. */
+    private suspend fun dailyUpdateCheckLoop() {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val next = nextUpdateCheckMillis(now)
+            delay(next - now)
+            runDailyUpdateCheck()
+        }
+    }
+
+    private fun runDailyUpdateCheck() {
+        scope.launch {
+            val result = UpdateManager(applicationContext).check()
+            if (result !is UpdateState.Available) return@launch
+            val prefs = ZonePrefs(applicationContext)
+            val lastNotified = prefs.lastNotifiedUpdateCode().first()
+            if (result.info.versionCode <= lastNotified) return@launch
+            prefs.setLastNotifiedUpdateCode(result.info.versionCode.toLong())
+            postUpdateNotification(result.info, prefs.language().first())
+        }
+    }
+
+    /** Silent, dismissible "new version available" heads-up; tap opens the app and pops the update dialog. */
+    private fun postUpdateNotification(info: UpdateInfo, lang: AppLanguage) {
+        val s = Strings.get(lang)
+        val notif = NotificationCompat.Builder(this, CHANNEL_UPDATE)
+            .setSmallIcon(R.drawable.ic_trident)
+            .setContentTitle(s.notifUpdateTitle)
+            .setContentText(String.format(s.notifUpdateText, info.versionName))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(updatePendingIntent())
+            .build()
+        safeNotify(NOTIF_UPDATE, notif)
+    }
+
+    private fun updatePendingIntent(): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_SHOW_UPDATE, true)
+        }
+        return PendingIntent.getActivity(
+            this, 4, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
     private fun createChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -1071,7 +1163,8 @@ notifyMonitor(
             CHANNEL_ALERTS_ALARM,
             CHANNEL_ALERTS_OUTER_ALARM,
             CHANNEL_OFFLINE,
-            CHANNEL_NEUTRALIZED
+            CHANNEL_NEUTRALIZED,
+            CHANNEL_UPDATE
         )
         nm.notificationChannels
             .filter { it.id !in keep }
@@ -1148,6 +1241,13 @@ notifyMonitor(
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_NEUTRALIZED, s.neutralizedNotifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
                 description = s.neutralizedChannelDesc
+            }
+        )
+        // Update: informative, silent (DEFAULT importance with no sound) — never rings.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_UPDATE, s.notifUpdateChannelName, NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = s.notifUpdateChannelDesc
+                setSound(null, null)
             }
         )
     }

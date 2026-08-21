@@ -36,6 +36,7 @@ data class UiState(
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
     val userLocation: LatLng? = null,
+    val gpsFixAvailable: Boolean = false,         // a GPS/cell fix has arrived at least once
     val slowRedKm: Int = 20,      // slow threats: distance to the red (inner) zone, km
     val slowYellowKm: Int = 50,  // slow threats: distance to the yellow (outer) zone, km
     val fastRedMin: Int = 5,     // fast threats: ETA to the red (inner) zone, minutes
@@ -83,6 +84,7 @@ data class UiState(
     val neutralizedThreat: Threat? = null,   // selected threat just resolved — fades out
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
     val revealRequest: RevealRequest? = null,      // notification tap: pan the camera onto a threat
+    val flourish: FlourishShow? = null,            // tally tap: replay the shot-down show
     val disclaimerCollapsed: Boolean = false,
     val disclaimerReadCount: Int = 0,
     val update: UpdateState = UpdateState.Idle,
@@ -117,6 +119,15 @@ data class RevealRequest(
     val lon: Double
 )
 
+/** A resolved threat remembered by the service for the tally-tap replay flourish. */
+data class FlourishRecord(val lat: Double, val lon: Double, val type: ThreatType)
+
+/** One-shot replay show: the remembered resolutions to shoot down, in arrival order. */
+data class FlourishShow(
+    val tick: Int,
+    val records: List<FlourishRecord>
+)
+
 /** Distance/ETA facts for the threat popup, computed from the predicted position. */
 data class ThreatProximity(
     val predicted: LatLng,
@@ -132,6 +143,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         private const val DAILY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
         private const val SHELTERS_CACHE_FILE = "odesa_shelters.json"
+        /** Odesa centre — the pre-first-fix fallback focus so the first visual is complete. */
+        private val ODESA_FALLBACK_FOCUS = LatLng(46.4832, 30.7346)
     }
 
     private val prefs = ZonePrefs(app.applicationContext)
@@ -143,6 +156,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val neutralizedFlow = MutableStateFlow<String?>(null)
     private val revealFlow = MutableStateFlow<RevealRequest?>(null)
     private var revealTick = 0
+    /** Tally-tap replay: remembered resolved threats to shoot down on the map (flourish only). */
+    private val flourishFlow = MutableStateFlow<FlourishShow?>(null)
+    private var flourishTick = 0
     private val updateStateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
     private val installPermissionFlow = MutableStateFlow(false)
     private val latestVersionFlow = MutableStateFlow<String?>(null)
@@ -271,9 +287,11 @@ val fastGroupCollapsed: Boolean,
         val fastRedMin: Int,
         val fastYellowMin: Int,
         val userLocation: LatLng?,
+        val gpsFixAvailable: Boolean,
         val selected: Threat?,
         val now: Long,
         val reveal: RevealRequest?,
+        val flourish: FlourishShow?,
         val neutralizedId: String?,
         val mapVisible: Boolean,
         val shelterModeActive: Boolean
@@ -306,9 +324,11 @@ val fastGroupCollapsed: Boolean,
         NeptunClient.state,
         zonesFlow,
         LocationTracker.location,
+        LocationTracker.lastFixAtMs,
         selectedThreatFlow,
         nowFlow,
         revealFlow,
+        flourishFlow,
         neutralizedFlow,
         mapVisibleFlow,
         shelterModeFlow
@@ -316,16 +336,18 @@ val fastGroupCollapsed: Boolean,
         val neptun = values[0] as NeptunState
         val radii = values[1] as ZoneParams
         val location = values[2] as LatLng?
-        val selected = values[3] as Threat?
-        val now = values[4] as Long
-        val reveal = values[5] as RevealRequest?
-        val neutralizedId = values[6] as String?
-        val mapVisible = values[7] as Boolean
-        val shelterModeActive = values[8] as Boolean
+        val lastFix = values[3] as Long?
+        val selected = values[4] as Threat?
+        val now = values[5] as Long
+        val reveal = values[6] as RevealRequest?
+        val flourish = values[7] as FlourishShow?
+        val neutralizedId = values[8] as String?
+        val mapVisible = values[9] as Boolean
+        val shelterModeActive = values[10] as Boolean
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, selected, now, reveal, neutralizedId, mapVisible, shelterModeActive
+            location, lastFix != null, selected, now, reveal, flourish, neutralizedId, mapVisible, shelterModeActive
         )
     }
 
@@ -537,6 +559,7 @@ val uiState: StateFlow<UiState> = combine(
             alertedTypes = prefs.alertEnabled,
             language = prefs.language,
             userLocation = live.userLocation,
+            gpsFixAvailable = live.gpsFixAvailable,
             followMe = prefs.followMe,
             pinnedCity = prefs.pinnedCity?.let { name ->
                 Cities.ALL.firstOrNull { it.nameUa == name }
@@ -544,6 +567,7 @@ val uiState: StateFlow<UiState> = combine(
             selected = live.selected,
             now = live.now,
             reveal = live.reveal,
+            flourish = live.flourish,
             neutralizedId = live.neutralizedId,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
             mapVisible = live.mapVisible,
@@ -616,11 +640,13 @@ val uiState: StateFlow<UiState> = combine(
         alertedTypes: Set<ThreatType>,
         language: AppLanguage,
         userLocation: LatLng?,
+        gpsFixAvailable: Boolean,
         followMe: Boolean,
         pinnedCity: City?,
         selected: Threat?,
         now: Long,
         reveal: RevealRequest?,
+        flourish: FlourishShow?,
         neutralizedId: String?,
         deathAnimationEnabled: Boolean,
         mapVisible: Boolean,
@@ -629,8 +655,10 @@ val uiState: StateFlow<UiState> = combine(
         val animOn = deathAnimationEnabled
         val params = effectiveParams
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
-        val focusLocation = if (followMe) userLocation
-        else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: userLocation
+        // Before the first GPS fix the map still needs a complete first visual, so it anchors on
+        // Odesa (where the shelter data lives) until a real fix recentres it.
+        val focusLocation = if (followMe) (userLocation ?: ODESA_FALLBACK_FOCUS)
+        else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: (userLocation ?: ODESA_FALLBACK_FOCUS)
         // Official alert state for the FOCUS point: the pinned city's oblast, else the
         // oblast of the nearest listed city to the GPS fix while following.
         val attribution = focusAttribution(followMe, userLocation, pinnedCity)
@@ -714,6 +742,7 @@ val uiState: StateFlow<UiState> = combine(
             threatsOuter = inOuter,
             mapThreats = mapThreats,
             userLocation = userLocation,
+            gpsFixAvailable = gpsFixAvailable,
             slowRedKm = slowRedKm,
             slowYellowKm = slowYellowKm,
             fastRedMin = fastRedMin,
@@ -734,6 +763,7 @@ val uiState: StateFlow<UiState> = combine(
             neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
+            flourish = flourish,
             alertActive = alertActive,
             now = now
         )
@@ -1092,6 +1122,12 @@ val uiState: StateFlow<UiState> = combine(
             selectedThreatFlow.value = NeptunClient.state.value.threats[id]
         }
         revealFlow.value = RevealRequest(revealTick, id, lat, lon)
+    }
+
+    /** Tally-tap replay: ask the map to shoot down the remembered resolutions in sequence. */
+    fun triggerFlourish(records: List<FlourishRecord>) {
+        flourishTick++
+        flourishFlow.value = FlourishShow(flourishTick, records)
     }
 
     /**

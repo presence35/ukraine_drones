@@ -136,6 +136,47 @@ class PredictionTest {
     }
 
     @Test
+    fun `motionHeading prefers measured track over server bearing`() {
+        val tracker = ThreatSpeedTracker
+        tracker.clear()
+        // Two fixes ~1.1 km apart on a due-north track.
+        tracker.record("m1", 0L, 46.48, 30.73)
+        tracker.record("m1", 10_000L, 46.49, 30.73)
+        val t = threat(id = "m1", bearingDeg = 90.0, speedKmh = 180.0, confirmedAtMillis = 0L)
+        // Measured track is north (~0°), so it overrides the server's east (90°) bearing.
+        val h = motionHeading(t)
+        assertNotNull(h)
+        val deg = h!!
+        assertTrue(deg < 10.0 || deg > 350.0)
+        val p = predictPosition(t, 50.0, 1_000L)
+        assertNotNull(p)
+        assertTrue(p!!.latitude > t.lat) // glided north, matching the measured course
+        assertEquals(t.lon, p.longitude, 1e-6)
+    }
+
+    @Test
+    fun `courseDeg matches motionHeading for a flying threat`() {
+        val tracker = ThreatSpeedTracker
+        tracker.clear()
+        tracker.record("m2", 0L, 46.48, 30.73)
+        tracker.record("m2", 10_000L, 46.49, 30.73)
+        val t = threat(id = "m2", lat = 46.48, lon = 30.73,
+            status = "active", confirmedAtMillis = 0L)
+        // No server bearing/heading: facing falls back to the measured heading (~north),
+        // the same value predictPosition glides along — facing always matches motion.
+        val expected = motionHeading(t)
+        assertNotNull(expected)
+        assertEquals(expected!!, t.courseDeg, 1e-9)
+    }
+
+    @Test
+    fun `motionHeading is null with no fixes and no bearing`() {
+        ThreatSpeedTracker.clear()
+        assertNull(motionHeading(threat(confirmedAtMillis = 0L)))
+        assertNull(predictPosition(threat(confirmedAtMillis = 0L), 50.0, 1_000_000L))
+    }
+
+    @Test
     fun `speedTracker prefers server speedKmh as recorded`() {
         val tracker = ThreatSpeedTracker
         tracker.record("t1", 1L, 0.0, 0.0)

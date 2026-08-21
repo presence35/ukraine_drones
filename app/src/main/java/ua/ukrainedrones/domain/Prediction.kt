@@ -112,6 +112,9 @@ fun isExpired(t: Threat, now: Long): Boolean {
  */
 const val STALE_GHOST_CAP_MS = 30 * 60 * 1000L
 
+/** Minimum displacement between recorded fixes for a measured heading to be trusted. */
+private const val HEADING_MIN_METERS = 100.0
+
 /** True when the threat is past its per-type staleness window or the server flagged it stale. */
 fun Threat.isStale(now: Long): Boolean = status == "stale" || isExpired(this, now)
 
@@ -125,6 +128,16 @@ fun Threat.isGhost(now: Long): Boolean {
 }
 
 /**
+ * The heading a threat is actually moving along, used for BOTH dead-reckoning
+ * ([predictPosition]) and icon facing ([Threat.courseDeg]) so they always agree. Prefers the
+ * measured track from our own recorded fixes, then the server's authoritative velocity
+ * bearing, then the top-level reported heading. Null when nothing usable is known (a
+ * stationary threat that shouldn't glide).
+ */
+fun motionHeading(t: Threat): Double? =
+    ThreatSpeedTracker.measuredHeading(t.id) ?: t.bearingDeg ?: t.heading
+
+/**
  * Predict a threat's current position by advancing from its last confirmed fix along its
  * course at the estimated speed, within NEPTUN's per-type fly horizon. Mirrors the SDK's
  * `predict()`: it dead-reckons any active track that carries a real heading (the authoritative
@@ -134,7 +147,7 @@ fun Threat.isGhost(now: Long): Boolean {
  */
 fun predictPosition(t: Threat, speedMps: Double, nowMillis: Long): GeoPoint? {
     if (t.status != "active") return null
-    val heading = t.bearingDeg ?: t.heading ?: return null
+    val heading = motionHeading(t) ?: return null
     val confirmedAt = t.confirmedAtMillis ?: return null
     var elapsedSec = (nowMillis - confirmedAt) / 1000.0
     if (elapsedSec < 0) return null
@@ -206,6 +219,25 @@ object ThreatSpeedTracker {
             }
         }
         return nominalSpeedMps(t.type)?.let { it to SpeedSource.TYPICAL }
+    }
+
+    /**
+     * Measured course (deg clockwise from north) from our own recorded fixes — the actual
+     * track the marker is seen moving along. Used so a threat's glide and its icon facing
+     * always agree (see [motionHeading]). Null when there aren't enough fixes, the span is
+     * outside a sane window, or the displacement is too small to beat position jitter.
+     */
+    fun measuredHeading(id: String): Double? {
+        synchronized(fixes) {
+            val q = fixes[id] ?: return null
+            if (q.size < 2) return null
+            val a = q.first()
+            val b = q.last()
+            val dt = (b.t - a.t) / 1000.0
+            if (dt !in 2.0..600.0) return null
+            if (distanceMeters(a.lat, a.lon, b.lat, b.lon) < HEADING_MIN_METERS) return null
+            return bearingDegrees(a.lat, a.lon, b.lat, b.lon)
+        }
     }
 
     private fun nominalSpeedMps(type: ThreatType): Double? = NOMINAL_SPEED_MPS[type]

@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         handleReveal(intent)
+        handleFlourish(intent)
         deferPermissionRequests()
     }
 
@@ -78,6 +79,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleReveal(intent)
+        handleFlourish(intent)
     }
 
     /**
@@ -85,15 +87,46 @@ class MainActivity : ComponentActivity() {
      * to pan onto it so both the focus point (GPS/city) and the threat are on screen.
      */
     private fun handleReveal(intent: Intent?) {
-        val id = intent?.getStringExtra(AlertService.EXTRA_REVEAL_ID) ?: return
-        val lat = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LAT, Double.NaN)
-        val lon = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LON, Double.NaN)
-        // Reject garbage coordinates (a stale notification or a corrupted extras bundle must
-        // never hand the map an out-of-range fix that could blow up the camera framing).
-        if (!lat.isFinite() || !lon.isFinite() ||
-            lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0
-        ) return
-        viewModel.revealThreat(id, lat, lon)
+        val id = intent?.getStringExtra(AlertService.EXTRA_REVEAL_ID)
+        if (id != null) {
+            val lat = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LAT, Double.NaN)
+            val lon = intent.getDoubleExtra(AlertService.EXTRA_REVEAL_LON, Double.NaN)
+            // Reject garbage coordinates (a stale notification or a corrupted extras bundle must
+            // never hand the map an out-of-range fix that could blow up the camera framing).
+            if (lat.isFinite() && lon.isFinite() &&
+                lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0
+            ) {
+                viewModel.revealThreat(id, lat, lon)
+            }
+        }
+        if (intent?.getBooleanExtra(AlertService.EXTRA_SHOW_UPDATE, false) == true) {
+            viewModel.checkForUpdates()
+        }
+    }
+
+    /**
+     * Tapping the "N threats resolved" tally notification replays a mock shot-down show: the
+     * app opens on the map, zooms to fit every remembered resolution, and fires the bullets
+     * one after another. Pure flourish — an arriving red alert ejects it in the service.
+     */
+    private fun handleFlourish(intent: Intent?) {
+        val lats = intent?.getDoubleArrayExtra(AlertService.EXTRA_FLOURISH_LATS) ?: return
+        val lons = intent.getDoubleArrayExtra(AlertService.EXTRA_FLOURISH_LONS) ?: return
+        val types = intent.getStringArrayExtra(AlertService.EXTRA_FLOURISH_TYPES) ?: return
+        val n = minOf(lats.size, lons.size, types.size)
+        if (n == 0) return
+        val records = buildList {
+            for (i in 0 until n) {
+                val lat = lats[i]
+                val lon = lons[i]
+                if (!lat.isFinite() || !lon.isFinite() ||
+                    lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0
+                ) continue
+                val type = runCatching { ThreatType.valueOf(types[i]) }.getOrNull() ?: continue
+                add(FlourishRecord(lat, lon, type))
+            }
+        }
+        if (records.isNotEmpty()) viewModel.triggerFlourish(records)
     }
 
     /**

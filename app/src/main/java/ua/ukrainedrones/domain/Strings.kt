@@ -21,6 +21,7 @@ object Strings {
         val onboardingTipTap: String,
         val onboardingTipSettings: String,
         val onboardingTipSiren: String,
+        val onboardingTipGradual: String,
         val onboardingFeaturesTitle: String,
         val onboardingIntro: String,
         val relaunchSetupTitle: String,
@@ -29,6 +30,9 @@ object Strings {
         val wizardCareOn: String,
         val wizardCareOff: String,
         val wizardStartButton: String,
+        val wizardZonesTitle: String,
+        val wizardZonesSubtitle: String,
+        val wizardEditZonesHint: String,
         val wizardShelterTitle: String,
         val wizardShelterDesc: String,
         val settingsSearchHint: String,
@@ -104,6 +108,10 @@ object Strings {
         val neutralizedNotifChannelName: String,
         val neutralizedChannelDesc: String,
         val neutralizedLastLineFormat: String,
+        val notifUpdateTitle: String,
+        val notifUpdateText: String,
+        val notifUpdateChannelName: String,
+        val notifUpdateChannelDesc: String,
         val attributionText: String,
         val madeBy: String,
         val connOnline: String,
@@ -315,6 +323,8 @@ object Strings {
         val calibratingGps: String,
         val lastGpsFixFormat: String,
         val gpsFixJustNow: String,
+        val gpsPreciseBlocked: String,
+        val gpsOpenSettings: String,
         val gpsFixFresh: String,
         val gpsStatusTitle: String,
         val networkLocationOnly: String,
@@ -332,7 +342,10 @@ object Strings {
         val noThreats: String,
         val active: String,
         val updatedFormat: String,
-        val refreshLabel: String
+        val updatedNowLabel: String,
+        val threatsAwayFormat: String,
+        val refreshLabel: String,
+        val officialAlertLabel: String
     )
 
     data class Guide(
@@ -468,6 +481,7 @@ object Strings {
         val onboardingTipTap: String get() = onboarding.onboardingTipTap
         val onboardingTipSettings: String get() = onboarding.onboardingTipSettings
         val onboardingTipSiren: String get() = onboarding.onboardingTipSiren
+        val onboardingTipGradual: String get() = onboarding.onboardingTipGradual
         val onboardingFeaturesTitle: String get() = onboarding.onboardingFeaturesTitle
         val onboardingIntro: String get() = onboarding.onboardingIntro
         val relaunchSetupTitle: String get() = onboarding.relaunchSetupTitle
@@ -476,6 +490,9 @@ object Strings {
         val wizardCareOn: String get() = onboarding.wizardCareOn
         val wizardCareOff: String get() = onboarding.wizardCareOff
         val wizardStartButton: String get() = onboarding.wizardStartButton
+        val wizardZonesTitle: String get() = onboarding.wizardZonesTitle
+        val wizardZonesSubtitle: String get() = onboarding.wizardZonesSubtitle
+        val wizardEditZonesHint: String get() = onboarding.wizardEditZonesHint
         val wizardShelterTitle: String get() = onboarding.wizardShelterTitle
         val wizardShelterDesc: String get() = onboarding.wizardShelterDesc
         val dayZonesTitle: String get() = settings.dayZonesTitle
@@ -611,6 +628,10 @@ object Strings {
         val neutralizedNotifChannelName: String get() = status.neutralizedNotifChannelName
         val neutralizedChannelDesc: String get() = status.neutralizedChannelDesc
         val neutralizedLastLineFormat: String get() = status.neutralizedLastLineFormat
+        val notifUpdateTitle: String get() = status.notifUpdateTitle
+        val notifUpdateText: String get() = status.notifUpdateText
+        val notifUpdateChannelName: String get() = status.notifUpdateChannelName
+        val notifUpdateChannelDesc: String get() = status.notifUpdateChannelDesc
         val attributionText: String get() = status.attributionText
         val madeBy: String get() = status.madeBy
         val connOnline: String get() = status.connOnline
@@ -813,6 +834,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val calibratingGps: String get() = misc.calibratingGps
         val lastGpsFixFormat: String get() = misc.lastGpsFixFormat
         val gpsFixJustNow: String get() = misc.gpsFixJustNow
+        val gpsPreciseBlocked: String get() = misc.gpsPreciseBlocked
+        val gpsOpenSettings: String get() = misc.gpsOpenSettings
         val gpsFixFresh: String get() = misc.gpsFixFresh
         val gpsStatusTitle: String get() = misc.gpsStatusTitle
         val networkLocationOnly: String get() = misc.networkLocationOnly
@@ -933,14 +956,18 @@ val iconSetTitle: String get() = misc.iconSetTitle
         onboardingTipTap = "Натисни будь-який дрон на мапі, щоб відкрити його картку.",
         onboardingTipSettings = "У Налаштуваннях — путівник по функціях та інші просунуті налаштування. Зазирни туди!",
         onboardingTipSiren = "Сирена за замовчуванням слідує за режимом звуку телефона — увімкни «Сирена звучить завжди», щоб змінити.",
+        onboardingTipGradual = "У застосунку багато функцій — під час користування він буде підказувати, як ними користуватися.",
         onboardingFeaturesTitle = "Основні можливості",
         onboardingIntro = "Це налаштування важливе — у застосунку є просунуті функції безпеки, про які варто знати. Виділи 30 секунд і ознайомся зараз, щоб бути готовим, коли це важливо.",
         relaunchSetupTitle = "Повторити початкове налаштування",
         wizardCareTitle = "Які загрози для вас важливі?",
-        wizardCareSubtitle = "Усі загрози показано на мапі за замовчуванням; увімкніть сповіщення тут, а в ⚙ налаштуваннях зможете змінити будь-коли.",
+        wizardCareSubtitle = "Усі загрози показано на мапі за замовчуванням, а тут ви вмикаєте лише сповіщення. Змінити можна будь-коли в ⚙ налаштуваннях.",
         wizardCareOn = "Сповіщати",
         wizardCareOff = "Вимкнено",
         wizardStartButton = "Будьте в безпеці…",
+        wizardZonesTitle = "Зони тривог",
+        wizardZonesSubtitle = "Кнопки на мапі наближають зони, а повзунки змінюють їх розмір — червона зона ближче, жовта далі. Тут усе видно одразу.",
+        wizardEditZonesHint = "Повзунок повільно рухає коло на мапі — червона зона завжди всередині жовтої.",
         wizardShelterTitle = "Укриття поруч",
         wizardShelterDesc = "Кнопка «Укриття» показує найближчі укриття та час пішки — швидкий шлях до безпеки під час тривоги.",
         settingsSearchHint = "Пошук налаштувань",
@@ -1016,6 +1043,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizedNotifChannelName = "Завершені загрози",
         neutralizedChannelDesc = "Лічильник завершених поблизу загроз — живе, поки його не прибрати.",
         neutralizedLastLineFormat = "Остання: %s",
+        notifUpdateTitle = "Доступна нова версія",
+        notifUpdateText = "Версія %s готова — торкнись, щоб оновити",
+        notifUpdateChannelName = "Оновлення",
+        notifUpdateChannelDesc = "Сповіщення про доступні оновлення застосунку.",
         attributionText = "Карта повітряних тривог — NEPTUN",
         madeBy = "Зроблено Presaince",
         connOnline = "Онлайн",
@@ -1227,6 +1258,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         calibratingGps = "Пошук GPS…",
         lastGpsFixFormat = "Точний GPS: %s",
         gpsFixJustNow = "щойно",
+        gpsPreciseBlocked = "Система більше не запитує. Увімкніть точний GPS у налаштуваннях.",
+        gpsOpenSettings = "Налаштування",
         gpsFixFresh = "Точний GPS: свіжий",
         gpsStatusTitle = "Точний GPS",
         networkLocationOnly = "Мережева локація (вежі зв'язку)",
@@ -1244,7 +1277,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         noThreats = "Загроз немає",
         active = "АКТИВНО",
         updatedFormat = "Оновлено %1\$s",
+        updatedNowLabel = "Оновлено щойно",
+        threatsAwayFormat = "Загрози ~%1\$d км",
         refreshLabel = "Оновити",
+        officialAlertLabel = "Повітряна тривога",
     )
 
     private fun uaGuide() = Guide(
@@ -1406,14 +1442,18 @@ val iconSetTitle: String get() = misc.iconSetTitle
         onboardingTipTap = "Tap any drone on the map to open its details card.",
         onboardingTipSettings = "Settings holds the feature guide and other advanced settings — check it out!",
         onboardingTipSiren = "Sirens follow your phone's sound mode by default — turn on \"Sirens always sound\" to change it.",
+        onboardingTipGradual = "This app has many features — as you use it, it'll give you tips on how to use them.",
         onboardingFeaturesTitle = "Core features",
         onboardingIntro = "This setup is important — this app has advanced safety features you should know about. Take 30 seconds to get familiar now, so you're ready when it matters.",
         relaunchSetupTitle = "Replay first launch",
         wizardCareTitle = "What threats matter to you?",
-        wizardCareSubtitle = "Every threat is shown on the map by default; toggle alerts here, and go to ⚙ settings to change anytime.",
+        wizardCareSubtitle = "Every threat is shown on the map by default, but you can toggle only the alerts here. Change either in ⚙ settings.",
         wizardCareOn = "Alert",
         wizardCareOff = "Off",
         wizardStartButton = "Stay safe…",
+        wizardZonesTitle = "Alert zones",
+        wizardZonesSubtitle = "The buttons on the map zoom to a zone; the sliders resize them — red is close, yellow is further out. Everything is visible at once.",
+        wizardEditZonesHint = "Dragging a slider moves the circle live — red always stays inside yellow.",
         wizardShelterTitle = "Nearby shelters",
         wizardShelterDesc = "The \"Shelter\" button shows the nearest shelters with walking times — your quick route to safety during an alert.",
         settingsSearchHint = "Search settings",
@@ -1489,6 +1529,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizedNotifChannelName = "Resolved threats",
         neutralizedChannelDesc = "Tally of threats resolved near you — kept until dismissed.",
         neutralizedLastLineFormat = "Last: %s",
+        notifUpdateTitle = "New version available",
+        notifUpdateText = "Version %s is ready — tap to update",
+        notifUpdateChannelName = "Updates",
+        notifUpdateChannelDesc = "Notifications about available app updates.",
         attributionText = "Air threat map — NEPTUN",
         madeBy = "Made by Presaince",
         connOnline = "Online",
@@ -1700,6 +1744,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         calibratingGps = "Acquiring GPS…",
         lastGpsFixFormat = "Precise GPS: %s",
         gpsFixJustNow = "just now",
+        gpsPreciseBlocked = "The system won't ask again. Enable precise GPS in Settings.",
+        gpsOpenSettings = "Settings",
         gpsFixFresh = "Precise GPS: fresh",
         gpsStatusTitle = "Precise GPS",
         networkLocationOnly = "Cell tower location only",
@@ -1717,7 +1763,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         noThreats = "No threats",
         active = "ACTIVE",
         updatedFormat = "Updated %1\$s",
+        updatedNowLabel = "Updated now",
+        threatsAwayFormat = "Threats ~%1\$d km",
         refreshLabel = "Refresh",
+        officialAlertLabel = "Air alert",
     )
 
     private fun enGuide() = Guide(
@@ -1925,6 +1974,33 @@ fun resolvedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
         }
         "Завершено $count $form"
     }
+}
+
+/** Rotating light encouragements shown in the footer strip when no threats are around — one
+ *  per ~3-day window, so it stays fresh without nagging. Pure selection, testable. */
+fun noThreatsMessage(lang: AppLanguage, epochDay: Long): String {
+    val en = listOf(
+        "No relevant threats",
+        "Quiet — go touch grass",
+        "Breathe",
+        "Say I love you today",
+        "Be grateful for this calm",
+        "Enjoy the silence",
+        "Check in on someone you love",
+        "A good day to rest"
+    )
+    val ua = listOf(
+        "Немає актуальних загроз",
+        "Тихо — піди погуляй",
+        "Подихай",
+        "Скажи сьогодні «люблю тебе»",
+        "Будь вдячним за цей спокій",
+        "Насолоджуйся тишею",
+        "Напиши тому, кого любиш",
+        "Гарний день відпочити"
+    )
+    val list = if (lang == AppLanguage.UA) ua else en
+    return list[((epochDay / 3) % list.size).toInt().coerceIn(0, list.size - 1)]
 }
 
 /**

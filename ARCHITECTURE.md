@@ -70,15 +70,18 @@ LocationTracker ──┬──► MainViewModel        NightMode.kt / Cities.kt
 ## Data flow
 
 - **Threat ingest.** NEPTUN WS + REST merge in `NeptunClient` → `StateFlow<NeptunState>`;
-  the alerts.com.ua backup merges into `oblastAlerts` only when NEPTUN is down/silent
-  (`backupActive`). One singleton, consumed independently by both paths.
+  the alerts.com.ua backup merges into `oblastAlerts` whenever it is up (`backupUp`) — both
+  sources are always-on peers, so the first to report an oblast alert rings immediately.
+  One singleton, consumed independently by both paths.
 - **Position prediction** (both consumers):
   `ThreatSpeedTracker.record(...)` → `estimateWithSource(id, t)` (server → measured → nominal)
   → `predictPosition(t, speed, now)` (dead-reckon active tracks with a real heading, capped at
   the per-type horizon/ghost) → distance to focus → `zoneTier` (slow: distance-to-confirmed-fix,
   fast: predicted-ETA).
 - **Update flow.** `UpdateManager.check()` → `Available` → `download()` (progress) →
-  `buildInstallIntent()` → system installer.
+  `buildInstallIntent()` → system installer. `AlertService` also checks silently every day at
+  16:20 while it runs and posts one "new version available" notification per new build
+  (deduped by `last_notified_update_code`); tapping it re-opens the app and pops the update dialog.
 
 ## Module map
 
@@ -96,18 +99,18 @@ detail that matters when editing that file.
 | File | Responsibility |
 | --- | --- |
 | `NeptunClient.kt` | `object` singleton. NEPTUN WebSocket (fast-first backoff 1–3s → capped 15s via `reconnectDelayMs`, keep-alive/watchdog) + REST merge → `StateFlow<NeptunState>`; `removedThreats` SharedFlow; `retryNow()`; hosts `OFFLINE_GRACE_MS` (5 s — sub-grace drops are ignored by the pill, the offline notification and the connection log; deliberate) and `USER_SHOT_GRACE_MS` (3 s). `markUserShot(id)` records map long-press fake kills in `NeptunState.userShotAt`; the snapshot handler keeps those ids alive in memory through the grace window so a quick same-id respawn redraws in place instead of re-entering as a new threat. 5s watchdog → `ConnectionLog`. Pure `reconnectDelayMs` (tested). |
-| `AlertsUaClient.kt` | `object` singleton. Backup oblast alerts: polls alerts.com.ua ~20s → `StateFlow<AlertsUaState>`; merged into `NeptunState.oblastAlerts` only when NEPTUN down/silent (`backupActive`) **and** the backup itself is up (`backupUp`) — a stale backup payload is never served as live; health → system-status popup. |
-| `Threat.kt` | `Threat` model + JSON parsing; `ThreatTypeCatalog` (labels, staleness, nominal speeds); `OblastAlert`/`mergeAlerts`; `translateCourseAssessment` (EN course text); `courseDeg` heading resolution. |
+| `AlertsUaClient.kt` | `object` singleton. Backup oblast alerts: polls alerts.com.ua ~10s → `StateFlow<AlertsUaState>`; merged into `NeptunState.oblastAlerts` whenever the backup itself is up (`backupUp`) — both sources are always-on peers, the first to report an oblast alert rings — a stale backup payload is never served as live; health → system-status popup. |
+| `Threat.kt` | `Threat` model + JSON parsing; `ThreatTypeCatalog` (labels, staleness, nominal speeds); `OblastAlert`/`mergeAlerts`; `translateCourseAssessment` (EN course text); `courseDeg` facing resolution (shares `motionHeading` with `predictPosition`). |
 
 ### State / orchestration
 
 | File | Responsibility |
 | --- | --- |
-| `MainViewModel.kt` | `AndroidViewModel`. Combines NEPTUN + GPS + prefs + 1s clock → `StateFlow<UiState>`; drives the update flow (daily start check, a Settings-open check that raises `updateReminderTick` — a snackbar with a Download action — instead of a clickable toast, which Android can't make touchable, plus manual check/download/install); UI-side copy of zone/focus/alert logic (tradeoffs); `neutralizeThreat` long-press hook. The neutralizing-card swap fires only while the map screen is visible (`mapVisible`, set from the visible screen), no zone/oblast alert is active, and the shelter overlay is not up (`shelterModeActive`, set via `setShelterModeActive`) — nothing should steal focus from the shelters; `neptunDown` ignores sub-grace drops. |
+| `MainViewModel.kt` | `AndroidViewModel`. Combines NEPTUN + GPS + prefs + 1s clock → `StateFlow<UiState>`; drives the update flow (daily start check, a Settings-open check that raises `updateReminderTick` — a snackbar with a Download action — instead of a clickable toast, which Android can't make touchable, plus manual check/download/install); UI-side copy of zone/focus/alert logic (tradeoffs); `neutralizeThreat` long-press hook. The neutralizing-card swap fires only while the map screen is visible (`mapVisible`, set from the visible screen), no zone/oblast alert is active, and the shelter overlay is not up (`shelterModeActive`, set via `setShelterModeActive`) — nothing should steal focus from the shelters; `neptunDown` ignores sub-grace drops. *Note:* the map's `focusLocation` falls back to Odesa before the first GPS fix so the first visual is complete — this is **UI-only**; `focusAttribution`/alerts still use the real fix or pin. A `flourish` request (tally-tap replay, from `AlertService`) flows to `MapView`. |
 | `ConnectionLog.kt` | `object` singleton. Persisted ring buffer (last 10 episodes) fed by the watchdog; commits drops only past `OFFLINE_GRACE_MS`. Pure `commitLogState` (tested); rendered in system-status popup. |
 | `AlertHistory.kt` | `object` singleton. Persisted ring buffer (last 20 alerts), written by `AlertService`, read by system-status popup; auto-cleans >6h; entries still open when the service dies are stamped ended on restore (`markInterruptedOpenEntries`); pure serialize/parse (tested). |
 | `DebugLog.kt` | `object` singleton. Persisted audit trail (last 500 decisions, rolling 24h window) written by `AlertService`, read by the Debug log screen. Records every alert/threat decision in the active region — official on/off, zone entries, region threats — with day/night, effective sound + vibration, whether a notification fired and why not. `DebugLog.sweep` runs once per service tick and is **read-only for the decision path**: it describes the service's own computed maps (`zoneThreats`/`alertable`/`knownZones`/`postedId`), never re-derives formulas. Pure `computeSweep`/serialize/parse (tested). *Note:* the whole feature is additive — removing it is deleting the write hooks + this object + `DebugLogScreen`. |
-| `Prediction.kt` | `LatLng`, `distanceMeters`, per-type `staleAfterMs`/`isExpired`, `predictPosition` dead-reckoning, `ThreatSpeedTracker` (shared thread-safe singleton so every consumer measures the same speed). |
+| `Prediction.kt` | `LatLng`, `distanceMeters`, per-type `staleAfterMs`/`isExpired`, `predictPosition` dead-reckoning, `motionHeading` (measured fix-track, then server bearing/heading — shared by motion + facing), `ThreatSpeedTracker` (shared thread-safe singleton so every consumer measures the same speed/track). |
 | `Shelters.kt` | Odesa shelter dataset: `Shelter`/`NearestShelter` (adult ~5 km/h, kid ~3 km/h walk minutes), `ShelterIndex` (JSON parse, Odesa bbox, nearest ranking). |
 
 ### Domain logic
@@ -119,9 +122,9 @@ detail that matters when editing that file.
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 gauge (severity × distance × reliability × sources × count × quality × staleness × ETA). |
 | `Cities.kt` | ~350 curated cities (by oblast) + `CityLabelOverlay`; EN names from the app's own КМУ №55 transliteration; `focusAttribution` maps focus point → oblast stem via `cityOblast` (majors only). |
 | `Transliteration.kt` | Official КМУ №55 Ukrainian→Latin romanization (the EN gate). |
-| `ZonePrefs.kt` | `AppLanguage`/`ThreatCardSize`/`ThreatIconSet` + DataStore store (`zone_prefs`): all toggles/thresholds/language/follow/pin/visibility, night config, and — problematically — serialized `ConnectionLog`/`AlertHistory`, offline-restore state, onboarding flags. Also `threatMapFlow`/`threatAlertFlow`; the resolved-threat tally's focus-oblast default + "All of Ukraine" opt-in (`neutralized_tally_all_ukraine`). *Note:* god object mixing prefs with persisted state — split candidate (tradeoffs). |
+| `ZonePrefs.kt` | `AppLanguage`/`ThreatCardSize`/`ThreatIconSet` + DataStore store (`zone_prefs`): all toggles/thresholds/language/follow/pin/visibility, night config, and — problematically — serialized `ConnectionLog`/`AlertHistory`, offline-restore state, onboarding flags. Also `threatMapFlow`/`threatAlertFlow`; the resolved-threat tally's focus-oblast default + "All of Ukraine" opt-in (`neutralized_tally_all_ukraine`), and the daily-update notify marker (`last_notified_update_code`). *Note:* god object mixing prefs with persisted state — split candidate (tradeoffs). |
 | `Strings.kt` | UA/EN `StringSet` table (never Android resource localization); `formatRelativeTime`, `formatDateTime` (app language, not device locale). |
-| `WidgetSnapshot.kt` | `WidgetSnapshot` + pure `computeWidgetSnapshot(...)` — deterministic projection of threat state for the widget, from shared domain functions only (`ThreatEvaluator.evaluate`, `distanceMeters`, `focusAttribution`, `inOblast`). Counts mirror the footer-strip semantics; never re-derives zone/tier logic (mirror rule). Tested by `WidgetSnapshotTest`. |
+| `WidgetSnapshot.kt` | `WidgetSnapshot` + pure `computeWidgetSnapshot(...)` — deterministic projection of threat state for the widget, from shared domain functions only (`ThreatEvaluator.evaluate`, `distanceMeters`, `focusAttribution`, `inOblast`). Counts + per-type `typeCounts` mirror the footer-strip semantics; never re-derives zone/tier logic (mirror rule). Tested by `WidgetSnapshotTest`. |
 | `IconCatalog.kt` | Single source for threat icons: vector/photo/army/comic/russian sets, per-set facing (`baseDeg`), `ThreatIcon` composable; assets in `app/src/main/iconpacks/`. |
 | `Toasts.kt` | Shared toast helper: one function decides placement — top (below the header banner) normally, bottom (above the floating zone/shelter buttons) when a card/popup is visible. Callers never hardcode gravity. |
 
@@ -129,13 +132,13 @@ detail that matters when editing that file.
 
 | File | Responsibility |
 | --- | --- |
-| `MainScreen.kt` | Top-level Compose UI: header, alert banner, map, threat strip, `ZonesSheet`, `UpdateDialog`, first-run wizard + battery prompt. *Note:* wizard gated on `!languageChosen` and force-dismissed during an active alert; card flip timed to `DEATH_EXPLOSION_START_MS`; popup height feeds the map as `popupCoverPx`. |
+| `MainScreen.kt` | Top-level Compose UI: header, alert banner, map, threat strip, `ZonesSheet`, `UpdateDialog`, first-run wizard + battery prompt. *Note:* wizard gated on `!languageChosen` and force-dismissed during an active alert; card flip timed to `DEATH_EXPLOSION_START_MS`; popup height feeds the map as `popupCoverPx`. The wizard is now **4 pages** (language+tips → threat care → zone-controls illustration → core features) with a blue/yellow segment progress indicator; the tally-tap replay flourish closes every modal and forces the map screen. |
 | `ConnectionStatus.kt` | Connection pill (online/backup/offline) + system-status dialog: per-source dots, TEMP force-offline toggle, legend, collapsible `AlertHistory` + `ConnectionLog`, a "Debug log" button opening the audit trail, attribution link. |
 | `DebugLogScreen.kt` | Full-screen Debug log: newest-first color-coded cards with a leading icon (red trident = official on, green check = all-clear, red/amber warning = red/yellow zone entry, blue pin = "Threat in \<region\>", gray close = exit), an "ago" + absolute timestamp, day/night, sound + vibration chips, and "Notification fired" or "No notification — \<reason\>", Clear button. |
-| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE`. Owns OSMdroid rendering: zone circles, marker overlays, course rotation, dead-reckoned positions, visual death animations. Threat icons scale with the map zoom (`zoomIconScale`, small at country view and growing as you zoom in: 0.55×@z8 → linear → capped 2.0×@z14.5, the ~5 km viewport, and flat beyond; applied to live markers from the zoom listener and at rebuild); long-pressing a threat shoots it down for fun: `markUserShot` + death animation, the marker stays hidden while the animation plays and the rebuild redraws it afterwards (the object itself is never removed); the strike camera (`followStrike`) glides onto the target and nothing else — no pan to the launching city, no return after the explosion (off with `follow_bullet` disabled). Selecting a threat opens its popup without moving the camera. Shelter markers are hand-drawn teardrop pins (stroke-only, per-type color, white when selected) anchored tip-on-spot; tapping a shelter opens its card without moving the camera (only the shelter-list button zooms). *Note:* shelter-mode zoom + deep-zoom unlock run in a dedicated `LaunchedEffect` (not the recompose-driven update block) so the fit fires reliably after the shelter markers are placed; normal zoom is capped at `NORMAL_MAX_ZOOM` (14.5, the ~5 km viewport) and only raised to `SHELTER_MAX_ZOOM` (19) while the shelter overlay is up — keeping the tile cache to what the threat map needs. The resolved-threat death flourish (`deathFx`) is also skipped while the shelter overlay is visible (`showNearbySheltersState`), so nothing steals focus from the shelters. `overlayKey` excludes raw positions so live movement updates in-place; must not perform alert decisions. |
+| `MapView.kt` | `NeptunMapView` + `DARK_TILE_SOURCE`. Owns OSMdroid rendering: zone circles, marker overlays, course rotation, dead-reckoned positions, visual death animations. Threat icons scale with the map zoom (`zoomIconScale`, small at country view and growing as you zoom in: 0.55×@z8 → linear → capped 2.0×@z14.5, the ~5 km viewport, and flat beyond; applied to live markers from the zoom listener and at rebuild); long-pressing a threat shoots it down for fun: `markUserShot` + death animation, the marker stays hidden while the animation plays and the rebuild redraws it afterwards (the object itself is never removed); the strike camera (`followStrike`) glides onto the target and — since the camera-return rework — pans back to where the user was after the explosion, with a fresh strike replacing any pending return. Long-press is disabled while an alert is active. Selecting a threat opens its popup without moving the camera. Shelter markers are hand-drawn teardrop pins (stroke-only, per-type color, white when selected) anchored tip-on-spot; tapping a shelter opens its card without moving the camera (only the shelter-list button zooms). The GPS dot is gray while "locating" (before the first fix) and blue once a fix exists. *Note:* shelter-mode zoom + deep-zoom unlock run in a dedicated `LaunchedEffect` (not the recompose-driven update block) so the fit fires reliably after the shelter markers are placed; normal zoom is capped at `NORMAL_MAX_ZOOM` (14.5, the ~5 km viewport) and only raised to `SHELTER_MAX_ZOOM` (19) while the shelter overlay is up — keeping the tile cache to what the threat map needs. The resolved-threat death flourish (`deathFx`) is also skipped while the shelter overlay is visible (`showNearbySheltersState`), so nothing steals focus from the shelters. `overlayKey` excludes raw positions so live movement updates in-place; must not perform alert decisions. The tally-tap replay flourish zooms to a single bounding box over the whole group, fires the bullets 0.42s apart, and is ejected (plus `deathFx.clear()`) the moment a red alert starts. |
 | `SettingsScreen.kt` | Collapsible sections: language, map centre, per-type Map/Alerts toggles + icon packs, card size, alert toggles (tally + death-animation), night-mode card, updates, battery exemption, guide; one-time explainers. The night-mode section tints its whole collapsible card darker purple + border (`NightSectionBg`/`NightSectionBorder`), no moon icon on the enabled toggle; battery exemption lives in the Alerts section; shelter button toggle + shelter directory row live in their own dedicated **Shelter** section; sections stay user-collapsible even while searching; a Reset-tips row re-arms every first-use hint (toast counters + explainers); icon packs ship PHOTO/ARMY/COMIC/RUSSIAN only (CLASSIC removed — a stored `"CLASSIC"` pref falls back to PHOTO, classic vectors remain the internal pack-fallback); the card-size tiles preview the small card as its real compact top-left chip (~75% of tile width) and the large card full-width. |
 | `ZonesSheet.kt` | "Edit zones" sheet: Slow (km)/Fast (min) sliders + per-zone bells; edits day or night values depending on the active window; night rows carry day reference ticks. |
-| `ThreatPopupCard.kt` | Threat popup (small chip / large card); `AlertsOffChip` when type alerts are off; neutralized/neutralizing variant. |
+| `ThreatPopupCard.kt` | Threat popup (small chip / large card); `AlertsOffChip` when type alerts are off; neutralized/neutralizing variant. The ETA pill's blue GPS dot mirrors the map location dot (same core + white ring, subtler radial glow). |
 | `ThreatTogglePanel.kt` | Shared Fast/Slow grouping, `ToggleChip`/`IconToggle`, `SlimThreatToggles` (reused by first-run dialog + Settings). |
 | `FeatureExplainer.kt` | One-time explainer popups keyed by setting id; seen state via `ZonePrefs.explainerSeen`. |
 | `FeatureGuide.kt` / `FeatureDiagrams.kt` | Static feature guide + its diagram drawables. |
@@ -146,7 +149,7 @@ detail that matters when editing that file.
 
 | File | Responsibility |
 | --- | --- |
-| `AlertService.kt` | Foreground `dataSync` service — the always-on monitor. Owns background monitoring and the notification lifecycle: siren/chime/all-clear (60s grace, coalescing), offline notifications + Retry, resolved-threat tally, per-notification vibration, `AlertHistory` feed. The resolved-threat tally counts by **focus oblast** by default (GPS-follow or pinned city's oblast, matched via the shared `ThreatEvaluator.inOblast`); an "All of Ukraine" opt-in (`neutralized_tally_all_ukraine`) lifts it to any resolution country-wide. Zone-alert dedup: ids drop from `knownZones` only when they leave the zones *and* their `userShotAt` grace (3 s) has passed, so a same-id respawn of a shot-down drone never re-alerts. *Note:* the official-alert all-clear is region-latched: it fires only while the focus is still on the region whose alert was ringing (`state.focusToken == officialRegionToken`); switching the focus away to a non-alerting region silently drops tracking (no false all-clear, no lingering siren), and returning to the still-alerting region re-announces fresh. The offline drop is persisted (`offline_pending_since`) so it re-flags after a service kill; evaluates via the shared domain functions, never local formulas. Reconnect milestone flags reset **and** the milestone notification is cancelled on the reconnect transition; official-alert notifications track their own notified-state (turning the toggle back on mid-alert re-announces); `ConnectionLog`/`AlertHistory` restore is awaited before `NeptunClient.start()`. Notification taps that carry a threat use their own `PendingIntent` request code (1) so the reveal extras can't be clobbered by the plain status/tally/milestone intents (0); the ongoing status title reads "Monitoring GPS" when following and "Monitoring \<city\>" when pinned. |
+| `AlertService.kt` | Foreground `dataSync` service — the always-on monitor. Owns background monitoring and the notification lifecycle: siren/chime/all-clear (60s grace, coalescing), offline notifications + Retry, resolved-threat tally, per-notification vibration, `AlertHistory` feed. The resolved-threat tally counts by **focus oblast** by default (GPS-follow or pinned city's oblast, matched via the shared `ThreatEvaluator.inOblast`); an "All of Ukraine" opt-in (`neutralized_tally_all_ukraine`) lifts it to any resolution country-wide. Tapping the tally notification ships the last **10** remembered resolutions (position + type) to `MainActivity` for the map's replay flourish; a red alert (official or INNER zone) erases that memory. Zone-alert dedup: ids drop from `knownZones` only when they leave the zones *and* their `userShotAt` grace (3 s) has passed, so a same-id respawn of a shot-down drone never re-alerts. *Note:* the official-alert all-clear is region-latched: it fires only while the focus is still on the region whose alert was ringing (`state.focusToken == officialRegionToken`); switching the focus away to a non-alerting region silently drops tracking (no false all-clear, no lingering siren), and returning to the still-alerting region re-announces fresh. The offline drop is persisted (`offline_pending_since`) so it re-flags after a service kill; evaluates via the shared domain functions, never local formulas. Reconnect milestone flags reset **and** the milestone notification is cancelled on the reconnect transition; official-alert notifications track their own notified-state (turning the toggle back on mid-alert re-announces); `ConnectionLog`/`AlertHistory` restore is awaited before `NeptunClient.start()`. Notification taps that carry a threat use their own `PendingIntent` request code (1) so the reveal extras can't be clobbered by the plain status/tally/milestone intents (0); the ongoing status title reads "Monitoring GPS" when following and "Monitoring \<city\>" when pinned. A daily 16:20 coroutine checks `UpdateManager` silently and posts one silent "new version available" notification per new build (`last_notified_update_code` pref, `NOTIF_UPDATE`); its tap carries `EXTRA_SHOW_UPDATE` with its own `PendingIntent` request code (4). |
 | `BootReceiver.kt` | Restarts `AlertService` on `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED`. |
 | `NeutralizedDismissReceiver.kt` | Delete intent for the tally notification (resets the count). |
 | `LocationTracker.kt` | `object` singleton. Coarse `NETWORK_PROVIDER` only (~2 min / 250 m), falls back to last known → `StateFlow<LatLng?>`; tracks the last fix time (`lastFixAtMs`) and offers a `forceRefresh()` GPS one-shot for the shelter screen. |
@@ -157,7 +160,9 @@ detail that matters when editing that file.
 | File | Responsibility |
 | --- | --- |
 | `widget/ThreatWidget.kt` | Glance home-screen widget (`provideGlance` + `provideContent`, `SizeMode.Responsive`). Passive renderer of the persisted [WidgetSnapshot] — never evaluates zones/tiers itself (mirror rule). Three density buckets (compact 2×1 / standard 4×2 / detailed 4×3) picked from `LocalSize`; dark-only palette; tap → `MainActivity`. `ThreatWidgetReceiver` is the manifest-declared `GlanceAppWidgetReceiver`. |
-| `widget/WidgetUpdater.kt` | `object` singleton. Started by `AlertService` (the already-running monitor, ~zero marginal battery). Combines `NeptunClient.state` + `LocationTracker.location` + zone/follow/pin/language/type-gate prefs + a 30s clock → `computeWidgetSnapshot` → persists to the `widget_snapshot` DataStore and calls `updateAll()` only when a widget is actually placed. Exposes `readSnapshot`/`readLang` for the widget. |
+| `widget/WidgetUpdater.kt` | `object` singleton. Started by `AlertService` (the already-running monitor, ~zero marginal battery). Combines `NeptunClient.state` + `LocationTracker.location` + zone/follow/pin/language/type-gate prefs + a 30s clock → `computeWidgetSnapshot` → persists to the `widget_snapshot` DataStore and calls `updateAll()` only when a widget is actually placed. Exposes `readSnapshot`/`readLang`/`readIconSet` 
+for the widget (icon set mirrors the user's `threatIconSet` pref, so the widget uses `IconCatalog.res(type, set)` 
+like the rest of the app). |
 
 ### Updates / misc
 
@@ -201,7 +206,10 @@ Treat these as a contract. If you change one, update **every** place that relies
 
 - **Focus point.** `followMe` → camera + zones + alerts centre on GPS, else the pinned city;
   pinning disables follow-me. Attribution via `focusAttribution` → `cityOblast` stem match,
-  **major cities only** — the ~300 minors are map-context, never banner/alert.
+  **major cities only** — the ~300 minors are map-context, never banner/alert. *First-launch
+  visual:* before the first GPS fix the **map's** `focusLocation` falls back to Odesa (complete
+  first screen) — this is UI-only; `AlertService`/`focusAttribution` never use the fallback, so
+  no fake region alert is ever produced.
 
 - **Zone tiering.** `zoneTier(t, distKm, speedKmh, ZoneParams(slowRedKm, slowYellowKm,
   fastRedMin, fastYellowMin))`. Fast types (`FastThreatTypes`) tier by ETA (≤ fastRedMin →
@@ -212,7 +220,9 @@ Treat these as a contract. If you change one, update **every** place that relies
   tiers. `reachKm` caps distance (KAB 70, FPV 40, recon 50, Shahed 1000, else 1500 km). Map
   circles show the slow km thresholds only. Advisory (observation) threats never tier/sound.
   Armed bells are per group×tier (slow/fast × red/yellow), stored for day and night, resolved
-  per tick by `effectiveArmed`.
+  per tick by `effectiveArmed`. **Slider coupling:** the yellow threshold is relative to red —
+  setters clamp yellow to `red+2 … max` (slow 1–20 km red / yellow ≤50; fast 1–5 min red /
+  yellow ≤20) in `ZonePrefs`; the UI sliders derive the yellow range from the red value live.
 
 - **Expiry / ghosts.** `staleAfterMs` per type (90s ballistic … 300s UAV). Stale threats stay
   mapped **dimmed** (alpha 0.25, tappable) but are excluded from strip, tiers, gauge, alerts.
@@ -225,6 +235,14 @@ Treat these as a contract. If you change one, update **every** place that relies
   with a real heading, capped per type. ViewModel ticks 1s (`nowFlow`); service clears on a 60s
   grace.
 
+- **Threat facing always matches its motion.** `predictPosition` (dead-reckoning) and
+  `Threat.courseDeg` (icon rotation) both resolve the heading via the shared `motionHeading`
+  (`Prediction.kt`): our measured fix-track (`ThreatSpeedTracker.measuredHeading`) first, then
+  the server's velocity `bearingDeg`, then the top-level `heading`. `courseDeg` keeps the extra
+  `courseFromMessage()`/`fallbackCourse(id)` fallbacks for *stationary* "heading toward X"
+  threats that don't glide. A change to heading resolution must stay in `motionHeading` so the
+  marker never faces a direction it doesn't move.
+
 - **Place names transliterate, never translate.** Any Ukrainian proper noun in the EN UI →
   `Cities.uaToEn` → `Transliteration.transliterate`; military vocabulary is hard-coded
   (`COURSE_PATTERNS`/`COURSE_GLOSSARY`/`ThreatTypeCatalog`). No network translation.
@@ -232,14 +250,18 @@ Treat these as a contract. If you change one, update **every** place that relies
 - **REST never clobbers WS.** REST merge keeps the newer record per threat id
   (`updatedAtMillis`); a REST snapshot can be CDN-stale.
 
-- **Backup never overrides a healthy NEPTUN.** The backup merges only when NEPTUN is
-  disconnected or the stream is silent >60s (`backupActive`, driven by `lastFrameAt`).
+- **Backup always augments a healthy NEPTUN.** NEPTUN and alerts.com.ua are always-on peers:
+  `NeptunState.oblastAlerts` is the union of both (deduped by oblast, NEPTUN wins ties) whenever
+  the backup is actually up (`backupUp`), so an official siren that the backup reports before
+  NEPTUN forwards it rings immediately — and clears only when both sources have dropped it.
   The backup only counts while it is actually up (`backupUp`): if its own polls fail, its last
   payload is stale and is never served — while NEPTUN **and** the backup are both down,
   `NeptunState.oblastAlerts` returns NEPTUN's **last-known** list (held, never cleared: an
   outage must not fabricate "alert ended" / false all-clear — the truth arrives on reconnect),
-  and `alertSourceFor` never reports `BACKUP`/`BOTH` for a dead backup (held alerts are never
-  source-tagged as live).
+  and `alertSourceFor` never reports `BACKUP`/`BOTH` for a dead backup or for a frozen NEPTUN
+  alert while the socket is down (held alerts are never source-tagged as live). `backupActive`
+  (down/silent >60s) is now a connection-health flag only — pill, connection log, widget badge —
+  it no longer gates the merge.
   `AlertSource` tags only the notification body. TEMP `forceOffline` flag
   (`temp_force_offline`, restored on service start) forces the offline/backup path for testing;
   turning it off while the socket is down kicks a real reconnect (`retryNow`).

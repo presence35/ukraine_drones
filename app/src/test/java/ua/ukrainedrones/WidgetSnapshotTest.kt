@@ -34,8 +34,23 @@ class WidgetSnapshotTest {
             threat(id = "d", areaOnly = true, updatedAtMillis = now),             // areaOnly, not in mapThreats
             threat(id = "e", type = ThreatType.RECON, updatedAtMillis = now)      // counts
         )
-        val snap = computeWidgetSnapshot(s, focus, "odesa", params, allTypes, now)
+        val snap = computeWidgetSnapshot(s, focus, "Одеськ", params, allTypes, now)
         assertEquals(2, snap.threatCount)
+        assertEquals(1, snap.typeCounts[ThreatType.SHAHED])
+        assertEquals(1, snap.typeCounts[ThreatType.RECON])
+    }
+
+    @Test
+    fun `typeCounts aggregates same-type threats`() {
+        val s = state(
+            threat(id = "a1", updatedAtMillis = now),
+            threat(id = "a2", updatedAtMillis = now),
+            threat(id = "a3", type = ThreatType.CRUISE_MISSILE, updatedAtMillis = now)
+        )
+        val snap = computeWidgetSnapshot(s, focus, "Одеськ", params, allTypes, now)
+        assertEquals(2, snap.typeCounts[ThreatType.SHAHED])
+        assertEquals(1, snap.typeCounts[ThreatType.CRUISE_MISSILE])
+        assertEquals(3, snap.threatCount)
     }
 
     @Test
