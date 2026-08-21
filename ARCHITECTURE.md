@@ -17,9 +17,10 @@ change a documented invariant, update the relevant section.
 
 ## Package structure
 
-All production code lives in one flat package — `app/src/main/java/ua/ukrainedrones/`. This is
-**deliberate for now**; files are grouped conceptually here, not physically. Migrate by
-subsystem when it outgrows maintainability: `data/ domain/ state/ ui/ service/ system/`.
+Source files are grouped into subdirectories by subsystem (`data/ domain/ service/ ui/
+widget/`) while keeping a **single flat package** `ua.ukrainedrones` — so any file can reach
+any other without import ceremony. The subdirs are organizational only; don't add package
+qualifiers. Migrate to a true multi-package layout only if it ever outgrows maintainability.
 
 ## System overview
 
@@ -120,6 +121,7 @@ detail that matters when editing that file.
 | `Transliteration.kt` | Official КМУ №55 Ukrainian→Latin romanization (the EN gate). |
 | `ZonePrefs.kt` | `AppLanguage`/`ThreatCardSize`/`ThreatIconSet` + DataStore store (`zone_prefs`): all toggles/thresholds/language/follow/pin/visibility, night config, and — problematically — serialized `ConnectionLog`/`AlertHistory`, offline-restore state, onboarding flags. Also `threatMapFlow`/`threatAlertFlow`; the resolved-threat tally's focus-oblast default + "All of Ukraine" opt-in (`neutralized_tally_all_ukraine`). *Note:* god object mixing prefs with persisted state — split candidate (tradeoffs). |
 | `Strings.kt` | UA/EN `StringSet` table (never Android resource localization); `formatRelativeTime`, `formatDateTime` (app language, not device locale). |
+| `WidgetSnapshot.kt` | `WidgetSnapshot` + pure `computeWidgetSnapshot(...)` — deterministic projection of threat state for the widget, from shared domain functions only (`ThreatEvaluator.evaluate`, `distanceMeters`, `focusAttribution`, `inOblast`). Counts mirror the footer-strip semantics; never re-derives zone/tier logic (mirror rule). Tested by `WidgetSnapshotTest`. |
 | `IconCatalog.kt` | Single source for threat icons: vector/photo/army/comic/russian sets, per-set facing (`baseDeg`), `ThreatIcon` composable; assets in `app/src/main/iconpacks/`. |
 | `Toasts.kt` | Shared toast helper: one function decides placement — top (below the header banner) normally, bottom (above the floating zone/shelter buttons) when a card/popup is visible. Callers never hardcode gravity. |
 
@@ -149,6 +151,13 @@ detail that matters when editing that file.
 | `NeutralizedDismissReceiver.kt` | Delete intent for the tally notification (resets the count). |
 | `LocationTracker.kt` | `object` singleton. Coarse `NETWORK_PROVIDER` only (~2 min / 250 m), falls back to last known → `StateFlow<LatLng?>`; tracks the last fix time (`lastFixAtMs`) and offers a `forceRefresh()` GPS one-shot for the shelter screen. |
 | `BatteryOptimization.kt` | Battery-exemption helpers. |
+
+### Widget
+
+| File | Responsibility |
+| --- | --- |
+| `widget/ThreatWidget.kt` | Glance home-screen widget (`provideGlance` + `provideContent`, `SizeMode.Responsive`). Passive renderer of the persisted [WidgetSnapshot] — never evaluates zones/tiers itself (mirror rule). Three density buckets (compact 2×1 / standard 4×2 / detailed 4×3) picked from `LocalSize`; dark-only palette; tap → `MainActivity`. `ThreatWidgetReceiver` is the manifest-declared `GlanceAppWidgetReceiver`. |
+| `widget/WidgetUpdater.kt` | `object` singleton. Started by `AlertService` (the already-running monitor, ~zero marginal battery). Combines `NeptunClient.state` + `LocationTracker.location` + zone/follow/pin/language/type-gate prefs + a 30s clock → `computeWidgetSnapshot` → persists to the `widget_snapshot` DataStore and calls `updateAll()` only when a widget is actually placed. Exposes `readSnapshot`/`readLang` for the widget. |
 
 ### Updates / misc
 

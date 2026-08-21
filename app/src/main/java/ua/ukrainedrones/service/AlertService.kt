@@ -191,6 +191,7 @@ private var notif3minShown = false
             }
         }
         LocationTracker.start(this)
+        WidgetUpdater.start(this, scope)
         startForegroundCompat()
     }
 

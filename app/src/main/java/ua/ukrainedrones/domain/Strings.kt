@@ -327,6 +327,14 @@ object Strings {
         val shelterTypeBunker: String
     )
 
+    data class Widget(
+        val threatsLabel: String,
+        val noThreats: String,
+        val active: String,
+        val updatedFormat: String,
+        val refreshLabel: String
+    )
+
     data class Guide(
         val guideTitle: String,
         val guideSettingsButton: String,
@@ -436,7 +444,7 @@ object Strings {
         val status: Status,
         val updates: Updates,
         val threat: Threat,
-        val misc: Misc,
+        val widget: Widget,
         val guide: Guide,
         val explainers: ExplainerStrings
     ) {
@@ -1230,6 +1238,14 @@ val iconSetTitle: String get() = misc.iconSetTitle
         shelterTypeBunker = "Бомбосховище (ЗСЦЗ)",
     )
 
+    private fun uaWidget() = Widget(
+        threatsLabel = "Загрози",
+        noThreats = "Загроз немає",
+        active = "АКТИВНО",
+        updatedFormat = "Оновлено %1$s",
+        refreshLabel = "Оновити",
+    )
+
     private fun uaGuide() = Guide(
         guideTitle = "Путівник по функціях",
         guideSettingsButton = "Путівник по функціях",
@@ -1369,6 +1385,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         uaUpdates(),
         uaThreat(),
         uaMisc(),
+        uaWidget(),
         uaGuide(),
         uaExplainers(),
     )
@@ -1694,6 +1711,14 @@ val iconSetTitle: String get() = misc.iconSetTitle
         shelterTypeBunker = "Civil defense bunker (CDPS)",
     )
 
+    private fun enWidget() = Widget(
+        threatsLabel = "Threats",
+        noThreats = "No threats",
+        active = "ACTIVE",
+        updatedFormat = "Updated %1$s",
+        refreshLabel = "Refresh",
+    )
+
     private fun enGuide() = Guide(
         guideTitle = "Feature guide",
         guideSettingsButton = "Feature guide",
@@ -1833,6 +1858,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         enUpdates(),
         enThreat(),
         enMisc(),
+        enWidget(),
         enGuide(),
         enExplainers(),
     )
