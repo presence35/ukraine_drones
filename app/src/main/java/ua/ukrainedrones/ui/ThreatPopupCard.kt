@@ -199,7 +199,7 @@ fun ThreatPopupCard(
                 if (distUser != null) {
                     val cityName = pinnedCity?.let { if (lang == AppLanguage.UA) it.nameUa else it.nameEn }
                     val distCd = if (cityName != null) {
-                        String.format(s.pillDistanceCd, cityName, formatKm(distUser))
+                        String.format(s.pillDistanceCd, cityName, distUser.roundToInt())
                     } else null
                     // The metric trio (ETA / distance / speed) in display order.
                     val pillSpecs = buildList {

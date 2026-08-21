@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 
-- Debug log: a new full-screen audit trail (opened from the System-status popup) logs every alert and threat decision in your region — official alerts on/off, threats entering a red/yellow zone and threats in the region that stayed quiet — with day/night, the effective sound setting, the vibration level that would have been used, whether a notification actually fired, and why not when it didn't (bell muted, already notified, another alert posted first, type alerts off, observation threat, stale, outside alert zones, notifications off). Every row carries an "ago" timestamp plus the absolute time, and the log is a rolling 24-hour window (last 500 events, older rows drop off).
+- Map: dragging the slow-zone slider now grows (or shrinks) the camera to fit the new yellow circle, so a bigger radius never runs off-screen.
+- Map: the bottom-left "Pinned: <city>" pill is gone — the header already names the pinned city, so the pill was redundant.
+- Notifications: an official-alert notification body now always states an official alert is on (e.g. "Official alert in Odesa region" / «Офіційна тривога в Одеській області»), appending the specific reason when there is one, instead of a bare region name or a standalone reason text.
+
+- Fix: opening a threat card while the small card size is selected and the map is pinned to a city no longer crashes (the distance tooltip passed a string to an integer format slot).
+
+- Debug log: a new full-screen audit trail (opened from the System-status popup) logs every alert and threat decision in your region — official alerts on/off, threats entering a red/yellow zone and threats in the region that stayed quiet — with day/night, the effective sound setting, the vibration level that would have been used, whether a notification actually fired, and why not when it didn't (bell muted, already notified, another alert posted first, type alerts off, observation threat, stale, outside alert zones, notifications off). Every row carries an "ago" timestamp plus the absolute time, and the log is a rolling 24-hour window (last 500 events, older rows drop off). Rows are color-coded cards with a leading icon (red trident = official alert on, green check = all-clear, red/amber warning = entered red/yellow zone, blue pin = "Threat in \<region\>", gray close = left) and "Threat in region" now names the actual oblast/locality.
 
 - Map: shelter markers are now bigger hand-drawn teardrop pins (thicker stroke, larger tap area) and tapping a shelter no longer pans/zooms the camera onto it — the map stays put, only its card opens.
 - Shelters: the first-taps tip toast now reads "Tap a shelter to see its info" / «Торкнись укриття, щоб побачити інформацію» instead of the long-press hint.
@@ -373,6 +379,9 @@
 - Threat popup: a three-line size control (thin / thick / thicker) sits under the bottom-right corner of the card — tap it to cycle Small → Medium → Full (persisted).
 - Alert zones: dragging the panel up reveals a slim Fast/Slow threat-toggles panel (the same Map/Alerts controls as Settings); dragging down collapses it again or closes the panel. The first-launch "A few tips" dialog now includes the same slim threat toggles so they can be set before first use.
 - Settings: the Fast and Slow threat groups start expanded; tapping a group header collapses its per-type cards (headers with their Map/Alerts master toggles stay visible).
+
+- Shelter walk-time icons are now man/woman silhouettes — the adult is randomly a man or a woman, and a child appears beside them when "with kids" is on; the icon slots are a fixed width so toggling kids no longer shifts the text.
+- Shelter GPS header wording updated: "GPS fix is…" → "Precise GPS: …" (EN) / "Точний GPS: …" (UA).
 
 ## [0.3.9] — 2026-08-13
 

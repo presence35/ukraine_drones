@@ -397,6 +397,7 @@ fun NeptunMapView(
     val newRingState = remember { mutableStateOf<NewRingState?>(null) }
     val newRingMarker = remember { mutableStateOf<Marker?>(null) }
     val didDefaultFit = remember { mutableStateOf(false) }
+    val lastFittedYellowKm = remember { mutableStateOf<Int?>(null) }
     val lastPinnedCity = remember { mutableStateOf<String?>(null) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
     val markerRefs = remember { mutableStateOf<MutableMap<String, Marker>>(mutableMapOf()) }
@@ -535,6 +536,21 @@ fun NeptunMapView(
             // yellow zone (camera then just follows it without re-zooming).
             if (!didDefaultFit.value && focus != null) {
                 didDefaultFit.value = true
+                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
+                mapView.zoomToBoundingBox(
+                    zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
+                    true
+                )
+            }
+
+            // Zone-slider change: the yellow circle grew (or shrank) on the map, so grow the
+            // camera to fit it again. Only re-fits once the initial default fit has happened
+            // and the focus point is known; a pinned-city change below handles its own refit.
+            val fitted = lastFittedYellowKm.value
+            if (didDefaultFit.value && focus != null && fitted != null &&
+                fitted != uiState.activeZoneParams.slowYellowKm
+            ) {
+                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
                 mapView.zoomToBoundingBox(
                     zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
                     true
@@ -545,6 +561,7 @@ fun NeptunMapView(
             val pinned = uiState.pinnedCity
             if (!uiState.followMe && pinned != null && lastPinnedCity.value != pinned.nameUa) {
                 lastPinnedCity.value = pinned.nameUa
+                lastFittedYellowKm.value = uiState.activeZoneParams.slowYellowKm
                 mapView.zoomToBoundingBox(
                     zoneBoundingBox(GeoPoint(pinned.lat, pinned.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
                     true

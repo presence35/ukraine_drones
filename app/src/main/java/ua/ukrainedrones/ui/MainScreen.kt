@@ -1032,19 +1032,6 @@ private fun MapScreen(
                                 .padding(end = 12.dp, bottom = 12.dp)
                         )
                     }
-                    if (!uiState.followMe) {
-                        uiState.pinnedCity?.let { city ->
-                            val cityName = if (uiState.language == AppLanguage.UA) city.nameUa else city.nameEn
-                            val alertsOff = !uiState.activeSlowRedArmed && !uiState.activeSlowYellowArmed &&
-                                !uiState.activeFastRedArmed && !uiState.activeFastYellowArmed
-                            PinnedPill(
-                                text = String.format(s.mapPillPinned, cityName),
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 12.dp, bottom = if (alertsOff) 100.dp else 48.dp)
-                            )
-                        }
-                    }
                     val shelterFocus = uiState.focusLocation
                     if (uiState.sheltersEnabled && uiState.shelterIndex != null && shelterFocus != null &&
                         uiState.shelterIndex!!.withinRegion(shelterFocus.lat, shelterFocus.lon)
@@ -1577,35 +1564,6 @@ private fun ZonePill(
             tint = if (armed) Color.White else Color(0xFF777777),
             modifier = Modifier.size(18.dp)
         )
-    }
-}
-
-@Composable
-private fun PinnedPill(text: String, modifier: Modifier = Modifier) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 3.dp,
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(UkraineBlue)
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
     }
 }
 

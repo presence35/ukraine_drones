@@ -141,9 +141,12 @@ object ThreatEvaluator {
         }
         return if (best != null) {
             val reason = translateCourseAssessment(best.explanationShort, lang) ?: threatBody(best, lang)
-            reason to best.id
+            String.format(
+                Strings.get(lang).notifOfficialWithReasonFormat,
+                regionFallback, reason
+            ) to best.id
         } else {
-            String.format(Strings.get(lang).notifReasonFormat, regionFallback) to null
+            String.format(Strings.get(lang).notifOfficialFormat, regionFallback) to null
         }
     }
 

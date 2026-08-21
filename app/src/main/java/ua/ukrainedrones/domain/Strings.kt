@@ -190,12 +190,12 @@ object Strings {
         val followMeDesc: String,
         val pinCityTitle: String,
         val pinCityDesc: String,
-        val mapPillPinned: String,
         val alertBannerFormat: String,
         val alertSourceBackup: String,
         val alertSourceBoth: String,
         val notifBodyRegionFormat: String,
-        val notifReasonFormat: String,
+        val notifOfficialFormat: String,
+        val notifOfficialWithReasonFormat: String,
         val offlineStatusTitle: String,
         val offlineBodyFormat: String,
         val offlineOfficialSirensLine: String,
@@ -275,6 +275,7 @@ object Strings {
         val debugKindZoneEnter: String,
         val debugKindZoneExit: String,
         val debugKindRegionThreat: String,
+        val debugKindRegionFormat: String,
         val debugTierRed: String,
         val debugTierYellow: String,
         val cardSizeLabel: String,
@@ -682,12 +683,12 @@ object Strings {
         val followMeDesc: String get() = threat.followMeDesc
         val pinCityTitle: String get() = threat.pinCityTitle
         val pinCityDesc: String get() = threat.pinCityDesc
-        val mapPillPinned: String get() = threat.mapPillPinned
         val alertBannerFormat: String get() = threat.alertBannerFormat
         val alertSourceBackup: String get() = threat.alertSourceBackup
         val alertSourceBoth: String get() = threat.alertSourceBoth
         val notifBodyRegionFormat: String get() = threat.notifBodyRegionFormat
-        val notifReasonFormat: String get() = threat.notifReasonFormat
+        val notifOfficialFormat: String get() = threat.notifOfficialFormat
+        val notifOfficialWithReasonFormat: String get() = threat.notifOfficialWithReasonFormat
         val offlineStatusTitle: String get() = threat.offlineStatusTitle
         val offlineBodyFormat: String get() = threat.offlineBodyFormat
         val offlineOfficialSirensLine: String get() = threat.offlineOfficialSirensLine
@@ -764,6 +765,7 @@ object Strings {
         val debugKindZoneEnter: String get() = misc.debugKindZoneEnter
         val debugKindZoneExit: String get() = misc.debugKindZoneExit
         val debugKindRegionThreat: String get() = misc.debugKindRegionThreat
+        val debugKindRegionFormat: String get() = misc.debugKindRegionFormat
         val debugTierRed: String get() = misc.debugTierRed
         val debugTierYellow: String get() = misc.debugTierYellow
         val cardSizeLabel: String get() = misc.cardSizeLabel
@@ -1093,12 +1095,12 @@ val iconSetTitle: String get() = misc.iconSetTitle
         followMeDesc = "Карта та зони слідують за твоїм GPS-положенням.",
         pinCityTitle = "Прикріпити до міста",
         pinCityDesc = "Центр карти та зони закріплюються за вибраним містом.",
-        mapPillPinned = "Прикріплено: %1\$s",
         alertBannerFormat = "%1\$s: тривога",
         alertSourceBackup = " · резервне джерело",
         alertSourceBoth = " · NEPTUN + резервне джерело",
         notifBodyRegionFormat = "%1\$s область",
-        notifReasonFormat = "Загрози в %1\$s",
+        notifOfficialFormat = "Офіційна тривога в %1\$s",
+        notifOfficialWithReasonFormat = "Офіційна тривога в %1\$s: %2\$s",
         offlineStatusTitle = "Офлайн",
         offlineBodyFormat = "Офлайн — резервні системи працюють, але менш надійні. Натисни, щоб повторити.",
         offlineOfficialSirensLine = "Покладайся на офіційні сирени.",
@@ -1178,6 +1180,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         debugKindZoneEnter = "Увійшла в зону",
         debugKindZoneExit = "Покинула зону",
         debugKindRegionThreat = "Загроза в регіоні",
+        debugKindRegionFormat = "Загроза у %1\$s",
         debugTierRed = "Червона зона",
         debugTierYellow = "Жовта зона",
         cardSizeLabel = "Розмір і деталізація картки загрози",
@@ -1557,12 +1560,12 @@ val iconSetTitle: String get() = misc.iconSetTitle
         followMeDesc = "The map and zones follow your GPS position.",
         pinCityTitle = "Pin to a city",
         pinCityDesc = "The map centre and zones pin to the selected city.",
-        mapPillPinned = "Pinned: %1\$s",
         alertBannerFormat = "%1\$s: alert",
         alertSourceBackup = " · backup source",
         alertSourceBoth = " · NEPTUN + backup source",
         notifBodyRegionFormat = "%1\$s region",
-        notifReasonFormat = "Threats reported in %1\$s",
+        notifOfficialFormat = "Official alert in %1\$s",
+        notifOfficialWithReasonFormat = "Official alert in %1\$s: %2\$s",
         offlineStatusTitle = "Offline",
         offlineBodyFormat = "Offline — backup systems active but less reliable. Tap to retry.",
         offlineOfficialSirensLine = "Rely on official sirens.",
@@ -1642,6 +1645,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         debugKindZoneEnter = "Entered zone",
         debugKindZoneExit = "Left zone",
         debugKindRegionThreat = "Threat in region",
+        debugKindRegionFormat = "Threat in %1\$s",
         debugTierRed = "Red zone",
         debugTierYellow = "Yellow zone",
         cardSizeLabel = "Threat card size and detail",
