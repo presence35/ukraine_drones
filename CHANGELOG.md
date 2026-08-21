@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+- Debug log: a new full-screen audit trail (opened from the System-status popup) logs every alert and threat decision in your region — official alerts on/off, threats entering a red/yellow zone and threats in the region that stayed quiet — with day/night, the effective sound setting, the vibration level that would have been used, whether a notification actually fired, and why not when it didn't (bell muted, already notified, another alert posted first, type alerts off, observation threat, stale, outside alert zones, notifications off). Every row carries an "ago" timestamp plus the absolute time, and the log is a rolling 24-hour window (last 500 events, older rows drop off).
+
+- Map: shelter markers are now bigger hand-drawn teardrop pins (thicker stroke, larger tap area) and tapping a shelter no longer pans/zooms the camera onto it — the map stays put, only its card opens.
+- Shelters: the first-taps tip toast now reads "Tap a shelter to see its info" / «Торкнись укриття, щоб побачити інформацію» instead of the long-press hint.
+- Settings: sections stay user-collapsible even while a search is active (they used to auto-expand every match); searching "english"/"українська"/"language" now finds the language row.
+- Settings: the search box now matches curated keywords, not raw screen text — "threat"/"drone"/"missile"/"recon" (and every threat type's name in UA and EN) hit the Threats card without "night vibration…" wording falsely matching "threat".
+- Settings: search suggests related options as tappable chips ("You might also look for…" / «Можливо, ви також шукаєте») — e.g. "тихо"/"quiet" → Sirens always sound / Vibration / Night mode; "dark"/"темний" → Night mode — plus "Did you mean" chips for near-miss typos ("сирина" → сирена) when nothing else matches.
+- Settings: the search box shrinks into a search button in the header while you scroll the list, so it's always one tap away; tapping it brings the full box back and focuses it.
+- Settings → Night mode: the whole section card (header included) is tinted the darker purple instead of just an inner panel.
+- Settings → Alerts: the battery-exemption block moved here from System with much shorter wording ("Battery exemption" / «Фонова робота», "Allow" / «Дозволити»).
+- Icon packs: the "Classic" pack was removed — only Photo, Army, Comic and Russian remain; anyone who had Classic selected falls back to Photo automatically.
+- Settings → System: "Reset all tips" is now a button (was a row) that re-arms every first-use hint (toggle toasts + the one-time explainers).
+- Settings → Location: periodic GPS sync is now a sub-setting of "Follow me" — it only appears while following, so the cell-tower-vs-GPS choice shows exactly when GPS is in use.
+- Settings → Location: the "Calibrate GPS" button now shows a "finding you" toast while it acquires a precise fix.
+- Notifications: tapping an alert notification now reliably reveals the threat — the reveal-carrying intent uses its own PendingIntent request code so the plain status/tally/milestone intents can't wipe its extras (which left the app stuck on whatever screen you were on).
+- Notifications: the ongoing status notification now reads "Monitoring GPS" / «Моніторинг GPS» when following, or "Monitoring Odesa" / «Моніторинг Одеса» (pinned city) when pinned — was a long sentence or the bare city name.
+
+- Notifications: the resolved-threats tally now counts only threats resolved in your oblast (or the pinned city's oblast) by default — the old per-threat reach radius is gone; a new "All of Ukraine" sub-setting in Settings → Alerts counts resolved threats anywhere in the country.
+- Settings: the shelter button toggle and the shelter directory moved out of the Alerts section into their own dedicated "Shelter" section card.
+
 - Map: threat icons now stay small when you zoom out and grow as you zoom in — 0.55× at the country view, growing linearly to a 2.0× cap once the viewport is roughly 5 km wide, and flat beyond (was: fixed 1.0× below zoom 10, up to 3.0× at zoom 13).
 - Shelters: the adult and adult+kid walk times now sit on one line in the shelter list rows, and the maps button reads just "Open" / «Відкрити» (the location icon still leads it).
 - Settings → Night mode: the extra moon icon next to the on/off toggle is gone, the whole section sits in a darker-purple boxed panel again, and the section subtitle appends "· Night zones" / « · Нічні зони» when separate night zones are on.

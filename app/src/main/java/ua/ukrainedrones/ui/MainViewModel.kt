@@ -99,6 +99,7 @@ data class UiState(
     val deathAnimationEnabled: Boolean = true,
     val followBullet: Boolean = true,
     val neutralizedTallyEnabled: Boolean = true,
+    val neutralizedTallyAllUkraine: Boolean = false,
     val fastGroupCollapsed: Boolean = false,
     val slowGroupCollapsed: Boolean = false,
     val fastVibrationLevel: Int = 3,
@@ -258,6 +259,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val deathAnimationEnabled: Boolean,
         val followBullet: Boolean,
         val neutralizedTallyEnabled: Boolean,
+        val neutralizedTallyAllUkraine: Boolean,
 val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
         val fastVibrationLevel: Int,
@@ -301,6 +303,7 @@ val fastGroupCollapsed: Boolean,
         val deathAnimationEnabled: Boolean,
         val followBullet: Boolean,
         val neutralizedTallyEnabled: Boolean,
+        val neutralizedTallyAllUkraine: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean
     )
@@ -352,12 +355,14 @@ val fastGroupCollapsed: Boolean,
             prefs.deathAnimationEnabled(),
             prefs.followBullet(),
             prefs.neutralizedTallyEnabled(),
+            prefs.neutralizedTallyAllUkraine(),
             prefs.fastGroupCollapsed(),
             prefs.slowGroupCollapsed()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4],
-                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12]
+                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12],
+                flags[13]
             )
         },
         combine(
@@ -450,6 +455,7 @@ combine(
             deathAnimationEnabled = b.deathAnimationEnabled,
             followBullet = b.followBullet,
             neutralizedTallyEnabled = b.neutralizedTallyEnabled,
+            neutralizedTallyAllUkraine = b.neutralizedTallyAllUkraine,
             fastGroupCollapsed = b.fastGroupCollapsed,
             slowGroupCollapsed = b.slowGroupCollapsed,
             fastVibrationLevel = vib.first,
@@ -607,6 +613,7 @@ val uiState: StateFlow<UiState> = combine(
             deathAnimationEnabled = prefs.deathAnimationEnabled,
             followBullet = prefs.followBullet,
             neutralizedTallyEnabled = prefs.neutralizedTallyEnabled,
+            neutralizedTallyAllUkraine = prefs.neutralizedTallyAllUkraine,
             fastGroupCollapsed = prefs.fastGroupCollapsed,
             slowGroupCollapsed = prefs.slowGroupCollapsed,
             fastVibrationLevel = prefs.fastVibrationLevel,
@@ -1060,6 +1067,10 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setNeutralizedTallyEnabled(enabled) }
     }
 
+    fun setNeutralizedTallyAllUkraine(enabled: Boolean) {
+        viewModelScope.launch { prefs.setNeutralizedTallyAllUkraine(enabled) }
+    }
+
     fun setLanguage(lang: AppLanguage) {
         viewModelScope.launch { prefs.setLanguage(lang) }
     }
@@ -1088,6 +1099,10 @@ val uiState: StateFlow<UiState> = combine(
             prefs.setBatteryOnboardShown(false)
             prefs.setPermissionPromptDeferred(false)
         }
+    }
+
+    fun resetAllTips() {
+        viewModelScope.launch { prefs.resetAllTips() }
     }
 
     fun selectThreat(threat: Threat?) {

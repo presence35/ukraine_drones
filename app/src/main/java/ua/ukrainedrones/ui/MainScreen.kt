@@ -60,7 +60,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
-private enum class Screen { MAP, SETTINGS, GUIDE, SHELTERS }
+private enum class Screen { MAP, SETTINGS, GUIDE, SHELTERS, DEBUG }
 
 private val UkraineBlue = Color(0xFF005BBB)
 private val UkraineYellow = Color(0xFFFFD500)
@@ -200,6 +200,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             showZonesSheet = showZonesSheet,
             onShowZonesSheetChange = { showZonesSheet = it },
             onOpenShelters = { screen = Screen.SHELTERS },
+            onOpenDebug = {
+                showConnectionInfo = false
+                screen = Screen.DEBUG
+            },
             shelterTipRemaining = shelterTipRemaining,
             onShelterTipShown = {
                 val r = shelterTipRemaining - 1
@@ -257,6 +261,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
+                neutralizedTallyAllUkraine = uiState.neutralizedTallyAllUkraine,
                 fastGroupCollapsed = uiState.fastGroupCollapsed,
                 slowGroupCollapsed = uiState.slowGroupCollapsed,
                 versionName = BuildConfig.VERSION_NAME,
@@ -304,6 +309,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
                 onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
+                onNeutralizedTallyAllUkraineChange = { viewModel.setNeutralizedTallyAllUkraine(it) },
                 onFastGroupCollapse = { viewModel.setFastGroupCollapsed(it) },
                 onSlowGroupCollapse = { viewModel.setSlowGroupCollapsed(it) },
                 onExit = onExit,
@@ -312,6 +318,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                     viewModel.relaunchSetup()
                     wizardOpenedDuringAlert = true
                     wizardFromSettings = true
+                },
+                onResetTips = {
+                    viewModel.resetAllTips()
+                    showToast(context, Strings.get(uiState.language).resetTipsTitle, cardVisible = false)
                 },
                 onOpenGuide = {
                     guideFromSettings = true
@@ -337,6 +347,14 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 withKids = uiState.sheltersWithKids,
                 onWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
                 now = uiState.now,
+                onBack = { screen = Screen.MAP }
+            )
+        }
+        if (screen == Screen.DEBUG) {
+            BackHandler { screen = Screen.MAP }
+            DebugLogScreen(
+                s = Strings.get(uiState.language),
+                lang = uiState.language,
                 onBack = { screen = Screen.MAP }
             )
         }
@@ -780,6 +798,7 @@ private fun MapScreen(
     showZonesSheet: Boolean,
     onShowZonesSheetChange: (Boolean) -> Unit,
     onOpenShelters: () -> Unit,
+    onOpenDebug: () -> Unit,
     shelterTipRemaining: Int,
     onShelterTipShown: () -> Unit
 ) {
@@ -938,6 +957,7 @@ private fun MapScreen(
                     backupOfflineElapsedSec = uiState.backupOfflineElapsedSec,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
+                    onOpenDebug = onOpenDebug,
                     showInfo = showConnectionInfo,
                     onShowInfoChange = onShowConnectionInfoChange,
                     s = s,

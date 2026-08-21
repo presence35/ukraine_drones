@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -60,11 +62,13 @@ import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription as semanticsContentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -91,106 +95,214 @@ data class SettingsCollapseState(
     val location: Boolean = false,
     val nightMode: Boolean = false,
     val alerts: Boolean = false,
+    val shelters: Boolean = false,
     val threats: Boolean = false,
     val system: Boolean = false
 ) {
     companion object {
         val Saver = Saver<SettingsCollapseState, BooleanArray>(
-            save = { it.let { s -> BooleanArray(5).apply {
+            save = { it.let { s -> BooleanArray(6).apply {
                 this[0] = s.location; this[1] = s.nightMode; this[2] = s.alerts
-                this[3] = s.threats; this[4] = s.system
+                this[3] = s.shelters; this[4] = s.threats; this[5] = s.system
             } } },
             restore = { b -> SettingsCollapseState(
                 location = b.getOrElse(0) { false },
                 nightMode = b.getOrElse(1) { false },
                 alerts = b.getOrElse(2) { false },
-                threats = b.getOrElse(3) { false },
-                system = b.getOrElse(4) { false }
+                shelters = b.getOrElse(3) { false },
+                threats = b.getOrElse(4) { false },
+                system = b.getOrElse(5) { false }
             ) }
         )
     }
 }
 
-/** The five collapsible section cards, in LazyColumn order (item 0 is the search box, item 1
+/** The collapsible section cards, in LazyColumn order (item 0 is the search box, item 1
  *  the disclaimer card). `index` is the section's LazyColumn position with the full list shown. */
 private enum class SettingsSection(val index: Int) {
-    LOCATION(2), NIGHT(3), ALERTS(4), THREATS(5), SYSTEM(6)
+    LOCATION(2), NIGHT(3), ALERTS(4), SHELTERS(5), THREATS(6), SYSTEM(7)
 }
 
 /** Standalone action buttons below the section cards, also matched by the search box. */
 private enum class StandaloneSetting { RELAUNCH, GUIDE, UPDATE, EXIT }
 
-/** Searchable text for every section, in both app languages (the active set and the other one),
- *  so a query matches regardless of which language the UI is showing. */
-private fun settingsSearchTexts(lang: AppLanguage): Map<SettingsSection, List<String>> {
-    val s = Strings.get(lang)
-    val o = Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA)
-    fun both(vararg getters: (Strings.StringSet) -> String): List<String> =
-        listOf(s, o).flatMap { ss -> getters.map { it(ss) } }.map { it.lowercase() }
-    val groupTitles = (if (lang == AppLanguage.UA) listOf(lang, AppLanguage.EN)
-        else listOf(lang, AppLanguage.UA))
-        .flatMap { fastAndSlowGroups(it).map { g -> g.second.lowercase() } }
-    val threatInfo = ThreatTypeCatalog.INFO.values.flatMap { info ->
-        listOf(info.labelUa, info.labelEn, info.descriptionUa, info.descriptionEn,
-            info.detailsUa, info.detailsEn)
-    }.map { it.lowercase() }
-    return mapOf(
-        SettingsSection.LOCATION to both(
-            { it.locationSectionTitle }, { it.followMeTitle }, { it.followMeDesc },
-            { it.pinCityTitle }, { it.pinCityDesc }, { it.periodicGpsTitle }, { it.periodicGpsDesc },
-            { it.gpsStatusTitle }, { it.calibrateGpsNow }, { it.networkLocationOnly },
-            { it.shelterGpsUnknown }, { it.lastGpsFixFormat }, { it.gpsFixJustNow }
-        ),
-        SettingsSection.NIGHT to both(
-            { it.nightModeLabel }, { it.nightModeDesc }, { it.nightStartTimeLabel },
-            { it.nightEndTimeLabel }, { it.nightSoundLabel }, { it.nightZoneSirenOverrideTitle },
-            { it.nightZoneSirenOverrideDesc }, { it.nightOfficialSirenOverrideTitle },
-            { it.nightOfficialSirenOverrideDesc }, { it.nightCustomZonesTitle }, { it.nightCustomZonesDesc },
-            { it.nightVibrationLabel }, { it.nightVibrationDesc }, { it.nightMuteExitNote },
-            { it.slowSectionLabel }, { it.fastSectionLabel }, { it.dayShortLabel },
-            { it.kmUnit }, { it.minUnit }, { it.alertsBellToggle }
-        ) + groupTitles,
-        SettingsSection.ALERTS to both(
-            { it.alertsLabel }, { it.officialAlertsTitle }, { it.officialAlertsDesc },
-            { it.officialAlertsRedTridentNote }, { it.sirenOverrideTitle }, { it.sirenOverrideDesc },
-            { it.shelterSettingsTitle }, { it.shelterSettingsDesc }, { it.shelterViewListLabel },
-            { it.shelterViewListDesc }, { it.neutralizedTallyTitle }, { it.neutralizedTallyDesc },
-            { it.vibrationTitle }, { it.vibrationDesc }, { it.fastGroupLabel }, { it.slowGroupLabel },
-            { it.vibrationOff }, { it.vibrationSoft }, { it.vibrationMedium }, { it.vibrationUrgent },
-            { it.vibrationStrong }
-        ),
-        SettingsSection.THREATS to both(
-            { it.threatsLabel }, { it.threatMapLabel }, { it.threatAlertLabel },
-            { it.fastGroupLabel }, { it.slowGroupLabel }, { it.fastGroupIconDesc },
-            { it.slowGroupIconDesc }, { it.moreInfoLabel }, { it.speedUnit }
-        ) + groupTitles + threatInfo,
-        SettingsSection.SYSTEM to both(
-            { it.systemSectionTitle }, { it.languageLabel }, { it.cardSizeLabel },
-            { it.cardSizeSmallLabel }, { it.cardSizeLargeLabel }, { it.cardSkullNote },
-            { it.approxNote }, { it.iconSetTitle }, { it.iconSetClassicLabel },
-            { it.iconSetPhotoLabel }, { it.iconSetArmyLabel }, { it.iconSetComicLabel },
-            { it.iconSetRussianLabel }, { it.showMapScaleTitle }, { it.showMapScaleDesc },
-            { it.deathAnimationTitle }, { it.deathAnimationDesc }, { it.followBulletTitle },
-            { it.followBulletDesc }, { it.batteryTitle }, { it.batteryBody }, { it.batteryGranted },
-            { it.batteryAllowButton }, { it.madeBy }
-        )
-    )
+/** A suggestion chip shown by the search box: a tappable hint that fills the query with a
+ *  keyword that resolves to its setting. */
+private data class SearchChip(
+    val labelUa: String,
+    val labelEn: String,
+    val queryUa: String,
+    val queryEn: String
+) {
+    fun label(lang: AppLanguage): String = if (lang == AppLanguage.UA) labelUa else labelEn
+    fun query(lang: AppLanguage): String = if (lang == AppLanguage.UA) queryUa else queryEn
 }
 
-/** Searchable text for the standalone action buttons, in both app languages. */
-private fun settingsStandaloneTexts(lang: AppLanguage): Map<StandaloneSetting, List<String>> {
-    val s = Strings.get(lang)
-    val o = Strings.get(if (lang == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA)
-    fun both(vararg getters: (Strings.StringSet) -> String): List<String> =
-        listOf(s, o).flatMap { ss -> getters.map { it(ss) } }.map { it.lowercase() }
-    return mapOf(
-        StandaloneSetting.RELAUNCH to both({ it.relaunchSetupTitle }),
-        StandaloneSetting.GUIDE to both({ it.guideSettingsButton }),
-        StandaloneSetting.UPDATE to both(
-            { it.updateButton }, { it.updateAvailableButton }, { it.checkForUpdates }
+/** A related concept: alternative words a user might type (synonyms, intent words, other
+ *  languages) mapped to the suggestion chips that point at what they probably want. */
+private data class RelatedConcept(
+    val words: List<String>,
+    val chips: List<SearchChip>
+)
+
+/** Normalizes text for search matching: lowercase, drop apostrophes/quotes, dashes → spaces. */
+private fun String.searchNorm(): String = lowercase()
+    .replace(Regex("[''´`]"), "")
+    .replace(Regex("[-–—]"), " ")
+    .replace(Regex("\\s+"), " ")
+    .trim()
+
+/** True when every query word is a substring of at least one keyword. */
+private fun matchesSearch(queryWords: List<String>, keywords: List<String>): Boolean =
+    queryWords.all { qw -> keywords.any { qw in it } }
+
+/** Classic Levenshtein edit distance, for the "did you mean" suggestions. */
+private fun levenshtein(a: String, b: String): Int {
+    if (a == b) return 0
+    if (a.isEmpty()) return b.length
+    if (b.isEmpty()) return a.length
+    var prev = IntArray(b.length + 1) { it }
+    for (i in 1..a.length) {
+        val cur = IntArray(b.length + 1) { j -> if (j == 0) i else 0 }
+        for (j in 1..b.length) {
+            cur[j] = minOf(
+                prev[j] + 1,
+                cur[j - 1] + 1,
+                prev[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1
+            )
+        }
+        prev = cur
+    }
+    return prev[b.length]
+}
+
+private fun searchChip(labelUa: String, labelEn: String, queryUa: String, queryEn: String) =
+    SearchChip(labelUa, labelEn, queryUa.searchNorm(), queryEn.searchNorm())
+
+private fun chipList(vararg c: SearchChip) = c.toList()
+
+/** The search database: curated direct keywords per target + pooled related concepts. */
+private data class SettingsSearchDb(
+    val sectionDirect: Map<SettingsSection, List<String>>,
+    val standaloneDirect: Map<StandaloneSetting, List<String>>,
+    val related: List<RelatedConcept>
+)
+
+/** Builds the settings search database. Direct keywords are curated (both languages), threat-type
+ *  terms are auto-derived from the catalog, and related concepts map user intents to chips.
+ *  Future languages extend the keyword/concept lists without changing the matching logic. */
+private fun buildSearchDb(pinnedCity: City?): SettingsSearchDb {
+    fun kw(vararg words: String): List<String> =
+        words.map { it.searchNorm() }.filter { it.isNotBlank() }.distinct()
+    val threatTerms = ThreatTypeCatalog.INFO.values.flatMap { info ->
+        val ua = info.labelUa.searchNorm()
+        val en = info.labelEn.searchNorm()
+        listOf(ua, en) + ua.split(" ") + en.split(" ")
+    }.filter { it.length >= 2 }
+    val cityTerms = pinnedCity?.let { listOf(it.nameUa.searchNorm(), it.nameEn.searchNorm()) }
+        ?: emptyList()
+    val sectionDirect = mapOf(
+        SettingsSection.LOCATION to kw(
+            "follow", "follow me", "location", "focus", "pin", "city", "gps", "calibrate",
+            "periodic", "network", "fix", "refresh", "position",
+            "локація", "фокус", "місто", "прив'язка", "пін", "слідувати", "за мною",
+            "калібрування", "періодичн", "мереж", "фікс", "позиція"
+        ) + cityTerms,
+        SettingsSection.NIGHT to kw(
+            "night", "night mode", "zone", "zones", "vibration", "vibrate",
+            "ніч", "нічний", "вночі", "зона", "зони", "вібрація"
         ),
-        StandaloneSetting.EXIT to both({ it.exitButton })
+        SettingsSection.ALERTS to kw(
+            "alert", "alerts", "siren", "sirens", "sound", "official", "notification",
+            "vibration", "vibrate", "tally", "neutralized", "volume", "chime",
+            "оповіщення", "сповіщення", "сирена", "звук", "офіційн", "офіційна",
+            "офіційні", "вібрація", "вібро", "лічильник", "знешкоджен", "гучність"
+        ),
+        SettingsSection.SHELTERS to kw(
+            "shelter", "shelters", "directory", "укриття", "сховище", "бомбосховище", "каталог"
+        ),
+        SettingsSection.THREATS to (kw(
+            "threat", "threats", "map", "icon", "icons", "fast", "slow", "type", "types", "group",
+            "загроз", "загроза", "загрози", "мапа", "іконка", "іконки", "швидкі", "повільні",
+            "швидк", "повільн", "тип", "типи", "група",
+            "shahed", "шахед", "moped", "мопед", "drone", "дрон", "безпілотник", "бпла", "uav",
+            "fpv", "фпв", "missile", "ракета", "cruise", "крилата", "ballistic", "балістика",
+            "балістична", "kab", "каб", "bomb", "бомба", "aviation", "авіація", "mig", "міг",
+            "літак", "recon", "reconnaissance", "розвідка", "розвідувальний", "unknown", "невідомий"
+        ) + threatTerms),
+        SettingsSection.SYSTEM to kw(
+            "system", "display", "interface", "language", "ukrainian", "english", "icon", "icons",
+            "card", "cards", "size", "scale", "death", "animation", "bullet", "battery", "exempt",
+            "система", "інтерфейс", "дисплей", "мова", "українськ", "англійськ", "іконка", "іконки",
+            "картка", "картки", "розмір", "масштаб", "анімація", "вибух", "куля", "батарея",
+            "енерг", "звільнення"
+        )
     )
+    val standaloneDirect = mapOf(
+        StandaloneSetting.RELAUNCH to kw(
+            "relaunch", "replay", "wizard", "setup", "перезапуск", "повторити", "початкове"
+        ),
+        StandaloneSetting.GUIDE to kw(
+            "guide", "help", "features", "путівник", "допомога", "функції"
+        ),
+        StandaloneSetting.UPDATE to kw(
+            "update", "check", "download", "version", "new", "оновлення", "перевір", "завантаж", "версія"
+        ),
+        StandaloneSetting.EXIT to kw(
+            "exit", "stop", "monitoring", "quit", "вийти", "зупинити", "моніторинг", "вихід"
+        )
+    )
+    val related = listOf(
+        RelatedConcept(kw("quiet", "тихо", "mute", "беззвучний", "тиша", "silent"), chipList(
+            searchChip("Сирена завжди", "Sirens always sound", "сирена", "sirens"),
+            searchChip("Вібрація", "Vibration", "вібрація", "vibration")
+        )),
+        RelatedConcept(kw("ring", "дзвонити", "дзвінок", "alarm", "будильник", "гудок"), chipList(
+            searchChip("Сирена завжди", "Sirens always sound", "сирена", "sirens")
+        )),
+        RelatedConcept(kw("air raid", "тривога", "сигнал", "emergency", "екстрений"), chipList(
+            searchChip("Офіційні сповіщення", "Official alerts", "офіційні", "official")
+        )),
+        RelatedConcept(kw("bomb shelter", "бомбосховище", "сховище"), chipList(
+            searchChip("Укриття", "Shelters", "укриття", "shelter")
+        )),
+        RelatedConcept(kw("dark", "темний", "темрява", "сон", "sleep", "тихіший", "вечір", "evening"), chipList(
+            searchChip("Нічний режим", "Night mode", "ніч", "night")
+        )),
+        RelatedConcept(kw("danger", "небезпека", "небезпечний"), chipList(
+            searchChip("Типи загроз", "Threat types", "загрози", "threats")
+        )),
+        RelatedConcept(kw("plane", "літак", "вертоліт", "helicopter", "aircraft", "гелікоптер"), chipList(
+            searchChip("Авіація", "Aviation", "авіація", "aviation")
+        )),
+        RelatedConcept(kw("theme", "тема", "темна", "оформлення", "вигляд", "appearance"), chipList(
+            searchChip("Стиль іконок", "Icon style", "іконки", "icon"),
+            searchChip("Розмір картки", "Card size", "розмір", "size")
+        )),
+        RelatedConcept(kw("переклад", "translation", "translate", "мови"), chipList(
+            searchChip("Мова", "Language", "мова", "language")
+        )),
+        RelatedConcept(kw("вибух", "explosion", "ефект", "effect"), chipList(
+            searchChip("Анімація знищення", "Death animation", "анімація", "death animation")
+        )),
+        RelatedConcept(kw("заряд", "автономність", "charge", "power", "енергозбереження", "економія"), chipList(
+            searchChip("Батарея", "Battery exemption", "батарея", "battery")
+        )),
+        RelatedConcept(kw("геолокація", "місцезнаходження", "трекінг", "tracking", "координати", "coordinates", "де я", "звідки"), chipList(
+            searchChip("Слідувати за мною", "Follow me", "слідувати", "follow me"),
+            searchChip("Прив'язати місто", "Pin city", "місто", "pin city")
+        )),
+        RelatedConcept(kw("інструкція", "як працює", "how to", "tutorial", "що нового"), chipList(
+            searchChip("Путівник", "Feature guide", "путівник", "guide")
+        )),
+        RelatedConcept(kw("вимкнути", "disable", "turn off", "вимкнення"), chipList(
+            searchChip("Зупинити й вийти", "Stop & exit", "вийти", "exit")
+        )),
+        RelatedConcept(kw("час", "time", "розклад", "schedule"), chipList(
+            searchChip("Нічний режим", "Night mode", "ніч", "night")
+        ))
+    )
+    return SettingsSearchDb(sectionDirect, standaloneDirect, related)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -242,6 +354,7 @@ fun SettingsScreen(
     deathAnimationEnabled: Boolean,
     followBullet: Boolean,
     neutralizedTallyEnabled: Boolean,
+    neutralizedTallyAllUkraine: Boolean,
     fastGroupCollapsed: Boolean,
     slowGroupCollapsed: Boolean,
     versionName: String,
@@ -289,30 +402,64 @@ fun SettingsScreen(
     onDeathAnimationChange: (Boolean) -> Unit,
     onFollowBulletChange: (Boolean) -> Unit,
     onNeutralizedTallyChange: (Boolean) -> Unit,
+    onNeutralizedTallyAllUkraineChange: (Boolean) -> Unit,
     onFastGroupCollapse: (Boolean) -> Unit,
     onSlowGroupCollapse: (Boolean) -> Unit,
     onExit: () -> Unit,
     onCheckUpdate: () -> Unit,
     onOpenGuide: () -> Unit,
-    onRelaunchSetup: () -> Unit
+    onRelaunchSetup: () -> Unit,
+    onResetTips: () -> Unit = {}
 ) {
     val s = Strings.get(lang)
-    // Search box: filters sections + standalone actions, auto-expands matches. Query lives in
-    // plain remember so it clears itself every time the screen is reopened.
+    // Search box: filters sections + standalone actions by curated keywords, surfaces suggestion
+    // chips for related concepts and "did you mean" for typos. Query is plain remember so it
+    // clears itself every time the screen is reopened.
     var searchQuery by remember { mutableStateOf("") }
-    val searchNorm = searchQuery.trim().lowercase()
-    val searching = searchNorm.isNotEmpty()
-    val sectionTexts = remember(lang) { settingsSearchTexts(lang) }
-    val matchedSections = remember(searchNorm, sectionTexts) {
-        if (searching) sectionTexts.filterValues { texts -> texts.any { it.contains(searchNorm) } }.keys
+    val searchNormalized = searchQuery.searchNorm()
+    val searchWords = searchNormalized.split(" ").filter { it.isNotBlank() }
+    val searching = searchNormalized.isNotEmpty()
+    val searchDb = remember(pinnedCity) { buildSearchDb(pinnedCity) }
+    val matchedSections = remember(searchNormalized, searchDb) {
+        if (searching) searchDb.sectionDirect.filterValues { matchesSearch(searchWords, it) }.keys
         else emptySet()
     }
-    val standaloneTexts = remember(lang) { settingsStandaloneTexts(lang) }
-    val matchedStandalone = remember(searchNorm, standaloneTexts) {
-        if (searching) standaloneTexts.filterValues { texts -> texts.any { it.contains(searchNorm) } }.keys
+    val matchedStandalone = remember(searchNormalized, searchDb) {
+        if (searching) searchDb.standaloneDirect.filterValues { matchesSearch(searchWords, it) }.keys
         else emptySet()
     }
-    val noSearchResults = searching && matchedSections.isEmpty() && matchedStandalone.isEmpty()
+    val relatedChips = remember(searchNormalized, searchDb) {
+        if (!searching) emptyList()
+        else searchDb.related
+            .filter { (words, _) -> matchesSearch(searchWords, words) }
+            .flatMap { it.chips }
+            .distinctBy { it.labelUa }
+            .take(8)
+    }
+    val allSearchKeywords = remember(searchDb) {
+        searchDb.sectionDirect.values.flatten() + searchDb.standaloneDirect.values.flatten() +
+            searchDb.related.flatMap { it.words }
+    }
+    val didYouMeanChips = remember(searchNormalized, searchDb) {
+        if (searching && searchWords.size == 1 && matchedSections.isEmpty() &&
+            matchedStandalone.isEmpty() && relatedChips.isEmpty()
+        ) {
+            val q = searchWords[0]
+            allSearchKeywords.asSequence()
+                .filter { kotlin.math.abs(it.length - q.length) <= 2 }
+                .map { it to levenshtein(it, q) }
+                .filter { it.second in 1..2 }
+                .sortedBy { it.second }
+                .map { it.first }
+                .distinct()
+                .take(4)
+                .map { SearchChip(it, it, it, it) }
+                .toList()
+        } else emptyList()
+    }
+    val noSearchResults = searching && matchedSections.isEmpty() && matchedStandalone.isEmpty() &&
+        relatedChips.isEmpty() && didYouMeanChips.isEmpty()
+    val keyboard = LocalSoftwareKeyboardController.current
     val appContext = LocalContext.current
     var batteryOptimized by remember { mutableStateOf(BatteryOptimization.isIgnoringBatteryOptimizations(appContext)) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -393,7 +540,28 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(s.settingsTitle) },
+                title = {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text(s.settingsSearchHint) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null)
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = s.settingsSearchClear)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() })
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = s.backButton)
@@ -410,25 +578,27 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text(s.settingsSearchHint) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null)
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = s.settingsSearchClear)
-                            }
+            if (relatedChips.isNotEmpty() || didYouMeanChips.isNotEmpty()) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        if (relatedChips.isNotEmpty()) {
+                            SearchChipsRow(
+                                label = s.settingsSearchRelated,
+                                chips = relatedChips,
+                                lang = lang,
+                                onChip = { searchQuery = it.query(lang) }
+                            )
                         }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp)
-                )
+                        if (didYouMeanChips.isNotEmpty()) {
+                            SearchChipsRow(
+                                label = s.settingsDidYouMean,
+                                chips = didYouMeanChips,
+                                lang = lang,
+                                onChip = { searchQuery = it.query(lang) }
+                            )
+                        }
+                    }
+                }
             }
 
             item {
@@ -482,7 +652,7 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.locationSectionTitle,
                     icon = rememberVectorPainter(Icons.Default.LocationOn),
-                    expanded = if (searching) true else collapse.location,
+                    expanded = collapse.location,
                     subtitle = s.locationSubtitle(followMe, pinnedCity?.name(lang), periodicGps),
                     onToggle = { onCollapseChange(collapse.copy(location = !collapse.location)) }
                 ) {
@@ -500,13 +670,19 @@ fun SettingsScreen(
                         pinnedCity = pinnedCity,
                         onChange = onPinnedCityChange
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.periodicGpsTitle,
-                        description = s.periodicGpsDesc,
-                        checked = periodicGps,
-                        onCheckedChange = onPeriodicGpsChange
-                    )
+                    AnimatedVisibility(visible = followMe) {
+                        Column {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Column(modifier = Modifier.padding(start = 24.dp)) {
+                                AlertToggleRow(
+                                    title = s.periodicGpsTitle,
+                                    description = s.periodicGpsDesc,
+                                    checked = periodicGps,
+                                    onCheckedChange = onPeriodicGpsChange
+                                )
+                            }
+                        }
+                    }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     GpsCalibrationRow(
                         lang = lang,
@@ -521,7 +697,7 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.nightModeLabel,
                     icon = painterResource(R.drawable.ic_moon),
-                    expanded = if (searching) true else collapse.nightMode,
+                    expanded = collapse.nightMode,
                     subtitle = s.nightSubtitle(
                         nightEnabled,
                         nightStartMin,
@@ -529,7 +705,9 @@ fun SettingsScreen(
                         nightZoneSirenOverride || nightOfficialSirenOverride,
                         nightUseCustomZones
                     ),
-                    onToggle = { onCollapseChange(collapse.copy(nightMode = !collapse.nightMode)) }
+                    onToggle = { onCollapseChange(collapse.copy(nightMode = !collapse.nightMode)) },
+                    cardColor = NightSectionBg,
+                    cardBorder = NightSectionBorder
                 ) {
                     NightModeCard(
                         lang = lang,
@@ -582,8 +760,8 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.alertsLabel,
                     icon = rememberVectorPainter(Icons.Default.Notifications),
-                    expanded = if (searching) true else collapse.alerts,
-                    subtitle = s.alertsSubtitle(officialAlertsEnabled, sirenOverride, sheltersEnabled),
+                    expanded = collapse.alerts,
+                    subtitle = s.alertsSubtitle(officialAlertsEnabled, sirenOverride),
                     onToggle = { onCollapseChange(collapse.copy(alerts = !collapse.alerts)) }
                 ) {
                     AlertToggleRow(
@@ -606,6 +784,114 @@ fun SettingsScreen(
                         flash = flashId == "sirenOverride"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.neutralizedTallyTitle,
+                        description = s.neutralizedTallyDesc,
+                        checked = neutralizedTallyEnabled,
+                        onCheckedChange = onNeutralizedTallyChange,
+                        icon = rememberVectorPainter(Icons.Default.Notifications),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (neutralizedTallyEnabled) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        AlertToggleRow(
+                            title = s.neutralizedTallyAllUkraineTitle,
+                            description = s.neutralizedTallyAllUkraineDesc,
+                            checked = neutralizedTallyAllUkraine,
+                            onCheckedChange = onNeutralizedTallyAllUkraineChange,
+                            icon = rememberVectorPainter(Icons.Default.Notifications),
+                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Text(
+                            s.vibrationTitle,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            s.vibrationDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        VibrationSliderRow(
+                            label = s.fastGroupLabel,
+                            level = fastVibrationLevel,
+                            accent = Color(0xFFE57373),
+                            levelName = { vibrationLevelName(s, it) },
+                            onLevelChange = onFastVibrationChange
+                        )
+                        VibrationSliderRow(
+                            label = s.slowGroupLabel,
+                            level = slowVibrationLevel,
+                            accent = Color(0xFFF9A825),
+                            levelName = { vibrationLevelName(s, it) },
+                            onLevelChange = onSlowVibrationChange
+                        )
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // Battery Optimization
+                    if (batteryOptimized) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_check),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    s.batteryGranted,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                s.batteryBody,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                s.batteryTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                s.batteryBody,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { BatteryOptimization.requestExemption(appContext) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            }
+            if (searching.not() || SettingsSection.SHELTERS in matchedSections) {
+            item {
+                CollapsibleSectionCard(
+                    title = s.shelterSectionTitle,
+                    icon = painterResource(R.drawable.ic_shelter),
+                    expanded = collapse.shelters,
+                    subtitle = s.sheltersSubtitle(sheltersEnabled),
+                    onToggle = { onCollapseChange(collapse.copy(shelters = !collapse.shelters)) }
+                ) {
                     AlertToggleRow(
                         title = s.shelterSettingsTitle,
                         description = s.shelterSettingsDesc,
@@ -652,44 +938,6 @@ fun SettingsScreen(
                             modifier = Modifier.size(18.dp)
                         )
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.neutralizedTallyTitle,
-                        description = s.neutralizedTallyDesc,
-                        checked = neutralizedTallyEnabled,
-                        onCheckedChange = onNeutralizedTallyChange,
-                        icon = rememberVectorPainter(Icons.Default.Notifications),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Text(
-                            s.vibrationTitle,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            s.vibrationDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        VibrationSliderRow(
-                            label = s.fastGroupLabel,
-                            level = fastVibrationLevel,
-                            accent = Color(0xFFE57373),
-                            levelName = { vibrationLevelName(s, it) },
-                            onLevelChange = onFastVibrationChange
-                        )
-                        VibrationSliderRow(
-                            label = s.slowGroupLabel,
-                            level = slowVibrationLevel,
-                            accent = Color(0xFFF9A825),
-                            levelName = { vibrationLevelName(s, it) },
-                            onLevelChange = onSlowVibrationChange
-                        )
-                    }
                 }
             }
 
@@ -699,7 +947,7 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.threatsLabel,
                     icon = rememberVectorPainter(Icons.Default.Warning),
-                    expanded = if (searching) true else collapse.threats,
+                    expanded = collapse.threats,
                     subtitle = s.threatsSubtitle(hiddenTypes.size, silencedTypes.size),
                     onToggle = { onCollapseChange(collapse.copy(threats = !collapse.threats)) }
                 ) {
@@ -796,7 +1044,7 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.systemSectionTitle,
                     icon = painterResource(id = R.drawable.ic_language),
-                    expanded = if (searching) true else collapse.system,
+                    expanded = collapse.system,
                     subtitle = s.systemSubtitle(lang, threatCardSize, iconSet),
                     onToggle = { onCollapseChange(collapse.copy(system = !collapse.system)) }
                 ) {
@@ -905,51 +1153,26 @@ fun SettingsScreen(
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // Battery Optimization
-                    if (batteryOptimized) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_check),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    s.batteryGranted,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                s.batteryBody,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    // Reset tip counters
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                        OutlinedButton(
+                            onClick = onResetTips,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
                             )
+                            Spacer(Modifier.width(10.dp))
+                            Text(s.resetTipsTitle, fontWeight = FontWeight.SemiBold)
                         }
-                    } else {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                s.batteryTitle,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                s.batteryBody,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Button(
-                                onClick = { BatteryOptimization.requestExemption(appContext) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            s.resetTipsDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -1133,14 +1356,6 @@ private fun NightModeCard(
     val s = Strings.get(lang)
     var editing by remember { mutableStateOf<String?>(null) }  // "start" | "end" | null
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = NightSectionBg,
-        border = BorderStroke(1.dp, NightSectionBorder)
-    ) {
     Column {
         AlertToggleRow(
             title = s.nightModeLabel,
@@ -1297,7 +1512,6 @@ private fun NightModeCard(
                 }
             }
         }
-    }
     }
 
     if (editing != null) {
@@ -1710,12 +1924,14 @@ private fun GpsCalibrationRow(
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             localRefreshing = true
+            showToast(context, s.calibratingGps, cardVisible = false)
             LocationTracker.forceRefresh { localRefreshing = false }
         }
     }
     val forceGps: () -> Unit = {
         if (fineGranted) {
             localRefreshing = true
+            showToast(context, s.calibratingGps, cardVisible = false)
             LocationTracker.forceRefresh { localRefreshing = false }
         } else {
             permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -1927,8 +2143,8 @@ private fun CardSizeTile(
 /** Icon-slot size inside an icon-set tile. */
 private val IconTileSlot = 36.dp
 
-/** Icon-style picker: four stacked full-width rows (one per real set — Classic, Photos,
- *  Army, Comic), each showing all seven icons side by side. */
+/** Icon-style picker: four stacked full-width rows (one per real set — Photos,
+ *  Army, Comic, Russian), each showing all seven icons side by side. */
 @Composable
 internal fun IconSetSelector(
     lang: AppLanguage,
@@ -1938,13 +2154,6 @@ internal fun IconSetSelector(
 ) {
     val s = Strings.get(lang)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        IconSetTile(
-            set = ThreatIconSet.CLASSIC,
-            label = s.iconSetClassicLabel,
-            selected = selected == ThreatIconSet.CLASSIC,
-            onClick = { onChange(ThreatIconSet.CLASSIC) },
-            slot = slot
-        )
         IconSetTile(
             set = ThreatIconSet.PHOTO,
             label = s.iconSetPhotoLabel,
@@ -2033,6 +2242,38 @@ private fun Modifier.explainerFlash(active: Boolean): Modifier {
     ) else this
 }
 
+/** A horizontal row of tappable search suggestion chips under the search box. */
+@Composable
+private fun SearchChipsRow(
+    label: String,
+    chips: List<SearchChip>,
+    lang: AppLanguage,
+    onChip: (SearchChip) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            chips.forEach { chip ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onChip(chip) },
+                    label = { Text(chip.label(lang)) }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun CollapsibleSectionCard(
     title: String,
@@ -2040,9 +2281,15 @@ private fun CollapsibleSectionCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     subtitle: String? = null,
+    cardColor: Color? = null,
+    cardBorder: Color? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = if (cardColor != null) CardDefaults.cardColors(containerColor = cardColor) else CardDefaults.cardColors(),
+        border = if (cardBorder != null) BorderStroke(1.dp, cardBorder) else null
+    ) {
         Column {
             Row(
                 modifier = Modifier

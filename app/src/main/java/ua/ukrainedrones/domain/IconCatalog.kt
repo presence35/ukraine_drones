@@ -36,8 +36,7 @@ object IconCatalog {
 
     /** Photo icon for [type], or the classic vector when no photo is bundled (UNKNOWN). */
     fun res(type: ThreatType, set: ThreatIconSet): Int = when (set) {
-        ThreatIconSet.CLASSIC -> classicRes(type)
-        ThreatIconSet.PHOTO -> photoRes(type) ?: classicRes(type)
+    ThreatIconSet.PHOTO -> photoRes(type) ?: classicRes(type)
         ThreatIconSet.ARMY -> armyRes(type) ?: classicRes(type)
         ThreatIconSet.COMIC -> comicRes(type) ?: classicRes(type)
         ThreatIconSet.RUSSIAN -> russianRes(type) ?: classicRes(type)
@@ -147,7 +146,6 @@ object IconCatalog {
         ThreatIconSet.ARMY -> armyBaseDeg(type)
         ThreatIconSet.COMIC -> comicBaseDeg(type)
         ThreatIconSet.RUSSIAN -> russianBaseDeg(type)
-        ThreatIconSet.CLASSIC -> 0f
     }
 }
 
@@ -177,7 +175,7 @@ fun ThreatIcon(
     dimmed: Boolean = false,
     contentDescription: String? = null
 ) {
-    if (type != ThreatType.UNKNOWN && (set == ThreatIconSet.CLASSIC || IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null && IconCatalog.russianRes(type) == null)) {
+    if (type != ThreatType.UNKNOWN && (IconCatalog.photoRes(type) == null && IconCatalog.armyRes(type) == null && IconCatalog.comicRes(type) == null && IconCatalog.russianRes(type) == null)) {
         Icon(
             painter = painterResource(id = IconCatalog.res(type, set)),
             contentDescription = contentDescription,

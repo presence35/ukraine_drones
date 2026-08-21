@@ -20,7 +20,7 @@ enum class AppLanguage { UA, EN }
 enum class ThreatCardSize { SMALL, LARGE }
 
 /** Which visual style is used for threat icons everywhere (map, strip, popups, toggles). */
-enum class ThreatIconSet { CLASSIC, PHOTO, ARMY, COMIC, RUSSIAN }
+enum class ThreatIconSet { PHOTO, ARMY, COMIC, RUSSIAN }
 
 class ZonePrefs(private val context: Context) {
 
@@ -51,6 +51,7 @@ class ZonePrefs(private val context: Context) {
     private val deathAnimationEnabledKey = booleanPreferencesKey("death_animation_enabled")
     private val followBulletKey = booleanPreferencesKey("follow_bullet")
     private val neutralizedTallyEnabledKey = booleanPreferencesKey("neutralized_tally_enabled")
+    private val neutralizedTallyAllUkraineKey = booleanPreferencesKey("neutralized_tally_all_ukraine")
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
     private val fastGroupCollapsedKey = booleanPreferencesKey("fast_group_collapsed")
     private val slowGroupCollapsedKey = booleanPreferencesKey("slow_group_collapsed")
@@ -63,6 +64,7 @@ class ZonePrefs(private val context: Context) {
     private val fastVibrationLevelKey = intPreferencesKey("fast_vibration_level")
     private val slowVibrationLevelKey = intPreferencesKey("slow_vibration_level")
     private val alertHistoryKey = stringPreferencesKey("alert_history")
+    private val debugLogKey = stringPreferencesKey("debug_log")
     private val nightEnabledKey = booleanPreferencesKey("night_enabled")
     private val nightStartMinKey = intPreferencesKey("night_start_min")
     private val nightEndMinKey = intPreferencesKey("night_end_min")
@@ -192,6 +194,17 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setExplainerSeen(id: String, seen: Boolean) {
         context.dataStore.edit { it[booleanPreferencesKey("explainer_seen_$id")] = seen }
+    }
+
+    /** Re-arm every first-use hint: reset the toast counters and re-show the explainers. */
+    suspend fun resetAllTips() {
+        context.dataStore.edit { prefs ->
+            prefs[settingsHintRemainingKey] = 10
+            prefs[threatToggleHintRemainingKey] = 3
+            prefs[shelterTipRemainingKey] = 3
+            listOf("followMe", "nightMode", "officialAlerts", "sirenOverride", "threatToggles", "cardSize")
+                .forEach { id -> prefs.remove(booleanPreferencesKey("explainer_seen_$id")) }
+        }
     }
 
     /** Whether the "follow official guidelines" disclaimer card is collapsed. */
@@ -370,6 +383,14 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[neutralizedTallyEnabledKey] = enabled }
     }
 
+    /** Whether the resolved-threats tally also counts threats anywhere in Ukraine (default: focus oblast only). */
+    fun neutralizedTallyAllUkraine(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[neutralizedTallyAllUkraineKey] ?: false }
+
+    suspend fun setNeutralizedTallyAllUkraine(enabled: Boolean) {
+        context.dataStore.edit { it[neutralizedTallyAllUkraineKey] = enabled }
+    }
+
     /** Whether the pre-migration osmdroid tile caches have already been deleted. */
     fun legacyCacheCleaned(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[legacyCacheCleanedKey] ?: false }
@@ -465,6 +486,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setAlertHistory(serialized: String) {
         context.dataStore.edit { it[alertHistoryKey] = serialized }
+    }
+
+    /** Serialized debug decision log ("at|kind|reason|..." lines), for the Debug log screen. */
+    fun debugLog(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[debugLogKey] ?: "" }
+
+    suspend fun setDebugLog(serialized: String) {
+        context.dataStore.edit { it[debugLogKey] = serialized }
     }
 
     /** Whether the night-mode window is enabled. */

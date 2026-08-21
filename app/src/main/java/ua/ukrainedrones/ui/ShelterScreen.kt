@@ -221,12 +221,27 @@ private fun GpsHeaderRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_adult_kid),
-                    contentDescription = null,
-                    tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
+                val (adultIcon, childIcon) = walkIconPair(withKids)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.width(44.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(adultIcon),
+                        contentDescription = null,
+                        tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    if (childIcon != null) {
+                        Icon(
+                            painter = painterResource(childIcon),
+                            contentDescription = null,
+                            tint = if (withKids) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -319,14 +334,17 @@ private fun ShelterCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    val (walkAdultIcon, walkChildIcon) = walkIconPair(withKids)
                     WalkRow(
-                        icon = R.drawable.ic_adult,
+                        adultIcon = walkAdultIcon,
+                        childIcon = null,
                         text = String.format(s.shelterWalkMinutes, row.walkMinutesAdult),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (withKids) {
                         WalkRow(
-                            icon = R.drawable.ic_adult_kid,
+                            adultIcon = walkAdultIcon,
+                            childIcon = walkChildIcon,
                             text = String.format(s.shelterWalkMinutes, row.walkMinutesKid),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -360,14 +378,28 @@ private fun ShelterCard(
 }
 
 @Composable
-private fun WalkRow(icon: Int, text: String, tint: androidx.compose.ui.graphics.Color) {
+private fun WalkRow(adultIcon: Int, childIcon: Int?, text: String, tint: androidx.compose.ui.graphics.Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(24.dp)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.width(52.dp)
+        ) {
+            Icon(
+                painter = painterResource(adultIcon),
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(24.dp)
+            )
+            if (childIcon != null) {
+                Icon(
+                    painter = painterResource(childIcon),
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
         Spacer(Modifier.width(8.dp))
         Text(
             text,

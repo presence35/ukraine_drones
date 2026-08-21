@@ -149,9 +149,15 @@ object ThreatEvaluator {
 
     fun inFocusOblast(t: Threat, token: String?): Boolean {
         if (token == null) return false
-        return (t.region != null && inOblastText(t.region, token)) ||
-            (t.district != null && inOblastText(t.district, token)) ||
-            (t.locality != null && inOblastText(t.locality, token))
+        return inOblast(t.region, t.district, t.locality, token)
+    }
+
+    /** True when any of the threat's place fields falls in the oblast whose stem is [token]. */
+    fun inOblast(region: String?, district: String?, locality: String?, token: String?): Boolean {
+        if (token == null) return false
+        return (region != null && inOblastText(region, token)) ||
+            (district != null && inOblastText(district, token)) ||
+            (locality != null && inOblastText(locality, token))
     }
 
     private fun inOblastText(text: String, token: String): Boolean =

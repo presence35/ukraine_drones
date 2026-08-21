@@ -107,7 +107,10 @@ data class ThreatRemoved(
     val lat: Double,
     val lon: Double,
     val type: ThreatType,
-    val courseDeg: Double = 0.0
+    val courseDeg: Double = 0.0,
+    val region: String? = null,
+    val district: String? = null,
+    val locality: String? = null
 )
 
 object NeptunClient {
@@ -504,7 +507,7 @@ object NeptunClient {
                     val updated = _state.value.threats.toMutableMap()
                     if (t.status == "resolved") {
                         _removedThreats.tryEmit(
-                            ThreatRemoved(t.id, t.lat, t.lon, t.type, t.courseDeg)
+                            ThreatRemoved(t.id, t.lat, t.lon, t.type, t.courseDeg, t.region, t.district, t.locality)
                         )
                         updated.remove(t.id)
                     } else updated[t.id] = t
@@ -516,7 +519,7 @@ object NeptunClient {
                     val updated = _state.value.threats.toMutableMap()
                     updated.remove(id)?.let { gone ->
                         _removedThreats.tryEmit(
-                            ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg)
+                            ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
                         )
                     }
                     _state.value = _state.value.copy(threats = updated)

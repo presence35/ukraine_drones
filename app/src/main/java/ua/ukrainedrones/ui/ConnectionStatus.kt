@@ -63,6 +63,7 @@ internal fun ConnectionStatus(
     backupOfflineElapsedSec: Long?,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
+    onOpenDebug: () -> Unit,
     showInfo: Boolean,
     onShowInfoChange: (Boolean) -> Unit,
     s: Strings.StringSet,
@@ -220,6 +221,12 @@ internal fun ConnectionStatus(
                     }
                     AlertHistorySection(s, lang, iconSet)
                     ConnectionLogSection(s, lang)
+                    TextButton(
+                        onClick = onOpenDebug,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text(s.debugLogOpen)
+                    }
                 }
             }
         }

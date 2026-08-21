@@ -125,36 +125,62 @@ fun ShelterPopupCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    val (walkAdultIcon, walkChildIcon) = walkIconPair(withKids)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.width(44.dp)
+                    ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_adult),
+                            painter = painterResource(walkAdultIcon),
                             contentDescription = null,
                             tint = Color.White.copy(alpha = 0.8f),
                             modifier = Modifier.size(20.dp)
                         )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            String.format(s.shelterWalkMinutes, shelter.walkMinutesAdult),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.9f)
-                        )
-                    }
-
-                    if (withKids) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (walkChildIcon != null) {
+                            Spacer(Modifier.width(2.dp))
                             Icon(
-                                painter = painterResource(R.drawable.ic_adult_kid),
+                                painter = painterResource(walkChildIcon),
                                 contentDescription = null,
                                 tint = Color.White.copy(alpha = 0.8f),
                                 modifier = Modifier.size(20.dp)
                             )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                String.format(s.shelterWalkMinutes, shelter.walkMinutesKid),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
                         }
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        String.format(s.shelterWalkMinutes, shelter.walkMinutesAdult),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+
+                    if (withKids) {
+                        Spacer(Modifier.width(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.width(44.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(walkAdultIcon),
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            if (walkChildIcon != null) {
+                                Spacer(Modifier.width(2.dp))
+                                Icon(
+                                    painter = painterResource(walkChildIcon),
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            String.format(s.shelterWalkMinutes, shelter.walkMinutesKid),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
                     }
                 }
 

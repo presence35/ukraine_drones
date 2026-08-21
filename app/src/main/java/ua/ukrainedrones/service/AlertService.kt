@@ -74,6 +74,7 @@ class AlertService : Service() {
     private var wasOfficialAlertsEnabled = true
     private var currentReasonThreatId: String? = null
     private var knownZones: Map<String, ThreatZone> = emptyMap()
+    private var debugOfficialActive = false
     private var lastChannelLang: AppLanguage? = null
     private var emptySince: Long? = null
     private var lastMonitorTitle: String? = null
@@ -90,11 +91,12 @@ private var notif3minShown = false
     private var alertEpoch = 0
     private var neutralizedCount = 0
     private var lastNeutralizedType: ThreatType? = null
-    @Volatile private var currentFocus: LatLng? = null
+    @Volatile private var currentToken: String? = null
 
     private sealed class MonitorEvent {
         data class State(
             val focusOblastAlertActive: Boolean,
+            val focusToken: String?,
             val focusAlertSource: AlertSource?,
             val focusBannerCity: String,
             val focusCityUa: String?,
@@ -116,7 +118,9 @@ private var notif3minShown = false
             val offlineElapsedSec: Long?,
             val fastVibrationLevel: Int,
             val slowVibrationLevel: Int,
-            val focusLocation: LatLng?
+            val focusLocation: LatLng?,
+            val nightActive: Boolean,
+            val enabled: Set<ThreatType>
         ) : MonitorEvent()
     }
 
@@ -169,8 +173,10 @@ private var notif3minShown = false
         scope.launch {
             ConnectionLog.attach(applicationContext)
             AlertHistory.attach(applicationContext)
+            DebugLog.attach(applicationContext)
             ConnectionLog.awaitAttached()
             AlertHistory.awaitAttached()
+            DebugLog.awaitAttached()
             NeptunClient.start()
         }
         scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
@@ -234,12 +240,14 @@ private var notif3minShown = false
         // flow, so the tally excludes manual test triggers.
         scope.launch {
             NeptunClient.removedThreats.collect { removed ->
-                val focus = currentFocus ?: return@collect
-                // Count only threats that could have reached the focus: same per-type reach cap
-                // the alerts use. A resolved object far outside its reach (e.g. an FPV at 300 km)
-                // was never a threat to you — it's noise.
-                if (distanceMeters(focus.lat, focus.lon, removed.lat, removed.lon) / 1000.0 > reachKm(removed.type)) return@collect
                 if (!prefs.neutralizedTallyEnabled().first()) return@collect
+                // Default: only count resolutions that could matter to the user — those in the
+                // focus oblast (GPS-follow or pinned). The "All of Ukraine" sub-setting lifts
+                // that to any resolution country-wide.
+                if (!prefs.neutralizedTallyAllUkraine().first()) {
+                    val token = currentToken ?: return@collect
+                    if (!ThreatEvaluator.inOblast(removed.region, removed.district, removed.locality, token)) return@collect
+                }
                 neutralizedCount++
                 lastNeutralizedType = removed.type
                 postNeutralizedTally(prefs.language().first())
@@ -367,6 +375,7 @@ private var notif3minShown = false
                 } else null to null
                 MonitorEvent.State(
                     focusOblastAlertActive = officialActive,
+                    focusToken = attribution.token,
                     focusAlertSource = attribution.token?.let { token -> neptun.alertSourceFor(token) },
                     focusBannerCity = (
                         if (lang == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
@@ -390,7 +399,9 @@ private var notif3minShown = false
                     offlineElapsedSec = neptun.offlineElapsedSec,
                     fastVibrationLevel = effectiveVibration.fast,
                     slowVibrationLevel = effectiveVibration.slow,
-                    focusLocation = focus
+                    focusLocation = focus,
+                    nightActive = nightActive,
+                    enabled = tail.enabled
                 )
             }.collect { handleState(it) }
         }
@@ -412,7 +423,7 @@ private var notif3minShown = false
 
     private suspend fun handleState(state: MonitorEvent.State) {
         val s = Strings.get(state.lang)
-        currentFocus = state.focusLocation
+        currentToken = state.focusToken
 
         if (lastChannelLang != state.lang) {
             updateMonitorChannel(s)
@@ -555,7 +566,7 @@ notifyMonitor(
             title = if (offline != null) {
                 s.offlineStatusTitle
             } else if (state.focusPinned) {
-                state.focusBannerCity
+                String.format(s.notifMonitoringCityFormat, state.focusBannerCity)
             } else {
                 s.notifOngoingTitle
             },
@@ -584,6 +595,7 @@ notifyMonitor(
             .mapNotNull { (id, spatial) -> alertTier(id, spatial)?.let { id to it } }
             .toMap()
         var posted = false
+        var postedId: String? = null
         val newEntries = alertable.entries
             .filter { (id, zone) -> knownZones[id] != zone }
             .sortedBy { it.value.ordinal }
@@ -592,6 +604,7 @@ notifyMonitor(
             // THAT threat as known — every other newly-changed threat stays "unknown" so it
             // gets its own alert on the very next tick instead of being silently absorbed.
             val (id, zone) = newEntries.first()
+            postedId = id
             val t = all[id]
             val body = t?.let { ThreatEvaluator.threatBody(it, state.lang) } ?: s.notifBodyRegion
             postAlert(
@@ -647,6 +660,31 @@ notifyMonitor(
                 System.currentTimeMillis()
             )
         }
+        // Debug log: track the RAW official-alert lifecycle (independent of the notification
+        // toggle) so an alert that was never announced still shows up, with the why.
+        if (!debugOfficialActive && state.focusOblastAlertActive) {
+            debugOfficialActive = true
+            val reasonThreat = state.officialReasonThreatId?.let { all[it] }
+            DebugLog.recordOfficial(
+                DebugLogKind.OFFICIAL_ON,
+                night = state.nightActive,
+                sirenOverride = state.officialSirenOverride,
+                vibrationLevel = reasonThreat?.let {
+                    if (it.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+                } ?: VIBRATION_STRONG,
+                notified = state.officialAlertsEnabled && !posted,
+                reason = when {
+                    !state.officialAlertsEnabled -> DebugLogReason.TOGGLE_OFF
+                    posted -> DebugLogReason.COALESCED
+                    else -> DebugLogReason.FIRED
+                },
+                threatId = reasonThreat?.id,
+                threatType = reasonThreat?.type,
+                locality = reasonThreat?.let { it.locality ?: it.district ?: it.region } ?: state.focusCityUa,
+                distanceKm = distanceFromFocusKm(reasonThreat, state),
+                now = System.currentTimeMillis()
+            )
+        }
         if (officialActive && !wasFocusAlertActive && !posted) {
             val reasonThreat = state.officialReasonThreatId?.let { all[it] }
             postAlert(
@@ -696,10 +734,63 @@ if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAler
             AlertHistory.closeAlert("official", System.currentTimeMillis())
             postAllClear(s, state.focusBannerCity)
             currentReasonThreatId = null
+            debugOfficialActive = false
+            DebugLog.recordOfficial(
+                DebugLogKind.OFFICIAL_OFF,
+                night = state.nightActive,
+                sirenOverride = state.officialSirenOverride,
+                vibrationLevel = null,
+                notified = true,
+                reason = DebugLogReason.FIRED,
+                threatId = null,
+                threatType = null,
+                locality = state.focusCityUa,
+                distanceKm = null,
+                now = System.currentTimeMillis()
+            )
         }
         // An alert that ends (or was never notified) while notifications are off must not leave
         // the "already notified" flag stuck on for a future alert.
-        if (!state.focusOblastAlertActive) wasFocusAlertActive = false
+        if (!state.focusOblastAlertActive) {
+            // Ended while official-alert notifications were off: no all-clear fired, log why.
+            if (debugOfficialActive) {
+                debugOfficialActive = false
+                DebugLog.recordOfficial(
+                    DebugLogKind.OFFICIAL_OFF,
+                    night = state.nightActive,
+                    sirenOverride = state.officialSirenOverride,
+                    vibrationLevel = null,
+                    notified = false,
+                    reason = DebugLogReason.TOGGLE_OFF,
+                    threatId = null,
+                    threatType = null,
+                    locality = state.focusCityUa,
+                    distanceKm = null,
+                    now = System.currentTimeMillis()
+                )
+            }
+            wasFocusAlertActive = false
+        }
+
+        // Debug verdict sweep: log every threat in the active region and why it did or
+        // didn't fire, using the service's own computed maps. Read-only for the decision path.
+        DebugLog.sweep(
+            DebugLogContext(
+                threats = all,
+                focus = state.focusLocation,
+                token = state.focusToken,
+                enabledTypes = state.enabled,
+                zoneThreats = state.zoneThreats,
+                alertable = alertable,
+                knownZones = knownZones,
+                postedId = postedId,
+                night = state.nightActive,
+                sirenOverride = state.zoneSirenOverride,
+                fastVibrationLevel = state.fastVibrationLevel,
+                slowVibrationLevel = state.slowVibrationLevel,
+                now = now
+            )
+        )
 
         // Start the grace window once nothing is active; clear only after it expires.
         // The periodic nowFlow tick re-runs this every grace period, so a quiet stream still
@@ -918,7 +1009,7 @@ if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAler
             }
         }
         return PendingIntent.getActivity(
-            this, 0, intent,
+            this, if (revealThreat != null) 1 else 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
     }

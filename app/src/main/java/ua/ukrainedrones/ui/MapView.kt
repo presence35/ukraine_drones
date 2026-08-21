@@ -279,27 +279,31 @@ private fun shelterMarkerBitmap(
     }
     val markerColor = if (isSelected) Color.WHITE else typeColor
 
-    val strokeW = 2.2f * density
-    val chevronW = 12f * density
-    val chevronH = 7f * density
-    val pad = 3f * density
-    val totalW = (chevronW + 2f * pad).toInt().coerceAtLeast(1)
-    val totalH = (chevronH + 2f * pad).toInt().coerceAtLeast(1)
-
-    val bmp = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bmp)
+val strokeW = 2.6f * density
+    val totalW = (16f * density).toInt().coerceAtLeast(1)
+    val totalH = (13f * density).toInt().coerceAtLeast(1)
+    val pad = 2.5f * density
     val left = pad
     val right = totalW - pad
     val top = pad
     val bottom = totalH - pad
+    val cx = (left + right) / 2f
+    val r = (right - left) / 2f
+    val bulbMidY = top + r
 
-    // Chevron: legs meet at the bottom-centre tip, which is anchored on the shelter spot.
+    val bmp = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+
+    // Teardrop pin: rounded bulb on top tapering to a point at the bottom-centre tip,
+    // which is anchored on the shelter spot.
     val chevron = Path().apply {
-        moveTo(left, top)
-        lineTo((left + right) / 2f, bottom)
-        lineTo(right, top)
+        moveTo(cx, bottom)
+        quadTo(cx + r, bulbMidY + r * 0.6f, cx + r, bulbMidY)
+        quadTo(cx + r, top, cx, top)
+        quadTo(cx - r, top, cx - r, bulbMidY)
+        quadTo(cx - r, bulbMidY + r * 0.6f, cx, bottom)
     }
-canvas.drawPath(chevron, Paint().apply {
+    canvas.drawPath(chevron, Paint().apply {
         isAntiAlias = true
         style = Paint.Style.STROKE
         strokeWidth = strokeW
@@ -574,14 +578,10 @@ fun NeptunMapView(
                 mapView.controller.animateTo(center, 18.0, 400L)
             }
 
-            // Shelter marker tapped: zoom in on the shelter so its close neighbours separate.
+            // Shelter marker tapped: highlight + open its card, but keep the camera where it
+            // is — panning onto every tapped shelter makes the map jump around.
             if (shelterSelectTick != lastShelterSelectTick.value) {
                 lastShelterSelectTick.value = shelterSelectTick
-                selectedShelter?.let { sh ->
-                    mapView.controller.animateTo(
-                        GeoPoint(sh.shelter.lat, sh.shelter.lon), 19.0, 300L
-                    )
-                }
             }
 
             // Alert-zones panel opened: centre + zoom so the whole yellow zone sits in

@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
         cleanLegacyOsmdroidCache()
         ConnectionLog.attach(applicationContext)
         AlertHistory.attach(applicationContext)
+        DebugLog.attach(applicationContext)
         AlertService.start(this)
         setContent {
             // Cap the system font scale so extreme accessibility sizes can't break the layout;

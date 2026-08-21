@@ -33,7 +33,9 @@ object Strings {
         val wizardShelterDesc: String,
         val settingsSearchHint: String,
         val settingsSearchClear: String,
-        val settingsNoResults: String
+        val settingsNoResults: String,
+        val settingsSearchRelated: String,
+        val settingsDidYouMean: String
     )
 
     data class Settings(
@@ -97,6 +99,7 @@ object Strings {
         val redZoneAlert: String,
         val yellowZoneAlert: String,
         val notifOngoingTitle: String,
+        val notifMonitoringCityFormat: String,
         val notifChannelName: String,
         val notifChannelDesc: String,
         val notifBodyRegion: String,
@@ -228,6 +231,8 @@ object Strings {
         val batteryAllowButton: String,
         val batteryLater: String,
         val batteryGranted: String,
+        val resetTipsTitle: String,
+        val resetTipsDesc: String,
         val vibrationTitle: String,
         val vibrationDesc: String,
         val vibrationOff: String,
@@ -245,6 +250,33 @@ object Strings {
         val alertAgeSecSuffix: String,
         val alertAgeMinSuffix: String,
         val alertAgeHrSuffix: String,
+        val debugLogTitle: String,
+        val debugLogEmpty: String,
+        val debugLogClear: String,
+        val debugLogOpen: String,
+        val debugLogDay: String,
+        val debugLogNight: String,
+        val debugLogFired: String,
+        val debugLogSuppressed: String,
+        val debugLogSoundOverride: String,
+        val debugLogSoundFollows: String,
+        val debugLogVibrationFormat: String,
+        val debugReasonBellMuted: String,
+        val debugReasonAlreadyNotified: String,
+        val debugReasonCoalesced: String,
+        val debugReasonTypeOff: String,
+        val debugReasonAdvisory: String,
+        val debugReasonStale: String,
+        val debugReasonOutsideZones: String,
+        val debugReasonToggleOff: String,
+        val debugReasonLeft: String,
+        val debugKindOfficialOn: String,
+        val debugKindOfficialOff: String,
+        val debugKindZoneEnter: String,
+        val debugKindZoneExit: String,
+        val debugKindRegionThreat: String,
+        val debugTierRed: String,
+        val debugTierYellow: String,
         val cardSizeLabel: String,
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
@@ -255,8 +287,9 @@ object Strings {
         val followBulletDesc: String,
         val neutralizedTallyTitle: String,
         val neutralizedTallyDesc: String,
+        val neutralizedTallyAllUkraineTitle: String,
+        val neutralizedTallyAllUkraineDesc: String,
         val iconSetTitle: String,
-        val iconSetClassicLabel: String,
         val iconSetPhotoLabel: String,
         val iconSetArmyLabel: String,
         val iconSetComicLabel: String,
@@ -413,6 +446,8 @@ object Strings {
         val settingsSearchHint: String get() = onboarding.settingsSearchHint
         val settingsSearchClear: String get() = onboarding.settingsSearchClear
         val settingsNoResults: String get() = onboarding.settingsNoResults
+        val settingsSearchRelated: String get() = onboarding.settingsSearchRelated
+        val settingsDidYouMean: String get() = onboarding.settingsDidYouMean
         val settingsButton: String get() = onboarding.settingsButton
         val backButton: String get() = onboarding.backButton
         val languageLabel: String get() = onboarding.languageLabel
@@ -516,17 +551,20 @@ object Strings {
                 if (language == AppLanguage.UA) "Увімкнено · $timeStr$sirenStr$zonesStr" else "Active · $timeStr$sirenStr$zonesStr"
             }
 
-        fun alertsSubtitle(officialAlerts: Boolean, sirenOverride: Boolean, shelters: Boolean): String {
+        fun alertsSubtitle(officialAlerts: Boolean, sirenOverride: Boolean): String {
             val isUa = language == AppLanguage.UA
             val parts = mutableListOf<String>()
             parts.add(if (isUa) "Офіційні: " + (if (officialAlerts) "УВІМК" else "ВИМК") else "Official: " + (if (officialAlerts) "ON" else "OFF"))
             if (sirenOverride) {
                 parts.add(if (isUa) "Сирена завжди: УВІМК" else "Siren override: ON")
             }
-            if (shelters) {
-                parts.add(if (isUa) "Укриття: УВІМК" else "Shelters: ON")
-            }
             return parts.joinToString(" · ")
+        }
+
+        fun sheltersSubtitle(enabled: Boolean): String {
+            val isUa = language == AppLanguage.UA
+            return if (isUa) "Кнопка укриття: " + (if (enabled) "УВІМК" else "ВИМК")
+            else "Shelter button: " + (if (enabled) "ON" else "OFF")
         }
 
         fun threatsSubtitle(hiddenCount: Int, silencedCount: Int, totalCount: Int = 8): String {
@@ -549,7 +587,6 @@ object Strings {
                 ThreatCardSize.LARGE -> cardSizeLargeLabel
             }
             val iconName = when (iconSet) {
-                ThreatIconSet.CLASSIC -> iconSetClassicLabel
                 ThreatIconSet.PHOTO -> iconSetPhotoLabel
                 ThreatIconSet.ARMY -> iconSetArmyLabel
                 ThreatIconSet.COMIC -> iconSetComicLabel
@@ -560,6 +597,7 @@ object Strings {
         val redZoneAlert: String get() = status.redZoneAlert
         val yellowZoneAlert: String get() = status.yellowZoneAlert
         val notifOngoingTitle: String get() = status.notifOngoingTitle
+        val notifMonitoringCityFormat: String get() = status.notifMonitoringCityFormat
         val notifChannelName: String get() = status.notifChannelName
         val notifChannelDesc: String get() = status.notifChannelDesc
         val notifBodyRegion: String get() = status.notifBodyRegion
@@ -682,6 +720,8 @@ object Strings {
         val batteryAllowButton: String get() = misc.batteryAllowButton
         val batteryLater: String get() = misc.batteryLater
         val batteryGranted: String get() = misc.batteryGranted
+        val resetTipsTitle: String get() = misc.resetTipsTitle
+        val resetTipsDesc: String get() = misc.resetTipsDesc
         val vibrationTitle: String get() = misc.vibrationTitle
         val vibrationDesc: String get() = misc.vibrationDesc
         val vibrationOff: String get() = misc.vibrationOff
@@ -699,6 +739,33 @@ object Strings {
         val alertAgeSecSuffix: String get() = misc.alertAgeSecSuffix
         val alertAgeMinSuffix: String get() = misc.alertAgeMinSuffix
         val alertAgeHrSuffix: String get() = misc.alertAgeHrSuffix
+        val debugLogTitle: String get() = misc.debugLogTitle
+        val debugLogEmpty: String get() = misc.debugLogEmpty
+        val debugLogClear: String get() = misc.debugLogClear
+        val debugLogOpen: String get() = misc.debugLogOpen
+        val debugLogDay: String get() = misc.debugLogDay
+        val debugLogNight: String get() = misc.debugLogNight
+        val debugLogFired: String get() = misc.debugLogFired
+        val debugLogSuppressed: String get() = misc.debugLogSuppressed
+        val debugLogSoundOverride: String get() = misc.debugLogSoundOverride
+        val debugLogSoundFollows: String get() = misc.debugLogSoundFollows
+        val debugLogVibrationFormat: String get() = misc.debugLogVibrationFormat
+        val debugReasonBellMuted: String get() = misc.debugReasonBellMuted
+        val debugReasonAlreadyNotified: String get() = misc.debugReasonAlreadyNotified
+        val debugReasonCoalesced: String get() = misc.debugReasonCoalesced
+        val debugReasonTypeOff: String get() = misc.debugReasonTypeOff
+        val debugReasonAdvisory: String get() = misc.debugReasonAdvisory
+        val debugReasonStale: String get() = misc.debugReasonStale
+        val debugReasonOutsideZones: String get() = misc.debugReasonOutsideZones
+        val debugReasonToggleOff: String get() = misc.debugReasonToggleOff
+        val debugReasonLeft: String get() = misc.debugReasonLeft
+        val debugKindOfficialOn: String get() = misc.debugKindOfficialOn
+        val debugKindOfficialOff: String get() = misc.debugKindOfficialOff
+        val debugKindZoneEnter: String get() = misc.debugKindZoneEnter
+        val debugKindZoneExit: String get() = misc.debugKindZoneExit
+        val debugKindRegionThreat: String get() = misc.debugKindRegionThreat
+        val debugTierRed: String get() = misc.debugTierRed
+        val debugTierYellow: String get() = misc.debugTierYellow
         val cardSizeLabel: String get() = misc.cardSizeLabel
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
@@ -709,9 +776,10 @@ object Strings {
         val followBulletDesc: String get() = misc.followBulletDesc
         val neutralizedTallyTitle: String get() = misc.neutralizedTallyTitle
         val neutralizedTallyDesc: String get() = misc.neutralizedTallyDesc
-        val iconSetTitle: String get() = misc.iconSetTitle
-        val iconSetClassicLabel: String get() = misc.iconSetClassicLabel
-        val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
+        val neutralizedTallyAllUkraineTitle: String get() = misc.neutralizedTallyAllUkraineTitle
+        val neutralizedTallyAllUkraineDesc: String get() = misc.neutralizedTallyAllUkraineDesc
+val iconSetTitle: String get() = misc.iconSetTitle
+    val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
         val iconSetArmyLabel: String get() = misc.iconSetArmyLabel
         val iconSetComicLabel: String get() = misc.iconSetComicLabel
         val iconSetRussianLabel: String get() = misc.iconSetRussianLabel
@@ -869,6 +937,8 @@ object Strings {
         settingsSearchHint = "Пошук налаштувань",
         settingsSearchClear = "Очистити пошук",
         settingsNoResults = "Нічого не знайдено",
+        settingsSearchRelated = "Можливо, ви також шукаєте",
+        settingsDidYouMean = "Можливо, ви мали на увазі",
     )
 
     private fun uaSettings() = Settings(
@@ -931,7 +1001,8 @@ object Strings {
     private fun uaStatus() = Status(
         redZoneAlert = "Червона тривога",
         yellowZoneAlert = "Жовта тривога",
-        notifOngoingTitle = "Моніторинг тривог за твоїм приблизним місцезнаходженням",
+        notifOngoingTitle = "Моніторинг GPS",
+        notifMonitoringCityFormat = "Моніторинг %s",
         notifChannelName = "Фоновий статус",
         notifChannelDesc = "Моніторинг працює у фоновому режимі. Вимкнення цього лише приховує статусне сповіщення — сповіщення про повітряну тривогу все одно спрацьовуватимуть.",
         notifBodyRegion = "Одеський регіон",
@@ -1058,11 +1129,13 @@ object Strings {
         connLogDurFormat = "%1\$d хв %2\$d с",
         allClearTitle = "%1\$s: відбій тривоги",
         allClearText = "Офіційна повітряна тривога завершилася.",
-        batteryTitle = "Тривоги мають лунати завжди",
-        batteryBody = "Android може зупиняти застосунок у фоні, щоб економити заряд. Сам застосунок споживає дуже мало енергії — живі сповіщення приходять миттєво, а ваше місцезнаходження визначається економно. Тож дозвіл працювати у фоні не розряджатиме телефон, а тривоги лунатимуть без перешкод. Безпека понад усе.",
-        batteryAllowButton = "Дозволити у фоні",
+        batteryTitle = "Фонова робота",
+        batteryBody = "Android може ставити тривоги на паузу у фоні. Дозвіл фонової роботи гарантує, що сповіщення лунатимуть, — застосунок майже не витрачає заряд.",
+        batteryAllowButton = "Дозволити",
         batteryLater = "Пізніше",
         batteryGranted = "Без обмежень у фоні",
+        resetTipsTitle = "Скинути всі підказки",
+        resetTipsDesc = "Показувати підказки першого запуску знову",
         vibrationTitle = "Вібрація",
         vibrationDesc = "Сила вібрації для швидких і повільних загроз. В Android інтенсивність визначається патерном вібрації: більше значення — довші та частіші імпульси.",
         vibrationOff = "Вимк",
@@ -1080,6 +1153,33 @@ object Strings {
         alertAgeSecSuffix = "сек",
         alertAgeMinSuffix = "хв",
         alertAgeHrSuffix = "год",
+        debugLogTitle = "Журнал діагностики",
+        debugLogEmpty = "Рішень ще не зафіксовано",
+        debugLogClear = "Очистити",
+        debugLogOpen = "Журнал діагностики",
+        debugLogDay = "День",
+        debugLogNight = "Ніч",
+        debugLogFired = "Сповіщення надіслано",
+        debugLogSuppressed = "Без сповіщення — %1\$s",
+        debugLogSoundOverride = "Сигнал завжди",
+        debugLogSoundFollows = "За режимом звуку",
+        debugLogVibrationFormat = "Вібрація: %1\$s",
+        debugReasonBellMuted = "дзвінок вимкнено для цього типу",
+        debugReasonAlreadyNotified = "вже сповіщено для цього рівня",
+        debugReasonCoalesced = "спочатку надіслано іншу тривогу",
+        debugReasonTypeOff = "сповіщення типу вимкнено",
+        debugReasonAdvisory = "спостереження — ніколи не тривожить",
+        debugReasonStale = "застаріла — виключена з тривог",
+        debugReasonOutsideZones = "у регіоні, поза зонами тривоги",
+        debugReasonToggleOff = "сповіщення про офіційні тривоги вимкнено",
+        debugReasonLeft = "покинула регіон",
+        debugKindOfficialOn = "Офіційна тривога увімкнена",
+        debugKindOfficialOff = "Офіційна тривога завершена",
+        debugKindZoneEnter = "Увійшла в зону",
+        debugKindZoneExit = "Покинула зону",
+        debugKindRegionThreat = "Загроза в регіоні",
+        debugTierRed = "Червона зона",
+        debugTierYellow = "Жовта зона",
         cardSizeLabel = "Розмір і деталізація картки загрози",
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
@@ -1089,9 +1189,10 @@ object Strings {
         followBulletTitle = "Слідувати за снарядом",
         followBulletDesc = "Снаряд летить з найближчого великого міста до цілі, а камера слідує за ним до точки удару.",
         neutralizedTallyTitle = "Лічильник завершених загроз",
-        neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, завершених поблизу тебе, доки працює моніторинг.",
+        neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, завершених у твоїй області, доки працює моніторинг.",
+        neutralizedTallyAllUkraineTitle = "Уся Україна",
+        neutralizedTallyAllUkraineDesc = "Враховувати завершені загрози по всій Україні, а не лише у твоїй області.",
         iconSetTitle = "Оберіть свої улюблені іконки загроз!",
-        iconSetClassicLabel = "Класичні",
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
         iconSetComicLabel = "Комікс",
@@ -1117,11 +1218,11 @@ object Strings {
         calibratingGps = "Пошук GPS…",
         lastGpsFixFormat = "Точний GPS: %s",
         gpsFixJustNow = "щойно",
-        gpsFixFresh = "GPS-фікс свіжий",
+        gpsFixFresh = "Точний GPS: свіжий",
         gpsStatusTitle = "Точний GPS",
         networkLocationOnly = "Мережева локація (вежі зв'язку)",
         updatingPreciseGpsToast = "Оновлення точного GPS…",
-        shelterLongPressTip = "Тривале натискання відкриває список укриттів",
+        shelterLongPressTip = "Торкнись укриття, щоб побачити інформацію",
         shelterViewListLabel = "Список укриттів (довідник)",
         shelterViewListDesc = "Переглянути повний список усіх укриттів міста",
         shelterTypeBasic = "Найпростіше укриття",
@@ -1300,6 +1401,8 @@ object Strings {
         settingsSearchHint = "Search settings",
         settingsSearchClear = "Clear search",
         settingsNoResults = "Nothing found",
+        settingsSearchRelated = "You might also look for",
+        settingsDidYouMean = "Did you mean",
     )
 
     private fun enSettings() = Settings(
@@ -1362,7 +1465,8 @@ object Strings {
     private fun enStatus() = Status(
         redZoneAlert = "Red alert",
         yellowZoneAlert = "Yellow alert",
-        notifOngoingTitle = "Alert monitoring your approx location",
+        notifOngoingTitle = "Monitoring GPS",
+        notifMonitoringCityFormat = "Monitoring %s",
         notifChannelName = "Background status",
         notifChannelDesc = "Monitoring runs in the background. Turning this off only hides this status notification — air-raid alerts still sound.",
         notifBodyRegion = "Odesa region",
@@ -1489,11 +1593,13 @@ object Strings {
         connLogDurFormat = "%1\$dm %2\$ds",
         allClearTitle = "%1\$s: all clear",
         allClearText = "The official air-raid alert has ended.",
-        batteryTitle = "Keep alerts running",
-        batteryBody = "Android may pause this app in the background to save battery. The app itself uses very little power — alerts stream in live and your location uses a low-power fix — so allowing unrestricted background use won't drain your phone, and alerts keep ringing. Safety first.",
-        batteryAllowButton = "Allow in background",
+        batteryTitle = "Battery exemption",
+        batteryBody = "Android may pause alerts in the background. Allowing unrestricted background use keeps alerts ringing — the app uses very little power.",
+        batteryAllowButton = "Allow",
         batteryLater = "Later",
         batteryGranted = "Unrestricted in background",
+        resetTipsTitle = "Reset all tips",
+        resetTipsDesc = "Show first-run hints again",
         vibrationTitle = "Vibration",
         vibrationDesc = "Vibration strength for fast and slow threats. Android expresses intensity as a vibration pattern: higher means longer, more frequent pulses.",
         vibrationOff = "Off",
@@ -1511,6 +1617,33 @@ object Strings {
         alertAgeSecSuffix = "sec",
         alertAgeMinSuffix = "min",
         alertAgeHrSuffix = "hr",
+        debugLogTitle = "Debug log",
+        debugLogEmpty = "No decisions logged yet",
+        debugLogClear = "Clear",
+        debugLogOpen = "Debug log",
+        debugLogDay = "Day",
+        debugLogNight = "Night",
+        debugLogFired = "Notification fired",
+        debugLogSuppressed = "No notification — %1\$s",
+        debugLogSoundOverride = "Siren override",
+        debugLogSoundFollows = "Follows ringer",
+        debugLogVibrationFormat = "Vibrate: %1\$s",
+        debugReasonBellMuted = "bell muted for this type",
+        debugReasonAlreadyNotified = "already notified for this tier",
+        debugReasonCoalesced = "another alert posted first",
+        debugReasonTypeOff = "type alerts off in settings",
+        debugReasonAdvisory = "observation threat — never alerts",
+        debugReasonStale = "stale — excluded from alerts",
+        debugReasonOutsideZones = "inside region, outside alert zones",
+        debugReasonToggleOff = "official-alert notifications off",
+        debugReasonLeft = "left the region",
+        debugKindOfficialOn = "Official alert on",
+        debugKindOfficialOff = "Official alert off",
+        debugKindZoneEnter = "Entered zone",
+        debugKindZoneExit = "Left zone",
+        debugKindRegionThreat = "Threat in region",
+        debugTierRed = "Red zone",
+        debugTierYellow = "Yellow zone",
         cardSizeLabel = "Threat card size and detail",
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
@@ -1520,9 +1653,10 @@ object Strings {
         followBulletTitle = "Follow the bullet",
         followBulletDesc = "The projectile launches from the nearest major city toward the target, and the camera glides onto the strike.",
         neutralizedTallyTitle = "Resolved-threats tally",
-        neutralizedTallyDesc = "Show a notification counting threats resolved near you while monitoring is running.",
+        neutralizedTallyDesc = "Show a notification counting threats resolved in your oblast while monitoring is running.",
+        neutralizedTallyAllUkraineTitle = "All of Ukraine",
+        neutralizedTallyAllUkraineDesc = "Also count resolved threats anywhere in Ukraine, not just your oblast.",
         iconSetTitle = "Choose your favourite threat icons!",
-        iconSetClassicLabel = "Classic",
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",
         iconSetComicLabel = "Comic",
@@ -1548,11 +1682,11 @@ object Strings {
         calibratingGps = "Acquiring GPS…",
         lastGpsFixFormat = "Precise GPS: %s",
         gpsFixJustNow = "just now",
-        gpsFixFresh = "GPS fix is fresh",
+        gpsFixFresh = "Precise GPS: fresh",
         gpsStatusTitle = "Precise GPS",
         networkLocationOnly = "Cell tower location only",
         updatingPreciseGpsToast = "Updating precise GPS…",
-        shelterLongPressTip = "Long press to open the shelter list",
+        shelterLongPressTip = "Tap a shelter to see its info",
         shelterViewListLabel = "Shelter directory (reference)",
         shelterViewListDesc = "Browse the full directory of all city shelters",
         shelterTypeBasic = "Basic shelter",
@@ -1772,7 +1906,7 @@ fun resolvedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
  * 1 хвилину" / "3 хвилини" / "5 хвилин" (21, 22-24, 25-30… follow the same rule).
  */
 fun preciseGpsAgePhrase(minutes: Long, lang: AppLanguage): String = when (lang) {
-    AppLanguage.EN -> if (minutes == 1L) "GPS fix is 1 minute old" else "GPS fix is $minutes minutes old"
+    AppLanguage.EN -> if (minutes == 1L) "Precise GPS: 1 min ago" else "Precise GPS: $minutes min ago"
     AppLanguage.UA -> {
         val n10 = minutes % 10
         val n100 = minutes % 100
@@ -1781,7 +1915,7 @@ fun preciseGpsAgePhrase(minutes: Long, lang: AppLanguage): String = when (lang) 
             n10 in 2L..4L && n100 !in 12L..14L -> "хвилини"
             else -> "хвилин"
         }
-        "GPS-фікс застарілий на $minutes $form"
+        "Точний GPS: $minutes $form тому"
     }
 }
 
