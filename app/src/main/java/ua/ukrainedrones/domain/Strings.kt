@@ -231,6 +231,7 @@ object Strings {
         val batteryGranted: String,
         val resetTipsTitle: String,
         val resetTipsDesc: String,
+        val tipsResetToast: String,
         val vibrationOff: String,
         val vibrationSoft: String,
         val vibrationMedium: String,
@@ -286,6 +287,8 @@ object Strings {
         val neutralizedTallyDesc: String,
         val neutralizedTallyAllUkraineTitle: String,
         val neutralizedTallyAllUkraineDesc: String,
+        val neutralizedScopeNearMe: String,
+        val neutralizedScopeAllUkraine: String,
         val iconSetTitle: String,
         val iconSetPhotoLabel: String,
         val iconSetArmyLabel: String,
@@ -717,6 +720,7 @@ object Strings {
         val batteryGranted: String get() = misc.batteryGranted
         val resetTipsTitle: String get() = misc.resetTipsTitle
         val resetTipsDesc: String get() = misc.resetTipsDesc
+        val tipsResetToast: String get() = misc.tipsResetToast
         val vibrationOff: String get() = misc.vibrationOff
         val vibrationSoft: String get() = misc.vibrationSoft
         val vibrationMedium: String get() = misc.vibrationMedium
@@ -772,6 +776,8 @@ object Strings {
         val neutralizedTallyDesc: String get() = misc.neutralizedTallyDesc
         val neutralizedTallyAllUkraineTitle: String get() = misc.neutralizedTallyAllUkraineTitle
         val neutralizedTallyAllUkraineDesc: String get() = misc.neutralizedTallyAllUkraineDesc
+        val neutralizedScopeNearMe: String get() = misc.neutralizedScopeNearMe
+        val neutralizedScopeAllUkraine: String get() = misc.neutralizedScopeAllUkraine
 val iconSetTitle: String get() = misc.iconSetTitle
     val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
         val iconSetArmyLabel: String get() = misc.iconSetArmyLabel
@@ -921,7 +927,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         onboardingFeaturesTitle = "Основні можливості",
         onboardingIntro = "Це налаштування важливе — у застосунку є просунуті функції безпеки, про які варто знати. Виділи 30 секунд і ознайомся зараз, щоб бути готовим, коли це важливо.",
         relaunchSetupTitle = "Повторити початкове налаштування",
-        wizardCareTitle = "Що для вас важливо?",
+        wizardCareTitle = "Які загрози для вас важливі?",
         wizardCareSubtitle = "Усі загрози показано на мапі за замовчуванням; увімкніть сповіщення тут, а в ⚙ налаштуваннях зможете змінити будь-коли.",
         wizardCareOn = "Сповіщати",
         wizardCareOff = "Вимкнено",
@@ -1128,6 +1134,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         batteryGranted = "Без обмежень у фоні",
         resetTipsTitle = "Скинути всі підказки",
         resetTipsDesc = "Показувати підказки першого запуску знову",
+        tipsResetToast = "Підказки скинуто",
         vibrationOff = "Вимк",
         vibrationSoft = "М'яка",
         vibrationMedium = "Середня",
@@ -1183,6 +1190,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, завершених у твоїй області, доки працює моніторинг.",
         neutralizedTallyAllUkraineTitle = "Уся Україна",
         neutralizedTallyAllUkraineDesc = "Враховувати завершені загрози по всій Україні, а не лише у твоїй області.",
+        neutralizedScopeNearMe = "поруч",
+        neutralizedScopeAllUkraine = "по всій Україні",
         iconSetTitle = "Оберіть свої улюблені іконки загроз!",
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
@@ -1382,7 +1391,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         onboardingFeaturesTitle = "Core features",
         onboardingIntro = "This setup is important — this app has advanced safety features you should know about. Take 30 seconds to get familiar now, so you're ready when it matters.",
         relaunchSetupTitle = "Replay first launch",
-        wizardCareTitle = "What matters to you?",
+        wizardCareTitle = "What threats matter to you?",
         wizardCareSubtitle = "Every threat is shown on the map by default; toggle alerts here, and go to ⚙ settings to change anytime.",
         wizardCareOn = "Alert",
         wizardCareOff = "Off",
@@ -1589,6 +1598,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         batteryGranted = "Unrestricted in background",
         resetTipsTitle = "Reset all tips",
         resetTipsDesc = "Show first-run hints again",
+        tipsResetToast = "Tips reset",
         vibrationOff = "Off",
         vibrationSoft = "Soft",
         vibrationMedium = "Medium",
@@ -1644,6 +1654,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizedTallyDesc = "Show a notification counting threats resolved in your oblast while monitoring is running.",
         neutralizedTallyAllUkraineTitle = "All of Ukraine",
         neutralizedTallyAllUkraineDesc = "Also count resolved threats anywhere in Ukraine, not just your oblast.",
+        neutralizedScopeNearMe = "near you",
+        neutralizedScopeAllUkraine = "across Ukraine",
         iconSetTitle = "Choose your favourite threat icons!",
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",

@@ -119,10 +119,10 @@ data class SettingsCollapseState(
     }
 }
 
-/** The collapsible section cards, in LazyColumn order (item 0 is the search box, item 1
- *  the disclaimer card). `index` is the section's LazyColumn position with the full list shown. */
+/** The collapsible section cards, in LazyColumn order (item 0 is the disclaimer card).
+ *  `index` is the section's LazyColumn position with the full list shown. */
 private enum class SettingsSection(val index: Int) {
-    LOCATION(2), NIGHT(3), ALERTS(4), SHELTERS(5), THREATS(6), SYSTEM(7)
+    LOCATION(1), NIGHT(2), ALERTS(3), SHELTERS(4), THREATS(5), SYSTEM(6)
 }
 
 /** Standalone action buttons below the section cards, also matched by the search box. */
@@ -790,14 +790,15 @@ fun SettingsScreen(
                     )
                     if (neutralizedTallyEnabled) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        AlertToggleRow(
-                            title = s.neutralizedTallyAllUkraineTitle,
-                            description = s.neutralizedTallyAllUkraineDesc,
-                            checked = neutralizedTallyAllUkraine,
-                            onCheckedChange = onNeutralizedTallyAllUkraineChange,
-                            icon = rememberVectorPainter(Icons.Default.Notifications),
-                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Box(modifier = Modifier.padding(start = 24.dp)) {
+                            AlertToggleRow(
+                                title = s.neutralizedTallyAllUkraineTitle,
+                                description = s.neutralizedTallyAllUkraineDesc,
+                                checked = neutralizedTallyAllUkraine,
+                                onCheckedChange = onNeutralizedTallyAllUkraineChange,
+                                emoji = "🇺🇦"
+                            )
+                        }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Battery Optimization
@@ -1112,7 +1113,7 @@ fun SettingsScreen(
                                 description = s.followBulletDesc,
                                 checked = followBullet,
                                 onCheckedChange = onFollowBulletChange,
-                                icon = painterResource(R.drawable.ic_explosion),
+                                icon = painterResource(R.drawable.ic_bullet),
                                 iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -1252,15 +1253,35 @@ fun SettingsScreen(
 
             }
             item {
-                Text(
-                    "${s.madeBy} · v$versionName",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                val telegramUrl = "https://t.me/odesaplay_bot"
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.clickable { uriHandler.openUri(telegramUrl) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            s.madeBy,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Image(
+                            painter = painterResource(R.drawable.ic_telegram),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Text(
+                        "v$versionName",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
         }

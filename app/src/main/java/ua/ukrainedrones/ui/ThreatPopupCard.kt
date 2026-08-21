@@ -234,20 +234,15 @@ fun ThreatPopupCard(
                                     contentDescription = typeLabel
                                 )
                                 Spacer(Modifier.width(12.dp))
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        typeLabel,
-                                        fontWeight = FontWeight.SemiBold,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = Color.White
-                                    )
-                                    if (alertsOff) {
-                                        Spacer(Modifier.width(6.dp))
-                                        AlertsOffChip(s)
-                                    }
+                                Text(
+                                    typeLabel,
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (alertsOff) {
+                                    AlertsOffChip(s)
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
@@ -266,11 +261,18 @@ fun ThreatPopupCard(
                             }
                             Spacer(Modifier.height(10.dp))
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                ReliabilityBar(reliability = threat.reliability, s = s, compact = true)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        s.reliabilityShort,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF9E9E9E)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    ReliabilityBar(reliability = threat.reliability, s = s, compact = true)
+                                }
                                 HorizontalLevelBar(level = threatLevel)
                             }
                             Spacer(Modifier.height(8.dp))
@@ -291,16 +293,15 @@ fun ThreatPopupCard(
                                 contentDescription = typeLabel
                             )
                             Spacer(Modifier.width(12.dp))
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    typeLabel,
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White
-                                )
+                            Text(
+                                typeLabel,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (alertsOff) {
+                                AlertsOffChip(s)
                             }
                         }
                         Spacer(Modifier.height(8.dp))

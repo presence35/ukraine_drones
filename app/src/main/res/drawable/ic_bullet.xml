@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Bullet projectile: elongated body with pointed tip and base, striped trail hint -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M14.5,2 L17,12 L14.5,22 L9.5,22 L7,12 L9.5,2 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M7,9 L4,8 L4,10 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M7,14 L4,14 L4,16 Z" />
+</vector>

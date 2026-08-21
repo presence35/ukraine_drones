@@ -319,7 +319,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 },
                 onResetTips = {
                     viewModel.resetAllTips()
-                    showToast(context, Strings.get(uiState.language).resetTipsTitle, cardVisible = false)
+                    showToast(context, Strings.get(uiState.language).tipsResetToast, cardVisible = false)
                 },
                 onOpenGuide = {
                     guideFromSettings = true
@@ -837,7 +837,7 @@ private fun MapScreen(
             showToast(
                 context,
                 s.shelterLongPressTip,
-                cardVisible = uiState.selectedThreat != null || selectedShelter != null || showZonesSheet
+                cardVisible = false
             )
         }
         val willShow = !showNearbyShelters
@@ -1416,12 +1416,8 @@ private fun ShelterButton(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_run),
-                contentDescription = null,
-                tint = fg,
-                modifier = Modifier.size(18.dp)
-            )
+            val walkRes = remember { if (kotlin.random.Random.nextBoolean()) R.drawable.ic_walk_man else R.drawable.ic_walk_woman }
+            WalkFigureIcon(resId = walkRes, height = 18.dp, tint = fg)
             Spacer(Modifier.width(6.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
         }

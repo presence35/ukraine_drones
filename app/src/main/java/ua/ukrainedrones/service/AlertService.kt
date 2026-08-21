@@ -37,6 +37,7 @@ class AlertService : Service() {
         const val ACTION_STOP = "ua.ukrainedrones.STOP"
         const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
         const val ACTION_NEUTRALIZED_DISMISS = "ua.ukrainedrones.NEUTRALIZED_DISMISS"
+        const val ACTION_NEUTRALIZED_TAP = "ua.ukrainedrones.NEUTRALIZED_TAP"
         const val EXTRA_REVEAL_ID = "reveal_threat_id"
         const val EXTRA_REVEAL_LAT = "reveal_threat_lat"
         const val EXTRA_REVEAL_LON = "reveal_threat_lon"
@@ -211,6 +212,15 @@ private var notif3minShown = false
             // neutralizations start a fresh tally instead of resurrecting the dismissed one.
             neutralizedCount = 0
             lastNeutralizedType = null
+        }
+        if (intent?.action == ACTION_NEUTRALIZED_TAP) {
+            neutralizedCount = 0
+            lastNeutralizedType = null
+            val tapIntent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(tapIntent)
+            try { NotificationManagerCompat.from(this).cancel(NOTIF_NEUTRALIZED) } catch (_: SecurityException) {}
         }
         startMonitoring()
         return START_STICKY
@@ -959,16 +969,19 @@ notifyMonitor(
         val lastLine = info?.let {
             String.format(s.neutralizedLastLineFormat, if (lang == AppLanguage.UA) it.labelUa else it.labelEn)
         }
-        val builder = NotificationCompat.Builder(this, CHANNEL_NEUTRALIZED)
-            .setSmallIcon(R.drawable.ic_trident)
-            .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setContentIntent(openAppIntent())
-            .setDeleteIntent(neutralizedDismissPendingIntent())
-        if (lastLine != null) {
-            builder.setContentText(lastLine)
+        scope.launch {
+            val allUkraine = runCatching { ZonePrefs(applicationContext).neutralizedTallyAllUkraine().first() }.getOrDefault(false)
+            val scopeText = if (allUkraine) s.neutralizedScopeAllUkraine else s.neutralizedScopeNearMe
+            val text = if (lastLine != null) "$lastLine · $scopeText" else scopeText
+            val builder = NotificationCompat.Builder(this@AlertService, CHANNEL_NEUTRALIZED)
+                .setSmallIcon(R.drawable.ic_trident)
+                .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
+                .setContentText(text)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setContentIntent(neutralizedTapPendingIntent())
+                .setDeleteIntent(neutralizedDismissPendingIntent())
+            safeNotify(NOTIF_NEUTRALIZED, builder.build())
         }
-        safeNotify(NOTIF_NEUTRALIZED, builder.build())
     }
 
     /** Reset the tally when the user swipes the notification away. */
@@ -976,6 +989,14 @@ notifyMonitor(
         val intent = Intent(this, NeutralizedDismissReceiver::class.java)
         return PendingIntent.getBroadcast(
             this, 2, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    private fun neutralizedTapPendingIntent(): PendingIntent {
+        val intent = Intent(this, AlertService::class.java).setAction(ACTION_NEUTRALIZED_TAP)
+        return PendingIntent.getService(
+            this, 3, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
     }

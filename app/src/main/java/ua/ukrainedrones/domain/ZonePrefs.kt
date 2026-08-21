@@ -256,7 +256,8 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.data.map { prefs ->
             when (prefs[languageKey]) {
                 "EN" -> AppLanguage.EN
-                else -> AppLanguage.UA
+                "UA" -> AppLanguage.UA
+                else -> if (java.util.Locale.getDefault().language == "uk") AppLanguage.UA else AppLanguage.EN
             }
         }
 

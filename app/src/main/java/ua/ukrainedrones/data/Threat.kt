@@ -89,9 +89,9 @@ object ThreatTypeCatalog {
         ),
         ThreatType.KAB to ThreatTypeInfo(
             labelUa = "КАБ",
-            labelEn = "Guided bomb",
+            labelEn = "KAB",
             shortLabelUa = "КАБ",
-            shortLabelEn = "Guided",
+            shortLabelEn = "Kab",
             descriptionUa = "Керовані авіабомби, що застосовуються поблизу лінії фронту.",
             descriptionEn = "Guided aerial bombs, used near the front line.",
             detailsUa = "Керовані плануючі бомби (ФАБ-250…1500 + УМПК) скидають за десятки км і планують на 40–70 км, здебільшого по фронту. БЧ — сотні кг, тому влучання руйнівні. ~900 км/год, але в глибокий тил не дістають. Тривога КАБ важлива для прифронтових/прикордонних регіонів.",
