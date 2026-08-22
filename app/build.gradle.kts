@@ -19,12 +19,12 @@ fun readKeystoreProps(): Properties = Properties().apply {
 
 android {
     namespace = "ua.ukrainedrones"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ua.ukrainedrones"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = (readVersionProps().getProperty("versionCode") ?: "1").toIntOrNull() ?: 1
         versionName = readVersionProps().getProperty("versionName") ?: "0.1.0"
     }

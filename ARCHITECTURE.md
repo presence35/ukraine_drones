@@ -278,6 +278,12 @@ Treat these as a contract. If you change one, update **every** place that relies
   `dataSync` below; the manifest declares both types plus
   `PROPERTY_SPECIAL_USE_FGS_SUBTYPE = "continuous air-raid alert monitoring for user safety"`
   for Play review); alerts stop when it stops. No intermediate server buffers anything.
+  `AlertService.onTimeout()` stops the service gracefully if a capped type (dataSync) ever
+  hits Android 15's 6h/24h background limit — never fires while running as specialUse.
+
+- **Target/compileSdk 36.** Edge-to-edge is enforced at targetSdk 36 (no opt-out): every
+  screen's top bar must inset itself — M3 `TopAppBar` does it automatically; MainScreen's
+  custom banner Row applies `statusBarsPadding()`. New screens must follow this rule.
 
 - **Battery-first location.** Coarse `NETWORK_PROVIDER` only (~2 min / 250 m), never fine GPS.
 

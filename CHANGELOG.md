@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Reliability: the background monitor now runs as a "special use" foreground service on Android 14+ — Android 15 silently stops `dataSync` services after 6 hours, which would have killed 24/7 alert monitoring; the service also stops gracefully instead of crashing if it ever hits a system timeout.
+- Platform: app now targets Android 16 (API 36), ahead of the Play requirement — edge-to-edge display is enforced and the alert banner now draws below the status bar.
+
 - Map: a threat's icon now always faces the direction it actually moves — heading resolution is shared between dead-reckoning (motion) and icon rotation (facing) via a single `motionHeading`, preferring the threat's measured fix-track over the server's reported bearing so the marker never faces a way it isn't going. / Мапа: іконка загрози тепер завжди вказує туди, куди вона реально рухається — кут руху й кут повороту іконки беруться з одного джерела, тож маркер більше не дивиться не туди, куди летить.
 - Threat card: the ETA pill's blue GPS dot now matches the map's location dot — same deep-blue core with a white ring, but with a much subtler glow.
 - Alerts: the alerts.com.ua backup is now always-on alongside NEPTUN — official oblast alerts merge in the moment either source reports them, so an official siren that the backup sees before NEPTUN forwards it rings immediately instead of waiting up to minutes for NEPTUN. An alert now clears only when both sources have dropped it (or when the backup is down and NEPTUN is held). / Тривоги: резерв alerts.com.ua тепер працює постійно разом із NEPTUN — офіційні сигнали тривоги об'єднуються, щойно їх повідомить будь-яке з джерел, тож офіційна сирена, яку резерв бачить раніше за NEPTUN, спрацьовує одразу, а не за хвилини.

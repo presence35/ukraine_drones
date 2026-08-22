@@ -1286,6 +1286,14 @@ private var notif3minShown = false
         scope.cancel()
         super.onDestroy()
     }
+
+    /** Insurance for capped FGS types: if we ever run as dataSync on Android 15+, stop
+     *  cleanly inside the grace window instead of crashing with RemoteServiceException.
+     *  Never fires while running as specialUse. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 }
 
 /**

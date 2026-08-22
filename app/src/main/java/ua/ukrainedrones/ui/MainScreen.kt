@@ -1066,6 +1066,10 @@ private fun MapScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // Edge-to-edge is enforced at targetSdk 36 (no opt-out): keep the banner
+                    // below the status bar. M3 TopAppBar does this on its own; this custom
+                    // bar must do it explicitly.
+                    .statusBarsPadding()
                     .background(MaterialTheme.colorScheme.surface)
                     .border(2.5.dp, borderColor)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
