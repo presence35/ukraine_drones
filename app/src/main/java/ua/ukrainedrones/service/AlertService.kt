@@ -254,13 +254,19 @@ private var notif3minShown = false
             text = "",
             retryLabel = null
         )
+        // specialUse on 34+: Android 15 enforces a 6h/24h background cap on dataSync FGS,
+        // which would stop a 24/7 monitor (onTimeout() then RemoteServiceException).
         ServiceCompat.startForeground(
             this,
             NOTIF_MONITOR,
             notif,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            } else 0
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                else -> 0
+            }
         )
     }
 
