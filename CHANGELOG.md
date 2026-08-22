@@ -15,6 +15,12 @@
 - First-run wizard: now 4 pages with a new dedicated "Alert zones" page showing the three map hover buttons (red zone, yellow zone, edit gear) and the slider concept; the page indicator is blue rounded segments that fill with yellow (Ukraine colours) as you advance; the language step got taller spacing, a fourth differently-styled tip promising in-app tips as you use the app, and the threat-care subtitle was reworded and enlarged.
 - Settings: the gear icon does one slow spin while the "open Settings" hint is active (the old heart pulse is gone).
 - Footer strip: when no threats are around, the message rotates through light encouragements ("Quiet — go touch grass", "Breathe", "Say I love you today"…) once every few days.
+- Feature guide: the home-screen widget now has its own guide entry (a "Widget" section before Settings) — three sizes, the gold trident header, per-type icons, the red air-alert strip, and how to add it from the Android widget picker.
+- First-run wizard: the page indicator is gone — the "Next" button itself is now the progress bar (Ukraine-yellow fill over blue, advancing one step at a time), so it no longer crowds the title on small screens or large fonts.
+- First-run wizard: the "Alert zones" page now shows the real in-code zone diagram with the blue GPS dot in the middle of the circle (matching the map).
+- Shelter button tip: staged onboarding — first two taps show "Tap the shelter button to see shelters near you", the next two show nothing (a break), then two show "Long-press the shelter button to open the full list".
+- Night zones sheet: dropped the duplicate moon from the title (now a single 🌙).
+- Fix: toasts were all stuck at the bottom because Android ignores `Toast.setGravity` on API 31+. They're now rendered in-app, so they sit at the top by default and drop to the bottom only when a card/popup is open.
 - Fix: a loitering UAV swarm now reads "Swarm UAV loiters over …" instead of a generic "UAV patrolling over …".
 
 - Widget: a new home-screen widget shows the current threat state at a glance — active threat count, red/yellow zone status, nearest distance and the official alert for your area, plus the connection source. One responsive widget: compact (2×1) shows the count and status dot, standard (4×2) adds the zone line, detailed (4×3) adds the source line; it updates automatically while the app monitors and tapping it opens the map.

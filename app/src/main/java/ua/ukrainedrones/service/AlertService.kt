@@ -584,15 +584,16 @@ private var notif3minShown = false
             }
         }
 
-notifyMonitor(
-            title = if (offline != null) {
-                s.offlineStatusTitle
-            } else if (state.focusPinned) {
-                String.format(s.notifMonitoringCityFormat, state.focusBannerCity)
-            } else {
-                s.notifOngoingTitle
+        val onBackup = neptun.backupUp && (neptun.neptunDown || neptun.backupActive)
+        notifyMonitor(
+            title = when {
+                neptun.neptunDown && neptun.backupUp -> s.offlineStatusTitle + " — " + s.statusOnBackup
+                neptun.neptunDown -> s.offlineStatusTitle
+                onBackup -> s.notifOngoingTitle + " — " + s.statusOnBackup
+                state.focusPinned -> String.format(s.notifMonitoringCityFormat, state.focusBannerCity)
+                else -> s.notifOngoingTitle
             },
-            text = "",
+            text = if (onBackup) s.statusOnBackupSub else "",
             retryLabel = if (offline != null) s.offlineRetryAction else null
         )
 

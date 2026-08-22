@@ -214,7 +214,7 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[settingsHintRemainingKey] = 10
             prefs[threatToggleHintRemainingKey] = 3
-            prefs[shelterTipRemainingKey] = 3
+            prefs[shelterTipRemainingKey] = 0
             listOf("followMe", "nightMode", "officialAlerts", "sirenOverride", "threatToggles", "cardSize")
                 .forEach { id -> prefs.remove(booleanPreferencesKey("explainer_seen_$id")) }
         }
@@ -317,12 +317,16 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[threatToggleHintRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
-    /** How many more shelter-button taps should show the "long press for the shelter list" tip. */
-    fun shelterTipRemaining(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[shelterTipRemainingKey] ?: 3 }
+    /**
+     * Shelter-button onboarding stage (0–6): 0–1 show the "tap" tip, 2–3 show nothing (a
+     * break), 4–5 show the "long press" tip, 6+ show nothing ever. Stored as a count that only
+     * advances (capped at 6) so the tip sequence plays once.
+     */
+    fun shelterTipStage(): Flow<Int> =
+        context.dataStore.data.map { prefs -> (prefs[shelterTipRemainingKey] ?: 0).coerceIn(0, 6) }
 
-    suspend fun setShelterTipRemaining(remaining: Int) {
-        context.dataStore.edit { it[shelterTipRemainingKey] = remaining.coerceAtLeast(0) }
+    suspend fun setShelterTipStage(stage: Int) {
+        context.dataStore.edit { it[shelterTipRemainingKey] = stage.coerceIn(0, 6) }
     }
 
     /** Density of the threat detail popup. */

@@ -1,27 +1,88 @@
 package ua.ukrainedrones
 
-import android.content.Context
-import android.view.Gravity
-import android.widget.Toast
-import kotlin.math.roundToInt
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Toast helper: one function decides placement so callers never hardcode gravity.
- * Top = just below the header banner (status bar + header). When a card/popup is visible
- * at the top (threat/shelter popup, zones sheet), the toast drops to the bottom instead,
- * above the floating zone/shelter buttons.
+ * In-app toast bus. Android's `Toast.setGravity` is a no-op on API 31+ (the system forces
+ * bottom-center), so we render toasts ourselves to control placement: top by default, bottom
+ * when a card/popup is open (cardVisible) so the toast never hides behind it. Callers keep the
+ * same [showToast] signature; the visual is [ToastHost], placed once at the screen root.
  */
-fun showToast(context: Context, text: CharSequence, cardVisible: Boolean = false) {
-    val res = context.resources
-    fun systemDimen(idName: String): Int {
-        val id = res.getIdentifier(idName, "dimen", "android")
-        return if (id == 0) 0 else runCatching { res.getDimensionPixelSize(id) }.getOrDefault(0)
+private data class ToastRequest(val text: String, val cardVisible: Boolean)
+
+private val toastBus = MutableSharedFlow<ToastRequest>(
+    extraBufferCapacity = 1,
+    onBufferOverflow = BufferOverflow.DROP_OLDEST
+)
+
+fun showToast(context: android.content.Context, text: CharSequence, cardVisible: Boolean = false) {
+    toastBus.tryEmit(ToastRequest(text.toString(), cardVisible))
+}
+
+@Composable
+fun ToastHost() {
+    var current by remember { mutableStateOf<ToastRequest?>(null) }
+    LaunchedEffect(Unit) {
+        toastBus.collectLatest { req ->
+            current = req
+            delay(2200)
+            current = null
+        }
     }
-    val density = res.displayMetrics.density
-    fun dp(value: Float) = (value * density).roundToInt()
-    val gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-    val yOffset = systemDimen("status_bar_height") + dp(56f)
-    Toast.makeText(context, text, Toast.LENGTH_SHORT)
-        .apply { setGravity(gravity, 0, yOffset) }
-        .show()
+    Box(Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = current != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(if (current?.cardVisible == true) Alignment.BottomCenter else Alignment.TopCenter)
+                .padding(16.dp)
+        ) {
+            current?.let { req ->
+                Surface(
+                    tonalElevation = 3.dp,
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 360.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                ) {
+                    Text(
+                        req.text,
+                        color = MaterialTheme.colorScheme.inverseOnSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
+                }
+            }
+        }
+    }
 }

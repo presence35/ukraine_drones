@@ -33,12 +33,13 @@ private val DimGrey = Color(0xFF7A8699)
 private val White = Color(0xFFECEFF4)
 private val Red = Color(0xFFD32F2F)
 private val Yellow = Color(0xFFFFD500)
+private val Gold = Color(0xFFE8B53A)
 private val Blue = Color(0xFF005BBB)
 private val Green = Color(0xFF4CAF50)
 
 enum class GuideDiagram {
-LIVE, STRIP, CONN, ZONES, EDIT_ZONES, NOTIF, TOGGLES, FOLLOW, PIN, SHELTER,
-    CARD_SIZE, CARD_READ, LANG, THREAT_TOGGLES, UPDATE, NIGHT
+    LIVE, STRIP, CONN, ZONES, EDIT_ZONES, NOTIF, TOGGLES, FOLLOW, PIN, SHELTER,
+    CARD_SIZE, CARD_READ, LANG, THREAT_TOGGLES, UPDATE, NIGHT, WIDGET
 }
 
 /** Animated mini-illustration for one feature-guide card. */
@@ -79,6 +80,7 @@ fun FeatureDiagram(kind: GuideDiagram, modifier: Modifier = Modifier) {
             GuideDiagram.THREAT_TOGGLES -> drawThreatToggles()
             GuideDiagram.UPDATE -> drawUpdate(t)
             GuideDiagram.NIGHT -> drawNight()
+            GuideDiagram.WIDGET -> drawWidget(t)
         }
     }
 }
@@ -155,7 +157,13 @@ private fun DrawScope.drawZones(t: Float) {
     drawCircle(Yellow, base * pulse, c, style = Stroke(2.dp.toPx()))
     drawCircle(Red.copy(alpha = 0.2f), base * 0.52f * pulse, c)
     drawCircle(Red, base * 0.52f * pulse, c, style = Stroke(2.dp.toPx()))
-    drawCircle(White, 3.dp.toPx(), c)
+    drawGpsDot(c, 3.dp.toPx())
+}
+
+/** The blue GPS fix dot (with a thin white ring) — matches the map's location marker. */
+private fun DrawScope.drawGpsDot(c: Offset, r: Float) {
+    drawCircle(White, r * 1.5f, c)
+    drawCircle(Color(0xFF2196F3), r, c)
 }
 
 private fun DrawScope.drawEditZones() {
@@ -163,7 +171,7 @@ private fun DrawScope.drawEditZones() {
     val c = Offset(size.width * 0.22f, size.height * 0.44f)
     drawCircle(Yellow.copy(alpha = 0.15f), size.width * 0.14f, c)
     drawCircle(Yellow, size.width * 0.14f, c, style = Stroke(2.dp.toPx()))
-    drawCircle(White, 2.5.dp.toPx(), c)
+    drawGpsDot(c, 3.dp.toPx())
     val y0 = size.height * 0.26f
     val y1 = size.height * 0.78f
     val sx = size.width * 0.56f
@@ -358,5 +366,50 @@ private fun DrawScope.drawShelter(t: Float) {
     }
     drawPath(arch, White, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round))
     drawCircle(Green, 3.dp.toPx(), Offset(cx, cy + r * 0.1f))
+}
+
+private fun DrawScope.drawWidget(t: Float) {
+    bg()
+    val pad = size.width * 0.14f
+    val cardX = pad
+    val cardY = size.height * 0.12f
+    val cardW = size.width - pad * 2f
+    val cardH = size.height - cardY * 2f
+    val cr = 6.dp.toPx()
+    drawRoundRect(GridGrey, Offset(cardX, cardY), Size(cardW, cardH), CornerRadius(cr))
+    val headerH = cardH * 0.22f
+    drawRoundRect(Gold, Offset(cardX, cardY), Size(cardW, headerH),
+        CornerRadius(cr, cr))
+    drawRoundRect(Gold, Offset(cardX, cardY + headerH * 0.5f), Size(cardW, headerH * 0.5f),
+        CornerRadius(0f))
+    val tx = cardX + cardW * 0.5f
+    val ty = cardY + headerH * 0.55f
+    val ts = headerH * 0.32f
+    drawLine(Gold, Offset(tx, ty + ts), Offset(tx, ty - ts), 2.dp.toPx(), StrokeCap.Round)
+    drawLine(Gold, Offset(tx - ts, ty + ts), Offset(tx - ts, ty - ts * 0.4f), 2.dp.toPx(), StrokeCap.Round)
+    drawLine(Gold, Offset(tx + ts, ty + ts), Offset(tx + ts, ty - ts * 0.4f), 2.dp.toPx(), StrokeCap.Round)
+    val rowY = cardY + headerH + cardH * 0.18f
+    val icons = listOf(Red, Yellow, Blue, Green)
+    val iw = cardW * 0.12f
+    val startX = tx - iw * 1.5f
+    for (i in icons.indices) {
+        drawCircle(icons[i], iw * (0.7f + 0.3f * t) * (0.9f + 0.1f * i), Offset(startX + i * iw, rowY))
+    }
+    val chipY = cardY + headerH + cardH * 0.42f
+    val chipW = cardW * 0.55f
+    drawRoundRect(Yellow, Offset(cardX + cardW * 0.1f, chipY), Size(chipW, cardH * 0.14f),
+        CornerRadius(3.dp.toPx()))
+    val stripY = cardY + cardH - cardH * 0.2f
+    drawRoundRect(Red, Offset(cardX + cardW * 0.08f, stripY),
+        Size(cardW * 0.84f, cardH * 0.14f), CornerRadius(3.dp.toPx()))
+    val alx = cardX + cardW * 0.16f
+    val aly = stripY + cardH * 0.07f
+    val aw = cardH * 0.06f
+    drawPath(Path().apply {
+        moveTo(alx, aly - aw)
+        lineTo(alx + aw, aly + aw)
+        lineTo(alx - aw, aly + aw)
+        close()
+    }, White)
 }
 

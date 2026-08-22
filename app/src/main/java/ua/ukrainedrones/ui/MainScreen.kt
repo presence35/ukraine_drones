@@ -124,7 +124,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
     val prefs = remember { ZonePrefs(context.applicationContext) }
     var settingsHintRemaining by remember { mutableStateOf(0) }
-    var shelterTipRemaining by remember { mutableStateOf(0) }
+    var shelterTipStage by remember { mutableStateOf(0) }
     var guideFeatureId by remember { mutableStateOf<String?>(null) }
     var guideFromSettings by remember { mutableStateOf(false) }
     var sheltersFromSettings by remember { mutableStateOf(false) }
@@ -140,7 +140,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val editingNight = uiState.nightActive && uiState.nightUseCustomZones
     LaunchedEffect(Unit) {
         settingsHintRemaining = prefs.settingsHintRemaining().first()
-        shelterTipRemaining = prefs.shelterTipRemaining().first()
+        shelterTipStage = prefs.shelterTipStage().first()
     }
 
     val onExit: () -> Unit = {
@@ -221,12 +221,12 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 screen = Screen.DEBUG
             },
             onShelterModeChange = { viewModel.setShelterModeActive(it) },
-            shelterTipRemaining = shelterTipRemaining,
+            shelterTipStage = shelterTipStage,
             settingsHintRemaining = settingsHintRemaining,
-            onShelterTipShown = {
-                val r = shelterTipRemaining - 1
-                shelterTipRemaining = r
-                scope.launch { prefs.setShelterTipRemaining(r) }
+            onShelterTipAdvance = {
+                val next = (shelterTipStage + 1).coerceAtMost(6)
+                shelterTipStage = next
+                scope.launch { prefs.setShelterTipStage(next) }
             }
         )
         if (screen == Screen.SETTINGS) {
@@ -375,6 +375,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 12.dp)
         )
+        ToastHost()
     }
 
     // Auto-launch the installer once the APK is downloaded and permission is granted.
@@ -501,28 +502,6 @@ private fun FirstLaunchWizard(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
-                // Page indicator: blue rounded segments that fill with yellow (Ukraine colours)
-                // as the user advances — one segment per wizard page.
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(totalSteps) { i ->
-                        val reached = i <= step
-                        Box(
-                            modifier = Modifier
-                                .width(20.dp)
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    if (reached) UkraineYellow
-                                    else UkraineBlue.copy(alpha = 0.55f)
-                                )
-                                .then(
-                                    if (reached) Modifier else Modifier.border(
-                                        1.dp, UkraineBlue.copy(alpha = 0.8f), RoundedCornerShape(50)
-                                    )
-                                )
-                        )
-                    }
-                }
             }
             Spacer(Modifier.height(10.dp))
             Column(
@@ -605,15 +584,42 @@ private fun FirstLaunchWizard(
                 } else {
                     OutlinedButton(onClick = onLater) { Text(s.languageChooseLater) }
                 }
-                Button(
-                    onClick = { if (step < totalSteps - 1) step++ else onComplete() },
-                    enabled = step != 0 || tipsRevealed,
-                    modifier = Modifier.weight(1f)
+                val progressFrac = (step + 1) / totalSteps.toFloat()
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    0f to UkraineYellow,
+                                    progressFrac to UkraineYellow,
+                                    progressFrac to UkraineBlue,
+                                    1f to UkraineBlue
+                                )
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        if (step < totalSteps - 1) s.nextButton else s.wizardStartButton,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Button(
+                        onClick = { if (step < totalSteps - 1) step++ else onComplete() },
+                        enabled = step != 0 || tipsRevealed,
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = Color.White,
+                            disabledContainerColor = Color.Transparent,
+                            disabledContentColor = Color.White.copy(alpha = 0.55f)
+                        ),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            if (step < totalSteps - 1) s.nextButton else s.wizardStartButton,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
@@ -933,8 +939,8 @@ private fun MapScreen(
     onOpenShelters: () -> Unit,
     onOpenDebug: () -> Unit,
     onShelterModeChange: (Boolean) -> Unit,
-    shelterTipRemaining: Int,
-    onShelterTipShown: () -> Unit,
+    shelterTipStage: Int,
+    onShelterTipAdvance: () -> Unit,
     settingsHintRemaining: Int = 0
 ) {
     val s = Strings.get(uiState.language)
@@ -972,13 +978,16 @@ private fun MapScreen(
     }
 
     val onToggleShelters: () -> Unit = {
-        if (shelterTipRemaining > 0) {
-            onShelterTipShown()
-            showToast(
-                context,
-                s.shelterLongPressTip,
-                cardVisible = false
-            )
+        if (shelterTipStage < 6) {
+            val tipText = when (shelterTipStage) {
+                0, 1 -> s.shelterTapTip
+                4, 5 -> s.shelterLongPressTip
+                else -> null
+            }
+            if (tipText != null) {
+                showToast(context, tipText, cardVisible = false)
+            }
+            onShelterTipAdvance()
         }
         val willShow = !showNearbyShelters
         showNearbyShelters = willShow

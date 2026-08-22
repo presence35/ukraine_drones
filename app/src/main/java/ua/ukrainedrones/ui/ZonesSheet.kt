@@ -70,7 +70,7 @@ fun ZonesPanel(
         ) {
             Text(
                 when {
-                    nightActive -> "\uD83C\uDF19 ${s.nightZonesTitle} \uD83C\uDF19"
+                    nightActive -> "\uD83C\uDF19 ${s.nightZonesTitle}"
                     nightEnabled && useNightZones -> s.dayZonesTitle
                     else -> s.alertZonesTitle
                 },

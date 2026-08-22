@@ -126,6 +126,8 @@ object Strings {
         val connActiveLabel: String,
         val connForceOfflineTitle: String,
         val connBackupNoMapDesc: String,
+        val statusOnBackup: String,
+        val statusOnBackupSub: String,
         val attributionBackup: String,
         val reliabilityLow: String,
         val reliabilityMedium: String,
@@ -330,6 +332,7 @@ object Strings {
         val networkLocationOnly: String,
         val updatingPreciseGpsToast: String,
         val shelterLongPressTip: String,
+        val shelterTapTip: String,
         val shelterViewListLabel: String,
         val shelterViewListDesc: String,
         val shelterTypeBasic: String,
@@ -355,6 +358,7 @@ object Strings {
         val guideCategoryZones: String,
         val guideCategoryLocation: String,
         val guideCategoryCards: String,
+        val guideCategoryWidget: String,
         val guideCategorySettings: String,
         val guideLiveTitle: String,
         val guideLiveSummary: String,
@@ -434,6 +438,11 @@ object Strings {
         val guideUpdateD1: String,
         val guideUpdateD2: String,
         val guideUpdateD3: String,
+        val guideWidgetTitle: String,
+        val guideWidgetSummary: String,
+        val guideWidgetD1: String,
+        val guideWidgetD2: String,
+        val guideWidgetD3: String,
         val lastSeenAgoFormat: String,
         val neutralizedLabel: String,
         val neutralizedNote: String,
@@ -646,6 +655,8 @@ object Strings {
         val connActiveLabel: String get() = status.connActiveLabel
         val connForceOfflineTitle: String get() = status.connForceOfflineTitle
         val connBackupNoMapDesc: String get() = status.connBackupNoMapDesc
+        val statusOnBackup: String get() = status.statusOnBackup
+        val statusOnBackupSub: String get() = status.statusOnBackupSub
         val attributionBackup: String get() = status.attributionBackup
         val reliabilityLow: String get() = status.reliabilityLow
         val reliabilityMedium: String get() = status.reliabilityMedium
@@ -841,6 +852,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val networkLocationOnly: String get() = misc.networkLocationOnly
         val updatingPreciseGpsToast: String get() = misc.updatingPreciseGpsToast
         val shelterLongPressTip: String get() = misc.shelterLongPressTip
+        val shelterTapTip: String get() = misc.shelterTapTip
         val shelterViewListLabel: String get() = misc.shelterViewListLabel
         val shelterViewListDesc: String get() = misc.shelterViewListDesc
         val shelterTypeBasic: String get() = misc.shelterTypeBasic
@@ -852,6 +864,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val guideCategoryZones: String get() = guide.guideCategoryZones
         val guideCategoryLocation: String get() = guide.guideCategoryLocation
         val guideCategoryCards: String get() = guide.guideCategoryCards
+        val guideCategoryWidget: String get() = guide.guideCategoryWidget
         val guideCategorySettings: String get() = guide.guideCategorySettings
         val guideLiveTitle: String get() = guide.guideLiveTitle
         val guideLiveSummary: String get() = guide.guideLiveSummary
@@ -931,6 +944,11 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val guideUpdateD1: String get() = guide.guideUpdateD1
         val guideUpdateD2: String get() = guide.guideUpdateD2
         val guideUpdateD3: String get() = guide.guideUpdateD3
+        val guideWidgetTitle: String get() = guide.guideWidgetTitle
+        val guideWidgetSummary: String get() = guide.guideWidgetSummary
+        val guideWidgetD1: String get() = guide.guideWidgetD1
+        val guideWidgetD2: String get() = guide.guideWidgetD2
+        val guideWidgetD3: String get() = guide.guideWidgetD3
         val lastSeenAgoFormat: String get() = guide.lastSeenAgoFormat
         val neutralizedLabel: String get() = guide.neutralizedLabel
         val neutralizedNote: String get() = guide.neutralizedNote
@@ -1061,6 +1079,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connActiveLabel = "Активне",
         connForceOfflineTitle = "Тест: імітувати офлайн NEPTUN",
         connBackupNoMapDesc = "Резервне джерело працює лише на рівні областей — без живої карти позицій, лише статус повітряних тривог.",
+        statusOnBackup = "на резерві",
+        statusOnBackupSub = "Офіційні тривоги через резерв",
         attributionBackup = "Повітряні тривоги — alerts.com.ua",
         reliabilityLow = "Достовірність: Низька",
         reliabilityMedium = "Достовірність: Середня",
@@ -1264,7 +1284,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         gpsStatusTitle = "Точний GPS",
         networkLocationOnly = "Мережева локація (вежі зв'язку)",
         updatingPreciseGpsToast = "Оновлення точного GPS…",
-        shelterLongPressTip = "Торкнись укриття, щоб побачити інформацію",
+        shelterLongPressTip = "Довго натисни кнопку «Укриття», щоб відкрити повний список",
+        shelterTapTip = "Торкнись кнопки «Укриття», щоб побачити укриття поруч",
         shelterViewListLabel = "Список укриттів (довідник)",
         shelterViewListDesc = "Переглянути повний список усіх укриттів міста",
         shelterTypeBasic = "Найпростіше укриття",
@@ -1290,6 +1311,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         guideCategoryZones = "Зони та тривоги",
         guideCategoryLocation = "Місцезнаходження",
         guideCategoryCards = "Картка загрози",
+        guideCategoryWidget = "Віджет",
         guideCategorySettings = "Налаштування",
         guideLiveTitle = "Жива мапа загроз",
         guideLiveSummary = "Жива мапа всіх відстежуваних загроз по всій країні.",
@@ -1369,6 +1391,11 @@ val iconSetTitle: String get() = misc.iconSetTitle
         guideUpdateD1 = "Нова версія показує список «Що нового».",
         guideUpdateD2 = "Завантажуй і встановлюй просто з діалогу.",
         guideUpdateD3 = "Можна також натиснути «Перевірити оновлення» в Налаштуваннях.",
+        guideWidgetTitle = "Віджет на головному екрані",
+        guideWidgetSummary = "Швидкий погляд на загрози без відкриття застосунку.",
+        guideWidgetD1 = "Три розміри: компактний 2×1 показує лічильник і точку статусу, стандартний 4×2 додає рядок зони, детальний 4×3 — ще й джерело даних.",
+        guideWidgetD2 = "Золотий тризуб угорі, піктограми за типами загроз і червоний рядок повітряної тривоги, коли вона оголошена.",
+        guideWidgetD3 = "Оновлюється сам під час моніторингу; натисни віджет, щоб відкрити мапу. Додай його з меню віджетів системи Android.",
         lastSeenAgoFormat = "Востаннє %1\$s тому",
         neutralizedLabel = "Загрозу знешкоджено",
         neutralizedNote = "Більше не відстежується мережею.",
@@ -1547,6 +1574,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connActiveLabel = "Active",
         connForceOfflineTitle = "Test: simulate NEPTUN offline",
         connBackupNoMapDesc = "The backup is oblast-level only — no live map positions, just air-raid alert status.",
+        statusOnBackup = "on backup",
+        statusOnBackupSub = "Official alerts via backup",
         attributionBackup = "Air threat alerts — alerts.com.ua",
         reliabilityLow = "Reliability: Low",
         reliabilityMedium = "Reliability: Average",
@@ -1750,7 +1779,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         gpsStatusTitle = "Precise GPS",
         networkLocationOnly = "Cell tower location only",
         updatingPreciseGpsToast = "Updating precise GPS…",
-        shelterLongPressTip = "Tap a shelter to see its info",
+        shelterLongPressTip = "Long-press the shelter button to open the full list",
+        shelterTapTip = "Tap the shelter button to see shelters near you",
         shelterViewListLabel = "Shelter directory (reference)",
         shelterViewListDesc = "Browse the full directory of all city shelters",
         shelterTypeBasic = "Basic shelter",
@@ -1776,6 +1806,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         guideCategoryZones = "Zones & alerts",
         guideCategoryLocation = "Location",
         guideCategoryCards = "Threat cards",
+        guideCategoryWidget = "Widget",
         guideCategorySettings = "Settings",
         guideLiveTitle = "Live threat map",
         guideLiveSummary = "See every tracked threat moving across the whole country.",
@@ -1855,6 +1886,11 @@ val iconSetTitle: String get() = misc.iconSetTitle
         guideUpdateD1 = "A new version shows a What's new note.",
         guideUpdateD2 = "Download and install straight from the dialog.",
         guideUpdateD3 = "You can also tap Check for updates in Settings.",
+        guideWidgetTitle = "Home screen widget",
+        guideWidgetSummary = "A quick look at threats without opening the app.",
+        guideWidgetD1 = "Three sizes: compact 2×1 shows the count and a status dot; standard 4×2 adds a zone line; detailed 4×3 adds the data source line.",
+        guideWidgetD2 = "A gold trident header, per-type threat icons, and a red air-alert strip when one is declared.",
+        guideWidgetD3 = "It updates on its own while monitoring; tap the widget to open the map. Add it from the Android widget picker.",
         lastSeenAgoFormat = "Last seen %1\$s ago",
         neutralizedLabel = "Threat neutralized",
         neutralizedNote = "No longer tracked by the network.",
