@@ -17,6 +17,7 @@ import android.os.Vibrator
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -466,6 +468,19 @@ fun NeptunMapView(
     val alertActiveState by rememberUpdatedState(uiState.alertActive)
     val showNearbySheltersState by rememberUpdatedState(showNearbyShelters)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // osmdroid owns a tile-fetch thread pool that must be paused/resumed with the host
+    // lifecycle (and detached on release) — without this it keeps spinning in background.
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapViewRef.value?.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapViewRef.value?.onPause()
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
     val iconSetState by rememberUpdatedState(uiState.iconSet)
     val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
@@ -960,7 +975,8 @@ fun NeptunMapView(
                 mapView.invalidate()
             }
         },
-        onRelease = { _ ->
+        onRelease = { map ->
+            map.onDetach()
             mapViewRef.value = null
         }
     )

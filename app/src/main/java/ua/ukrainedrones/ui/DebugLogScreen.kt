@@ -36,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +49,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val DebugRed = Color(0xFFE57373)
 private val DebugAmber = Color(0xFFF9A825)
@@ -68,6 +71,7 @@ private val DebugBlue = Color(0xFF64B5F6)
 @Composable
 fun DebugLogScreen(s: Strings.StringSet, lang: AppLanguage, onBack: () -> Unit) {
     val entries by DebugLog.entries.collectAsState()
+    val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -112,7 +116,7 @@ fun DebugLogScreen(s: Strings.StringSet, lang: AppLanguage, onBack: () -> Unit) 
                 }
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        TextButton(onClick = { DebugLog.clear() }) {
+                        TextButton(onClick = { scope.launch(Dispatchers.IO) { DebugLog.clear() } }) {
                             Text(s.debugLogClear)
                         }
                     }

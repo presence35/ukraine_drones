@@ -21,6 +21,9 @@
 - Shelter button tip: staged onboarding — first two taps show "Tap the shelter button to see shelters near you", the next two show nothing (a break), then two show "Long-press the shelter button to open the full list".
 - Night zones sheet: dropped the duplicate moon from the title (now a single 🌙).
 - Fix: toasts were all stuck at the bottom because Android ignores `Toast.setGravity` on API 31+. They're now rendered in-app, so they sit at the top by default and drop to the bottom only when a card/popup is open.
+- Fix: the live data state (NEPTUN + backup) is now updated atomically, so concurrent updates from the stream, REST refresh and backup collector can no longer silently overwrite each other's fields.
+- Fix: tapping "Clear" on alert history / debug log no longer blocks the UI thread on a disk write.
+- Fix: the map's tile loader now pauses/resumes with the app lifecycle and releases its threads when the map view goes away.
 - Fix: a loitering UAV swarm now reads "Swarm UAV loiters over …" instead of a generic "UAV patrolling over …".
 
 - Widget: a new home-screen widget shows the current threat state at a glance — active threat count, red/yellow zone status, nearest distance and the official alert for your area, plus the connection source. One responsive widget: compact (2×1) shows the count and status dot, standard (4×2) adds the zone line, detailed (4×3) adds the source line; it updates automatically while the app monitors and tapping it opens the map.

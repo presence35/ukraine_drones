@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.Call
@@ -94,7 +95,7 @@ object AlertsUaClient {
             override fun onFailure(call: Call, e: IOException) {
                 inFlight.set(false)
                 if (!manuallyStopped) {
-                    _state.value = _state.value.copy(lastError = e.message)
+                    _state.update { it.copy(lastError = e.message) }
                 }
             }
 
@@ -102,7 +103,7 @@ object AlertsUaClient {
                 inFlight.set(false)
                 response.use {
                     if (!it.isSuccessful) {
-                        if (!manuallyStopped) _state.value = _state.value.copy(lastError = "HTTP ${it.code}")
+                        if (!manuallyStopped) _state.update { s -> s.copy(lastError = "HTTP ${it.code}") }
                         return
                     }
                     val body = it.body?.string() ?: return

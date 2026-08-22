@@ -1180,8 +1180,9 @@ private fun MapScreen(
                         )
                     }
                     val shelterFocus = uiState.focusLocation
-                    if (uiState.sheltersEnabled && uiState.shelterIndex != null && shelterFocus != null &&
-                        uiState.shelterIndex!!.withinRegion(shelterFocus.lat, shelterFocus.lon)
+                    val shelterIndex = uiState.shelterIndex
+                    if (uiState.sheltersEnabled && shelterIndex != null && shelterFocus != null &&
+                        shelterIndex.withinRegion(shelterFocus.lat, shelterFocus.lon)
                     ) {
                         ShelterButton(
                             alertActive = uiState.focusOblastAlertActive,

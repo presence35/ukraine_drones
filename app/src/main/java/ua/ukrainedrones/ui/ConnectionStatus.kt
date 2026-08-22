@@ -37,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +51,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -366,6 +369,7 @@ private const val ALERT_AGE_HR_MS = 60L * 60 * 1000
 @Composable
 private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet: ThreatIconSet) {
     var expanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val entries by AlertHistory.entries.collectAsState()
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -419,7 +423,7 @@ private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet
                 }
                 Spacer(Modifier.height(8.dp))
                 TextButton(
-                    onClick = { AlertHistory.clear() },
+                    onClick = { scope.launch(Dispatchers.IO) { AlertHistory.clear() } },
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 ) {
                     Text(s.alertHistoryClear)

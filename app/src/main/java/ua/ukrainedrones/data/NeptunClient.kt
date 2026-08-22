@@ -192,18 +192,20 @@ object NeptunClient {
      * can be verified. Updates the shared state so both the UI and AlertService re-derive it.
      */
     fun setForceOffline(force: Boolean) {
-        _state.value = _state.value.copy(
-            forceOffline = force,
-            // Mirror a real disconnect's offlineSince so the elapsed-time math (and thus the
-            // offline notification/UI text) actually exercises a rising duration under the
-            // test toggle instead of being pinned at 0. Only stamp it if not already set by a
-            // real drop; only clear it on turn-off if the real socket is actually connected.
-            offlineSince = when {
-                force && _state.value.offlineSince == null -> System.currentTimeMillis()
-                !force && _state.value.connected -> null
-                else -> _state.value.offlineSince
-            }
-        )
+        _state.update {
+            it.copy(
+                forceOffline = force,
+                // Mirror a real disconnect's offlineSince so the elapsed-time math (and thus the
+                // offline notification/UI text) actually exercises a rising duration under the
+                // test toggle instead of being pinned at 0. Only stamp it if not already set by a
+                // real drop; only clear it on turn-off if the real socket is actually connected.
+                offlineSince = when {
+                    force && it.offlineSince == null -> System.currentTimeMillis()
+                    !force && it.connected -> null
+                    else -> it.offlineSince
+                }
+            )
+        }
         // Turning the toggle back off while the socket is genuinely down must kick a real
         // reconnect — otherwise the toggle looks like it did nothing.
         if (!force && !_state.value.connected && !manuallyStopped) retryNow()
@@ -215,12 +217,14 @@ object NeptunClient {
             AlertsUaClient.state.collect { backup ->
                 val up = backup.active && backup.lastOkAt > 0 &&
                     System.currentTimeMillis() - backup.lastOkAt < BACKUP_HEALTHY_MS
-                _state.value = _state.value.copy(
-                    backupAlerts = backup.alerts,
-                    backupUp = up,
-                    backupLastOkAt = backup.lastOkAt,
-                    backupError = backup.lastError
-                )
+                _state.update {
+                    it.copy(
+                        backupAlerts = backup.alerts,
+                        backupUp = up,
+                        backupLastOkAt = backup.lastOkAt,
+                        backupError = backup.lastError
+                    )
+                }
             }
         }
     }
@@ -287,14 +291,14 @@ object NeptunClient {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 restInFlight.set(false)
-                _state.value = _state.value.copy(lastError = e.message)
+                _state.update { it.copy(lastError = e.message) }
             }
 
             override fun onResponse(call: Call, response: Response) {
                 restInFlight.set(false)
                 response.use {
                     if (!it.isSuccessful) {
-                        _state.value = _state.value.copy(lastError = "REST HTTP ${it.code}")
+                        _state.update { s -> s.copy(lastError = "REST HTTP ${it.code}") }
                         return
                     }
                     val body = it.body?.string() ?: return
@@ -312,10 +316,10 @@ object NeptunClient {
                                 merged[t.id] = t
                             }
                         }
-                        _state.value = _state.value.copy(threats = merged, lastError = null)
+                        _state.update { it.copy(threats = merged, lastError = null) }
                     } catch (_: Exception) {
                         // Malformed REST payload — keep current threats, but surface that a refresh failed.
-                        _state.value = _state.value.copy(lastError = "Malformed REST payload")
+                        _state.update { it.copy(lastError = "Malformed REST payload") }
                     }
                 }
             }
@@ -383,17 +387,19 @@ object NeptunClient {
                 reconnectAttempt = 0
                 openedAt = System.currentTimeMillis()
                 lastFrameAt = System.currentTimeMillis()
-                _state.value = _state.value.copy(
-                    connected = true, lastError = null, offlineSince = null,
-                    lastFrameAt = System.currentTimeMillis(),
-                    reconnectStartMillis = 0L
-                )
+                _state.update {
+                    it.copy(
+                        connected = true, lastError = null, offlineSince = null,
+                        lastFrameAt = System.currentTimeMillis(),
+                        reconnectStartMillis = 0L
+                    )
+                }
                 refreshFromRest()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 lastFrameAt = System.currentTimeMillis()
-                _state.value = _state.value.copy(lastFrameAt = System.currentTimeMillis())
+                _state.update { it.copy(lastFrameAt = System.currentTimeMillis()) }
                 handleFrame(text)
             }
 
@@ -411,7 +417,7 @@ object NeptunClient {
                 }
                 ws = null
                 connectInFlight.set(false)
-                _state.value = _state.value.copy(connected = false, offlineSince = System.currentTimeMillis(), reconnectStartMillis = System.currentTimeMillis())
+                _state.update { it.copy(connected = false, offlineSince = System.currentTimeMillis(), reconnectStartMillis = System.currentTimeMillis()) }
                 scheduleReconnect()
             }
 
@@ -421,12 +427,14 @@ object NeptunClient {
                     return
                 }
                 connectInFlight.set(false)
-                _state.value = _state.value.copy(
-                    connected = false,
-                    lastError = t.message,
-                    offlineSince = System.currentTimeMillis(),
-                    reconnectStartMillis = System.currentTimeMillis()
-                )
+                _state.update {
+                    it.copy(
+                        connected = false,
+                        lastError = t.message,
+                        offlineSince = System.currentTimeMillis(),
+                        reconnectStartMillis = System.currentTimeMillis()
+                    )
+                }
                 scheduleReconnect()
             }
         })
@@ -497,7 +505,7 @@ object NeptunClient {
                         if (now - shotAt <= USER_SHOT_GRACE_MS) map[id] = prev.getValue(id)
                     }
                     pruneUserShot(now)
-                    _state.value = _state.value.copy(threats = map)
+                    _state.update { it.copy(threats = map) }
                 }
                 "upsert" -> {
                     val data = env.optJSONObject("data") ?: return
@@ -509,7 +517,7 @@ object NeptunClient {
                         )
                         updated.remove(t.id)
                     } else updated[t.id] = t
-                    _state.value = _state.value.copy(threats = updated)
+                    _state.update { it.copy(threats = updated) }
                 }
                 "remove" -> {
                     val data = env.optJSONObject("data") ?: return
@@ -520,7 +528,7 @@ object NeptunClient {
                             ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
                         )
                     }
-                    _state.value = _state.value.copy(threats = updated)
+                    _state.update { it.copy(threats = updated) }
                 }
                 "alerts" -> {
                     val data = env.optJSONObject("data") ?: return
@@ -539,9 +547,7 @@ object NeptunClient {
                             )
                         }
                     }
-                    _state.value = _state.value.copy(
-                        neptunAlerts = list
-                    )
+                    _state.update { it.copy(neptunAlerts = list) }
                 }
                 "heartbeat" -> { /* no-op, connection alive */ }
             }
