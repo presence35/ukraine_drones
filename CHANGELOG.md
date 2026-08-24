@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Code: the death animation + shoot-down tally flourish is now isolated behind a facade in a dedicated `flourish/` folder — the map, view model and alert service keep only thin hooks, so the critical zone/alert logic no longer carries inline flourish mechanics. Turning the animation or tally off in settings now truly stops the code running (subscription-gated collectors, not just effect checks); the grey "lost" dot stays as functional map feedback.
+
 - Map: the notification-reveal marker is now a small green dot baked into the threat icon's top-right corner — the threat stays fully tappable (no separate overlay intercepting taps) and the dot follows the live marker. / Мапа: маркер «нова загроза» тепер маленька зелена точка у правому верхньому куті іконки — загроза лишається повністю тапабельною, а точка рухається разом із маркером.
 - Map: the official-alert red city labels are now scope-aware — with the "City level" alert scope on, only the cities the alert actually covers turn red on the map (not the whole oblast). / Мапа: червоні міста під офіційною тривогою тепер залежать від масштабу — з увімкненим «Міським рівнем» червоніють лише покриті тривогою міста, а не вся область.
 - Toasts: now hug their text (no more full-width bar), stay horizontally centered, and sit a bit lower below the header. / Тости: тепер обіймають текст (не розтягнуті на всю ширину), центровані по горизонталі та трохи нижче під шапкою.

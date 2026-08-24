@@ -115,15 +115,6 @@ data class RevealRequest(
     val lon: Double
 )
 
-/** A resolved threat remembered by the service for the tally-tap replay flourish. */
-data class FlourishRecord(val lat: Double, val lon: Double, val type: ThreatType)
-
-/** One-shot replay show: the remembered resolutions to shoot down, in arrival order. */
-data class FlourishShow(
-    val tick: Int,
-    val records: List<FlourishRecord>
-)
-
 /** Distance/ETA facts for the threat popup, computed from the predicted position. */
 data class ThreatProximity(
     val predicted: LatLng,
@@ -730,7 +721,7 @@ val uiState: StateFlow<UiState> = combine(
         val activeZone = evaluation.activeZone
         val alertActive = activeZone != null || focusOblastAlertActive
         val neutralizedThreat =
-            if (selectedGone && animOn && mapVisible && !shelterModeActive) selected else null
+            if (FlourishPolicy.showNeutralizedCard(selectedGone, animOn, mapVisible, shelterModeActive)) selected else null
 
         val proximity = ThreatEvaluator.computeProximity(
             t = refreshedSelected,
@@ -768,7 +759,7 @@ val uiState: StateFlow<UiState> = combine(
             pinnedCity = pinnedCity,
             focusLocation = focusLocation,
             redCities = redCities,
-            selectedThreat = if (selectedGone && animOn) null else refreshedSelected,
+            selectedThreat = if (FlourishPolicy.dropSelection(selectedGone, animOn)) null else refreshedSelected,
             selectedThreatInfo = proximity,
             neutralizedThreat = neutralizedThreat,
             threatLevel = ThreatLevelModel.overall(threatScores),

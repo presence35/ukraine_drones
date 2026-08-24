@@ -17,14 +17,18 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 /**
@@ -36,14 +40,10 @@ class AlertService : Service() {
 
     companion object {
         const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
-        const val ACTION_NEUTRALIZED_DISMISS = "ua.ukrainedrones.NEUTRALIZED_DISMISS"
         const val EXTRA_REVEAL_ID = "reveal_threat_id"
         const val EXTRA_REVEAL_LAT = "reveal_threat_lat"
         const val EXTRA_REVEAL_LON = "reveal_threat_lon"
         const val EXTRA_SHOW_UPDATE = "show_update"
-        const val EXTRA_FLOURISH_LATS = "flourish_lats"
-        const val EXTRA_FLOURISH_LONS = "flourish_lons"
-        const val EXTRA_FLOURISH_TYPES = "flourish_types"
         private const val CHANNEL_MONITOR = "monitor"
         private const val CHANNEL_ALERTS = "alerts_siren2"
         private const val CHANNEL_ALERTS_OUTER = "alerts_siren_outer2"
@@ -51,13 +51,11 @@ class AlertService : Service() {
         private const val CHANNEL_ALERTS_ALARM = "alerts_siren_alarm"
         private const val CHANNEL_ALERTS_OUTER_ALARM = "alerts_siren_outer_alarm"
         private const val CHANNEL_OFFLINE = "offline"
-        private const val CHANNEL_NEUTRALIZED = "neutralized"
         private const val CHANNEL_UPDATE = "updates"
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
         private const val NOTIF_ALLCLEAR = 3
         private const val NOTIF_MILESTONE = 5
-        private const val NOTIF_NEUTRALIZED = 6
         private const val NOTIF_UPDATE = 7
         private const val CENTRE_ALERT_GRACE_MS = 20_000L
         /** How often the monitoring loop re-evaluates state (fast tick, decoupled from the
@@ -99,12 +97,7 @@ private var notif3minShown = false
     private var notif10minShown = false
     private var notif20minShown = false
     private var alertEpoch = 0
-    private var neutralizedCount = 0
-    private var lastNeutralizedType: ThreatType? = null
-    // Running memory of resolved threats (position + type) so tapping the tally notification can
-    // replay a shot-down show. Capped at 10; cleared when a red alert ejects the flourish.
-    private data class ResolvedRecord(val lat: Double, val lon: Double, val type: ThreatType)
-    private val resolvedMemory = ArrayDeque<ResolvedRecord>()
+    private val tally by lazy { NeutralizedTally(applicationContext, scope) }
     @Volatile private var currentToken: String? = null
 
     private sealed class MonitorEvent {
@@ -214,14 +207,11 @@ private var notif3minShown = false
             NeptunClient.setForceOffline(false)
             NeptunClient.retryNow()
         }
-        if (intent?.action == ACTION_NEUTRALIZED_DISMISS) {
+        if (intent?.action == NeutralizedTally.ACTION_NEUTRALIZED_DISMISS) {
             // The tally notification was swiped away (or its replay consumed in the app) —
             // reset the count and memory so any later neutralizations start a fresh tally
             // instead of resurrecting the dismissed one, and drop the notification itself.
-            neutralizedCount = 0
-            lastNeutralizedType = null
-            resolvedMemory.clear()
-            try { NotificationManagerCompat.from(this).cancel(NOTIF_NEUTRALIZED) } catch (_: SecurityException) {}
+            tally.reset()
         }
         startMonitoring()
         return START_STICKY
@@ -249,31 +239,29 @@ private var notif3minShown = false
         )
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun startMonitoring() {
         if (monitoringJob != null) return
         val prefs = ZonePrefs(applicationContext)
         // Server-driven resolutions/removals only — the map long-press never touches this
-        // flow, so the tally excludes manual test triggers.
+        // flow, so the tally excludes manual test triggers. Subscribed only while the tally is
+        // enabled: off means no collector at all (not even a per-event pref read).
         scope.launch {
-            NeptunClient.removedThreats.collect { removed ->
-                if (!prefs.neutralizedTallyEnabled().first()) return@collect
-                // Default: only count resolutions that could matter to the user — those in the
-                // focus oblast (GPS-follow or pinned). The "All of Ukraine" sub-setting lifts
-                // that to any resolution country-wide.
-                if (!prefs.neutralizedTallyAllUkraine().first()) {
-                    val token = currentToken ?: return@collect
-                    if (!ThreatEvaluator.inOblast(removed.region, removed.district, removed.locality, token)) return@collect
+            prefs.neutralizedTallyEnabled()
+                .distinctUntilChanged()
+                .flatMapLatest { enabled ->
+                    if (!enabled) emptyFlow() else NeptunClient.removedThreats
                 }
-                neutralizedCount++
-                lastNeutralizedType = removed.type
-                // Remember the resolution so a later tally tap can replay the shot-down show.
-                // Keeps the last 21 (the tally count itself can run much higher after a long
-                // absence — the replay only needs enough to be fun, not exhaustive); a red alert
-                // clears the whole memory (safety outranks flourish).
-                resolvedMemory.addLast(ResolvedRecord(removed.lat, removed.lon, removed.type))
-                while (resolvedMemory.size > 21) resolvedMemory.removeFirst()
-                postNeutralizedTally(prefs.language().first())
-            }
+                .collect { removed ->
+                    // Default: only count resolutions that could matter to the user — those in the
+                    // focus oblast (GPS-follow or pinned). The "All of Ukraine" sub-setting lifts
+                    // that to any resolution country-wide.
+                    if (!prefs.neutralizedTallyAllUkraine().first()) {
+                        val token = currentToken ?: return@collect
+                        if (!ThreatEvaluator.inOblast(removed.region, removed.district, removed.locality, token)) return@collect
+                    }
+                    tally.onResolved(removed, prefs.language().first())
+                }
         }
         monitoringJob = scope.launch {
             val nowFlow = MutableStateFlow(System.currentTimeMillis())
@@ -591,7 +579,7 @@ private var notif3minShown = false
         // A red alert ejects the pending tally flourish and erases its memory — safety always
         // outranks the playful replay.
         if (state.focusOblastAlertActive || alertable.any { it.value == ThreatZone.INNER }) {
-            if (resolvedMemory.isNotEmpty()) resolvedMemory.clear()
+            tally.eject()
         }
         var posted = false
         var postedId: String? = null
@@ -933,64 +921,6 @@ private var notif3minShown = false
         ZonePrefs(applicationContext).setOfflinePendingSince(ts)
     }
 
-    /** Silent, dismissible running tally of resolved threats near the focus. Re-posted on the
-     *  same id with an incremented count each time; swiping it away (delete intent) resets the
-     *  count so it stays gone until the next resolution starts a fresh tally.
-     */
-    private fun postNeutralizedTally(lang: AppLanguage) {
-        val s = Strings.get(lang)
-        val info = lastNeutralizedType?.let { ThreatTypeCatalog.INFO[it] }
-        val lastLine = info?.let {
-            String.format(s.neutralizedLastLineFormat, if (lang == AppLanguage.UA) it.labelUa else it.labelEn)
-        }
-        scope.launch {
-            val allUkraine = runCatching { ZonePrefs(applicationContext).neutralizedTallyAllUkraine().first() }.getOrDefault(false)
-            val scopeText = if (allUkraine) s.neutralizedScopeAllUkraine else s.neutralizedScopeNearMe
-            val text = if (lastLine != null) "$lastLine · $scopeText" else scopeText
-            val builder = NotificationCompat.Builder(this@AlertService, CHANNEL_NEUTRALIZED)
-                .setSmallIcon(R.drawable.ic_trident)
-                .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
-                .setContentText(text)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setContentIntent(neutralizedTapPendingIntent())
-                .setDeleteIntent(neutralizedDismissPendingIntent())
-            safeNotify(NOTIF_NEUTRALIZED, builder.build())
-        }
-    }
-
-    /** Reset the tally when the user swipes the notification away. */
-    private fun neutralizedDismissPendingIntent(): PendingIntent {
-        val intent = Intent(this, NeutralizedDismissReceiver::class.java)
-        return PendingIntent.getBroadcast(
-            this, 2, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-    }
-
-    /**
-     * Tap target for the tally notification: opens the app straight onto the shot-down replay.
-     * Built as a direct Activity intent (no service trampoline — Android 12+ blocks starting an
-     * activity from a notification-launched service) with the remembered resolutions baked in
-     * right now, so the tap always replays the latest show.
-     */
-    private fun neutralizedTapPendingIntent(): PendingIntent {
-        val latArr = resolvedMemory.map { it.lat }.toDoubleArray()
-        val lonArr = resolvedMemory.map { it.lon }.toDoubleArray()
-        val typeArr = resolvedMemory.map { it.type.name }.toTypedArray()
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(EXTRA_FLOURISH_LATS, latArr)
-            putExtra(EXTRA_FLOURISH_LONS, lonArr)
-            putExtra(EXTRA_FLOURISH_TYPES, typeArr)
-        }
-        return PendingIntent.getActivity(
-            this, 3, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-    }
-
     private fun postAllClear(s: Strings.StringSet, city: String) {
         alertEpoch++
         val notif = NotificationCompat.Builder(this, CHANNEL_ALLCLEAR)
@@ -1122,7 +1052,7 @@ private var notif3minShown = false
             CHANNEL_ALERTS_ALARM,
             CHANNEL_ALERTS_OUTER_ALARM,
             CHANNEL_OFFLINE,
-            CHANNEL_NEUTRALIZED,
+            NeutralizedTally.CHANNEL_NEUTRALIZED,
             CHANNEL_UPDATE
         )
         nm.notificationChannels
@@ -1198,7 +1128,7 @@ private var notif3minShown = false
         )
         // Neutralized tally: informational, always silent (LOW importance) — never rings.
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_NEUTRALIZED, s.neutralizedNotifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
+            NotificationChannel(NeutralizedTally.CHANNEL_NEUTRALIZED, s.neutralizedNotifChannelName, NotificationManager.IMPORTANCE_LOW).apply {
                 description = s.neutralizedChannelDesc
             }
         )

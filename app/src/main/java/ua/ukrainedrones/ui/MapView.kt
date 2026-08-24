@@ -11,9 +11,6 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import android.os.VibrationAttributes
-import android.os.VibrationEffect
-import android.os.Vibrator
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -30,9 +28,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.api.IGeoPoint
@@ -284,13 +286,8 @@ private data class NewRingState(val id: String?, val activeUntilMs: Long)
 private const val NEW_RING_MS = 8_000L
 /** How long a grey "lost" dot marks where a threat just vanished. */
 private const val LOST_DOT_MS = 6_000L
-/** Gap between consecutive bullets in the tally-tap replay flourish. */
-private const val FLOURISH_STAGGER_MS = 420L
 /** How long the zone-slider camera refit waits after the value stops changing. */
 private const val ZONE_REFIT_DEBOUNCE_MS = 350L
-/** Floor for the reveal frame's lat/lon span — stops over-zoom on a very close threat. */
-private const val REVEAL_MIN_SPAN_LAT = 0.10
-private const val REVEAL_MIN_SPAN_LON = 0.16
 
 private val shelterBitmapCache = mutableMapOf<String, Bitmap>()
 
@@ -378,62 +375,8 @@ private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox 
     )
 }
 
-/** Bounding box over every resolution in the replay flourish (plus the focus) so a single
- *  zoom-out shows the whole show at once — never pans per bullet. Adds a margin so threats on
- *  the edge of the zoom aren't clipped by the screen border. */
-private fun flourishesBoundingBox(records: List<FlourishRecord>, focus: LatLng?): BoundingBox {
-    var minLat = Double.MAX_VALUE
-    var maxLat = -Double.MAX_VALUE
-    var minLon = Double.MAX_VALUE
-    var maxLon = -Double.MAX_VALUE
-    for (r in records) {
-        minLat = minOf(minLat, r.lat); maxLat = maxOf(maxLat, r.lat)
-        minLon = minOf(minLon, r.lon); maxLon = maxOf(maxLon, r.lon)
-    }
-    focus?.let {
-        minLat = minOf(minLat, it.lat); maxLat = maxOf(maxLat, it.lat)
-        minLon = minOf(minLon, it.lon); maxLon = maxOf(maxLon, it.lon)
-    }
-    val spanLat = maxOf(maxLat - minLat, REVEAL_MIN_SPAN_LAT)
-    val spanLon = maxOf(maxLon - minLon, REVEAL_MIN_SPAN_LON)
-    val marginLat = spanLat * 0.15
-    val marginLon = spanLon * 0.15
-    val latMid = (maxLat + minLat) / 2
-    val lonMid = (maxLon + minLon) / 2
-    return BoundingBox(
-        (latMid + spanLat / 2 + marginLat).coerceAtMost(85.0), lonMid + spanLon / 2 + marginLon,
-        (latMid - spanLat / 2 - marginLat).coerceAtLeast(-85.0), lonMid - spanLon / 2 - marginLon
-    )
-}
-
-/**
- * Greedy spatial clustering of a replay flourish into groups, so the camera can zoom onto each
- * group in turn instead of one over-wide fit. A record joins a group when it is within
- * [maxDistanceMeters] of that group's centroid (recomputed as it grows). Deterministic (input
- * order preserved), pure, and cheap for the ≤21-record memory cap.
- */
-internal fun clusterFlourish(
-    records: List<FlourishRecord>,
-    maxDistanceMeters: Double
-): List<List<FlourishRecord>> {
-    val groups = mutableListOf<MutableList<FlourishRecord>>()
-    for (r in records) {
-        var placed = false
-        for (g in groups) {
-            val cLat = g.map { it.lat }.average()
-            val cLon = g.map { it.lon }.average()
-            if (distanceMeters(cLat, cLon, r.lat, r.lon) <= maxDistanceMeters) {
-                g.add(r)
-                placed = true
-                break
-            }
-        }
-        if (!placed) groups.add(mutableListOf(r))
-    }
-    return groups
-}
-
 @Composable
+@OptIn(ExperimentalCoroutinesApi::class)
 fun NeptunMapView(
     uiState: UiState,
     lang: AppLanguage,
@@ -520,34 +463,16 @@ fun NeptunMapView(
     val deathAnimationEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)
     val followBulletState by rememberUpdatedState(uiState.followBullet)
     val mapScope = rememberCoroutineScope()
-    val deathFx = remember { ThreatDeathOverlay() }
-    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
-    // A pending "return the camera to where the user was" job — replaced by each new strike.
-    val cameraReturnJob = remember { mutableStateOf<Job?>(null) }
+    val deathFx = remember {
+        DeathFxController(
+            context = context,
+            mapView = { mapViewRef.value },
+            focusLocation = { focusLocationState },
+            iconFor = { type -> threatIconFor(context, type, iconSetState) },
+            scope = mapScope
+        )
+    }
     val zoneRefitJob = remember { mutableStateOf<Job?>(null) }
-
-    // Follow-the-bullet: with the setting on, the camera glides onto the strike, then pans
-    // back to where the user was once the explosion has finished. It never scrolls to the
-    // launching city. Off: the camera stays still while the animation plays. A fresh strike
-    // replaces any pending return so rapid successive shots don't fight over the camera.
-    val followStrike: (MapView, GeoPoint, GeoPoint?) -> Unit = { mapView, geo, _ ->
-        if (mapView.width > 0 && mapView.height > 0 && followBulletState) {
-            val preCenter = mapView.mapCenter
-            cameraReturnJob.value?.cancel()
-            cameraReturnJob.value = mapScope.launch {
-                mapView.controller.animateTo(geo)
-                delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
-                mapViewRef.value?.controller?.animateTo(preCenter)
-            }
-        }
-    }
-
-    // Where the death-bullet takes off from: the nearest major city to the target, else the
-    // focus point (GPS or pinned city) when no city is close enough.
-    val strikeOrigin: (GeoPoint) -> GeoPoint? = { target ->
-        Cities.nearestCity(target.latitude, target.longitude)?.let { GeoPoint(it.lat, it.lon) }
-            ?: (focusLocationState ?: LocationTracker.location.value)?.let { GeoPoint(it.lat, it.lon) }
-    }
 
     // Centre + zoom so the whole yellow zone sits in the visible area ABOVE the zones sheet.
     // The bbox is extended downward so the zone occupies the top 60% of the viewport (the
@@ -953,15 +878,15 @@ fun NeptunMapView(
                                 if (pressedId != null) NeptunClient.markUserShot(pressedId)
                                 if (deathAnimationEnabledState) {
                                     val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
-                                    val origin = strikeOrigin(target)
+                                    val origin = deathFx.strikeOrigin(target)
                                     if (deathFx.isActiveFor(pressedId)) {
                                         // Already being struck — a follow-up projectile just
                                         // flies off-screen instead of exploding twice.
-                                        deathFx.spawnDud(pressedId, target, origin)
+                                        deathFx.strikeDud(pressedId, target, origin)
                                     } else {
                                         // User-initiated strike: never move the camera — the
                                         // user is already looking at the threat they shot.
-                                        deathFx.spawn(
+                                        deathFx.strike(
                                             id = pressedId,
                                             geo = target,
                                             origin = origin,
@@ -980,7 +905,7 @@ fun NeptunMapView(
                 )
 
                 // Death flourish on top of everything else.
-                mapView.overlays.add(deathFx)
+                mapView.overlays.add(deathFx.overlay)
 
                 mapView.invalidate()
             }
@@ -1013,22 +938,76 @@ fun NeptunMapView(
         // Death animations: real resolved/remove frames. The threat's own marker icon keeps
         // rendering in the overlay through the full flight and fades out across the explosion;
         // without a live marker, fall back to the raw fix + a fresh icon.
+        // Subscribed ONLY while the shoot-down animation is enabled — turning it off means this
+        // collector doesn't exist at all (no per-frame checks, no coroutines).
+        LaunchedEffect(Unit) {
+            snapshotFlow { uiState.deathAnimationEnabled }
+                .distinctUntilChanged()
+                .flatMapLatest { enabled ->
+                    if (!enabled) emptyFlow() else NeptunClient.removedThreats
+                }
+                .collect { r ->
+                    // Skip resolutions that arrived while the map wasn't visible (Settings open,
+                    // Shelter/Guide covering it, or app backgrounded), while an alert is live, or
+                    // while the shelter overlay is up — nothing should grab the user's attention
+                    // away from the shelters: no stale half-consumed animations on return, and no
+                    // "bullet to nowhere" duds from threats that appeared and resolved unseen.
+                    // During an alert the flourish plays ONLY if the threat was already in camera —
+                    // a resolution that happened off-screen must not jerk the view mid-siren.
+                    if (pausedState || !mapVisibleState || showNearbySheltersState ||
+                        lifecycle.currentState < Lifecycle.State.STARTED
+                    ) return@collect
+                    if (alertActiveState) {
+                        val mapView = mapViewRef.value
+                        if (mapView == null || !mapView.boundingBox.contains(r.lat, r.lon)) return@collect
+                    }
+                    if (r.type in hiddenTypesState) return@collect
+                    val marker = markerRefs.value[r.id]
+                    val anchor0 = GeoPoint(r.lat, r.lon)
+                    val origin = deathFx.strikeOrigin(anchor0)
+                    if (marker == null || deathFx.isActiveFor(r.id)) {
+                        // Already destroyed — a prior bullet landed (the server re-sent the
+                        // resolution), so don't explode where the threat used to be: a follow-up
+                        // projectile just streaks across and off-screen, then is dropped.
+                        deathFx.strikeDud(r.id, anchor0, origin)
+                    } else {
+                        // Unhook the real marker right away — the overlay draws its own copy of the
+                        // icon, so keeping the shared marker would render the same drawable twice
+                        // (its bounds/alpha are mutated per frame, and the marker's own draw fights
+                        // back, making the icon flip or change direction mid-flight).
+                        mapViewRef.value?.overlays?.remove(marker)
+                        markerRefs.value.entries.removeAll { it.value === marker }
+                        val anchor = marker.position ?: anchor0
+                        val base = IconCatalog.baseDeg(r.type, iconSetState)
+                        val rotation = marker.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
+                        // A fresh copy, not the marker's shared drawable.
+                        val icon = threatIconFor(
+                            context, r.type, iconSetState
+                        )
+                        // With follow-the-bullet on, the camera glides onto the target so the
+                        // strike is actually seen.
+                        deathFx.followStrike(anchor, followBulletState)
+                        mapViewRef.value?.invalidate()
+                        deathFx.strike(
+                            id = r.id,
+                            geo = anchor,
+                            origin = origin,
+                            icon = icon,
+                            rotationDeg = rotation,
+                            alpha = marker.alpha ?: 1f
+                        )
+                        deathFx.strikeHaptics()
+                    }
+                }
+        }
+
+        // Lost dots: functional map feedback — a grey dot marks where a vanished threat was last
+        // seen. Runs regardless of the shoot-down animation toggle (it is not a flourish).
         LaunchedEffect(Unit) {
             NeptunClient.removedThreats.collect { r ->
-                // Skip resolutions that arrived while the map wasn't visible (Settings open,
-                // Shelter/Guide covering it, or app backgrounded), while an alert is live, or
-                // while the shelter overlay is up — nothing should grab the user's attention
-                // away from the shelters: no stale half-consumed animations on return, and no
-                // "bullet to nowhere" duds from threats that appeared and resolved unseen.
-                // During an alert the flourish plays ONLY if the threat was already in camera —
-                // a resolution that happened off-screen must not jerk the view mid-siren.
                 if (pausedState || !mapVisibleState || showNearbySheltersState ||
                     lifecycle.currentState < Lifecycle.State.STARTED
                 ) return@collect
-                if (alertActiveState) {
-                    val mapView = mapViewRef.value
-                    if (mapView == null || !mapView.boundingBox.contains(r.lat, r.lon)) return@collect
-                }
                 if (r.type in hiddenTypesState) return@collect
                 // Record a "lost" dot at the last-known position so the user sees where the
                 // threat vanished (mirrors the green reveal dot; grey, shorter-lived).
@@ -1037,66 +1016,15 @@ fun NeptunMapView(
                 lostMap[r.id] = GeoPoint(r.lat, r.lon) to (lostNow + LOST_DOT_MS)
                 lostMap.entries.removeAll { it.value.second < lostNow }
                 lostDots.value = HashMap(lostMap)
-                if (!deathAnimationEnabledState) return@collect
-                val marker = markerRefs.value[r.id]
-                val anchor0 = GeoPoint(r.lat, r.lon)
-                val origin = strikeOrigin(anchor0)
-                if (marker == null || deathFx.isActiveFor(r.id)) {
-                    // Already destroyed — a prior bullet landed (the server re-sent the
-                    // resolution), so don't explode where the threat used to be: a follow-up
-                    // projectile just streaks across and off-screen, then is dropped.
-                    deathFx.spawnDud(r.id, anchor0, origin)
-                } else {
-                    // Unhook the real marker right away — the overlay draws its own copy of the
-                    // icon, so keeping the shared marker would render the same drawable twice
-                    // (its bounds/alpha are mutated per frame, and the marker's own draw fights
-                    // back, making the icon flip or change direction mid-flight).
-                    mapViewRef.value?.overlays?.remove(marker)
-                    markerRefs.value.entries.removeAll { it.value === marker }
-                    val anchor = marker.position ?: anchor0
-                    val base = IconCatalog.baseDeg(r.type, iconSetState)
-                    val rotation = marker.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
-                    // A fresh copy, not the marker's shared drawable.
-                    val icon = threatIconFor(
-                        context, r.type, iconSetState
-                    )
-                    // With follow-the-bullet on, the camera glides onto the target so the
-                    // strike is actually seen.
-                    mapViewRef.value?.let { followStrike(it, anchor, origin) }
-                    mapViewRef.value?.invalidate()
-                    deathFx.spawn(
-                        id = r.id,
-                        geo = anchor,
-                        origin = origin,
-                        icon = icon,
-                        rotationDeg = rotation,
-                        alpha = marker.alpha ?: 1f
-                    )
-                    // Fun haptics: a short crisp "shot" as the bullet fires, then a longer
-                    // pulse when it detonates. USAGE_ALARM keeps both audible as vibration even
-                    // when the system "touch feedback" haptics are off.
-                    if (vibrator != null) mapScope.launch {
-                        vibrator.vibrate(
-                            VibrationEffect.createOneShot(40L, VibrationEffect.DEFAULT_AMPLITUDE),
-                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
-                        )
-                        delay(DEATH_EXPLOSION_START_MS)
-                        vibrator.vibrate(
-                            VibrationEffect.createOneShot(120L, VibrationEffect.DEFAULT_AMPLITUDE),
-                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
-                        )
-                    }
-                }
             }
         }
 
-        // Tally-tap replay flourish: group the remembered resolutions by how close they sit in the
-        // current viewport (screen-size × zoom adaptive), then for each group zoom onto just it,
-        // fire its bullets 0.42s apart, and move to the next group — the camera finally returns
-        // to where the user was after the LAST group explodes. Pure flourish — a red alert
-        // ejects it (see the ejection effect below). The tick is only consumed once the map is
-        // actually available, so a cold-start tap (map not attached yet on the first pass)
-        // retries on the next recomposition instead of silently dropping the show.
+        // Tally-tap replay flourish: the whole show (viewport clustering, per-group zoom, staggered
+        // bullets, haptics, camera return) is orchestrated by [DeathFxController]. This hook only
+        // consumes the tick once the map is actually available, so a cold-start tap (map not
+        // attached yet on the first pass) retries on the next recomposition instead of silently
+        // dropping the show. Pure flourish — a red alert ejects it (see the ejection effect
+        // below), and it never runs while the animation toggle is off.
         val flourishShow = uiState.flourish
         if (flourishShow != null && flourishShow.tick != lastFlourishTick.value) {
             val mapView = mapViewRef.value
@@ -1106,66 +1034,7 @@ fun NeptunMapView(
                     !showNearbySheltersState && deathAnimationEnabledState &&
                     lifecycle.currentState >= Lifecycle.State.STARTED
                 ) {
-                    val records = flourishShow.records
-                    if (records.isNotEmpty()) {
-                        val preCenter = mapView.mapCenter
-                        cameraReturnJob.value?.cancel()
-                        cameraReturnJob.value = mapScope.launch {
-                            // A group spans about a third of the current viewport width —
-                            // zoomed in, groups are tight; zoomed out, everything clusters.
-                            val mpp = TileSystem.GroundResolution(
-                                mapView.mapCenter.latitude, mapView.zoomLevelDouble
-                            )
-                            val groupDist = mpp * mapView.width * 0.33f
-                            val groups = clusterFlourish(records, groupDist.toDouble())
-                            var index = 0
-                            groups.forEachIndexed { gi, group ->
-                                // Centre + zoom onto this group only (with margin).
-                                val box = flourishesBoundingBox(group, null)
-                                mapView.zoomToBoundingBox(box, true)
-                                delay(if (gi == 0) 300L else 400L)
-                                group.forEach { rec ->
-                                    delay(if (index == 0) 0L else FLOURISH_STAGGER_MS)
-                                    index++
-                                    val anchor = GeoPoint(rec.lat, rec.lon)
-                                    val origin = strikeOrigin(anchor)
-                                    val icon = threatIconFor(
-                                        context, rec.type, iconSetState
-                                    )
-                                    deathFx.spawn(
-                                        id = "flourish:$index",
-                                        geo = anchor,
-                                        origin = origin,
-                                        icon = icon,
-                                        rotationDeg = 0f,
-                                        alpha = 1f
-                                    )
-                                    mapView.invalidate()
-                                    // Shot haptic now, kill haptic at the boom.
-                                    if (vibrator != null) mapScope.launch {
-                                        vibrator.vibrate(
-                                            VibrationEffect.createOneShot(
-                                                40L, VibrationEffect.DEFAULT_AMPLITUDE
-                                            ),
-                                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
-                                        )
-                                        delay(DEATH_EXPLOSION_START_MS)
-                                        vibrator.vibrate(
-                                            VibrationEffect.createOneShot(
-                                                120L, VibrationEffect.DEFAULT_AMPLITUDE
-                                            ),
-                                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
-                                        )
-                                    }
-                                }
-                                // Wait for this group's last bullet to finish before panning on.
-                                delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS +
-                                    DEATH_EXPLOSION_LEN_MS)
-                            }
-                            // Back home, at peace.
-                            mapViewRef.value?.controller?.animateTo(preCenter)
-                        }
-                    }
+                    mapScope.launch { deathFx.replay(flourishShow.records) }
                 }
             }
         }
@@ -1173,10 +1042,7 @@ fun NeptunMapView(
         // A red alert ejects the flourish immediately: cancel the pending show and erase the
         // already-drawn bullets so nothing playful distracts from the real alarm.
         LaunchedEffect(uiState.alertActive) {
-            if (uiState.alertActive) {
-                cameraReturnJob.value?.cancel()
-                deathFx.clear()
-            }
+            if (uiState.alertActive) deathFx.clear()
         }
 
         // Surface the death-animation state up so the footer can swap its copy while a bullet

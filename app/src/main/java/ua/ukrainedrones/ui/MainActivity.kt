@@ -110,9 +110,9 @@ class MainActivity : ComponentActivity() {
      * one after another. Pure flourish — an arriving red alert ejects it in the service.
      */
     private fun handleFlourish(intent: Intent?) {
-        val lats = intent?.getDoubleArrayExtra(AlertService.EXTRA_FLOURISH_LATS) ?: return
-        val lons = intent.getDoubleArrayExtra(AlertService.EXTRA_FLOURISH_LONS) ?: return
-        val types = intent.getStringArrayExtra(AlertService.EXTRA_FLOURISH_TYPES) ?: return
+        val lats = intent?.getDoubleArrayExtra(NeutralizedTally.EXTRA_FLOURISH_LATS) ?: return
+        val lons = intent.getDoubleArrayExtra(NeutralizedTally.EXTRA_FLOURISH_LONS) ?: return
+        val types = intent.getStringArrayExtra(NeutralizedTally.EXTRA_FLOURISH_TYPES) ?: return
         val n = minOf(lats.size, lons.size, types.size)
         if (n == 0) return
         val records = buildList {
@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
         runCatching {
             startService(
                 Intent(this, AlertService::class.java)
-                    .setAction(AlertService.ACTION_NEUTRALIZED_DISMISS)
+                    .setAction(NeutralizedTally.ACTION_NEUTRALIZED_DISMISS)
             )
         }
     }

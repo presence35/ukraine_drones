@@ -13,7 +13,7 @@ class NeutralizedDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         context.startService(
             Intent(context, AlertService::class.java)
-                .setAction(AlertService.ACTION_NEUTRALIZED_DISMISS)
+                .setAction(NeutralizedTally.ACTION_NEUTRALIZED_DISMISS)
         )
     }
 }
