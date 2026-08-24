@@ -11,6 +11,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,6 +25,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.ripple
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -53,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -1582,23 +1588,33 @@ private fun AlertToggleRow(
     note: String? = null,
     flash: Boolean = false
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .explainerFlash(flash)
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
-            .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (isPressed) 0.06f else 0f))
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true)
+            )
+            .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (emoji != null) {
             Text(
                 text = emoji,
-                fontSize = 20.sp,
-                modifier = Modifier.padding(end = 12.dp).size(24.dp)
+                fontSize = 22.sp,
+                modifier = Modifier.size(28.dp)
             )
         } else {
             icon?.let {
-                Box(modifier = Modifier.padding(end = 12.dp).size(24.dp)) {
+                Box(modifier = Modifier.size(28.dp)) {
                     Image(
                         painter = it,
                         contentDescription = null,
@@ -1619,14 +1635,14 @@ private fun AlertToggleRow(
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(3.dp))
             Text(
                 description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             note?.let {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(
                     it,
                     style = MaterialTheme.typography.labelSmall,
@@ -1634,8 +1650,11 @@ private fun AlertToggleRow(
                 )
             }
         }
-        Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = null)
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            modifier = Modifier.scale(if (isPressed) 0.92f else 1f)
+        )
     }
 }
 
@@ -1692,10 +1711,15 @@ private fun ThreatSettingsCard(
                     contentDescription = label
                 )
                 Spacer(Modifier.width(12.dp))
+                val expandInteraction = remember { MutableInteractionSource() }
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onExpandChange)
+                        .clickable(
+                            interactionSource = expandInteraction,
+                            indication = ripple(bounded = true),
+                            onClick = onExpandChange
+                        )
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -2196,11 +2220,23 @@ internal fun IconSetTile(
     modifier: Modifier = Modifier,
     slot: Dp = IconTileSlot
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale = animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        label = "iconSetScale"
+    )
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true),
+                onClick = onClick
+            )
+            .graphicsLayer { scaleX = scale.value; scaleY = scale.value },
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
             width = if (selected) 2.dp else 1.dp,
@@ -2211,8 +2247,9 @@ internal fun IconSetTile(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             IconCatalog.photoTypes().forEach { type ->
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -2252,13 +2289,13 @@ private fun SearchChipsRow(
     lang: AppLanguage,
     onChip: (SearchChip) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp)) {
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2287,6 +2324,13 @@ private fun CollapsibleSectionCard(
     cardBorder: Color? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val chevronAngle = animateFloatAsState(
+        targetValue = if (expanded) 0f else 180f,
+        animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        label = "chevronAngle"
+    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = if (cardColor != null) CardDefaults.cardColors(containerColor = cardColor) else CardDefaults.cardColors(),
@@ -2296,17 +2340,26 @@ private fun CollapsibleSectionCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onToggle)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = ripple(bounded = true),
+                        onClick = onToggle
+                    )
+                    .background(
+                        MaterialTheme.colorScheme.onSurface.copy(
+                            alpha = if (isPressed) 0.06f else 0f
+                        )
+                    )
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
                     painter = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(24.dp)
                 )
-                Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         title,
@@ -2315,7 +2368,7 @@ private fun CollapsibleSectionCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     if (!expanded && !subtitle.isNullOrBlank()) {
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             subtitle,
                             style = MaterialTheme.typography.bodySmall,
@@ -2324,15 +2377,20 @@ private fun CollapsibleSectionCard(
                         )
                     }
                 }
-                Spacer(Modifier.width(8.dp))
                 Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp
-                    else Icons.Default.KeyboardArrowDown,
+                    imageVector = Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .graphicsLayer { rotationZ = chevronAngle.value }
                 )
             }
-            AnimatedVisibility(visible = expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
+            ) {
                 Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     content()
@@ -2377,17 +2435,31 @@ internal fun LanguageFlag(
     modifier: Modifier = Modifier,
     label: String? = null
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale = animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        label = "langFlagScale"
+    )
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true),
+                onClick = onClick
+            )
             .then(
                 if (active) Modifier.background(UkraineBlue.copy(alpha = 0.25f)) else Modifier
             )
-            .padding(vertical = 10.dp),
+            .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+        ) {
             Text(
                 emoji,
                 fontSize = 32.sp,

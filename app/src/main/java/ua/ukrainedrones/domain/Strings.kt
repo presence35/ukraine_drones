@@ -39,7 +39,8 @@ object Strings {
         val settingsSearchClear: String,
         val settingsNoResults: String,
         val settingsSearchRelated: String,
-        val settingsDidYouMean: String
+        val settingsDidYouMean: String,
+        val fitMapLabel: String
     )
 
     data class Settings(
@@ -504,6 +505,7 @@ object Strings {
         val wizardEditZonesHint: String get() = onboarding.wizardEditZonesHint
         val wizardShelterTitle: String get() = onboarding.wizardShelterTitle
         val wizardShelterDesc: String get() = onboarding.wizardShelterDesc
+        val fitMapLabel: String get() = onboarding.fitMapLabel
         val dayZonesTitle: String get() = settings.dayZonesTitle
         val nightZonesTitle: String get() = settings.nightZonesTitle
         val alertZonesTitle: String get() = settings.alertZonesTitle
@@ -1003,6 +1005,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         settingsNoResults = "Нічого не знайдено",
         settingsSearchRelated = "Можливо, ви також шукаєте",
         settingsDidYouMean = "Можливо, ви мали на увазі",
+        fitMapLabel = "Показати всю Україну на мапі",
     )
 
     private fun uaSettings() = Settings(
@@ -1498,6 +1501,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         settingsNoResults = "Nothing found",
         settingsSearchRelated = "You might also look for",
         settingsDidYouMean = "Did you mean",
+        fitMapLabel = "Center map on Ukraine",
     )
 
     private fun enSettings() = Settings(

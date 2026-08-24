@@ -3,11 +3,14 @@ package ua.ukrainedrones
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,16 +69,23 @@ internal fun AlertsOffBell(
 /** Crossed bell + small "off" chip shown next to the popup title when the type's alerts are off. */
 @Composable
 internal fun AlertsOffChip(s: Strings.StringSet) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     Surface(
         shape = RoundedCornerShape(50),
-        color = Color(0xFF2A2A2A)
+        color = Color(0xFF2A2A2A).copy(alpha = if (isPressed) 0.9f else 1f),
+        modifier = Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = ripple(bounded = true),
+            onClick = {}
+        )
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             AlertsOffBell(size = fontAware(14.dp))
-            Spacer(Modifier.width(4.dp))
             Text(
                 s.alertsOffLabel,
                 style = MaterialTheme.typography.labelSmall,
@@ -192,10 +202,17 @@ fun ThreatPopupCard(
         return
     }
 
+    val cardInteraction = remember { MutableInteractionSource() }
     Surface(
         modifier = modifier
             .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-            .then(if (interactive) Modifier.clickable(onClick = onDismiss) else Modifier),
+            .then(
+                if (interactive) Modifier.clickable(
+                    interactionSource = cardInteraction,
+                    indication = ripple(bounded = true, radius = 200.dp),
+                    onClick = onDismiss
+                ) else Modifier
+            ),
         shape = RoundedCornerShape(16.dp),
         color = if (stale) Color(0xFF151515) else Color(0xFF1E1E1E),
         border = BorderStroke(2.dp, if (stale) Color(0xFF3A3A3A) else bandColor),

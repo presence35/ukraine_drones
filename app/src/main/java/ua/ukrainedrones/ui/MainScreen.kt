@@ -11,6 +11,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -19,6 +21,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.ripple
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -695,6 +700,8 @@ private fun WizardThreatGrid(
                 )
             }
             Spacer(Modifier.height(10.dp))
+            // TODO: Dynamic column count based on available width (onGloballyPositioned) for
+            //  tablet/foldable support. Currently hardcoded to 4 columns.
             types.toList().chunked(4).forEach { row ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -956,12 +963,17 @@ private fun MapScreen(
     val context = LocalContext.current
     val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
     // The settings gear does one slow spin while the "open Settings" hint is still active,
-    // drawing the eye to it (the old heart pulse is long gone).
-    val gearSpin = remember { Animatable(0f) }
+    // drawing the eye to it. Using animateFloatAsState so the value is always observed by Compose.
+    var gearSpinTarget by remember { mutableFloatStateOf(0f) }
+    val gearSpin by animateFloatAsState(
+        targetValue = gearSpinTarget,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "gearSpin"
+    )
     LaunchedEffect(settingsHintRemaining) {
         if (settingsHintRemaining > 0) {
-            gearSpin.snapTo(0f)
-            gearSpin.animateTo(360f, animationSpec = tween(durationMillis = 900))
+            gearSpinTarget = 0f
+            gearSpinTarget = 360f
         }
     }
     var fitUkraineTick by remember { mutableStateOf(0) }
@@ -1092,9 +1104,16 @@ private fun MapScreen(
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.CenterStart
                 ) {
+                    val titleInteraction = remember { MutableInteractionSource() }
                     Text(
                         text = alertText,
-                        modifier = Modifier.clickable(onClick = { fitUkraineTick++ }),
+                        modifier = Modifier
+                            .clickable(
+                                interactionSource = titleInteraction,
+                                indication = ripple(),
+                                onClick = { fitUkraineTick++ }
+                            )
+                            .semantics { semanticsContentDescription = s.fitMapLabel },
                         style = when {
                             activeZone != null -> MaterialTheme.typography.titleMedium.copy(color = Color.White)
                             officialOnly -> MaterialTheme.typography.titleMedium.copy(color = Color(0xFFE57373))
@@ -1133,7 +1152,7 @@ private fun MapScreen(
                         tint = Color.Unspecified,
                         modifier = Modifier
                             .size(22.dp)
-                            .graphicsLayer { rotationZ = gearSpin.value }
+                            .graphicsLayer { rotationZ = gearSpin }
                     )
                 }
             }
@@ -1432,12 +1451,21 @@ private fun MapScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .padding(top = 10.dp, bottom = 2.dp)
-                                    .width(36.dp)
-                                    .height(4.dp)
+                                    .padding(top = 12.dp, bottom = 8.dp)
+                                    .width(48.dp)
+                                    .height(24.dp)
                                     .clip(RoundedCornerShape(50))
-                                    .background(Color(0xFF555555))
-                            )
+                                    .background(Color(0xFF555555).copy(alpha = 0.6f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(36.dp)
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(Color(0xFF888888))
+                                )
+                            }
                         }
                                                 ZonesPanel(
                             slowRedKm = if (editingNight) uiState.nightSlowRedKm else uiState.slowRedKm,
@@ -1475,7 +1503,7 @@ private fun MapScreen(
 }
 
 @Composable
-private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier) {
+private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier, contentDesc: String? = null) {
     val red = AlertRed
     Box(modifier = modifier.size(32.dp), contentAlignment = Alignment.Center) {
         if (active) {
@@ -1491,7 +1519,7 @@ private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier) {
         }
         Image(
             painter = painterResource(R.drawable.ic_trident),
-            contentDescription = null,
+            contentDescription = contentDesc,
             colorFilter = if (active) ColorFilter.tint(red) else null,
             modifier = Modifier.fillMaxSize()
         )
@@ -1563,6 +1591,8 @@ private fun ShelterButton(
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(50)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     val bg = if (alertActive) AlertRed else MaterialTheme.colorScheme.surface
     val fg = when {
         alertActive -> Color.White
@@ -1576,18 +1606,23 @@ private fun ShelterButton(
     }
     Surface(
         shape = shape,
-        color = bg,
+        color = bg.copy(alpha = if (isPressed) 0.8f else 1f),
         border = border,
-        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        modifier = modifier.combinedClickable(
+            interactionSource = interactionSource,
+            indication = ripple(bounded = true, color = fg.copy(alpha = 0.3f)),
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val walkRes = remember { if (kotlin.random.Random.nextBoolean()) R.drawable.ic_walk_man else R.drawable.ic_walk_woman }
-            WalkFigureIcon(resId = walkRes, height = 18.dp, tint = fg)
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+            WalkFigureIcon(resId = walkRes, height = 20.dp, tint = fg)
+            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = fg)
         }
     }
 }
@@ -1616,21 +1651,34 @@ private fun ZoneButtons(
         ) {
             ZoneButton(ThreatZone.INNER, redArmed, s.zoneButtonRed, onZoneTap)
             ZoneButton(ThreatZone.OUTER, yellowArmed, s.zoneButtonYellow, onZoneTap)
+            val gearInteraction = remember { MutableInteractionSource() }
+            val gearPressed by gearInteraction.collectIsPressedAsState()
+            val gearRotation = animateFloatAsState(
+                targetValue = if (gearPressed) -15f else 0f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                label = "gearRotation"
+            )
             Box(
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surface)
                     .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                     .semantics { semanticsContentDescription = s.editZonesLabel }
-                    .clickable(onClick = onEditZones),
+                    .clickable(
+                        interactionSource = gearInteraction,
+                        indication = ripple(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                        onClick = onEditZones
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = s.editZonesLabel,
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier
+                        .size(20.dp)
+                        .graphicsLayer { rotationZ = gearRotation.value }
                 )
             }
         }
@@ -1639,10 +1687,15 @@ private fun ZoneButtons(
 
 @Composable
 private fun AllAlertsOffWarning(label: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
         shape = RoundedCornerShape(50),
         color = Color.Black.copy(alpha = 0.55f),
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = ripple(bounded = true),
+            onClick = onClick
+        )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -1710,21 +1763,41 @@ private fun ZonePill(
         ThreatZone.INNER -> AlertRed
         ThreatZone.OUTER -> Color(0xFFF9A825)
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val bgAlpha = animateFloatAsState(
+        targetValue = if (isPressed) 0.75f else 1f,
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        label = "zonePillBg"
+    )
+    val scale = animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        label = "zonePillScale"
+    )
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(48.dp)
             .clip(CircleShape)
-            .background(if (armed) zoneColor else Color(0xFF2A2A2A))
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            }
+            .background(if (armed) zoneColor.copy(alpha = bgAlpha.value) else Color(0xFF2A2A2A))
             .border(2.dp, if (armed) zoneColor else Color(0xFF666666), CircleShape)
             .semantics { semanticsContentDescription = contentDescription }
-            .clickable(onClick = { onZoneTap(zone) }),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(color = Color.White.copy(alpha = 0.3f)),
+                onClick = { onZoneTap(zone) }
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             painter = painterResource(id = R.drawable.ic_zoom_in),
             contentDescription = null,
             tint = if (armed) Color.White else Color(0xFF777777),
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -1737,12 +1810,20 @@ private fun ThreatStatusCell(
     iconSet: ThreatIconSet,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (isPressed) 0.12f else 0.06f))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true),
+                onClick = onClick
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         ThreatIcon(
             type = type,
@@ -1750,7 +1831,6 @@ private fun ThreatStatusCell(
             size = 28.dp,
             tint = if (enabled) Color.Unspecified else Color(0xFF9E9E9E)
         )
-        Spacer(Modifier.width(7.dp))
         Text(
             "$count",
             style = MaterialTheme.typography.labelLarge,
@@ -1774,21 +1854,33 @@ private fun ThreatCardSizeControl(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale = animateFloatAsState(
+        targetValue = if (isPressed) 0.9f else 1f,
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        label = "cardSizeScale"
+    )
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = modifier
-            .sizeIn(minWidth = 44.dp, minHeight = 44.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = if (isPressed) 0.95f else 0.85f))
             .semantics { semanticsContentDescription = contentDescription }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true),
+                onClick = onClick
+            )
+            .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         listOf(2.dp, 6.dp).forEachIndexed { i, thickness ->
             Box(
                 modifier = Modifier
-                    .width(18.dp)
+                    .width(20.dp)
                     .height(thickness)
                     .clip(RoundedCornerShape(50))
                     .background(
@@ -1796,7 +1888,7 @@ private fun ThreatCardSizeControl(
                         else Color(0xFF9E9E9E)
                     )
             )
-            if (i < 1) Spacer(Modifier.height(3.dp))
+            if (i < 1) Spacer(Modifier.height(4.dp))
         }
     }
 }
