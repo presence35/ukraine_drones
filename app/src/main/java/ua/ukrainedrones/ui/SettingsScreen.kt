@@ -747,7 +747,7 @@ fun SettingsScreen(
                         description = s.neutralizedTallyDesc,
                         checked = neutralizedTallyEnabled,
                         onCheckedChange = onNeutralizedTallyChange,
-                        icon = rememberVectorPainter(Icons.Default.Notifications),
+                        icon = painterResource(R.drawable.ic_tally_bell),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (neutralizedTallyEnabled) {
@@ -1122,7 +1122,7 @@ fun SettingsScreen(
                         description = s.calmMessagesDesc,
                         checked = calmMessagesEnabled,
                         onCheckedChange = onCalmMessagesChange,
-                        icon = painterResource(R.drawable.ic_explosion),
+                        icon = painterResource(R.drawable.ic_peace),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1400,20 +1400,20 @@ private fun NightModeCard(
             }
             Column(modifier = Modifier.padding(horizontal = 14.dp)) {
                 AlertToggleRow(
+                    title = s.nightOfficialSirenOverrideTitle,
+                    description = s.nightOfficialSirenOverrideDesc,
+                    checked = officialSirenOverride,
+                    onCheckedChange = onOfficialSirenOverrideChange,
+                    icon = painterResource(R.drawable.ic_trident)
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AlertToggleRow(
                     title = s.nightZoneSirenOverrideTitle,
                     description = s.nightZoneSirenOverrideDesc,
                     checked = zoneSirenOverride,
                     onCheckedChange = onZoneSirenOverrideChange,
                     icon = painterResource(R.drawable.ic_volume_up),
                     iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                AlertToggleRow(
-                    title = s.nightOfficialSirenOverrideTitle,
-                    description = s.nightOfficialSirenOverrideDesc,
-                    checked = officialSirenOverride,
-                    onCheckedChange = onOfficialSirenOverrideChange,
-                    icon = painterResource(R.drawable.ic_trident)
                 )
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

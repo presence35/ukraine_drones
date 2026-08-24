@@ -122,11 +122,14 @@ private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
     append(if (t.isStale(now)) 'S' else 'L').append(';')
 }
 
-/** Threat marker icon at a fixed size regardless of map zoom. */
+/** Threat marker icon at a fixed size regardless of map zoom. When [revealed], draws a small
+ *  green dot in the icon's top-right corner — the notification-reveal marker — so it's a single
+ *  tappable marker (no separate overlay intercepting the tap) that moves with the threat. */
 private fun threatIconFor(
     context: Context,
     type: ThreatType,
-    iconSet: ThreatIconSet
+    iconSet: ThreatIconSet,
+    revealed: Boolean = false
 ): Drawable {
     val src = ContextCompat.getDrawable(context, IconCatalog.res(type, iconSet))!!
     val density = context.resources.displayMetrics.density
@@ -139,6 +142,20 @@ private fun threatIconFor(
     val canvas = Canvas(bmp)
     src.setBounds(0, 0, w, h)
     src.draw(canvas)
+    if (revealed) {
+        val r = 4f * density
+        val cx = w - r - 1.5f * density
+        val cy = r + 1.5f * density
+        canvas.drawCircle(cx, cy, r, Paint().apply {
+            isAntiAlias = true
+            color = Color.rgb(76, 175, 80)
+        })
+        // Small white core so the dot reads on any icon colour.
+        canvas.drawCircle(cx, cy, r * 0.45f, Paint().apply {
+            isAntiAlias = true
+            color = Color.WHITE
+        })
+    }
     return BitmapDrawable(context.resources, bmp)
 }
 
@@ -236,31 +253,6 @@ private fun circlePoints(center: GeoPoint, radiusMeters: Double, segments: Int =
     }
 }
 
-/** Green dot highlighting the threat a notification just revealed (filled, not a ring). */
-private fun newRingBitmap(context: Context): Bitmap {
-    val density = context.resources.displayMetrics.density
-    val r = 10f * density
-    val glowR = r * 2.4f
-    val size = (glowR * 2).toInt().coerceAtLeast(2)
-    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bmp)
-    val cx = size / 2f
-    val cy = size / 2f
-    canvas.drawCircle(cx, cy, glowR, Paint().apply {
-        shader = RadialGradient(
-            cx, cy, glowR,
-            intArrayOf(Color.argb(90, 76, 175, 80), Color.argb(0, 76, 175, 80)),
-            floatArrayOf(0.45f, 1f),
-            Shader.TileMode.CLAMP
-        )
-    })
-    canvas.drawCircle(cx, cy, r, Paint().apply {
-        isAntiAlias = true
-        color = Color.rgb(76, 175, 80)
-    })
-    return bmp
-}
-
 /** Grey dot marking where a just-lost threat was last seen. */
 private fun lostDotBitmap(context: Context): Bitmap {
     val density = context.resources.displayMetrics.density
@@ -286,8 +278,8 @@ private fun lostDotBitmap(context: Context): Bitmap {
     return bmp
 }
 
-/** A revealed threat that is still highlighted with the green ring. */
-private data class NewRingState(val id: String?, val position: LatLng, val activeUntilMs: Long)
+/** A revealed threat that is still highlighted with the green dot badge. */
+private data class NewRingState(val id: String?, val activeUntilMs: Long)
 
 private const val NEW_RING_MS = 8_000L
 /** How long a grey "lost" dot marks where a threat just vanished. */
@@ -457,7 +449,7 @@ fun NeptunMapView(
         if (showNearbyShelters) {
             append('L').append(selectedShelter?.shelter?.id)
         }
-        for (token in uiState.activeRegionTokens) append('R').append(token).append(';')
+        for (city in uiState.redCities) append('C').append(city).append(';')
         for (t in uiState.mapThreats) appendThreatKey(t, System.currentTimeMillis())
     }
     val lastOverlayKey = remember { mutableStateOf<String?>(null) }
@@ -470,7 +462,6 @@ fun NeptunMapView(
     val lastRevealTick = remember { mutableStateOf(-1) }
     val lastFlourishTick = remember { mutableStateOf(-1) }
     val newRingState = remember { mutableStateOf<NewRingState?>(null) }
-    val newRingMarker = remember { mutableStateOf<Marker?>(null) }
     val lostDots = remember { mutableStateOf<MutableMap<String, Pair<GeoPoint, Long>>>(mutableMapOf()) }
     val didDefaultFit = remember { mutableStateOf(false) }
     val lastPinnedCity = remember { mutableStateOf<String?>(null) }
@@ -596,35 +587,6 @@ fun NeptunMapView(
         update = { mapView ->
             mapViewRef.value = mapView
 
-            // Green ring marking the threat a notification just revealed — follows the live
-            // marker (or holds the raw fix), and disappears once its 8s window is up.
-            fun placeRing() {
-                val ring = newRingState.value ?: return
-                val now = System.currentTimeMillis()
-                if (now >= ring.activeUntilMs) {
-                    newRingMarker.value?.let { mapView.overlays.remove(it) }
-                    newRingMarker.value = null
-                    return
-                }
-                val target = ring.id?.let { id ->
-                    uiState.mapThreats.firstOrNull { it.id == id }
-                }?.let { t ->
-                    ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
-                } ?: GeoPoint(ring.position.lat, ring.position.lon)
-                val existing = newRingMarker.value
-                if (existing == null || existing !in mapView.overlays) {
-                    val m = Marker(mapView).apply {
-                        position = target
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = BitmapDrawable(context.resources, newRingBitmap(context))
-                        setInfoWindow(null)
-                    }
-                    mapView.overlays.add(m)
-                    newRingMarker.value = m
-                } else {
-                    existing.position = target
-                }
-            }
             // Floor the zoom-out so you can't zoom past "Ukraine fills the screen".
             if (mapView.width > 0 && mapView.height > 0) {
                 val floorZoom =
@@ -720,13 +682,13 @@ fun NeptunMapView(
             // Notification tap: pan + zoom so the focus point (GPS/city) sits near the top
             // and the revealed threat near the bottom, with space between. The span scales
             // with the gap, so the zoom reflects how far the threat is. Also mark it with
-            // the green ring.
+            // the green dot.
             val reveal = revealRequest
             if (reveal != null && reveal.tick != lastRevealTick.value) {
                 lastRevealTick.value = reveal.tick
                 val threat = LatLng(reveal.lat, reveal.lon)
                 newRingState.value = NewRingState(
-                    reveal.id, threat, System.currentTimeMillis() + NEW_RING_MS
+                    reveal.id, System.currentTimeMillis() + NEW_RING_MS
                 )
                 if (mapView.width > 0 && mapView.height > 0) {
                     // Harden: a bad framing box (or a not-yet-laid-out map) must never crash
@@ -739,7 +701,19 @@ fun NeptunMapView(
                         mapView.controller.animateTo(GeoPoint(threat.lat, threat.lon))
                     }
                 }
-                placeRing()
+                // The reveal dot is baked into the threat's own icon (top-right corner), so a
+                // marker that already exists gets its badge now; the rebuild path applies it at
+                // build time too. If the threat isn't mapped yet (cold start), the marker appears
+                // badged once the stream delivers it.
+                reveal.id?.let { id ->
+                    markerRefs.value[id]?.let { m ->
+                        val t = uiState.mapThreats.firstOrNull { it.id == id }
+                        if (t != null) {
+                            m.icon = threatIconFor(context, t.type, iconSetState, revealed = true)
+                            mapView.invalidate()
+                        }
+                    }
+                }
             }
 
             if (overlayKey == lastOverlayKey.value) {
@@ -771,7 +745,7 @@ fun NeptunMapView(
 
                 // City labels (English names on top of label-free tiles)
                 mapView.overlays.add(
-                    CityLabelOverlay(context, lang, uiState.activeRegionTokens)
+                    CityLabelOverlay(context, lang, uiState.redCities)
                 )
 
                 // Focus-centered alert zones: yellow ring (outer) and red circle (inner) for
@@ -819,10 +793,13 @@ fun NeptunMapView(
                     }
                     val pos = predicted ?: GeoPoint(t.lat, t.lon)
                     val stale = t.isStale(System.currentTimeMillis())
+                    val nowMs = System.currentTimeMillis()
+                    val ring = newRingState.value
+                    val revealed = ring != null && t.id == ring.id && nowMs < ring.activeUntilMs
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = threatIconFor(context, t.type, iconSet)
+                        icon = threatIconFor(context, t.type, iconSet, revealed = revealed)
                         alpha = if (stale) 0.45f else 1.0f
                         title = typeLabel
                         snippet = regionLabel
@@ -843,9 +820,6 @@ fun NeptunMapView(
                     mapView.overlays.add(marker)
                     markerRefs.value[t.id] = marker
                 }
-
-                // Reveal ring above the threat icons (added only while its 8s window is live).
-                placeRing()
 
                 // Nearby shelters — rendered when toggled on, centered around the user/pinned focus.
                 if (showNearbyShelters && focus != null && shelterIndex != null) {
@@ -1086,44 +1060,48 @@ fun NeptunMapView(
         // Tally-tap replay flourish: zoom out to fit every remembered resolution at once, then
         // fire the bullets 0.42s apart so it reads as a single show. The camera returns to where
         // the user was only after the LAST bullet has exploded. Pure flourish — a red alert
-        // ejects it (see the ejection effect below).
+        // ejects it (see the ejection effect below). The tick is only consumed once the map is
+        // actually available, so a cold-start tap (map not attached yet on the first pass)
+        // retries on the next recomposition instead of silently dropping the show.
         val flourishShow = uiState.flourish
         if (flourishShow != null && flourishShow.tick != lastFlourishTick.value) {
-            lastFlourishTick.value = flourishShow.tick
             val mapView = mapViewRef.value
-            if (mapView != null && !pausedState && mapVisibleState && !alertActiveState &&
-                !showNearbySheltersState && deathAnimationEnabledState &&
-                lifecycle.currentState >= Lifecycle.State.STARTED
-            ) {
-                val records = flourishShow.records
-                if (records.isNotEmpty()) {
-                    val preCenter = mapView.mapCenter
-                    cameraReturnJob.value?.cancel()
-                    cameraReturnJob.value = mapScope.launch {
-                        // One zoom that fits the whole group — no per-threat panning.
-                        val box = flourishesBoundingBox(records, uiState.focusLocation)
-                        mapView.zoomToBoundingBox(box, true)
-                        records.forEachIndexed { i, rec ->
-                            delay(if (i == 0) 300L else FLOURISH_STAGGER_MS)
-                            val anchor = GeoPoint(rec.lat, rec.lon)
-                            val origin = strikeOrigin(anchor)
-                            val icon = threatIconFor(
-                                context, rec.type, iconSetState
-                            )
-                            deathFx.spawn(
-                                id = "flourish:$i",
-                                geo = anchor,
-                                origin = origin,
-                                icon = icon,
-                                rotationDeg = 0f,
-                                alpha = 1f
-                            )
-                            mapView.invalidate()
+            if (mapView != null) {
+                lastFlourishTick.value = flourishShow.tick
+                if (!pausedState && mapVisibleState && !alertActiveState &&
+                    !showNearbySheltersState && deathAnimationEnabledState &&
+                    lifecycle.currentState >= Lifecycle.State.STARTED
+                ) {
+                    val records = flourishShow.records
+                    if (records.isNotEmpty()) {
+                        val preCenter = mapView.mapCenter
+                        cameraReturnJob.value?.cancel()
+                        cameraReturnJob.value = mapScope.launch {
+                            // One zoom that fits the whole group — no per-threat panning.
+                            val box = flourishesBoundingBox(records, uiState.focusLocation)
+                            mapView.zoomToBoundingBox(box, true)
+                            records.forEachIndexed { i, rec ->
+                                delay(if (i == 0) 300L else FLOURISH_STAGGER_MS)
+                                val anchor = GeoPoint(rec.lat, rec.lon)
+                                val origin = strikeOrigin(anchor)
+                                val icon = threatIconFor(
+                                    context, rec.type, iconSetState
+                                )
+                                deathFx.spawn(
+                                    id = "flourish:$i",
+                                    geo = anchor,
+                                    origin = origin,
+                                    icon = icon,
+                                    rotationDeg = 0f,
+                                    alpha = 1f
+                                )
+                                mapView.invalidate()
+                            }
+                            // Wait for the last bullet to finish before returning the camera.
+                            delay((records.size - 1) * FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS +
+                                DEATH_EXPLOSION_LEN_MS + 300L)
+                            mapViewRef.value?.controller?.animateTo(preCenter)
                         }
-                        // Wait for the last bullet to finish before returning the camera.
-                        delay((records.size - 1) * FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS +
-                            DEATH_EXPLOSION_LEN_MS + 300L)
-                        mapViewRef.value?.controller?.animateTo(preCenter)
                     }
                 }
             }
@@ -1191,24 +1169,18 @@ fun NeptunMapView(
                 }
             }
             if (dirty) mapView.invalidate()
-            // Reveal ring: glide onto its threat marker, or fade out once the 8s window ends.
-            newRingMarker.value?.let { rm ->
-                val ring = newRingState.value ?: return@let
-                if (now >= ring.activeUntilMs) {
-                    mapView.overlays.remove(rm)
-                    newRingMarker.value = null
-                    dirty = true
-                } else {
-                    val t = ring.id?.let { id -> uiState.mapThreats.firstOrNull { it.id == id } }
-                    val target = t?.let { tt ->
-                        ThreatSpeedTracker.estimate(tt.id, tt)?.let { predictPosition(tt, it, now) }
-                    } ?: GeoPoint(ring.position.lat, ring.position.lon)
-                    val cur = rm.position
-                    if (cur == null ||
-                        distanceMeters(cur.latitude, cur.longitude, target.latitude, target.longitude) > 1.0
-                    ) {
-                        rm.position = target
-                        dirty = true
+            // Reveal badge: when the 8s window ends, strip the green dot off the revealed
+            // marker (the dot is baked into the icon, so expiry is just an icon swap).
+            val ring = newRingState.value
+            if (ring != null && now >= ring.activeUntilMs) {
+                newRingState.value = null
+                ring.id?.let { id ->
+                    markerRefs.value[id]?.let { m ->
+                        val t = uiState.mapThreats.firstOrNull { it.id == id }
+                        if (t != null) {
+                            m.icon = threatIconFor(context, t.type, iconSetState)
+                            dirty = true
+                        }
                     }
                 }
             }

@@ -69,12 +69,11 @@ data class UiState(
     val activeZone: ThreatZone? = null,           // most specific zone with a threat
     val focusOblastAlertActive: Boolean = false,  // official alert on the focus point's oblast
     val focusBannerCity: String = "",             // localized city name for the alert banner
-    val activeRegionTokens: Set<String> = emptySet(), // oblast stems under official alert
     val language: AppLanguage = AppLanguage.EN,
     val followMe: Boolean = true,
     val pinnedCity: City? = null,
     val focusLocation: LatLng? = null,            // camera + zone center: GPS (follow) or pinned city
-    val redCities: Set<String> = emptySet(),      // nameUa of cities whose oblast has an official alert
+    val redCities: Set<String> = emptySet(),      // nameUa of cities shown red (scope-aware)
     val selectedThreat: Threat? = null,
     val selectedThreatInfo: ThreatProximity? = null,
     val neutralizedThreat: Threat? = null,   // selected threat just resolved — fades out
@@ -687,11 +686,16 @@ val uiState: StateFlow<UiState> = combine(
                 if (neptun.oblastAlerts.any { it.inOblast(citiesToken) }) add(citiesToken)
             }
         }
-        // Cities whose oblast is under an official alert — red dot in the picker.
+        // Cities shown red on the map/picker. Oblast scope (default): any city in an alerting
+        // oblast. City scope: only the cities the alert actually covers by name — the shared
+        // officialAlertActiveFor gate, so the map agrees with the banner/notifications.
         val redCities = buildSet {
             for (city in Cities.ALL) {
                 val token = Cities.cityOblast[city.nameUa] ?: continue
-                if (token in activeRegionTokens) add(city.nameUa)
+                val covered = if (officialAlertCityScope) {
+                    officialAlertActiveFor(neptun.oblastAlerts, token, city.nameUa, scope = true)
+                } else token in activeRegionTokens
+                if (covered) add(city.nameUa)
             }
         }
 
@@ -759,7 +763,6 @@ val uiState: StateFlow<UiState> = combine(
             activeZone = activeZone,
             focusOblastAlertActive = focusOblastAlertActive,
             focusBannerCity = focusBannerCity,
-            activeRegionTokens = activeRegionTokens,
             language = language,
             followMe = followMe,
             pinnedCity = pinnedCity,

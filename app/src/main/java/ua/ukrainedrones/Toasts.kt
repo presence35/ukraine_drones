@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.channels.BufferOverflow
@@ -69,10 +70,10 @@ fun ToastHost(topInset: Dp = 0.dp) {
             modifier = Modifier
                 .align(if (current?.cardVisible == true) Alignment.BottomCenter else Alignment.TopCenter)
                 .padding(
-                    start = 16.dp,
-                    end = 16.dp,
-                    bottom = 16.dp,
-                    top = if (current?.cardVisible == true) 16.dp else topInset + 8.dp
+                    start = 24.dp,
+                    end = 24.dp,
+                    bottom = 20.dp,
+                    top = if (current?.cardVisible == true) 20.dp else topInset + 14.dp
                 )
         ) {
             current?.let { req ->
@@ -81,8 +82,7 @@ fun ToastHost(topInset: Dp = 0.dp) {
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xFF2A2A2E),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = 360.dp)
+                        .widthIn(min = 160.dp, max = 360.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .border(1.dp, Color(0xFF4A4A4E), RoundedCornerShape(12.dp))
                         .background(Color(0xFF2A2A2E))
@@ -91,7 +91,8 @@ fun ToastHost(topInset: Dp = 0.dp) {
                         req.text,
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
                     )
                 }
             }

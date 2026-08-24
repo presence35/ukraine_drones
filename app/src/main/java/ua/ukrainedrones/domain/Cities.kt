@@ -498,11 +498,13 @@ fun focusAttribution(followMe: Boolean, userLocation: LatLng?, pinned: City?): F
     }
 }
 
-/** Draws city names in the current language, sized to zoom level. */
+/** Draws city names in the current language, sized to zoom level. Cities in [redCityNames]
+ *  (by Ukrainian name) are drawn red — the set already respects the official-alert scope
+ *  (whole oblast by default, city-level when the City scope is on). */
 class CityLabelOverlay(
     context: Context,
     private val lang: AppLanguage,
-    private val activeRegionTokens: Set<String> = emptySet()
+    private val redCityNames: Set<String> = emptySet()
 ) : Overlay() {
 
     private val density = context.resources.displayMetrics.density
@@ -533,8 +535,7 @@ class CityLabelOverlay(
             } else {
                 (8.5 + (zoom - 10.0) * 0.7).coerceIn(8.5, 13.0)
             }).toFloat() * density
-            val token = Cities.cityOblast[c.nameUa]
-            paint.color = if (token != null && token in activeRegionTokens) {
+            paint.color = if (c.nameUa in redCityNames) {
                 Color.argb(255, 211, 47, 47)
             } else {
                 Color.argb(230, 235, 235, 235)

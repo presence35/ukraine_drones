@@ -267,9 +267,11 @@ private var notif3minShown = false
                 neutralizedCount++
                 lastNeutralizedType = removed.type
                 // Remember the resolution so a later tally tap can replay the shot-down show.
-                // Keeps the last 10; a red alert clears the whole memory (safety outranks flourish).
+                // Keeps the last 21 (the tally count itself can run much higher after a long
+                // absence — the replay only needs enough to be fun, not exhaustive); a red alert
+                // clears the whole memory (safety outranks flourish).
                 resolvedMemory.addLast(ResolvedRecord(removed.lat, removed.lon, removed.type))
-                while (resolvedMemory.size > 10) resolvedMemory.removeFirst()
+                while (resolvedMemory.size > 21) resolvedMemory.removeFirst()
                 postNeutralizedTally(prefs.language().first())
             }
         }
@@ -947,6 +949,7 @@ private var notif3minShown = false
             val text = if (lastLine != null) "$lastLine · $scopeText" else scopeText
             val builder = NotificationCompat.Builder(this@AlertService, CHANNEL_NEUTRALIZED)
                 .setSmallIcon(R.drawable.ic_trident)
+                .setNumber(neutralizedCount)
                 .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
                 .setContentText(text)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
