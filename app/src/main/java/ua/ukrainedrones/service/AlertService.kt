@@ -35,7 +35,6 @@ import java.util.Calendar
 class AlertService : Service() {
 
     companion object {
-        const val ACTION_STOP = "ua.ukrainedrones.STOP"
         const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
         const val ACTION_NEUTRALIZED_DISMISS = "ua.ukrainedrones.NEUTRALIZED_DISMISS"
         const val ACTION_NEUTRALIZED_TAP = "ua.ukrainedrones.NEUTRALIZED_TAP"
@@ -73,7 +72,7 @@ class AlertService : Service() {
         }
 
         fun stop(context: Context) {
-            context.startService(Intent(context, AlertService::class.java).setAction(ACTION_STOP))
+            context.stopService(Intent(context, AlertService::class.java))
         }
     }
 
@@ -208,11 +207,6 @@ private var notif3minShown = false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
-        }
         if (intent?.action == ACTION_RETRY) {
             // The TEMP force-offline test toggle would keep NEPTUN "down" even after a
             // successful reconnect — turn it off so Retry truly restores the stream.

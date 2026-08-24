@@ -2034,6 +2034,9 @@ private fun CardSizeTile(
             // tile's top-left corner at ~75% of the tile width instead of filling it.
             val density = LocalDensity.current
             val previewNominal = if (size == ThreatCardSize.SMALL) 300.dp else 340.dp
+            // Fixed preview height so the tile never resizes on re-measure (e.g. after the
+            // one-time explainer dialog) — only the scale-from-width would otherwise shift it.
+            val previewHeight = if (size == ThreatCardSize.SMALL) 130.dp else 260.dp
             SubcomposeLayout(modifier = Modifier.fillMaxWidth()) { constraints ->
                 val nominalW = with(density) { previewNominal.toPx() }
                 val nominalWpx = with(density) { previewNominal.roundToPx() }
@@ -2071,7 +2074,7 @@ private fun CardSizeTile(
                         maxHeight = Constraints.Infinity
                     )
                 )
-                val height = (cardPlaceable.height * scale).roundToInt()
+                val height = with(density) { previewHeight.roundToPx() }
                 layout(constraints.maxWidth, height) {
                     cardPlaceable.place(0, 0)
                 }
