@@ -95,6 +95,7 @@ object Strings {
         val exitButton: String,
         val systemSectionTitle: String,
         val locationSectionTitle: String,
+        val justFunSectionTitle: String,
         val cardSizeSmallLabel: String,
         val cardSizeLargeLabel: String
     )
@@ -555,6 +556,7 @@ object Strings {
         val exitButton: String get() = settings.exitButton
         val systemSectionTitle: String get() = settings.systemSectionTitle
         val locationSectionTitle: String get() = settings.locationSectionTitle
+        val justFunSectionTitle: String get() = settings.justFunSectionTitle
         val cardSizeSmallLabel: String get() = settings.cardSizeSmallLabel
         val cardSizeLargeLabel: String get() = settings.cardSizeLargeLabel
 
@@ -591,6 +593,16 @@ object Strings {
             parts.add(if (isUa) "Офіційні: " + (if (officialAlerts) "УВІМК" else "ВИМК") else "Official: " + (if (officialAlerts) "ON" else "OFF"))
             if (sirenOverride) {
                 parts.add(if (isUa) "Сирена завжди: УВІМК" else "Siren override: ON")
+            }
+            return parts.joinToString(" · ")
+        }
+
+        fun justFunSubtitle(animation: Boolean, tally: Boolean): String {
+            val isUa = language == AppLanguage.UA
+            val parts = mutableListOf<String>()
+            parts.add(if (isUa) "Анімація: " + (if (animation) "УВІМК" else "ВИМК") else "Animation: " + (if (animation) "ON" else "OFF"))
+            if (tally) {
+                parts.add(if (isUa) "Лічильник: УВІМК" else "Neutralized count: ON")
             }
             return parts.joinToString(" · ")
         }
@@ -1046,6 +1058,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         exitButton = "Зупинити моніторинг і вийти",
         systemSectionTitle = "Система та інтерфейс",
         locationSectionTitle = "Локація та фокус",
+        justFunSectionTitle = "Просто розвага",
         cardSizeSmallLabel = "Компактні картки",
         cardSizeLargeLabel = "Великі картки",
     )
@@ -1243,10 +1256,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         deathAnimationDesc = "Коли загрозу перестають відстежувати, прилітає куля і збиває її. Просто для розваги.",
         followBulletTitle = "Слідувати за снарядом",
         followBulletDesc = "Снаряд летить до цілі, а камера слідує за ним до точки удару.",
-        neutralizedTallyTitle = "Лічильник збитих загроз",
-        neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, які збила куля у твоїй області, доки працює моніторинг. Натискання повторює перестрілку на карті.",
+        neutralizedTallyTitle = "Лічильник знешкоджених",
+        neutralizedTallyDesc = "Показувати сповіщення з лічильником знешкоджених загроз у твоїй області, доки працює моніторинг. Натискання повторює розвагу на карті.",
         neutralizedTallyAllUkraineTitle = "Уся Україна",
-        neutralizedTallyAllUkraineDesc = "Враховувати збиті загрози по всій Україні, а не лише у твоїй області.",
+        neutralizedTallyAllUkraineDesc = "Враховувати знешкоджені загрози по всій Україні, а не лише у твоїй області.",
         neutralizedScopeNearMe = "поруч",
         neutralizedScopeAllUkraine = "по всій Україні",
         iconSetTitle = "Оберіть свої улюблені іконки загроз!",
@@ -1540,6 +1553,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         exitButton = "Stop Monitoring & Exit",
         systemSectionTitle = "System & Display",
         locationSectionTitle = "Location & Focus",
+        justFunSectionTitle = "Just Fun",
         cardSizeSmallLabel = "Small cards",
         cardSizeLargeLabel = "Large cards",
     )
@@ -1737,10 +1751,10 @@ alertBannerFormat = "%1\$s: alert",
         deathAnimationDesc = "When a threat is no longer tracked, a bullet flies in and shoots it down. Just for fun.",
         followBulletTitle = "Follow the bullet",
         followBulletDesc = "The projectile flies in toward the target, and the camera glides onto the strike.",
-        neutralizedTallyTitle = "Shoot-down tally",
-        neutralizedTallyDesc = "Show a notification counting threats your bullet shot down in your oblast while monitoring is running. Tapping replays the shootout on the map.",
+        neutralizedTallyTitle = "Neutralized count",
+        neutralizedTallyDesc = "Show a notification counting threats neutralized in your oblast while monitoring is running. Tapping replays the fun on the map.",
         neutralizedTallyAllUkraineTitle = "All of Ukraine",
-        neutralizedTallyAllUkraineDesc = "Also count resolved threats anywhere in Ukraine, not just your oblast.",
+        neutralizedTallyAllUkraineDesc = "Also count neutralized threats anywhere in Ukraine, not just your oblast.",
         neutralizedScopeNearMe = "near you",
         neutralizedScopeAllUkraine = "across Ukraine",
         iconSetTitle = "Choose your favourite threat icons!",

@@ -102,23 +102,25 @@ data class SettingsCollapseState(
     val location: Boolean = false,
     val nightMode: Boolean = false,
     val alerts: Boolean = false,
+    val flourish: Boolean = false,
     val shelters: Boolean = false,
     val threats: Boolean = false,
     val system: Boolean = false
 ) {
     companion object {
         val Saver = Saver<SettingsCollapseState, BooleanArray>(
-            save = { it.let { s -> BooleanArray(6).apply {
+            save = { it.let { s -> BooleanArray(7).apply {
                 this[0] = s.location; this[1] = s.nightMode; this[2] = s.alerts
-                this[3] = s.shelters; this[4] = s.threats; this[5] = s.system
+                this[3] = s.flourish; this[4] = s.shelters; this[5] = s.threats; this[6] = s.system
             } } },
             restore = { b -> SettingsCollapseState(
                 location = b.getOrElse(0) { false },
                 nightMode = b.getOrElse(1) { false },
                 alerts = b.getOrElse(2) { false },
-                shelters = b.getOrElse(3) { false },
-                threats = b.getOrElse(4) { false },
-                system = b.getOrElse(5) { false }
+                flourish = b.getOrElse(3) { false },
+                shelters = b.getOrElse(4) { false },
+                threats = b.getOrElse(5) { false },
+                system = b.getOrElse(6) { false }
             ) }
         )
     }
@@ -127,7 +129,7 @@ data class SettingsCollapseState(
 /** The collapsible section cards, in LazyColumn order (item 0 is the disclaimer card).
  *  `index` is the section's LazyColumn position with the full list shown. */
 private enum class SettingsSection(val index: Int) {
-    LOCATION(1), ALERTS(2), NIGHT(3), SHELTERS(4), THREATS(5), SYSTEM(6)
+    LOCATION(1), ALERTS(2), FLOURISH(3), NIGHT(4), SHELTERS(5), THREATS(6), SYSTEM(7)
 }
 
 /** Standalone action buttons below the section cards, also matched by the search box. */
@@ -221,9 +223,13 @@ private fun buildSearchDb(pinnedCity: City?): SettingsSearchDb {
         ),
         SettingsSection.ALERTS to kw(
             "alert", "alerts", "siren", "sirens", "sound", "official", "notification",
-            "vibration", "vibrate", "tally", "neutralized", "volume", "chime",
+            "vibration", "vibrate", "volume", "chime",
             "оповіщення", "сповіщення", "сирена", "звук", "офіційн", "офіційна",
-            "офіційні", "вібрація", "вібро", "лічильник", "знешкоджен", "гучність"
+            "офіційні", "вібрація", "вібро", "гучність"
+        ),
+        SettingsSection.FLOURISH to kw(
+            "fun", "animation", "bullet", "death", "flourish", "shoot", "tally", "neutralized",
+            "розваг", "анімація", "куля", "збиття", "загибель", "лічильник", "знешкоджен", "загроза"
         ),
         SettingsSection.SHELTERS to kw(
             "shelter", "shelters", "directory", "укриття", "сховище", "бомбосховище", "каталог"
@@ -239,9 +245,9 @@ private fun buildSearchDb(pinnedCity: City?): SettingsSearchDb {
         ) + threatTerms),
         SettingsSection.SYSTEM to kw(
             "system", "display", "interface", "language", "ukrainian", "english", "icon", "icons",
-            "card", "cards", "size", "scale", "death", "animation", "bullet", "battery", "exempt",
+            "card", "cards", "size", "scale", "battery", "exempt",
             "система", "інтерфейс", "дисплей", "мова", "українськ", "англійськ", "іконка", "іконки",
-            "картка", "картки", "розмір", "масштаб", "анімація", "вибух", "куля", "батарея",
+            "картка", "картки", "розмір", "масштаб", "батарея",
             "енерг", "звільнення"
         )
     )
@@ -742,28 +748,6 @@ fun SettingsScreen(
                         flash = flashId == "sirenOverride"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.neutralizedTallyTitle,
-                        description = s.neutralizedTallyDesc,
-                        checked = neutralizedTallyEnabled,
-                        onCheckedChange = onNeutralizedTallyChange,
-                        icon = rememberVectorPainter(Icons.Default.Notifications),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBadge = "21"
-                    )
-                    if (neutralizedTallyEnabled) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Box(modifier = Modifier.padding(start = 24.dp)) {
-                            AlertToggleRow(
-                                title = s.neutralizedTallyAllUkraineTitle,
-                                description = s.neutralizedTallyAllUkraineDesc,
-                                checked = neutralizedTallyAllUkraine,
-                                onCheckedChange = onNeutralizedTallyAllUkraineChange,
-                                emoji = "🇺🇦"
-                            )
-                        }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Battery Optimization
                     if (batteryOptimized) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -808,6 +792,61 @@ fun SettingsScreen(
                             ) {
                                 Text(s.batteryAllowButton, fontWeight = FontWeight.SemiBold)
                             }
+                        }
+                    }
+                }
+            }
+            }
+
+            if (searching.not() || SettingsSection.FLOURISH in matchedSections) {
+            item {
+                CollapsibleSectionCard(
+                    title = s.justFunSectionTitle,
+                    icon = painterResource(R.drawable.ic_explosion),
+                    expanded = collapse.flourish,
+                    subtitle = s.justFunSubtitle(deathAnimationEnabled, neutralizedTallyEnabled),
+                    onToggle = { onCollapseChange(collapse.copy(flourish = !collapse.flourish)) }
+                ) {
+                    AlertToggleRow(
+                        title = s.deathAnimationTitle,
+                        description = s.deathAnimationDesc,
+                        checked = deathAnimationEnabled,
+                        onCheckedChange = onDeathAnimationChange,
+                        icon = painterResource(R.drawable.ic_explosion),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    AnimatedVisibility(visible = deathAnimationEnabled) {
+                        Column(modifier = Modifier.padding(start = 24.dp)) {
+                            AlertToggleRow(
+                                title = s.followBulletTitle,
+                                description = s.followBulletDesc,
+                                checked = followBullet,
+                                onCheckedChange = onFollowBulletChange,
+                                icon = painterResource(R.drawable.bullet),
+                                iconTint = null
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.neutralizedTallyTitle,
+                        description = s.neutralizedTallyDesc,
+                        checked = neutralizedTallyEnabled,
+                        onCheckedChange = onNeutralizedTallyChange,
+                        icon = rememberVectorPainter(Icons.Default.Notifications),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        iconBadge = "21"
+                    )
+                    if (neutralizedTallyEnabled) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Box(modifier = Modifier.padding(start = 24.dp)) {
+                            AlertToggleRow(
+                                title = s.neutralizedTallyAllUkraineTitle,
+                                description = s.neutralizedTallyAllUkraineDesc,
+                                checked = neutralizedTallyAllUkraine,
+                                onCheckedChange = onNeutralizedTallyAllUkraineChange,
+                                emoji = "🇺🇦"
+                            )
                         }
                     }
                 }
@@ -1126,27 +1165,6 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.ic_peace),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.deathAnimationTitle,
-                        description = s.deathAnimationDesc,
-                        checked = deathAnimationEnabled,
-                        onCheckedChange = onDeathAnimationChange,
-                        icon = painterResource(R.drawable.ic_explosion),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    AnimatedVisibility(visible = deathAnimationEnabled) {
-                        Column(modifier = Modifier.padding(start = 24.dp)) {
-                            AlertToggleRow(
-                                title = s.followBulletTitle,
-                                description = s.followBulletDesc,
-                                checked = followBullet,
-                                onCheckedChange = onFollowBulletChange,
-                                icon = painterResource(R.drawable.bullet),
-                                iconTint = null
-                            )
-                        }
-                    }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Reset tip counters
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
