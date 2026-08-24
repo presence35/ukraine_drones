@@ -130,23 +130,24 @@ fun Threat.isGhost(now: Long): Boolean {
 /**
  * The heading a threat is actually moving along, used for BOTH dead-reckoning
  * ([predictPosition]) and icon facing ([Threat.courseDeg]) so they always agree. Prefers the
- * measured track from our own recorded fixes, then the server's authoritative velocity
- * bearing, then the top-level reported heading. Null when nothing usable is known (a
- * stationary threat that shouldn't glide).
+ * server's authoritative velocity bearing, then the top-level reported heading, then our own
+ * measured track from recorded fixes. Null when nothing usable is known (a stationary threat
+ * that shouldn't glide). The server's bearing comes first so a marker's facing and glide match
+ * what NEPTUN itself shows — our measured track is a last-resort fallback, never a correction.
  */
 fun motionHeading(t: Threat): Double? =
-    ThreatSpeedTracker.measuredHeading(t.id) ?: t.bearingDeg ?: t.heading
+    t.bearingDeg ?: t.heading ?: ThreatSpeedTracker.measuredHeading(t.id)
 
 /**
  * Predict a threat's current position by advancing from its last confirmed fix along its
  * course at the estimated speed, within NEPTUN's per-type fly horizon. Mirrors the SDK's
- * `predict()`: it dead-reckons any active track that carries a real heading (the authoritative
- * velocity `bearingDeg`, else the top-level reported `heading`) — everything else returns null
- * so the caller keeps the raw fix. Anchors strictly on `confirmedAtMillis` (the dead-reckon
- * anchor), never on `updatedAtMillis`.
+ * `predict()`: it dead-reckons **only** tracks that carry a real velocity (the authoritative
+ * `bearingDeg` + `speedKmh`, i.e. [Threat.flying]) — anything else returns null so the caller
+ * keeps the raw fix. Anchors strictly on `confirmedAtMillis` (the dead-reckon anchor), never
+ * on `updatedAtMillis`.
  */
 fun predictPosition(t: Threat, speedMps: Double, nowMillis: Long): GeoPoint? {
-    if (t.status != "active") return null
+    if (!t.flying) return null
     val heading = motionHeading(t) ?: return null
     val confirmedAt = t.confirmedAtMillis ?: return null
     var elapsedSec = (nowMillis - confirmedAt) / 1000.0

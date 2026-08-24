@@ -30,17 +30,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 data class NeptunState(
     val threats: Map<String, Threat> = emptyMap(),
     val neptunAlerts: List<OblastAlert> = emptyList(),
-    val backupAlerts: List<OblastAlert> = emptyList(),
     val connected: Boolean = false,
     val lastError: String? = null,
     val offlineSince: Long? = null,
     /** Epoch millis when reconnection attempts started (after NEPTUN connection drop). */
     val reconnectStartMillis: Long = 0L,
     val lastFrameAt: Long = 0,     // epoch millis of the last frame (any type) from the stream
-    val forceOffline: Boolean = false,   // TEMP test toggle — force backup as if NEPTUN were down
-    val backupUp: Boolean = false,      // backup source has polled successfully recently
-    val backupLastOkAt: Long = 0L,      // epoch millis of the backup's last successful poll
-    val backupError: String? = null,
+    val forceOffline: Boolean = false,   // TEMP test toggle — simulate NEPTUN being offline
     /** Epoch millis when each id was last shot down by the user (map long-press). */
     val userShotAt: Map<String, Long> = emptyMap()
 ) {
@@ -52,51 +48,18 @@ data class NeptunState(
 
     /**
      * NEPTUN is offline — the real socket dropped (`!connected`) or the TEMP [forceOffline]
-     * test toggle simulates it. This drives the "offline" display and the backup fallback.
+     * test toggle simulates it. This drives the "offline" display.
      */
     val neptunDown: Boolean
         get() = forceOffline || !connected
 
-    /** Seconds since the backup last polled successfully, or null while it's healthy. */
-    val backupOfflineElapsedSec: Long?
-        get() = if (backupUp) null else backupLastOkAt.takeIf { it > 0 }
-            ?.let { (System.currentTimeMillis() - it) / 1000 }
-
     /**
-     * True when NEPTUN is degraded (socket down, stream silent past
-     * [NeptunClient.BACKUP_FALLBACK_MS], or the TEMP [forceOffline] test toggle). This is a
-     * *connection-health* flag only — it drives the pill, the connection log and the widget's
-     * `sourceBackup` badge. It no longer gates the alert merge: the backup contributes its
-     * oblast alerts whenever it is up, healthy NEPTUN or not, so an official siren that
-     * alerts.com.ua reports before NEPTUN forwards it still rings immediately.
-     */
-    val backupActive: Boolean
-        get() = neptunDown || (lastFrameAt > 0 &&
-            System.currentTimeMillis() - lastFrameAt > NeptunClient.BACKUP_FALLBACK_MS)
-
-    /**
-     * Union of NEPTUN + backup oblast alerts — what the UI/notifications read. Both sources are
-     * always-on peers: an oblast rings as soon as *either* reports it and clears only when both
-     * have. The backup's contribution is gated on [backupUp] alone — a dead backup's stale last
-     * payload is never served, so a lagging backup can't fabricate an alert that ended. When the
-     * backup is down, NEPTUN's last-known list is HELD rather than cleared: an outage must never
-     * look like "alert ended" (no fabricated all-clear, no banner flicker) — the truth arrives on
-     * reconnect. Held alerts are never source-tagged ([alertSourceFor] requires a live source).
+     * The official oblast-alert list the UI/notifications read. When the socket is down the
+     * last-known list is HELD rather than cleared: an outage must never look like "alert
+     * ended" (no fabricated all-clear, no banner flicker) — the truth arrives on reconnect.
      */
     val oblastAlerts: List<OblastAlert>
-        get() = if (backupUp) mergeAlerts(neptunAlerts, backupAlerts) else neptunAlerts
-
-    /** Which source(s) report an active official alert for the given oblast stem [token]. */
-    fun alertSourceFor(token: String): AlertSource? {
-        val n = connected && neptunAlerts.any { it.inOblast(token) }
-        val b = backupUp && backupAlerts.any { it.inOblast(token) }
-        return when {
-            n && b -> AlertSource.BOTH
-            n -> AlertSource.NEPTUN
-            b -> AlertSource.BACKUP
-            else -> null
-        }
-    }
+        get() = neptunAlerts
 }
 
 /** A threat just disappeared from the server feed (resolved or a remove frame) — drives the map death animation. */
@@ -112,12 +75,6 @@ data class ThreatRemoved(
 )
 
 object NeptunClient {
-
-    /** How long NEPTUN's own alert feed may stay quiet before the backup source steps in. */
-    const val BACKUP_FALLBACK_MS = 60_000L
-
-    /** How long the backup source may go without a successful poll before it counts as down. */
-    const val BACKUP_HEALTHY_MS = 90_000L
 
     /**
      * Shared "off" grace window: drops shorter than this are treated as blips and are invisible
@@ -169,8 +126,6 @@ object NeptunClient {
         connect()
         startKeepAliveTasks()
         startConnectionLog()
-        startBackupCollector()
-        AlertsUaClient.start()
     }
 
     fun stop() {
@@ -183,12 +138,11 @@ object NeptunClient {
         // The dying socket's guarded onClosed/onFailure won't clear the flag; leave it
         // fresh so a later start() can connect.
         connectInFlight.set(false)
-        AlertsUaClient.stop()
         scope.cancel()
     }
 
     /**
-     * TEMP test toggle: force the app to behave as if NEPTUN were offline so the backup path
+     * TEMP test toggle: force the app to behave as if NEPTUN were offline. Updates the shared
      * can be verified. Updates the shared state so both the UI and AlertService re-derive it.
      */
     fun setForceOffline(force: Boolean) {
@@ -211,24 +165,6 @@ object NeptunClient {
         if (!force && !_state.value.connected && !manuallyStopped) retryNow()
     }
 
-    /** Relay the backup source's oblast alerts into our state whenever it updates. */
-    private fun startBackupCollector() {
-        scope.launch {
-            AlertsUaClient.state.collect { backup ->
-                val up = backup.active && backup.lastOkAt > 0 &&
-                    System.currentTimeMillis() - backup.lastOkAt < BACKUP_HEALTHY_MS
-                _state.update {
-                    it.copy(
-                        backupAlerts = backup.alerts,
-                        backupUp = up,
-                        backupLastOkAt = backup.lastOkAt,
-                        backupError = backup.lastError
-                    )
-                }
-            }
-        }
-    }
-
     /**
      * Called when the UI returns to the foreground. Only pulls from REST when the WebSocket
      * stream itself has gone quiet (>5s since its last frame): the REST snapshot is CDN-cached
@@ -240,7 +176,6 @@ object NeptunClient {
         val wsStale = now - lastFrameAt > 5_000
         lastFrameAt = now
         if (wsStale) refreshFromRest()
-        AlertsUaClient.refreshNow()
         // A 20-minute milestone may have stopped the reconnect loop while the app was closed;
         // resuming the socket on the next open matches the notification's promise.
         if (!manuallyStopped && !_state.value.connected) retryNow()
@@ -362,7 +297,6 @@ object NeptunClient {
                 val now = System.currentTimeMillis()
                 val status = when {
                     st.neptunDown -> ConnStatus.OFFLINE
-                    now - st.lastFrameAt > BACKUP_FALLBACK_MS -> ConnStatus.BACKUP
                     else -> ConnStatus.ONLINE
                 }
                 ConnectionLog.observe(status, now)

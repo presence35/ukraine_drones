@@ -76,6 +76,9 @@ private const val NORMAL_MAX_ZOOM = 14.5
 /** Deep zoom, unlocked only while the shelter overlay is up (street-level shelter detail). */
 private const val SHELTER_MAX_ZOOM = 19.0
 
+/** Zooming below this level makes shelter pins clutter — auto-exit shelter mode. */
+private const val SHELTER_AUTO_EXIT_ZOOM = 13.0
+
 /** Ukraine (incl. Crimea) plus a ~0.5° margin — the map can't pan past this. */
 private val UA_VIEW_LIMITS = BoundingBox(52.7, 40.6, 43.9, 21.7)
 
@@ -119,16 +122,15 @@ private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
     append(if (t.isStale(now)) 'S' else 'L').append(';')
 }
 
-/** Same marker icon, rendered `scale`× larger — sized from the zoom-derived scale. */
-private fun scaledThreatIcon(
+/** Threat marker icon at a fixed size regardless of map zoom. */
+private fun threatIconFor(
     context: Context,
     type: ThreatType,
-    iconSet: ThreatIconSet,
-    scale: Float
+    iconSet: ThreatIconSet
 ): Drawable {
     val src = ContextCompat.getDrawable(context, IconCatalog.res(type, iconSet))!!
     val density = context.resources.displayMetrics.density
-    val targetW = (32 * density * scale).toInt().coerceAtLeast(2)
+    val targetW = (32 * density).toInt().coerceAtLeast(2)
     val iw = src.intrinsicWidth.coerceAtLeast(1)
     val ih = src.intrinsicHeight.coerceAtLeast(1)
     val w = targetW
@@ -138,27 +140,6 @@ private fun scaledThreatIcon(
     src.setBounds(0, 0, w, h)
     src.draw(canvas)
     return BitmapDrawable(context.resources, bmp)
-}
-
-/** Threat marker icon at the current zoom-derived scale ([scale] 1.0 = plain [threatIcon]). */
-private fun threatIconFor(
-    context: Context,
-    type: ThreatType,
-    iconSet: ThreatIconSet,
-    scale: Float
-): Drawable =
-    scaledThreatIcon(context, type, iconSet, scale)
-
-/** Icon growth from map zoom: small when zoomed out, growing as you zoom in, capped once the
- *  viewport is roughly 5 km wide (~z14.5 at Odesa's latitude) so it never balloons — 0.55× at
- *  z8 and below, linear to 2.0× at z14.5, flat beyond. */
-private fun zoomIconScale(zoom: Double): Float {
-    val minZ = 8.0
-    val maxZ = 14.5
-    if (zoom <= minZ) return 0.55f
-    if (zoom >= maxZ) return 2.0f
-    val t = ((zoom - minZ) / (maxZ - minZ)).toFloat()
-    return 0.55f + (2.0f - 0.55f) * t
 }
 
 private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
@@ -255,11 +236,11 @@ private fun circlePoints(center: GeoPoint, radiusMeters: Double, segments: Int =
     }
 }
 
-/** Green ring highlighting the threat a notification just revealed (transparent centre). */
+/** Green dot highlighting the threat a notification just revealed (filled, not a ring). */
 private fun newRingBitmap(context: Context): Bitmap {
     val density = context.resources.displayMetrics.density
-    val r = 20f * density
-    val glowR = r * 1.4f
+    val r = 10f * density
+    val glowR = r * 2.4f
     val size = (glowR * 2).toInt().coerceAtLeast(2)
     val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
@@ -268,16 +249,39 @@ private fun newRingBitmap(context: Context): Bitmap {
     canvas.drawCircle(cx, cy, glowR, Paint().apply {
         shader = RadialGradient(
             cx, cy, glowR,
-            intArrayOf(Color.argb(80, 76, 175, 80), Color.argb(0, 76, 175, 80)),
-            floatArrayOf(0.55f, 1f),
+            intArrayOf(Color.argb(90, 76, 175, 80), Color.argb(0, 76, 175, 80)),
+            floatArrayOf(0.45f, 1f),
             Shader.TileMode.CLAMP
         )
     })
     canvas.drawCircle(cx, cy, r, Paint().apply {
         isAntiAlias = true
-        style = Paint.Style.STROKE
-        strokeWidth = 3f * density
         color = Color.rgb(76, 175, 80)
+    })
+    return bmp
+}
+
+/** Grey dot marking where a just-lost threat was last seen. */
+private fun lostDotBitmap(context: Context): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val r = 7f * density
+    val glowR = r * 2.2f
+    val size = (glowR * 2).toInt().coerceAtLeast(2)
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val cx = size / 2f
+    val cy = size / 2f
+    canvas.drawCircle(cx, cy, glowR, Paint().apply {
+        shader = RadialGradient(
+            cx, cy, glowR,
+            intArrayOf(Color.argb(70, 158, 158, 158), Color.argb(0, 158, 158, 158)),
+            floatArrayOf(0.45f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    })
+    canvas.drawCircle(cx, cy, r, Paint().apply {
+        isAntiAlias = true
+        color = Color.rgb(158, 158, 158)
     })
     return bmp
 }
@@ -286,6 +290,8 @@ private fun newRingBitmap(context: Context): Bitmap {
 private data class NewRingState(val id: String?, val position: LatLng, val activeUntilMs: Long)
 
 private const val NEW_RING_MS = 8_000L
+/** How long a grey "lost" dot marks where a threat just vanished. */
+private const val LOST_DOT_MS = 6_000L
 /** Gap between consecutive bullets in the tally-tap replay flourish. */
 private const val FLOURISH_STAGGER_MS = 420L
 /** How long the zone-slider camera refit waits after the value stops changing. */
@@ -353,7 +359,9 @@ val strokeW = 2.6f * density
 }
 
 /** Framing box for a notification reveal: focus near the top, threat near the bottom, with a
- *  clamped span so a huge gap (or a zero gap) still yields a valid, zoomable box. */
+ *  clamped span so a huge gap (or a zero gap) still yields a valid, zoomable box. The threat is
+ *  always pinned to the bottom fraction regardless of which is further north, so a northern
+ *  threat (e.g. Kyiv with the focus on Odesa) never lands underneath the top popup card. */
 private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox {
     if (focus == null) {
         val span = 0.5
@@ -367,8 +375,8 @@ private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox 
     val g = fb - ft
     val gapLat = Math.abs(focus.lat - threat.lat)
     val spanLat = Math.max(gapLat / g, REVEAL_MIN_SPAN_LAT).coerceAtMost(40.0)
-    val north = Math.max(focus.lat, threat.lat) + ft * spanLat
-    val south = Math.min(focus.lat, threat.lat) - (1 - fb) * spanLat
+    val north = Math.max(focus.lat + ft * spanLat, threat.lat + fb * spanLat)
+    val south = Math.min(focus.lat - (1 - ft) * spanLat, threat.lat - (1 - fb) * spanLat)
     val lonMid = (focus.lon + threat.lon) / 2
     val gapLon = Math.abs(focus.lon - threat.lon)
     val spanLon = Math.max(gapLon / g, REVEAL_MIN_SPAN_LON).coerceAtMost(80.0)
@@ -379,7 +387,8 @@ private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox 
 }
 
 /** Bounding box over every resolution in the replay flourish (plus the focus) so a single
- *  zoom-out shows the whole show at once — never pans per bullet. */
+ *  zoom-out shows the whole show at once — never pans per bullet. Adds a margin so threats on
+ *  the edge of the zoom aren't clipped by the screen border. */
 private fun flourishesBoundingBox(records: List<FlourishRecord>, focus: LatLng?): BoundingBox {
     var minLat = Double.MAX_VALUE
     var maxLat = -Double.MAX_VALUE
@@ -395,11 +404,13 @@ private fun flourishesBoundingBox(records: List<FlourishRecord>, focus: LatLng?)
     }
     val spanLat = maxOf(maxLat - minLat, REVEAL_MIN_SPAN_LAT)
     val spanLon = maxOf(maxLon - minLon, REVEAL_MIN_SPAN_LON)
+    val marginLat = spanLat * 0.15
+    val marginLon = spanLon * 0.15
     val latMid = (maxLat + minLat) / 2
     val lonMid = (maxLon + minLon) / 2
     return BoundingBox(
-        (latMid + spanLat / 2).coerceAtMost(85.0), lonMid + spanLon / 2,
-        (latMid - spanLat / 2).coerceAtLeast(-85.0), lonMid - spanLon / 2
+        (latMid + spanLat / 2 + marginLat).coerceAtMost(85.0), lonMid + spanLon / 2 + marginLon,
+        (latMid - spanLat / 2 - marginLat).coerceAtLeast(-85.0), lonMid - spanLon / 2 - marginLon
     )
 }
 
@@ -426,6 +437,7 @@ fun NeptunMapView(
     shelterIndex: ShelterIndex? = null,
     selectedShelter: NearestShelter? = null,
     onShelterTapped: (NearestShelter) -> Unit = {},
+    onExitShelterMode: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -459,6 +471,7 @@ fun NeptunMapView(
     val lastFlourishTick = remember { mutableStateOf(-1) }
     val newRingState = remember { mutableStateOf<NewRingState?>(null) }
     val newRingMarker = remember { mutableStateOf<Marker?>(null) }
+    val lostDots = remember { mutableStateOf<MutableMap<String, Pair<GeoPoint, Long>>>(mutableMapOf()) }
     val didDefaultFit = remember { mutableStateOf(false) }
     val lastPinnedCity = remember { mutableStateOf<String?>(null) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
@@ -541,7 +554,6 @@ fun NeptunMapView(
             Configuration.getInstance().osmdroidTileCache = File(ctx.cacheDir, "osmdroid")
             Configuration.getInstance().tileFileSystemCacheMaxBytes = 64L * 1024 * 1024
             Configuration.getInstance().tileFileSystemCacheTrimBytes = 48L * 1024 * 1024
-            var lastIconScale = -1f
             MapView(ctx).apply {
                 setTileProvider(UkraineTileProvider(ctx))
                 setBackgroundColor(Color.BLACK)
@@ -563,22 +575,18 @@ fun NeptunMapView(
                 // once the first GPS fix lands, didDefaultFit re-zooms to the yellow zone.
                 controller.setZoom(12.0)
 
-                // Feed ground meters-per-pixel to the Compose scale bar while panning/zooming, and
-                    // grow/shrink the live threat icons as the zoom crosses the scaling band.
+                // Feed ground meters-per-pixel to the Compose scale bar while panning/zooming.
                     addMapListener(object : MapListener {
                         private fun mpp(): Double =
                             TileSystem.GroundResolution(this@apply.mapCenter.latitude, this@apply.zoomLevelDouble)
                         override fun onScroll(event: ScrollEvent?): Boolean { onScaleChange(mpp()); return false }
                         override fun onZoom(event: ZoomEvent?): Boolean {
                             onScaleChange(mpp())
-                            val scale = zoomIconScale(this@apply.zoomLevelDouble)
-                            if (scale != lastIconScale) {
-                                lastIconScale = scale
-                                for (t in uiState.mapThreats) {
-                                    markerRefs.value[t.id]?.icon =
-                                        threatIconFor(context, t.type, iconSetState, scale)
-                                }
-                                this@apply.invalidate()
+                            // Zooming far out makes the shelter pins clutter — auto-exit shelter mode.
+                            if (showNearbySheltersState &&
+                                this@apply.zoomLevelDouble < SHELTER_AUTO_EXIT_ZOOM
+                            ) {
+                                onExitShelterMode()
                             }
                             return false
                         }
@@ -814,8 +822,8 @@ fun NeptunMapView(
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = threatIconFor(context, t.type, iconSet, zoomIconScale(mapView.zoomLevelDouble))
-                        alpha = if (stale) 0.25f else 1.0f
+                        icon = threatIconFor(context, t.type, iconSet)
+                        alpha = if (stale) 0.45f else 1.0f
                         title = typeLabel
                         snippet = regionLabel
                         // Rotate to show course, mirroring NEPTUN's predict().heading: velocity
@@ -1010,10 +1018,24 @@ fun NeptunMapView(
                 // while the shelter overlay is up — nothing should grab the user's attention
                 // away from the shelters: no stale half-consumed animations on return, and no
                 // "bullet to nowhere" duds from threats that appeared and resolved unseen.
-                if (pausedState || !mapVisibleState || alertActiveState || showNearbySheltersState ||
+                // During an alert the flourish plays ONLY if the threat was already in camera —
+                // a resolution that happened off-screen must not jerk the view mid-siren.
+                if (pausedState || !mapVisibleState || showNearbySheltersState ||
                     lifecycle.currentState < Lifecycle.State.STARTED
                 ) return@collect
-                if (r.type in hiddenTypesState || !deathAnimationEnabledState) return@collect
+                if (alertActiveState) {
+                    val mapView = mapViewRef.value
+                    if (mapView == null || !mapView.boundingBox.contains(r.lat, r.lon)) return@collect
+                }
+                if (r.type in hiddenTypesState) return@collect
+                // Record a "lost" dot at the last-known position so the user sees where the
+                // threat vanished (mirrors the green reveal dot; grey, shorter-lived).
+                val lostNow = System.currentTimeMillis()
+                val lostMap = lostDots.value
+                lostMap[r.id] = GeoPoint(r.lat, r.lon) to (lostNow + LOST_DOT_MS)
+                lostMap.entries.removeAll { it.value.second < lostNow }
+                lostDots.value = HashMap(lostMap)
+                if (!deathAnimationEnabledState) return@collect
                 val marker = markerRefs.value[r.id]
                 val anchor0 = GeoPoint(r.lat, r.lon)
                 val origin = strikeOrigin(anchor0)
@@ -1034,8 +1056,7 @@ fun NeptunMapView(
                     val rotation = marker.rotation ?: (r.courseDeg.toFloat() - base + 360f) % 360f
                     // A fresh copy, not the marker's shared drawable.
                     val icon = threatIconFor(
-                        context, r.type, iconSetState,
-                        zoomIconScale(mapViewRef.value?.zoomLevelDouble ?: 0.0)
+                        context, r.type, iconSetState
                     )
                     // With follow-the-bullet on, the camera glides onto the target so the
                     // strike is actually seen.
@@ -1087,8 +1108,7 @@ fun NeptunMapView(
                             val anchor = GeoPoint(rec.lat, rec.lon)
                             val origin = strikeOrigin(anchor)
                             val icon = threatIconFor(
-                                context, rec.type, iconSetState,
-                                zoomIconScale(mapView.zoomLevelDouble)
+                                context, rec.type, iconSetState
                             )
                             deathFx.spawn(
                                 id = "flourish:$i",
@@ -1146,7 +1166,7 @@ fun NeptunMapView(
                 val marker = markerRefs.value[t.id] ?: continue
                 // Staleness dimming + course rotation update in-place too (they're excluded
                 // from overlayKey, so a full rebuild no longer runs for them).
-                val targetAlpha = if (t.isStale(now)) 0.25f else 1.0f
+                val targetAlpha = if (t.isStale(now)) 0.45f else 1.0f
                 if (marker.alpha != targetAlpha) {
                     marker.alpha = targetAlpha
                     dirty = true
@@ -1191,6 +1211,54 @@ fun NeptunMapView(
                         dirty = true
                     }
                 }
+            }
+            if (dirty) mapView.invalidate()
+            // Lost dots: add/remove a grey marker per vanished threat, expiring after its window.
+            val nowLost = System.currentTimeMillis()
+            val lostMap = lostDots.value
+            val lostMarkerKeys = mutableSetOf<String>()
+            for ((id, pair) in lostMap) {
+                val (pos, until) = pair
+                if (nowLost >= until) continue
+                lostMarkerKeys.add(id)
+                var lm: Marker? = null
+                for (o in mapView.overlays) {
+                    if (o is Marker && o.snippet == "lost:$id") { lm = o; break }
+                }
+                if (lm == null) {
+                    val m = Marker(mapView).apply {
+                        position = pos
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        icon = BitmapDrawable(context.resources, lostDotBitmap(context))
+                        snippet = "lost:$id"
+                        setInfoWindow(null)
+                    }
+                    mapView.overlays.add(m)
+                    dirty = true
+                } else {
+                    val cur = lm.position
+                    if (cur == null ||
+                        distanceMeters(cur.latitude, cur.longitude, pos.latitude, pos.longitude) > 1.0
+                    ) {
+                        lm.position = pos
+                        dirty = true
+                    }
+                }
+            }
+            // Remove expired lost markers.
+            val expired = mutableListOf<Marker>()
+            for (o in mapView.overlays) {
+                if (o is Marker) {
+                    val snip = o.snippet
+                    if (snip != null && snip.startsWith("lost:")) {
+                        val id = snip.removePrefix("lost:")
+                        if (id !in lostMarkerKeys) expired.add(o)
+                    }
+                }
+            }
+            if (expired.isNotEmpty()) {
+                for (m in expired) mapView.overlays.remove(m)
+                dirty = true
             }
             if (dirty) mapView.invalidate()
         }

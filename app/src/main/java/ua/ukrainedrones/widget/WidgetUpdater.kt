@@ -40,7 +40,10 @@ object WidgetUpdater {
         val nearestKm = intPreferencesKey("nearest_km")
         val officialAlert = booleanPreferencesKey("official_alert")
         val sourceOnline = booleanPreferencesKey("source_online")
-        val sourceBackup = booleanPreferencesKey("source_backup")
+        val primaryId = stringPreferencesKey("primary_id")
+        val primaryLat = stringPreferencesKey("primary_lat")
+        val primaryLon = stringPreferencesKey("primary_lon")
+        val primaryType = stringPreferencesKey("primary_type")
         val updatedAtMs = longPreferencesKey("updated_at_ms")
         val lang = stringPreferencesKey("lang")
         val iconSet = stringPreferencesKey("icon_set")
@@ -108,7 +111,18 @@ object WidgetUpdater {
             prefs[Keys.nearestKm] = snapshot.nearestKm?.toInt() ?: -1
             prefs[Keys.officialAlert] = snapshot.officialAlert
             prefs[Keys.sourceOnline] = snapshot.sourceOnline
-            prefs[Keys.sourceBackup] = snapshot.sourceBackup
+            val pt = snapshot.primaryThreat
+            if (pt != null) {
+                prefs[Keys.primaryId] = pt.id
+                prefs[Keys.primaryLat] = pt.lat.toString()
+                prefs[Keys.primaryLon] = pt.lon.toString()
+                prefs[Keys.primaryType] = pt.type.name
+            } else {
+                prefs.remove(Keys.primaryId)
+                prefs.remove(Keys.primaryLat)
+                prefs.remove(Keys.primaryLon)
+                prefs.remove(Keys.primaryType)
+            }
             prefs[Keys.updatedAtMs] = snapshot.updatedAtMs
             prefs[Keys.lang] = lang.name
             prefs[Keys.iconSet] = iconSet.name
@@ -134,7 +148,16 @@ object WidgetUpdater {
             nearestKm = prefs[Keys.nearestKm]?.takeIf { it >= 0 }?.toDouble(),
             officialAlert = prefs[Keys.officialAlert] ?: false,
             sourceOnline = prefs[Keys.sourceOnline] ?: false,
-            sourceBackup = prefs[Keys.sourceBackup] ?: false,
+            primaryThreat = prefs[Keys.primaryId]?.let { id ->
+                val lat = prefs[Keys.primaryLat]?.toDoubleOrNull()
+                val lon = prefs[Keys.primaryLon]?.toDoubleOrNull()
+                val type = prefs[Keys.primaryType]?.let { t ->
+                    ThreatType.values().firstOrNull { it.name == t }
+                }
+                if (lat != null && lon != null && type != null) {
+                    WidgetThreat(id, lat, lon, type)
+                } else null
+            },
             updatedAtMs = prefs[Keys.updatedAtMs] ?: 0L
         )
     }

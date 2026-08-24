@@ -318,30 +318,38 @@ data class OblastAlert(
 fun OblastAlert.inOblast(token: String): Boolean =
     oblast.startsWith(token, ignoreCase = true) || name.startsWith(token, ignoreCase = true)
 
-/** Which data source reported the active official alert (used for the notification source tag). */
-enum class AlertSource { NEPTUN, BACKUP, BOTH }
+/**
+ * True when the official alert actually covers the focus city, for the "City alerts" scope.
+ * NEPTUN's raion-level entries name the district (e.g. "Одеський район") while the city is
+ * "Одеса" — Ukrainian adjectival stems drop the ending, so we match on a shared 4-char stem
+ * rather than exact substring (a safety app may over-ring a neighbouring city, never miss one).
+ */
+fun OblastAlert.coversCity(cityUa: String): Boolean {
+    val c = cityUa.trim().lowercase()
+    if (c.length < 4) return c.isNotEmpty() &&
+        (key.lowercase().contains(c) || name.lowercase().contains(c))
+    val stem = c.substring(0, 4)
+    val k = key.lowercase()
+    val n = name.lowercase()
+    return k.contains(c) || n.contains(c) || k.startsWith(stem) || n.startsWith(stem)
+}
 
 /**
- * Merge two oblast-alert lists into one, de-duplicated by whether they refer to the same
- * oblast. Uses the same startsWith/stem-tolerant comparison as [inOblast] rather than exact
- * string equality, since the two sources format oblast names independently (NEPTUN's
- * `oblast` field vs. alerts.com.ua's `name` reused as `oblast`) and are not guaranteed to
- * match verbatim. NEPTUN entries win on tie; the backup only adds oblasts NEPTUN didn't
- * already list.
+ * Whether an official alert is active for the focus point. [scope] chooses the granularity:
+ * `false` = the whole oblast rings (current behaviour); `true` = only when the alert covers the
+ * focus city by name ([OblastAlert.coversCity]). Falls back to oblast-wide matching when the
+ * city name is unknown (no pin / no GPS fix), so a city-scoped user never misses an oblast that
+ * can't be narrowed. Shared by the UI and the notification service (mirror rule).
  */
-fun mergeAlerts(primary: List<OblastAlert>, backup: List<OblastAlert>): List<OblastAlert> {
-    val out = ArrayList<OblastAlert>(primary.size + backup.size)
-    out.addAll(primary)
-    for (b in backup) {
-        val alreadyCovered = primary.any { p ->
-            p.oblast.startsWith(b.oblast, ignoreCase = true) ||
-                b.oblast.startsWith(p.oblast, ignoreCase = true) ||
-                p.name.startsWith(b.name, ignoreCase = true) ||
-                b.name.startsWith(p.name, ignoreCase = true)
-        }
-        if (!alreadyCovered) out.add(b)
-    }
-    return out
+fun officialAlertActiveFor(
+    alerts: List<OblastAlert>,
+    token: String?,
+    cityUa: String?,
+    scope: Boolean
+): Boolean {
+    if (token == null) return false
+    if (!scope || cityUa.isNullOrBlank()) return alerts.any { it.inOblast(token) }
+    return alerts.any { it.inOblast(token) && it.coversCity(cityUa) }
 }
 
 private val COURSE_PATTERNS: List<Pair<Regex, String>> = listOf(
@@ -397,8 +405,12 @@ fun translateCourseAssessment(text: String?, lang: AppLanguage): String? {
     for ((pattern, template) in COURSE_PATTERNS) {
         val m = pattern.find(t) ?: continue
         val place = m.groupValues.getOrNull(1)?.trim()?.trimEnd('.', '—', '-') ?: continue
+        // Resolve the captured slot as a place name first, then translate any common words
+        // inside it word-by-word (e.g. "над морем" → "over the sea") before transliterating
+        // whatever remains (an unrecognised proper noun stays a romanized name, not "morem").
         val en = Cities.uaToEn[place]
             ?: COMMON_WORDS[place.lowercase()]
+            ?: translateCommonWords(place)
             ?: Transliteration.transliterate(place)
         return template.replace("{X}", en)
     }
@@ -596,7 +608,13 @@ private val COMMON_WORDS: Map<String, String> = mapOf(
     "східніше" to "east of"
 )
 
-private fun courseFallback(raw: String): String {
+/**
+ * Translate the known military/common words in [raw] (whole-word, longest-first), leaving any
+ * unrecognised fragments untouched so the caller can transliterate the remainder. Shared by the
+ * course-template slot and the fallback path — without it, a phrase like "над морем" would hit
+ * the transliterator whole and come out as "nad morem" instead of "over the sea".
+ */
+private fun replaceKnownWords(raw: String): String {
     var out = raw
     val dictionary = (COURSE_GLOSSARY + COMMON_WORDS.entries.map { it.key to it.value })
         .distinctBy { it.first.lowercase() }
@@ -616,5 +634,15 @@ private fun courseFallback(raw: String): String {
             replacement
         )
     }
-    return Transliteration.transliterate(out)
+    return out
+}
+
+/** Apply [replaceKnownWords] and return null when nothing was actually replaced (all leftovers). */
+private fun translateCommonWords(raw: String): String? {
+    val out = replaceKnownWords(raw)
+    return out.takeIf { it != raw }
+}
+
+private fun courseFallback(raw: String): String {
+    return Transliteration.transliterate(replaceKnownWords(raw))
 }

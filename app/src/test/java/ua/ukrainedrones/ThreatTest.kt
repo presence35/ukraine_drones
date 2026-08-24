@@ -181,8 +181,8 @@ class ThreatTest {
 
     @Test
     fun `courseDeg uses velocity bearing even when not flying`() {
-        // No speed/confirmedAt — predictPosition still glides along bearingDeg, so the icon
-        // must face it too (matches predictPosition's heading resolution).
+        // Not flying (no speed/confirmedAt), so predictPosition holds the raw fix — but the
+        // icon still faces the reported velocity bearing (matches motionHeading's resolution).
         val t = threat(bearingDeg = 270.0, heading = 10.0)
         assertFalse(t.flying)
         assertEquals(270.0, t.courseDeg, 1e-9)
@@ -230,5 +230,26 @@ class ThreatTest {
         assertTrue(alert.inOblast("Київ"))
         assertTrue(alert.inOblast("київськ")) // case-insensitive prefix
         assertFalse(alert.inOblast("Одес"))
+    }
+
+    @Test
+    fun `coversCity matches a raion-level alert naming the city`() {
+        val odeskyi = OblastAlert("odeskyi", "Одеський район", "Одеса", "2026-08-14")
+        assertTrue(odeskyi.coversCity("Одеса"))
+        val khersonska = OblastAlert("khersonska", "Херсонська область", "Херсонська", "2026-08-14")
+        assertFalse(khersonska.coversCity("Одеса"))
+    }
+
+    @Test
+    fun `officialAlertActiveFor honours the scope`() {
+        val odeskyi = OblastAlert("odeskyi", "Одеський район", "Одеса", "2026-08-14")
+        val alerts = listOf(odeskyi)
+        // Oblast scope: any alert in the oblast rings.
+        assertTrue(officialAlertActiveFor(alerts, "Одес", "Одеса", scope = false))
+        // City scope: only when the alert actually covers the focus city.
+        assertTrue(officialAlertActiveFor(alerts, "Одес", "Одеса", scope = true))
+        assertFalse(officialAlertActiveFor(alerts, "Херсонськ", "Херсон", scope = true))
+        // Unknown city falls back to oblast-wide matching.
+        assertTrue(officialAlertActiveFor(alerts, "Одес", null, scope = true))
     }
 }

@@ -60,10 +60,6 @@ import kotlin.math.roundToInt
 @Composable
 internal fun ConnectionStatus(
     neptunDown: Boolean,
-    backupActive: Boolean,
-    backupUp: Boolean,
-    backupSeen: Boolean,
-    backupOfflineElapsedSec: Long?,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
     onOpenDebug: () -> Unit,
@@ -74,17 +70,8 @@ internal fun ConnectionStatus(
     iconSet: ThreatIconSet,
     modifier: Modifier = Modifier
 ) {
-    val online = !neptunDown && !backupActive
-    val dotColor = when {
-        neptunDown -> Color(0xFFE57373) // red — NEPTUN offline (real or simulated)
-        backupActive -> Color(0xFFF9A825) // amber — NEPTUN alive but on the backup source
-        else -> Color(0xFF4CAF50)
-    }
-    val label = when {
-        neptunDown -> s.connOffline
-        backupActive -> s.connBackup
-        else -> s.connOnline
-    }
+    val dotColor = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50)
+    val label = if (neptunDown) s.connOffline else s.connOnline
         Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
@@ -97,23 +84,13 @@ internal fun ConnectionStatus(
             painter = painterResource(R.drawable.neptun),
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            colorFilter = ColorFilter.tint(
-                when {
-                    neptunDown -> Color(0xFFE57373) // red — NEPTUN offline (real or simulated)
-                    backupActive -> Color(0xFFF9A825) // amber — NEPTUN alive but on the backup source
-                    else -> Color(0xFF4CAF50)
-                }
-            ),
+            colorFilter = ColorFilter.tint(dotColor),
             modifier = Modifier.size(width = 14.dp, height = 14.dp)
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = label,
-            color = when {
-                online -> Color(0xFF4CAF50)
-                neptunDown -> Color(0xFFE57373)
-                else -> Color.White
-            },
+            color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
             style = MaterialTheme.typography.labelMedium
         )
     }
@@ -169,23 +146,8 @@ internal fun ConnectionStatus(
                     SourceStatusRow(
                         color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
                         name = s.connNeptunLabel,
-                        active = !backupActive || !backupSeen,
+                        active = !neptunDown,
                         activeLabel = s.connActiveLabel
-                    )
-                    SourceStatusRow(
-                        color = when {
-                            backupUp -> Color(0xFF4CAF50)
-                            backupSeen -> Color(0xFFF9A825)
-                            else -> Color(0xFFE57373)
-                        },
-                        name = s.connBackupLabel,
-                        active = backupUp && backupSeen,
-                        activeLabel = s.connActiveLabel
-                    )
-                    Text(
-                        s.connBackupNoMapDesc,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -327,12 +289,10 @@ private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet, lang: Ap
     val color = when (entry.status) {
         ConnStatus.ONLINE -> Color(0xFF4CAF50)
         ConnStatus.OFFLINE -> Color(0xFFE57373)
-        ConnStatus.BACKUP -> Color(0xFFF9A825)
     }
     val label = when (entry.status) {
         ConnStatus.ONLINE -> s.connOnline
         ConnStatus.OFFLINE -> s.connOffline
-        ConnStatus.BACKUP -> s.connBackup
     }
     Row(
         modifier = Modifier

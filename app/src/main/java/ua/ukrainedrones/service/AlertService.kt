@@ -37,7 +37,6 @@ class AlertService : Service() {
     companion object {
         const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
         const val ACTION_NEUTRALIZED_DISMISS = "ua.ukrainedrones.NEUTRALIZED_DISMISS"
-        const val ACTION_NEUTRALIZED_TAP = "ua.ukrainedrones.NEUTRALIZED_TAP"
         const val EXTRA_REVEAL_ID = "reveal_threat_id"
         const val EXTRA_REVEAL_LAT = "reveal_threat_lat"
         const val EXTRA_REVEAL_LON = "reveal_threat_lon"
@@ -57,11 +56,13 @@ class AlertService : Service() {
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
         private const val NOTIF_ALLCLEAR = 3
-        private const val NOTIF_OFFLINE = 4
         private const val NOTIF_MILESTONE = 5
         private const val NOTIF_NEUTRALIZED = 6
         private const val NOTIF_UPDATE = 7
-        private const val CENTRE_ALERT_GRACE_MS = 60_000L
+        private const val CENTRE_ALERT_GRACE_MS = 20_000L
+        /** How often the monitoring loop re-evaluates state (fast tick, decoupled from the
+         *  all-clear grace so a threat that leaves a zone clears promptly). */
+        private const val MONITOR_TICK_MS = 1_000L
         /** Vibration level used for official alerts with no known reason threat (fixed, urgent). */
         private const val VIBRATION_STRONG = 4
         /** Fixed vibration level used for all zone alerts (strong, was configurable). */
@@ -91,7 +92,6 @@ class AlertService : Service() {
     private var lastMonitorText: String? = null
     private var lastMonitorRetry: String? = null
     private var wasConnected = true
-    private var offlineNotifShown = false
     private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
 private var notif3minShown = false
@@ -111,7 +111,6 @@ private var notif3minShown = false
         data class State(
             val focusOblastAlertActive: Boolean,
             val focusToken: String?,
-            val focusAlertSource: AlertSource?,
             val focusBannerCity: String,
             val focusCityUa: String?,
             val focusRegion: String,
@@ -145,6 +144,7 @@ private var notif3minShown = false
         val fastRedArmed: Boolean,
         val fastYellowArmed: Boolean,
         val officialAlertsEnabled: Boolean,
+        val officialAlertCityScope: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean
     )
@@ -215,27 +215,12 @@ private var notif3minShown = false
             NeptunClient.retryNow()
         }
         if (intent?.action == ACTION_NEUTRALIZED_DISMISS) {
-            // The tally notification was swiped away — reset the count so any later
-            // neutralizations start a fresh tally instead of resurrecting the dismissed one.
+            // The tally notification was swiped away (or its replay consumed in the app) —
+            // reset the count and memory so any later neutralizations start a fresh tally
+            // instead of resurrecting the dismissed one, and drop the notification itself.
             neutralizedCount = 0
             lastNeutralizedType = null
-        }
-        if (intent?.action == ACTION_NEUTRALIZED_TAP) {
-            // Replay the shot-down show when the app opens: ship the remembered resolutions
-            // (position + type) through the intent. The map zooms to fit them all at once.
-            val latArr = resolvedMemory.map { it.lat }.toDoubleArray()
-            val lonArr = resolvedMemory.map { it.lon }.toDoubleArray()
-            val typeArr = resolvedMemory.map { it.type.name }.toTypedArray()
             resolvedMemory.clear()
-            neutralizedCount = 0
-            lastNeutralizedType = null
-            val tapIntent = Intent(this, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                putExtra(EXTRA_FLOURISH_LATS, latArr)
-                putExtra(EXTRA_FLOURISH_LONS, lonArr)
-                putExtra(EXTRA_FLOURISH_TYPES, typeArr)
-            }
-            startActivity(tapIntent)
             try { NotificationManagerCompat.from(this).cancel(NOTIF_NEUTRALIZED) } catch (_: SecurityException) {}
         }
         startMonitoring()
@@ -292,7 +277,7 @@ private var notif3minShown = false
             val nowFlow = MutableStateFlow(System.currentTimeMillis())
             launch {
                 while (true) {
-                    delay(CENTRE_ALERT_GRACE_MS)
+                    delay(MONITOR_TICK_MS)
                     nowFlow.value = System.currentTimeMillis()
                 }
             }
@@ -313,10 +298,13 @@ private var notif3minShown = false
                     prefs.fastRedZoneArmed(),
                     prefs.fastYellowZoneArmed(),
                     prefs.officialAlertsEnabled(),
+                    prefs.officialAlertCityScope(),
                     prefs.sirenOverride(),
                     prefs.followMe()
                 ) { flags: Array<Boolean> ->
-                    AlertConfig(flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6])
+                    AlertConfig(
+                        flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6], flags[7]
+                    )
                 },
                 combine(
                     threatAlertFlow(prefs),
@@ -384,9 +372,12 @@ private var notif3minShown = false
                 val zoneSirenOverride = if (nightActive) night.zoneSirenOverride else config.sirenOverride
                 val officialSirenOverride = if (nightActive) night.officialSirenOverride else config.sirenOverride
                 val attribution = focusAttribution(followMe, gps, pinned)
-                val officialActive = attribution.token?.let { token ->
-                    neptun.oblastAlerts.any { it.inOblast(token) }
-                } == true
+                val officialActive = officialAlertActiveFor(
+                    neptun.oblastAlerts,
+                    attribution.token,
+                    attribution.bannerCityUa.takeIf { it.isNotBlank() },
+                    config.officialAlertCityScope
+                )
                 val (officialReason, officialReasonThreatId) = if (officialActive) {
                     ThreatEvaluator.buildOfficialReason(
                         neptun, attribution.token, lang, focus,
@@ -398,7 +389,6 @@ private var notif3minShown = false
                 MonitorEvent.State(
                     focusOblastAlertActive = officialActive,
                     focusToken = attribution.token,
-                    focusAlertSource = attribution.token?.let { token -> neptun.alertSourceFor(token) },
                     focusBannerCity = (
                         if (lang == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
                     ).ifBlank { Strings.get(lang).unknownLocation },
@@ -452,53 +442,36 @@ private var notif3minShown = false
             lastChannelLang = state.lang
         }
 
-        // Offline tracking: fire a one-shot alert on drop (immediately when an official
-        // alert is active at drop or during the 30s grace, else after the grace), and switch
-        // the ongoing status notification to the offline wording with a Retry action.
-        // Short blips (drops that recover inside the shared grace) never reach the status
-        // wording — the one-shot alert below re-verifies the drop after the delay.
+        // Offline tracking: the always-visible ongoing monitor notification switches to the offline
+        // wording with a Retry action once the drop outlasts the shared grace (short blips that
+        // recover inside it never reach the offline wording). No separate one-shot alert — a
+        // second notification with its own Retry button was just duplicate noise in the shade.
         val offline = state.offlineElapsedSec?.takeIf { it * 1000 >= NeptunClient.OFFLINE_GRACE_MS }
         if (state.connected) {
-            offlineNotifShown = false
             offlineAlertJob?.cancel()
             offlineAlertJob = null
             offlineRestorePending = false
             if (!wasConnected) persistOfflineSince(0L)
         } else if (wasConnected) {
-            // Just dropped: decide whether to alert now or after the grace.
+            // Just dropped: remember the outage start so a service kill mid-outage still
+            // re-flags it (see the offlineRestorePending branch on the next start).
             offlineAlertJob?.cancel()
-            val alertNow = state.focusOblastAlertActive
             persistOfflineSince(System.currentTimeMillis())
             offlineAlertJob = scope.launch {
-                if (!alertNow) {
-                    delay(NeptunClient.OFFLINE_GRACE_MS)
-                    // During the grace an official alert may have fired — alert immediately then.
-                }
-                if (!offlineNotifShown && !NeptunClient.state.value.connected) {
-                    postOfflineAlert(state.lang)
-                    offlineNotifShown = true
-                }
+                // Once the grace elapses (and an official alert didn't already surface), the
+                // monitor notification's Retry action carries the recovery path anyway.
+                delay(NeptunClient.OFFLINE_GRACE_MS)
+                if (NeptunClient.state.value.connected) persistOfflineSince(0L)
             }
         } else if (offlineRestorePending) {
             // An outage was already in progress when the service died and restarted; the
-            // pre-kill drop was never flagged. Surface it exactly like a fresh drop (grace,
-            // or immediately when an official alert is on), then clear the restore flag.
+            // pre-kill drop was never flagged. The ongoing monitor notification re-renders the
+            // offline state on the first tick, so just clear the restore flag.
             offlineRestorePending = false
             offlineAlertJob?.cancel()
-            val alertNow = state.focusOblastAlertActive
             offlineAlertJob = scope.launch {
-                if (!alertNow) delay(NeptunClient.OFFLINE_GRACE_MS)
-                if (!offlineNotifShown && !NeptunClient.state.value.connected) {
-                    postOfflineAlert(state.lang)
-                    offlineNotifShown = true
-                }
-            }
-        } else if (state.focusOblastAlertActive && !offlineNotifShown) {
-            // An official alert fired while already offline — surface it immediately.
-            offlineAlertJob?.cancel()
-            if (!NeptunClient.state.value.connected) {
-                postOfflineAlert(state.lang)
-                offlineNotifShown = true
+                delay(NeptunClient.OFFLINE_GRACE_MS)
+                if (NeptunClient.state.value.connected) persistOfflineSince(0L)
             }
         }
         val wasConnectedBefore = wasConnected
@@ -543,11 +516,10 @@ private var notif3minShown = false
             // Show notification at 6 minutes
             if (elapsedSinceReconnect >= sixMinMs && !notif6minShown) {
                 notif6minShown = true
-                val backupStatus = if (neptun.backupUp) s.offlineMilestone6MinActive else s.offlineMilestone6MinInactive
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
-                    .setContentText(String.format(s.offlineMilestone6MinFormat, backupStatus))
+                    .setContentText(s.offlineMilestone6Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setAutoCancel(true)
                     .setContentIntent(openAppIntent())
@@ -584,16 +556,13 @@ private var notif3minShown = false
             }
         }
 
-        val onBackup = neptun.backupUp && (neptun.neptunDown || neptun.backupActive)
         notifyMonitor(
             title = when {
-                neptun.neptunDown && neptun.backupUp -> s.offlineStatusTitle + " — " + s.statusOnBackup
                 neptun.neptunDown -> s.offlineStatusTitle
-                onBackup -> s.notifOngoingTitle + " — " + s.statusOnBackup
                 state.focusPinned -> String.format(s.notifMonitoringCityFormat, state.focusBannerCity)
                 else -> s.notifOngoingTitle
             },
-            text = if (onBackup) s.statusOnBackupSub else "",
+            text = "",
             retryLabel = if (offline != null) s.offlineRetryAction else null
         )
 
@@ -675,8 +644,7 @@ private var notif3minShown = false
         // Settings toggle — turning it off stops only official-alert notifications,
         // never the Red/Yellow zone alerts.
         val officialActive = state.officialAlertsEnabled && state.focusOblastAlertActive
-        val officialBody = state.officialReason?.let { it + sourceTag(state.focusAlertSource, s) }
-            ?: state.focusRegion + sourceTag(state.focusAlertSource, s)
+        val officialBody = state.officialReason ?: state.focusRegion
         if (officialActive && !wasFocusAlertActive) {
             // Record the official alert in the history on its very first tick even when a zone
             // alert wins the notification post — so the all-clear close below always has a row.
@@ -874,13 +842,6 @@ private var notif3minShown = false
         return distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
     }
 
-    /** Small source tag appended to the official-alert body when it came from the backup. */
-    private fun sourceTag(source: AlertSource?, s: Strings.StringSet): String = when (source) {
-        AlertSource.BACKUP -> s.alertSourceBackup
-        AlertSource.BOTH -> s.alertSourceBoth
-        else -> ""
-    }
-
     private fun monitorNotification(title: String, text: String, retryLabel: String?) =
         NotificationCompat.Builder(this, CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_trident)
@@ -970,30 +931,9 @@ private var notif3minShown = false
         ZonePrefs(applicationContext).setOfflinePendingSince(ts)
     }
 
-    /** One-shot "connection dropped" alert on the silent offline channel. */
-    private fun postOfflineAlert(lang: AppLanguage) {
-        val s = Strings.get(lang)
-        val body = s.offlineBodyFormat
-        val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-            .setSmallIcon(R.drawable.ic_trident)
-            .setContentTitle(s.offlineStatusTitle)
-            .setContentText(body)
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText("$body\n\n${s.offlineOfficialSirensLine}")
-            )
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(openAppIntent())
-            .addAction(0, s.offlineRetryAction, retryPendingIntent())
-            .build()
-        safeNotify(NOTIF_OFFLINE, notif)
-    }
-
-    /**
-     * Silent, dismissible running tally of resolved threats near the focus. Re-posted on the
-     * same id with an incremented count each time; swiping it away (delete intent) resets the
-     * count so it stays gone until the next resolution starts a fresh tally.
+    /** Silent, dismissible running tally of resolved threats near the focus. Re-posted on the
+     *  same id with an incremented count each time; swiping it away (delete intent) resets the
+     *  count so it stays gone until the next resolution starts a fresh tally.
      */
     private fun postNeutralizedTally(lang: AppLanguage) {
         val s = Strings.get(lang)
@@ -1025,9 +965,25 @@ private var notif3minShown = false
         )
     }
 
+    /**
+     * Tap target for the tally notification: opens the app straight onto the shot-down replay.
+     * Built as a direct Activity intent (no service trampoline — Android 12+ blocks starting an
+     * activity from a notification-launched service) with the remembered resolutions baked in
+     * right now, so the tap always replays the latest show.
+     */
     private fun neutralizedTapPendingIntent(): PendingIntent {
-        val intent = Intent(this, AlertService::class.java).setAction(ACTION_NEUTRALIZED_TAP)
-        return PendingIntent.getService(
+        val latArr = resolvedMemory.map { it.lat }.toDoubleArray()
+        val lonArr = resolvedMemory.map { it.lon }.toDoubleArray()
+        val typeArr = resolvedMemory.map { it.type.name }.toTypedArray()
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_FLOURISH_LATS, latArr)
+            putExtra(EXTRA_FLOURISH_LONS, lonArr)
+            putExtra(EXTRA_FLOURISH_TYPES, typeArr)
+        }
+        return PendingIntent.getActivity(
             this, 3, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )

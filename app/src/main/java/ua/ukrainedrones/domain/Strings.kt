@@ -58,6 +58,8 @@ object Strings {
         val officialAlertsTitle: String,
         val officialAlertsDesc: String,
         val officialAlertsRedTridentNote: String,
+        val officialAlertScopeTitle: String,
+        val officialAlertScopeDesc: String,
         val sirenOverrideTitle: String,
         val sirenOverrideDesc: String,
         val nightModeLabel: String,
@@ -119,16 +121,10 @@ object Strings {
         val connServerLine: String,
         val connUpLine: String,
         val connDownLine: String,
-        val connBackup: String,
         val connStatusTitle: String,
         val connNeptunLabel: String,
-        val connBackupLabel: String,
         val connActiveLabel: String,
         val connForceOfflineTitle: String,
-        val connBackupNoMapDesc: String,
-        val statusOnBackup: String,
-        val statusOnBackupSub: String,
-        val attributionBackup: String,
         val reliabilityLow: String,
         val reliabilityMedium: String,
         val reliabilityHigh: String,
@@ -199,8 +195,6 @@ object Strings {
         val pinCityTitle: String,
         val pinCityDesc: String,
         val alertBannerFormat: String,
-        val alertSourceBackup: String,
-        val alertSourceBoth: String,
         val notifBodyRegionFormat: String,
         val notifOfficialFormat: String,
         val notifOfficialWithReasonFormat: String,
@@ -211,9 +205,7 @@ object Strings {
         val offlineChannelName: String,
         val offlineChannelDesc: String,
         val offlineMilestone3Min: String,
-        val offlineMilestone6MinFormat: String,
-        val offlineMilestone6MinActive: String,
-        val offlineMilestone6MinInactive: String,
+        val offlineMilestone6Min: String,
         val offlineMilestone10Min: String,
         val offlineMilestone20Min: String,
         val alertChannelName: String,
@@ -289,6 +281,8 @@ object Strings {
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
         val showMapScaleDesc: String,
+        val calmMessagesTitle: String,
+        val calmMessagesDesc: String,
         val deathAnimationTitle: String,
         val deathAnimationDesc: String,
         val followBulletTitle: String,
@@ -519,6 +513,8 @@ object Strings {
         val officialAlertsTitle: String get() = settings.officialAlertsTitle
         val officialAlertsDesc: String get() = settings.officialAlertsDesc
         val officialAlertsRedTridentNote: String get() = settings.officialAlertsRedTridentNote
+        val officialAlertScopeTitle: String get() = settings.officialAlertScopeTitle
+        val officialAlertScopeDesc: String get() = settings.officialAlertScopeDesc
         val sirenOverrideTitle: String get() = settings.sirenOverrideTitle
         val sirenOverrideDesc: String get() = settings.sirenOverrideDesc
         val nightModeLabel: String get() = settings.nightModeLabel
@@ -648,16 +644,10 @@ object Strings {
         val connServerLine: String get() = status.connServerLine
         val connUpLine: String get() = status.connUpLine
         val connDownLine: String get() = status.connDownLine
-        val connBackup: String get() = status.connBackup
         val connStatusTitle: String get() = status.connStatusTitle
         val connNeptunLabel: String get() = status.connNeptunLabel
-        val connBackupLabel: String get() = status.connBackupLabel
         val connActiveLabel: String get() = status.connActiveLabel
         val connForceOfflineTitle: String get() = status.connForceOfflineTitle
-        val connBackupNoMapDesc: String get() = status.connBackupNoMapDesc
-        val statusOnBackup: String get() = status.statusOnBackup
-        val statusOnBackupSub: String get() = status.statusOnBackupSub
-        val attributionBackup: String get() = status.attributionBackup
         val reliabilityLow: String get() = status.reliabilityLow
         val reliabilityMedium: String get() = status.reliabilityMedium
         val reliabilityHigh: String get() = status.reliabilityHigh
@@ -722,8 +712,6 @@ object Strings {
         val pinCityTitle: String get() = threat.pinCityTitle
         val pinCityDesc: String get() = threat.pinCityDesc
         val alertBannerFormat: String get() = threat.alertBannerFormat
-        val alertSourceBackup: String get() = threat.alertSourceBackup
-        val alertSourceBoth: String get() = threat.alertSourceBoth
         val notifBodyRegionFormat: String get() = threat.notifBodyRegionFormat
         val notifOfficialFormat: String get() = threat.notifOfficialFormat
         val notifOfficialWithReasonFormat: String get() = threat.notifOfficialWithReasonFormat
@@ -734,9 +722,7 @@ object Strings {
         val offlineChannelName: String get() = threat.offlineChannelName
         val offlineChannelDesc: String get() = threat.offlineChannelDesc
         val offlineMilestone3Min: String get() = threat.offlineMilestone3Min
-        val offlineMilestone6MinFormat: String get() = threat.offlineMilestone6MinFormat
-        val offlineMilestone6MinActive: String get() = threat.offlineMilestone6MinActive
-        val offlineMilestone6MinInactive: String get() = threat.offlineMilestone6MinInactive
+        val offlineMilestone6Min: String get() = threat.offlineMilestone6Min
         val offlineMilestone10Min: String get() = threat.offlineMilestone10Min
         val offlineMilestone20Min: String get() = threat.offlineMilestone20Min
         val alertChannelName: String get() = threat.alertChannelName
@@ -809,6 +795,8 @@ object Strings {
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
         val showMapScaleDesc: String get() = misc.showMapScaleDesc
+        val calmMessagesTitle: String get() = misc.calmMessagesTitle
+        val calmMessagesDesc: String get() = misc.calmMessagesDesc
         val deathAnimationTitle: String get() = misc.deathAnimationTitle
         val deathAnimationDesc: String get() = misc.deathAnimationDesc
         val followBulletTitle: String get() = misc.followBulletTitle
@@ -1011,6 +999,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         officialAlertsTitle = "Офіційні сповіщення",
         officialAlertsDesc = "Сповіщення про офіційну повітряну тривогу в області. Не впливає на червону/жовту зони.",
         officialAlertsRedTridentNote = "Червоний тризуб у шапці означає, що офіційна тривога активна.",
+        officialAlertScopeTitle = "Міський рівень",
+        officialAlertScopeDesc = "За замовчуванням сигнал лунає на всю область. Увімкни, щоб тривога спрацьовувала лише коли покрито твоє місто (район).",
         sirenOverrideTitle = "Сирена звучить завжди",
         sirenOverrideDesc = "Сигнал тривоги звучить, навіть коли телефон у вібро- чи беззвучному режимі. За замовчуванням вимкнено — звук слідує за налаштуваннями телефону.",
         nightModeLabel = "Нічний режим",
@@ -1072,16 +1062,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connServerLine = "З'єднання з сервером повітряних тривог NEPTUN.",
         connUpLine = "Дані оновлюються.",
         connDownLine = "З'єднання втрачено, дані можуть бути застарілими.",
-        connBackup = "резерв",
         connStatusTitle = "Статус системи",
         connNeptunLabel = "NEPTUN",
-        connBackupLabel = "alerts.com.ua",
         connActiveLabel = "Активне",
         connForceOfflineTitle = "Тест: імітувати офлайн NEPTUN",
-        connBackupNoMapDesc = "Резервне джерело працює лише на рівні областей — без живої карти позицій, лише статус повітряних тривог.",
-        statusOnBackup = "на резерві",
-        statusOnBackupSub = "Офіційні тривоги через резерв",
-        attributionBackup = "Повітряні тривоги — alerts.com.ua",
         reliabilityLow = "Достовірність: Низька",
         reliabilityMedium = "Достовірність: Середня",
         reliabilityHigh = "Достовірність: Висока",
@@ -1152,21 +1136,17 @@ val iconSetTitle: String get() = misc.iconSetTitle
         pinCityTitle = "Прикріпити до міста",
         pinCityDesc = "Центр карти та зони закріплюються за вибраним містом.",
         alertBannerFormat = "%1\$s: тривога",
-        alertSourceBackup = " · резервне джерело",
-        alertSourceBoth = " · NEPTUN + резервне джерело",
         notifBodyRegionFormat = "%1\$s область",
         notifOfficialFormat = "Офіційна тривога в %1\$s",
         notifOfficialWithReasonFormat = "Офіційна тривога в %1\$s: %2\$s",
         offlineStatusTitle = "Офлайн",
-        offlineBodyFormat = "Офлайн — резервні системи працюють, але менш надійні. Натисни, щоб повторити.",
+        offlineBodyFormat = "Офлайн — з'єднання з NEPTUN втрачено. Натисни, щоб повторити.",
         offlineOfficialSirensLine = "Покладайся на офіційні сирени.",
         offlineRetryAction = "Повторити",
         offlineChannelName = "Офлайн-моніторинг",
         offlineChannelDesc = "Повідомлення, коли з'єднання із сервером тривог втрачено.",
-        offlineMilestone3Min = "Резервна система відстежує стрічку тривог. Застосунок продовжує спроби повторного з'єднання у фоновому режимі.",
-        offlineMilestone6MinFormat = "Резервні тривоги alerts.com.ua зараз %s. Офіційні сирени можуть бути обмежені.",
-        offlineMilestone6MinActive = "активні",
-        offlineMilestone6MinInactive = "неактивні",
+        offlineMilestone3Min = "З'єднання з NEPTUN втрачено. Застосунок продовжує спроби повторного з'єднання у фоновому режимі.",
+        offlineMilestone6Min = "Немає з'єднання з NEPTUN протягом 6 хвилин. Застосунок продовжує спроби підключення у фоновому режимі.",
         offlineMilestone10Min = "Немає з'єднання з NEPTUN протягом 10 хвилин. Застосунок продовжує спроби підключення у фоновому режимі зі зростаючими затримками.",
         offlineMilestone20Min = "Автоперепідключення зупинено після 20 хвилин. Будь ласка: повністю закрийте застосунок, перезавантажте телефон або перевірте інтернет-з'єднання. Підключення відновиться під час наступного відкриття застосунку.",
         alertChannelName = "Повітряні тривоги",
@@ -1242,14 +1222,16 @@ val iconSetTitle: String get() = misc.iconSetTitle
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
         showMapScaleDesc = "Масштабна шкала в нижньому правому куті карти.",
-        deathAnimationTitle = "Анімація завершення загрози",
-        deathAnimationDesc = "Показувати анімацію снаряда й вибуху, коли загрозу перестають відстежувати. Просто для розваги.",
+        calmMessagesTitle = "Заспокійливі повідомлення",
+        calmMessagesDesc = "Показувати короткі підбадьорювання в нижній панелі, коли загроз немає. Вимкни, щоб залишати лише «Немає актуальних загроз».",
+        deathAnimationTitle = "Збиття загрози (куля .50)",
+        deathAnimationDesc = "Коли загрозу перестають відстежувати, з найближчого великого міста прилітає куля калібру .50 і збиває її. Просто для розваги.",
         followBulletTitle = "Слідувати за снарядом",
         followBulletDesc = "Снаряд летить з найближчого великого міста до цілі, а камера слідує за ним до точки удару.",
-        neutralizedTallyTitle = "Лічильник завершених загроз",
-        neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, завершених у твоїй області, доки працює моніторинг.",
+        neutralizedTallyTitle = "Лічильник збитих загроз",
+        neutralizedTallyDesc = "Показувати сповіщення з лічильником загроз, які збила куля .50 у твоїй області, доки працює моніторинг. Натискання повторює перестрілку на карті.",
         neutralizedTallyAllUkraineTitle = "Уся Україна",
-        neutralizedTallyAllUkraineDesc = "Враховувати завершені загрози по всій Україні, а не лише у твоїй області.",
+        neutralizedTallyAllUkraineDesc = "Враховувати збиті загрози по всій Україні, а не лише у твоїй області.",
         neutralizedScopeNearMe = "поруч",
         neutralizedScopeAllUkraine = "по всій Україні",
         iconSetTitle = "Оберіть свої улюблені іконки загроз!",
@@ -1506,6 +1488,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         officialAlertsTitle = "Official alerts",
         officialAlertsDesc = "Alerts for the official oblast air-raid signal. Does not affect your Red/Yellow zone alerts.",
         officialAlertsRedTridentNote = "A red trident in the header means the official alert is on.",
+        officialAlertScopeTitle = "City level",
+        officialAlertScopeDesc = "By default the signal rings for the whole oblast. Turn on to alert only when your city (district) is covered.",
         sirenOverrideTitle = "Sirens always sound",
         sirenOverrideDesc = "Ring the siren even when the phone is on vibrate or silent. Off by default — alerts follow your phone's sound settings.",
         nightModeLabel = "Night mode",
@@ -1567,16 +1551,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connServerLine = "Connection to the NEPTUN air-threat server.",
         connUpLine = "Data is updating live.",
         connDownLine = "Connection lost; data may be stale.",
-        connBackup = "backup",
         connStatusTitle = "System status",
         connNeptunLabel = "NEPTUN",
-        connBackupLabel = "alerts.com.ua",
         connActiveLabel = "Active",
         connForceOfflineTitle = "Test: simulate NEPTUN offline",
-        connBackupNoMapDesc = "The backup is oblast-level only — no live map positions, just air-raid alert status.",
-        statusOnBackup = "on backup",
-        statusOnBackupSub = "Official alerts via backup",
-        attributionBackup = "Air threat alerts — alerts.com.ua",
         reliabilityLow = "Reliability: Low",
         reliabilityMedium = "Reliability: Average",
         reliabilityHigh = "Reliability: High",
@@ -1646,22 +1624,18 @@ val iconSetTitle: String get() = misc.iconSetTitle
         followMeDesc = "The map and zones follow your GPS position.",
         pinCityTitle = "Pin to a city",
         pinCityDesc = "The map centre and zones pin to the selected city.",
-        alertBannerFormat = "%1\$s: alert",
-        alertSourceBackup = " · backup source",
-        alertSourceBoth = " · NEPTUN + backup source",
-        notifBodyRegionFormat = "%1\$s region",
+alertBannerFormat = "%1\$s: alert",
+        notifBodyRegionFormat = "%1\$s oblast",
         notifOfficialFormat = "Official alert in %1\$s",
         notifOfficialWithReasonFormat = "Official alert in %1\$s: %2\$s",
         offlineStatusTitle = "Offline",
-        offlineBodyFormat = "Offline — backup systems active but less reliable. Tap to retry.",
+        offlineBodyFormat = "Offline — connection to NEPTUN lost. Tap to retry.",
         offlineOfficialSirensLine = "Rely on official sirens.",
         offlineRetryAction = "Retry",
         offlineChannelName = "Offline monitoring",
-        offlineChannelDesc = "Notifications when the connection to the alert server is lost.",
-        offlineMilestone3Min = "Backup system is monitoring the alert feed. The app will keep trying to reconnect in the background.",
-        offlineMilestone6MinFormat = "Backup alerts from alerts.com.ua are currently %s. Official sirens may be limited.",
-        offlineMilestone6MinActive = "active",
-        offlineMilestone6MinInactive = "inactive",
+        offlineChannelDesc = "Alerts when the connection to the threat server is lost.",
+        offlineMilestone3Min = "Connection to NEPTUN lost. The app will keep trying to reconnect in the background.",
+        offlineMilestone6Min = "No NEPTUN connection for 6 minutes. The app keeps retrying in the background.",
         offlineMilestone10Min = "No NEPTUN connection for 10 minutes. The app keeps retrying in the background with increasing delays.",
         offlineMilestone20Min = "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it.",
         alertChannelName = "Air alerts",
@@ -1737,12 +1711,14 @@ val iconSetTitle: String get() = misc.iconSetTitle
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
         showMapScaleDesc = "Scale bar in the map's bottom-right corner.",
-        deathAnimationTitle = "Resolved-threat animation",
-        deathAnimationDesc = "Play a projectile-and-explosion flourish when a threat is no longer tracked. Just for fun.",
+        calmMessagesTitle = "Calm messages",
+        calmMessagesDesc = "Show short encouragements in the bottom bar when there are no threats. Turn off to just say \"No relevant threats\".",
+        deathAnimationTitle = "Shoot-down animation (.50 cal)",
+        deathAnimationDesc = "When a threat is no longer tracked, a .50-cal bullet flies in from the nearest major city and shoots it down. Just for fun.",
         followBulletTitle = "Follow the bullet",
         followBulletDesc = "The projectile launches from the nearest major city toward the target, and the camera glides onto the strike.",
-        neutralizedTallyTitle = "Resolved-threats tally",
-        neutralizedTallyDesc = "Show a notification counting threats resolved in your oblast while monitoring is running.",
+        neutralizedTallyTitle = "Shoot-down tally",
+        neutralizedTallyDesc = "Show a notification counting threats your .50-cal bullet shot down in your oblast while monitoring is running. Tapping replays the shootout on the map.",
         neutralizedTallyAllUkraineTitle = "All of Ukraine",
         neutralizedTallyAllUkraineDesc = "Also count resolved threats anywhere in Ukraine, not just your oblast.",
         neutralizedScopeNearMe = "near you",
@@ -2013,8 +1989,11 @@ fun resolvedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
 }
 
 /** Rotating light encouragements shown in the footer strip when no threats are around — one
- *  per ~3-day window, so it stays fresh without nagging. Pure selection, testable. */
-fun noThreatsMessage(lang: AppLanguage, epochDay: Long): String {
+ *  per ~3-day window, so it stays fresh without nagging. Pure selection, testable. When the
+ *  user turns the calm messages off, the footer always reads just "No relevant threats".
+ */
+fun noThreatsMessage(lang: AppLanguage, epochDay: Long, calmMessages: Boolean = true): String {
+    if (!calmMessages) return if (lang == AppLanguage.UA) "Немає актуальних загроз" else "No relevant threats"
     val en = listOf(
         "No relevant threats",
         "Quiet — go touch grass",

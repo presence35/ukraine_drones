@@ -81,6 +81,8 @@ class ZonePrefs(private val context: Context) {
     private val sheltersEnabledKey = booleanPreferencesKey("shelters_enabled")
     private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
     private val periodicGpsKey = booleanPreferencesKey("periodic_gps_enabled")
+    private val calmMessagesEnabledKey = booleanPreferencesKey("calm_messages_enabled")
+    private val officialAlertCityScopeKey = booleanPreferencesKey("official_alert_city_scope")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 1–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -270,7 +272,7 @@ class ZonePrefs(private val context: Context) {
         }
     }
 
-    /** TEMP testing toggle: force the app to behave as if NEPTUN is offline (exercises the backup path). */
+    /** TEMP testing toggle: force the app to behave as if NEPTUN is offline. */
     fun forceOffline(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[forceOfflineKey] ?: false }
 
@@ -377,12 +379,28 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[sheltersWithKidsEnabledKey] = enabled }
     }
 
-    /** Whether the app periodically snaps a one-shot GPS fix (every 15 min) to prevent cell drift. Default false. */
+    /** Whether the app periodically snaps a one-shot GPS fix (every 15 min) to prevent cell drift. Default true. */
     fun periodicGps(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[periodicGpsKey] ?: false }
+        context.dataStore.data.map { prefs -> prefs[periodicGpsKey] ?: true }
 
     suspend fun setPeriodicGps(enabled: Boolean) {
         context.dataStore.edit { it[periodicGpsKey] = enabled }
+    }
+
+    /** Whether the footer shows rotating calm messages when no threats are around — default on. */
+    fun calmMessagesEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[calmMessagesEnabledKey] ?: true }
+
+    suspend fun setCalmMessagesEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[calmMessagesEnabledKey] = enabled }
+    }
+
+    /** Official-alert scope: false = whole oblast, true = only when the focus city is covered. */
+    fun officialAlertCityScope(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[officialAlertCityScopeKey] ?: false }
+
+    suspend fun setOfficialAlertCityScope(enabled: Boolean) {
+        context.dataStore.edit { it[officialAlertCityScopeKey] = enabled }
     }
 
     /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */
@@ -449,7 +467,7 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[connLogKey] = serialized }
     }
 
-    /** Epoch millis when the current off/backup episode started (0 = none), across restarts. */
+    /** Epoch millis when the current offline episode started (0 = none), across restarts. */
     fun connLogPendingSince(): Flow<Long> =
         context.dataStore.data.map { prefs -> prefs[connLogPendingSinceKey] ?: 0L }
 
@@ -457,7 +475,7 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[connLogPendingSinceKey] = ts }
     }
 
-    /** Name of the status currently in progress ("OFFLINE"/"BACKUP"), or empty when none. */
+    /** Name of the status currently in progress ("OFFLINE"), or empty when none. */
     fun connLogPendingStatus(): Flow<String> =
         context.dataStore.data.map { prefs -> prefs[connLogPendingStatusKey] ?: "" }
 

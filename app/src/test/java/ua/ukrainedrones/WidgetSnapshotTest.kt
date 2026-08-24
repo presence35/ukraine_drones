@@ -81,16 +81,28 @@ class WidgetSnapshotTest {
     }
 
     @Test
-    fun `source flags reflect connectivity`() {
+    fun `source flag reflects connectivity`() {
         val online = computeWidgetSnapshot(NeptunState(connected = true), focus, null, params, allTypes, now)
         assertTrue(online.sourceOnline)
-        assertFalse(online.sourceBackup)
 
-        val backup = computeWidgetSnapshot(
-            NeptunState(connected = false, backupUp = true),
-            focus, null, params, allTypes, now
+        val offline = computeWidgetSnapshot(NeptunState(connected = false), focus, null, params, allTypes, now)
+        assertFalse(offline.sourceOnline)
+    }
+
+    @Test
+    fun `primary threat is the nearest live threat`() {
+        val s = state(
+            threat(id = "near", lat = 46.48, lon = 30.80, updatedAtMillis = now),    // ~5.6 km
+            threat(id = "far", lat = 47.0, lon = 31.0, updatedAtMillis = now)         // ~70 km
         )
-        assertFalse(backup.sourceOnline)
-        assertTrue(backup.sourceBackup)
+        val snap = computeWidgetSnapshot(s, focus, "odesa", params, allTypes, now)
+        assertEquals("near", snap.primaryThreat?.id)
+        assertEquals(ThreatType.SHAHED, snap.primaryThreat?.type)
+    }
+
+    @Test
+    fun `primary threat is null when nothing is live`() {
+        val snap = computeWidgetSnapshot(state(), focus, "odesa", params, allTypes, now)
+        assertNull(snap.primaryThreat)
     }
 }

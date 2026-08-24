@@ -3,6 +3,8 @@ package ua.ukrainedrones
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
@@ -31,9 +34,11 @@ import kotlinx.coroutines.flow.collectLatest
 
 /**
  * In-app toast bus. Android's `Toast.setGravity` is a no-op on API 31+ (the system forces
- * bottom-center), so we render toasts ourselves to control placement: top by default, bottom
- * when a card/popup is open (cardVisible) so the toast never hides behind it. Callers keep the
- * same [showToast] signature; the visual is [ToastHost], placed once at the screen root.
+ * bottom-center), so we render toasts ourselves to control placement: top (below the header,
+ * [topInset]) by default, bottom when a card/popup is open (cardVisible) so the toast never
+ * hides behind it. Callers keep the same [showToast] signature; the visual is [ToastHost],
+ * placed once at the screen root. The pill uses a dark themed surface (not the theme's
+ * inverseSurface, which reads as plain white in a dark theme).
  */
 private data class ToastRequest(val text: String, val cardVisible: Boolean)
 
@@ -47,7 +52,7 @@ fun showToast(context: android.content.Context, text: CharSequence, cardVisible:
 }
 
 @Composable
-fun ToastHost() {
+fun ToastHost(topInset: Dp = 0.dp) {
     var current by remember { mutableStateOf<ToastRequest?>(null) }
     LaunchedEffect(Unit) {
         toastBus.collectLatest { req ->
@@ -63,21 +68,28 @@ fun ToastHost() {
             exit = fadeOut(),
             modifier = Modifier
                 .align(if (current?.cardVisible == true) Alignment.BottomCenter else Alignment.TopCenter)
-                .padding(16.dp)
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = 16.dp,
+                    top = if (current?.cardVisible == true) 16.dp else topInset + 8.dp
+                )
         ) {
             current?.let { req ->
                 Surface(
                     tonalElevation = 3.dp,
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.inverseSurface,
+                    color = Color(0xFF2A2A2E),
                     modifier = Modifier
                         .fillMaxWidth()
                         .widthIn(max = 360.dp)
                         .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0xFF4A4A4E), RoundedCornerShape(12.dp))
+                        .background(Color(0xFF2A2A2E))
                 ) {
                     Text(
                         req.text,
-                        color = MaterialTheme.colorScheme.inverseOnSurface,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                     )

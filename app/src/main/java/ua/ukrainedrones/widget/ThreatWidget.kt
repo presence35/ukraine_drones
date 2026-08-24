@@ -1,6 +1,7 @@
 package ua.ukrainedrones
 
 import android.content.Context
+import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
@@ -8,9 +9,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ExperimentalGlanceApi
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
+import androidx.glance.action.Action
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -45,6 +50,7 @@ import kotlinx.coroutines.withContext
  * One responsive widget; density (compact / standard / detailed) is picked from the on-screen
  * size. Tapping anywhere opens the map.
  */
+@OptIn(ExperimentalGlanceApi::class)
 class ThreatWidget : GlanceAppWidget() {
 
     override val sizeMode: SizeMode = SizeMode.Responsive(
@@ -69,6 +75,18 @@ class ThreatWidget : GlanceAppWidget() {
         val strings = Strings.get(lang)
         val size = LocalSize.current
         val openApp = actionStartActivity<MainActivity>()
+        // Tapping the primary threat icon opens the map centered on that threat — same reveal
+        // extras as a threat alert notification tap, so the map pans and selects it.
+        val revealAction = snapshot.primaryThreat?.let { pt ->
+            actionStartActivity<MainActivity>(
+                actionParametersOf(),
+                Bundle().apply {
+                    putString(AlertService.EXTRA_REVEAL_ID, pt.id)
+                    putDouble(AlertService.EXTRA_REVEAL_LAT, pt.lat)
+                    putDouble(AlertService.EXTRA_REVEAL_LON, pt.lon)
+                }
+            )
+        }
 
         Box(
             modifier = GlanceModifier
@@ -77,23 +95,28 @@ class ThreatWidget : GlanceAppWidget() {
                 .clickable(openApp)
         ) {
             when (size) {
-                COMPACT -> CompactLayout(snapshot, strings, iconSet)
-                STANDARD -> StandardLayout(snapshot, strings, iconSet)
-                else -> DetailedLayout(snapshot, strings, iconSet)
+                COMPACT -> CompactLayout(snapshot, strings, iconSet, revealAction)
+                STANDARD -> StandardLayout(snapshot, strings, iconSet, revealAction)
+                else -> DetailedLayout(snapshot, strings, iconSet, revealAction)
             }
         }
     }
 
     /** 2×1: accent bar, one icon, count, source dot. */
     @Composable
-    private fun CompactLayout(snapshot: WidgetSnapshot, strings: Strings.StringSet, iconSet: ThreatIconSet) {
+    private fun CompactLayout(
+        snapshot: WidgetSnapshot,
+        strings: Strings.StringSet,
+        iconSet: ThreatIconSet,
+        revealAction: Action?
+    ) {
         Row(
             modifier = GlanceModifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AccentBar(snapshot)
             Spacer(GlanceModifier.size(8.dp))
-            IconForTopType(snapshot, iconSet, 22.dp)
+            IconForTopType(snapshot, iconSet, 22.dp, revealAction)
             Spacer(GlanceModifier.size(8.dp))
             Column(modifier = GlanceModifier.width(40.dp)) {
                 Text(
@@ -113,7 +136,12 @@ class ThreatWidget : GlanceAppWidget() {
 
     /** 4×2: header (trident + title + status pill), icon + count, zone chip, updated (bottom-right). */
     @Composable
-    private fun StandardLayout(snapshot: WidgetSnapshot, strings: Strings.StringSet, iconSet: ThreatIconSet) {
+    private fun StandardLayout(
+        snapshot: WidgetSnapshot,
+        strings: Strings.StringSet,
+        iconSet: ThreatIconSet,
+        revealAction: Action?
+    ) {
         Column(modifier = GlanceModifier.fillMaxSize().padding(10.dp)) {
             HeaderRow(snapshot, strings)
             Spacer(GlanceModifier.size(6.dp))
@@ -121,7 +149,7 @@ class ThreatWidget : GlanceAppWidget() {
                 modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconForTopType(snapshot, iconSet, 28.dp)
+                IconForTopType(snapshot, iconSet, 28.dp, revealAction)
                 Spacer(GlanceModifier.width(10.dp))
                 Column {
                     Text(
@@ -144,7 +172,12 @@ class ThreatWidget : GlanceAppWidget() {
 
     /** 4×3: header + status pill, per-type icons with counts, zone chip, updated (bottom-right). */
     @Composable
-    private fun DetailedLayout(snapshot: WidgetSnapshot, strings: Strings.StringSet, iconSet: ThreatIconSet) {
+    private fun DetailedLayout(
+        snapshot: WidgetSnapshot,
+        strings: Strings.StringSet,
+        iconSet: ThreatIconSet,
+        revealAction: Action?
+    ) {
         Column(modifier = GlanceModifier.fillMaxSize().padding(10.dp)) {
             HeaderRow(snapshot, strings)
             Spacer(GlanceModifier.size(8.dp))
@@ -227,11 +260,7 @@ class ThreatWidget : GlanceAppWidget() {
 
     @Composable
     private fun SourceDot(snapshot: WidgetSnapshot) {
-        val color = when {
-            !snapshot.sourceOnline && !snapshot.sourceBackup -> RED
-            snapshot.sourceBackup -> BLUE
-            else -> GREEN
-        }
+        val color = if (!snapshot.sourceOnline) RED else GREEN
         Box(
             modifier = GlanceModifier.size(10.dp).background(color)
         ) {}
@@ -273,17 +302,24 @@ class ThreatWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun IconForTopType(snapshot: WidgetSnapshot, iconSet: ThreatIconSet, sizeDp: androidx.compose.ui.unit.Dp) {
-        val top = snapshot.typeCounts.keys.minByOrNull { TYPE_PRIORITY.indexOf(it) }
-        if (top == null) {
+    private fun IconForTopType(
+        snapshot: WidgetSnapshot,
+        iconSet: ThreatIconSet,
+        sizeDp: androidx.compose.ui.unit.Dp,
+        revealAction: Action?
+    ) {
+        val pt = snapshot.primaryThreat
+        if (pt == null) {
             Box(
                 modifier = GlanceModifier.size(sizeDp).background(CARD).cornerRadius(sizeDp / 2)
             ) {}
         } else {
             Image(
-                provider = ImageProvider(IconCatalog.res(top, iconSet)),
+                provider = ImageProvider(IconCatalog.res(pt.type, iconSet)),
                 contentDescription = null,
-                modifier = GlanceModifier.size(sizeDp),
+                modifier = GlanceModifier
+                    .size(sizeDp)
+                    .let { if (revealAction != null) it.clickable(revealAction) else it },
                 contentScale = ContentScale.Fit
             )
         }
@@ -321,8 +357,7 @@ class ThreatWidget : GlanceAppWidget() {
     }
 
     private fun sourcePill(snapshot: WidgetSnapshot, strings: Strings.StringSet): Pair<String, Color> = when {
-        !snapshot.sourceOnline && !snapshot.sourceBackup -> strings.status.connOffline to RED
-        snapshot.sourceBackup -> strings.status.connBackup to BLUE
+        !snapshot.sourceOnline -> strings.status.connOffline to RED
         else -> strings.status.connOnline to GREEN
     }
 

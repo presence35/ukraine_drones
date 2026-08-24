@@ -127,6 +127,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         if (records.isNotEmpty()) viewModel.triggerFlourish(records)
+        // Reset the tally now that the show was replayed — same reset as swiping it away.
+        runCatching {
+            startService(
+                Intent(this, AlertService::class.java)
+                    .setAction(AlertService.ACTION_NEUTRALIZED_DISMISS)
+            )
+        }
     }
 
     /**

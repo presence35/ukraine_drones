@@ -325,6 +325,7 @@ fun SettingsScreen(
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     officialAlertsEnabled: Boolean,
+    officialAlertCityScope: Boolean,
     sirenOverride: Boolean,
     nightEnabled: Boolean,
     nightStartMin: Int,
@@ -353,6 +354,7 @@ fun SettingsScreen(
     showMapScale: Boolean,
     sheltersEnabled: Boolean,
     periodicGps: Boolean,
+    calmMessagesEnabled: Boolean,
     deathAnimationEnabled: Boolean,
     followBullet: Boolean,
     neutralizedTallyEnabled: Boolean,
@@ -371,6 +373,7 @@ fun SettingsScreen(
     onThreatMapToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onThreatAlertToggleAll: (Set<ThreatType>, Boolean) -> Unit,
     onOfficialAlertsChange: (Boolean) -> Unit,
+    onOfficialAlertCityScopeChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
     onNightEnabledChange: (Boolean) -> Unit,
     onNightStartChange: (Int) -> Unit,
@@ -389,6 +392,7 @@ fun SettingsScreen(
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
     onPeriodicGpsChange: (Boolean) -> Unit,
+    onCalmMessagesChange: (Boolean) -> Unit,
     onDisclaimerCollapse: (Boolean) -> Unit,
     onDisclaimerShown: () -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
@@ -717,6 +721,16 @@ fun SettingsScreen(
                         note = s.officialAlertsRedTridentNote,
                         flash = flashId == "officialAlerts"
                     )
+                    AnimatedVisibility(visible = officialAlertsEnabled) {
+                        Column(modifier = Modifier.padding(start = 24.dp)) {
+                            AlertToggleRow(
+                                title = s.officialAlertScopeTitle,
+                                description = s.officialAlertScopeDesc,
+                                checked = officialAlertCityScope,
+                                onCheckedChange = onOfficialAlertCityScopeChange
+                            )
+                        }
+                    }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     AlertToggleRow(
                         title = s.sirenOverrideTitle,
@@ -1100,6 +1114,15 @@ fun SettingsScreen(
                         checked = showMapScale,
                         onCheckedChange = onShowMapScaleChange,
                         icon = painterResource(R.drawable.ic_scale),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.calmMessagesTitle,
+                        description = s.calmMessagesDesc,
+                        checked = calmMessagesEnabled,
+                        onCheckedChange = onCalmMessagesChange,
+                        icon = painterResource(R.drawable.ic_explosion),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -2034,9 +2057,10 @@ private fun CardSizeTile(
             // tile's top-left corner at ~75% of the tile width instead of filling it.
             val density = LocalDensity.current
             val previewNominal = if (size == ThreatCardSize.SMALL) 300.dp else 340.dp
-            // Fixed preview height so the tile never resizes on re-measure (e.g. after the
-            // one-time explainer dialog) — only the scale-from-width would otherwise shift it.
-            val previewHeight = if (size == ThreatCardSize.SMALL) 130.dp else 260.dp
+            // The preview card is static sample data, so its height at the fixed nominal width
+            // is deterministic; cache the scaled height (non-state, keyed by size+lang) so
+            // transient re-measure passes can't make the tile jump.
+            val cachedHeight = remember(size, lang) { intArrayOf(0) }
             SubcomposeLayout(modifier = Modifier.fillMaxWidth()) { constraints ->
                 val nominalW = with(density) { previewNominal.toPx() }
                 val nominalWpx = with(density) { previewNominal.roundToPx() }
@@ -2074,7 +2098,11 @@ private fun CardSizeTile(
                         maxHeight = Constraints.Infinity
                     )
                 )
-                val height = with(density) { previewHeight.roundToPx() }
+                val measuredHeight = (cardPlaceable.height * scale).roundToInt()
+                if (constraints.maxWidth != Constraints.Infinity && constraints.maxWidth > 0) {
+                    cachedHeight[0] = measuredHeight
+                }
+                val height = if (cachedHeight[0] > 0) cachedHeight[0] else measuredHeight
                 layout(constraints.maxWidth, height) {
                     cardPlaceable.place(0, 0)
                 }

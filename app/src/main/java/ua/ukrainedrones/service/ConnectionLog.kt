@@ -12,10 +12,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
-/** Connection states shown in the status log — mirrors the header pill's three states. */
-enum class ConnStatus { ONLINE, OFFLINE, BACKUP }
+/** Connection states shown in the status log — mirrors the header pill's two states. */
+enum class ConnStatus { ONLINE, OFFLINE }
 
-/** One logged status change. [durationSec] is the episode length for OFF/BACKUP, null for ONLINE. */
+/** One logged status change. [durationSec] is the episode length for OFF, null for ONLINE. */
 data class ConnLogEntry(
     val atMillis: Long,
     val status: ConnStatus,
@@ -25,7 +25,7 @@ data class ConnLogEntry(
 /**
  * Ring buffer of the last [MAX_ENTRIES] connection statuses, persisted to DataStore so the log
  * survives app/service restarts. Fed by [NeptunClient]'s watchdog tick. The currently
- * in-progress off/backup episode is kept separately (see [currentEpisode]) so the popup can show
+ * in-progress offline episode is kept separately (see [currentEpisode]) so the popup can show
  * a live running duration, and is committed to the log the moment the status changes again —
  * every drop is recorded, however brief (the shared grace is zero).
  */
@@ -75,7 +75,7 @@ object ConnectionLog {
     suspend fun awaitAttached() = attachDone.await()
 
     /**
-     * Called every watchdog tick with the current status. Commits the completed off/backup
+     * Called every watchdog tick with the current status. Commits the completed offline
      * episode as soon as the status changes (no grace — every drop counts), bracketing it with
      * a recovery row when it returns online.
      */
@@ -91,7 +91,7 @@ object ConnectionLog {
         if (t.persistLog) persist()
     }
 
-    /** The in-progress off/backup episode with its running duration, or null when online. */
+    /** The in-progress offline episode with its running duration, or null when online. */
     fun currentEpisode(now: Long): ConnLogEntry? =
         pending?.let { ConnLogEntry(it.atMillis, it.status, (now - it.atMillis) / 1000) }
 
@@ -135,7 +135,7 @@ internal data class LogTransition(
 /**
  * Pure episode-commit decision for [ConnectionLog.observe] (extracted so the grace-window and
  * ring-buffer rules are unit-testable without DataStore). Returns null when the status didn't
- * actually change. A completed off/backup episode is committed to the ring buffer once it has
+ * actually change. A completed offline episode is committed to the ring buffer once it has
  * outlasted [graceMs] (the production call passes zero, so every episode is recorded); a
  * recovery to [ConnStatus.ONLINE] adds a bracketing row when the episode was committed.
  * [maxEntries] caps the ring buffer.

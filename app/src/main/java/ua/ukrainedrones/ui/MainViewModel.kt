@@ -27,11 +27,6 @@ data class UiState(
     val connected: Boolean = false,
     val neptunDown: Boolean = false,                 // NEPTUN offline (real or simulated via test toggle)
     val forceOffline: Boolean = false,             // TEMP test toggle — simulate NEPTUN offline
-    val backupActive: Boolean = false,           // oblast alerts fall back to the backup source
-    val backupUp: Boolean = false,               // backup source polled successfully recently
-    val backupSeen: Boolean = false,             // backup source has polled successfully at least once
-    val backupOfflineElapsedSec: Long? = null,   // seconds since backup last succeeded, null while up
-    val backupError: String? = null,             // last backup error message, if any
     val threatsInner: List<Threat> = emptyList(), // reaching within the red time tier
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
@@ -67,6 +62,7 @@ data class UiState(
     val nightZoneSirenOverride: Boolean = false,
     val nightOfficialSirenOverride: Boolean = false,
     val officialAlertsEnabled: Boolean = true,
+    val officialAlertCityScope: Boolean = false,
     val sirenOverride: Boolean = false,
     val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
     val silencedTypes: Set<ThreatType> = emptySet(),    // alerts off (still on the map, dimmed)
@@ -104,6 +100,7 @@ data class UiState(
     val sheltersEnabled: Boolean = true,
     val sheltersWithKids: Boolean = true,
     val periodicGps: Boolean = false,
+    val calmMessagesEnabled: Boolean = true,
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
     val mapVisible: Boolean = true,          // the map screen is the visible screen (not settings/shelters/guide)
     val alertActive: Boolean = false,        // any threat or official alert live right now
@@ -218,7 +215,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val iconSet: ThreatIconSet,
         val sheltersEnabled: Boolean,
         val sheltersWithKids: Boolean,
-        val periodicGps: Boolean
+        val periodicGps: Boolean,
+        val calmMessagesEnabled: Boolean
     )
 
     /** Night-mode window prefs (raw, day values untouched). */
@@ -259,6 +257,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val fastRedArmed: Boolean,
         val fastYellowArmed: Boolean,
         val officialAlertsEnabled: Boolean,
+        val officialAlertCityScope: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
         val pinnedCity: String?,
@@ -276,6 +275,7 @@ val fastGroupCollapsed: Boolean,
         val sheltersEnabled: Boolean,
         val sheltersWithKids: Boolean,
         val periodicGps: Boolean,
+        val calmMessagesEnabled: Boolean,
         val night: NightPrefs
     )
 
@@ -309,6 +309,7 @@ val fastGroupCollapsed: Boolean,
         val fastRedArmed: Boolean,
         val fastYellowArmed: Boolean,
         val officialAlertsEnabled: Boolean,
+        val officialAlertCityScope: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
         val showMapScale: Boolean,
@@ -367,6 +368,7 @@ val fastGroupCollapsed: Boolean,
             prefs.fastRedZoneArmed(),
             prefs.fastYellowZoneArmed(),
             prefs.officialAlertsEnabled(),
+            prefs.officialAlertCityScope(),
             prefs.sirenOverride(),
             prefs.followMe(),
             prefs.showMapScale(),
@@ -378,9 +380,9 @@ val fastGroupCollapsed: Boolean,
             prefs.slowGroupCollapsed()
         ) { flags: Array<Boolean> ->
             AlertConfig(
-                flags[0], flags[1], flags[2], flags[3], flags[4],
-                flags[5], flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12],
-                flags[13]
+                flags[0], flags[1], flags[2], flags[3], flags[4], flags[5],
+                flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12],
+                flags[13], flags[14]
             )
         },
         combine(
@@ -393,7 +395,7 @@ val fastGroupCollapsed: Boolean,
                         prefs.threatCardSize(),
                         prefs.threatIconSet()
                     ) { pinned, chosen, batteryShown, card, iconSet ->
-                        PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true, false)
+                        PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true, false, true)
                     },
                     prefs.sheltersEnabled()
                 ) { quad, shelters ->
@@ -403,9 +405,10 @@ val fastGroupCollapsed: Boolean,
             ) { quad, kids ->
                 quad.copy(sheltersWithKids = kids)
             },
-            prefs.periodicGps()
-        ) { quad, periodic ->
-            quad.copy(periodicGps = periodic)
+            prefs.periodicGps(),
+            prefs.calmMessagesEnabled()
+        ) { quad, periodic, calm ->
+            quad.copy(periodicGps = periodic, calmMessagesEnabled = calm)
         },
         combine(
             combine(
@@ -453,6 +456,7 @@ combine(
             fastRedArmed = b.fastRedArmed,
             fastYellowArmed = b.fastYellowArmed,
             officialAlertsEnabled = b.officialAlertsEnabled,
+            officialAlertCityScope = b.officialAlertCityScope,
             sirenOverride = b.sirenOverride,
             followMe = b.followMe,
             pinnedCity = c.pinnedCity,
@@ -470,6 +474,7 @@ combine(
             sheltersEnabled = c.sheltersEnabled,
             sheltersWithKids = c.sheltersWithKids,
             periodicGps = c.periodicGps,
+            calmMessagesEnabled = c.calmMessagesEnabled,
             night = night
         )
     }
@@ -571,7 +576,8 @@ val uiState: StateFlow<UiState> = combine(
             neutralizedId = live.neutralizedId,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
             mapVisible = live.mapVisible,
-            shelterModeActive = live.shelterModeActive
+            shelterModeActive = live.shelterModeActive,
+            officialAlertCityScope = prefs.officialAlertCityScope
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
@@ -583,6 +589,7 @@ val uiState: StateFlow<UiState> = combine(
             fastRedArmed = prefs.fastRedArmed,
             fastYellowArmed = prefs.fastYellowArmed,
             officialAlertsEnabled = prefs.officialAlertsEnabled,
+            officialAlertCityScope = prefs.officialAlertCityScope,
             sirenOverride = prefs.sirenOverride,
             activeZoneParams = effectiveParams,
             activeSlowRedArmed = activeArmed.slowRed,
@@ -621,6 +628,7 @@ val uiState: StateFlow<UiState> = combine(
             sheltersEnabled = prefs.sheltersEnabled,
             sheltersWithKids = prefs.sheltersWithKids,
             periodicGps = prefs.periodicGps,
+            calmMessagesEnabled = prefs.calmMessagesEnabled,
             shelterIndex = shelterIndex
         )
     }.stateIn(
@@ -650,7 +658,8 @@ val uiState: StateFlow<UiState> = combine(
         neutralizedId: String?,
         deathAnimationEnabled: Boolean,
         mapVisible: Boolean,
-        shelterModeActive: Boolean
+        shelterModeActive: Boolean,
+        officialAlertCityScope: Boolean
     ): UiState {
         val animOn = deathAnimationEnabled
         val params = effectiveParams
@@ -663,9 +672,12 @@ val uiState: StateFlow<UiState> = combine(
         // oblast of the nearest listed city to the GPS fix while following.
         val attribution = focusAttribution(followMe, userLocation, pinnedCity)
         val focusToken = attribution.token
-        val focusOblastAlertActive = focusToken?.let { token ->
-            neptun.oblastAlerts.any { it.inOblast(token) }
-        } == true
+        val focusOblastAlertActive = officialAlertActiveFor(
+            neptun.oblastAlerts,
+            focusToken,
+            attribution.bannerCityUa.takeIf { it.isNotBlank() },
+            officialAlertCityScope
+        )
         val focusBannerCity = (
             if (language == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
         ).ifBlank { Strings.get(language).unknownLocation }
@@ -709,12 +721,12 @@ val uiState: StateFlow<UiState> = combine(
         // With the death animation disabled the card never flips to the "Neutralized" compact
         // form nor auto-dismisses: it stays open on the last-known snapshot until the user
         // closes it, so nothing animates anywhere. The neutralize flourish also only runs while
-        // the map is the visible screen and no alert is live — off-map or mid-alert the popup
-        // just closes silently (no stale half-consumed animation on return).
+        // the map is the visible screen and the shelter overlay is down — during an alert it
+        // still plays because the threat was already on screen (the user was looking at it).
         val activeZone = evaluation.activeZone
         val alertActive = activeZone != null || focusOblastAlertActive
         val neutralizedThreat =
-            if (selectedGone && animOn && mapVisible && !shelterModeActive && !alertActive) selected else null
+            if (selectedGone && animOn && mapVisible && !shelterModeActive) selected else null
 
         val proximity = ThreatEvaluator.computeProximity(
             t = refreshedSelected,
@@ -732,12 +744,7 @@ val uiState: StateFlow<UiState> = combine(
             connected = neptun.connected,
             neptunDown = neptunDown,
             forceOffline = neptun.forceOffline,
-            backupActive = neptun.backupActive,
-            backupUp = neptun.backupUp,
-            backupSeen = neptun.backupLastOkAt > 0,
             lastFrameAt = neptun.lastFrameAt,
-            backupOfflineElapsedSec = neptun.backupOfflineElapsedSec,
-            backupError = neptun.backupError,
             threatsInner = inInner,
             threatsOuter = inOuter,
             mapThreats = mapThreats,
@@ -820,6 +827,10 @@ val uiState: StateFlow<UiState> = combine(
 
     fun setOfficialAlertsEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setOfficialAlertsEnabled(enabled) }
+    }
+
+    fun setOfficialAlertCityScope(enabled: Boolean) {
+        viewModelScope.launch { prefs.setOfficialAlertCityScope(enabled) }
     }
 
     fun setSirenOverride(override: Boolean) {
@@ -936,6 +947,11 @@ val uiState: StateFlow<UiState> = combine(
     /** Periodic 15-min GPS sync toggle to prevent cell-tower drift. */
     fun setPeriodicGps(enabled: Boolean) {
         viewModelScope.launch { prefs.setPeriodicGps(enabled) }
+    }
+
+    /** Footer calm-messages toggle (rotating encouragements when no threats are around). */
+    fun setCalmMessagesEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setCalmMessagesEnabled(enabled) }
     }
 
     /** Manual one-shot GPS calibration/refresh trigger. */

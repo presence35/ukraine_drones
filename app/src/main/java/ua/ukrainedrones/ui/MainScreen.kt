@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -131,6 +132,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var scrollToThreatsTick by remember { mutableStateOf(0) }
     var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
     var wizardFromSettings by remember { mutableStateOf(false) }
+    var headerHeightPx by remember { mutableStateOf(0) }
     var wizardSettleDeadline by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(3000); wizardSettleDeadline = true }
     val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
@@ -223,6 +225,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onShelterModeChange = { viewModel.setShelterModeActive(it) },
             shelterTipStage = shelterTipStage,
             settingsHintRemaining = settingsHintRemaining,
+            onHeaderHeightChange = { headerHeightPx = it },
             onShelterTipAdvance = {
                 val next = (shelterTipStage + 1).coerceAtMost(6)
                 shelterTipStage = next
@@ -243,6 +246,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 hiddenTypes = uiState.hiddenTypes,
                 silencedTypes = uiState.silencedTypes,
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
+                officialAlertCityScope = uiState.officialAlertCityScope,
                 sirenOverride = uiState.sirenOverride,
                 nightEnabled = uiState.nightEnabled,
                 nightStartMin = uiState.nightStartMin,
@@ -271,6 +275,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 showMapScale = uiState.showMapScale,
                 sheltersEnabled = uiState.sheltersEnabled,
                 periodicGps = uiState.periodicGps,
+                calmMessagesEnabled = uiState.calmMessagesEnabled,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
@@ -289,6 +294,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onThreatMapToggleAll = { types, visible -> viewModel.setGroupThreatMapVisible(types, visible) },
                 onThreatAlertToggleAll = { types, enabled -> viewModel.setGroupThreatAlertsEnabled(types, enabled) },
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
+                onOfficialAlertCityScopeChange = { viewModel.setOfficialAlertCityScope(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
                 onNightEnabledChange = { viewModel.setNightEnabled(it) },
                 onNightStartChange = { viewModel.setNightStartMin(it) },
@@ -307,6 +313,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onFollowMeChange = { viewModel.setFollowMe(it) },
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onPeriodicGpsChange = { viewModel.setPeriodicGps(it) },
+                onCalmMessagesChange = { viewModel.setCalmMessagesEnabled(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
                 onDisclaimerShown = { viewModel.onDisclaimerShown() },
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
@@ -375,7 +382,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 12.dp)
         )
-        ToastHost()
+        ToastHost(topInset = with(LocalDensity.current) { headerHeightPx.toDp() })
     }
 
     // Auto-launch the installer once the APK is downloaded and permission is granted.
@@ -941,7 +948,8 @@ private fun MapScreen(
     onShelterModeChange: (Boolean) -> Unit,
     shelterTipStage: Int,
     onShelterTipAdvance: () -> Unit,
-    settingsHintRemaining: Int = 0
+    settingsHintRemaining: Int = 0,
+    onHeaderHeightChange: (Int) -> Unit = {}
 ) {
     val s = Strings.get(uiState.language)
     val context = LocalContext.current
@@ -1068,7 +1076,10 @@ private fun MapScreen(
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
                     .border(2.5.dp, borderColor)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .onGloballyPositioned { coords ->
+                        onHeaderHeightChange(coords.size.height)
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 UkraineEmblem(
@@ -1095,10 +1106,6 @@ private fun MapScreen(
                 }
                 ConnectionStatus(
                     neptunDown = uiState.neptunDown,
-                    backupActive = uiState.backupActive,
-                    backupUp = uiState.backupUp,
-                    backupSeen = uiState.backupSeen,
-                    backupOfflineElapsedSec = uiState.backupOfflineElapsedSec,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
                     onOpenDebug = onOpenDebug,
@@ -1168,6 +1175,10 @@ private fun MapScreen(
                             selectedShelter = it
                             shelterSelectTick++
                         },
+                        onExitShelterMode = {
+                            showNearbyShelters = false
+                            selectedShelter = null
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -1222,7 +1233,8 @@ private fun MapScreen(
                         Text(
                             noThreatsMessage(
                                 uiState.language,
-                                uiState.now / 86_400_000L
+                                uiState.now / 86_400_000L,
+                                uiState.calmMessagesEnabled
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color(0xFF4CAF50),
