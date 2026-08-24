@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
-private enum class Screen { MAP, SETTINGS, GUIDE, SHELTERS, DEBUG }
+private enum class Screen { MAP, SETTINGS, GUIDE, SHELTERS, LOGS }
 
 private val UkraineBlue = Color(0xFF005BBB)
 private val UkraineYellow = Color(0xFFFFD500)
@@ -218,9 +218,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 sheltersFromSettings = false
                 screen = Screen.SHELTERS
             },
-            onOpenDebug = {
+            onOpenLogs = {
                 showConnectionInfo = false
-                screen = Screen.DEBUG
+                screen = Screen.LOGS
             },
             onShelterModeChange = { viewModel.setShelterModeActive(it) },
             shelterTipStage = shelterTipStage,
@@ -368,9 +368,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onBack = { screen = if (sheltersFromSettings) Screen.SETTINGS else Screen.MAP }
             )
         }
-        if (screen == Screen.DEBUG) {
+        if (screen == Screen.LOGS) {
             BackHandler { screen = Screen.MAP }
-            DebugLogScreen(
+            LogsScreen(
                 s = Strings.get(uiState.language),
                 lang = uiState.language,
                 iconSet = uiState.iconSet,
@@ -945,7 +945,7 @@ private fun MapScreen(
     showZonesSheet: Boolean,
     onShowZonesSheetChange: (Boolean) -> Unit,
     onOpenShelters: () -> Unit,
-    onOpenDebug: () -> Unit,
+    onOpenLogs: () -> Unit,
     onShelterModeChange: (Boolean) -> Unit,
     shelterTipStage: Int,
     onShelterTipAdvance: () -> Unit,
@@ -1110,12 +1110,10 @@ private fun MapScreen(
                     neptunDown = uiState.neptunDown,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
-                    onOpenDebug = onOpenDebug,
+                    onOpenLogs = onOpenLogs,
                     showInfo = showConnectionInfo,
                     onShowInfoChange = onShowConnectionInfoChange,
                     s = s,
-                    lang = uiState.language,
-                    iconSet = uiState.iconSet,
                     modifier = Modifier.padding(end = 4.dp)
                 )
                 if (uiState.nightEnabled && uiState.nightActive) {

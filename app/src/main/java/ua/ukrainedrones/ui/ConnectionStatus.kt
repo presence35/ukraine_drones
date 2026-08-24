@@ -6,8 +6,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,28 +15,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,10 +42,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,12 +49,10 @@ internal fun ConnectionStatus(
     neptunDown: Boolean,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
-    onOpenDebug: () -> Unit,
+    onOpenLogs: () -> Unit,
     showInfo: Boolean,
     onShowInfoChange: (Boolean) -> Unit,
     s: Strings.StringSet,
-    lang: AppLanguage,
-    iconSet: ThreatIconSet,
     modifier: Modifier = Modifier
 ) {
     val dotColor = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50)
@@ -141,6 +126,16 @@ internal fun ConnectionStatus(
                             )
                         }
                     )
+                    Spacer(Modifier.width(10.dp))
+                    FilledTonalButton(onClick = onOpenLogs) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.List,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(s.debugLogOpen)
+                    }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SourceStatusRow(
@@ -163,7 +158,6 @@ internal fun ConnectionStatus(
                             onCheckedChange = onForceOfflineChange
                         )
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
@@ -184,14 +178,6 @@ internal fun ConnectionStatus(
                         Spacer(Modifier.width(8.dp))
                         Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
-                    TextButton(
-                        onClick = onOpenDebug,
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    ) {
-                        Text(s.debugLogOpen)
-                    }
-                    AlertHistorySection(s, lang, iconSet)
-                    ConnectionLogSection(s, lang)
                 }
             }
         }
@@ -221,259 +207,6 @@ internal fun SourceStatusRow(color: Color, name: String, active: Boolean, active
                 style = MaterialTheme.typography.labelSmall,
                 color = accent,
                 fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-/**
- * Collapsible last-10-statuses log. Row 0 is the live in-progress episode (running duration,
- * ticking once a second while expanded); the completed entries follow, newest first.
- */
-@Composable
-private fun ConnectionLogSection(s: Strings.StringSet, lang: AppLanguage) {
-    var expanded by remember { mutableStateOf(false) }
-    val entries by ConnectionLog.entries.collectAsState()
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(expanded) {
-        while (expanded) {
-            delay(1000)
-            now = System.currentTimeMillis()
-        }
-    }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                s.connLogTitle,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        if (expanded) {
-            Spacer(Modifier.height(4.dp))
-            val live = ConnectionLog.currentEpisode(now)
-            val rows = (live?.let { listOf(it) } ?: emptyList()) + entries.reversed()
-            if (rows.isEmpty()) {
-                Text(
-                    s.connLogEmpty,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                rows.take(10).forEach { entry ->
-                    ConnectionLogRow(entry, s, lang)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ConnectionLogRow(entry: ConnLogEntry, s: Strings.StringSet, lang: AppLanguage) {
-    val time = remember(entry.atMillis) { formatDateTime(lang, entry.atMillis) }
-    val color = when (entry.status) {
-        ConnStatus.ONLINE -> Color(0xFF4CAF50)
-        ConnStatus.OFFLINE -> Color(0xFFE57373)
-    }
-    val label = when (entry.status) {
-        ConnStatus.ONLINE -> s.connOnline
-        ConnStatus.OFFLINE -> s.connOffline
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            time,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.weight(1f))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.SemiBold)
-        if (entry.durationSec != null) {
-            Spacer(Modifier.width(10.dp))
-            Text(
-                String.format(s.connLogDurFormat, entry.durationSec / 60, entry.durationSec % 60),
-                style = MaterialTheme.typography.labelMedium,
-                color = color
-            )
-        }
-    }
-}
-
-/**
- * Collapsible log of the last ~20 fired alerts (zone sirens + official alerts), newest first.
- * Rows carry the threat icon, the tier-colored type label, a relative age, locality and distance.
- * Entries cluster into age buckets (seconds / minutes / hours) with a divider between them.
- */
-private const val ALERT_AGE_MIN_MS = 60L * 1000
-private const val ALERT_AGE_HR_MS = 60L * 60 * 1000
-
-@Composable
-private fun AlertHistorySection(s: Strings.StringSet, lang: AppLanguage, iconSet: ThreatIconSet) {
-    var expanded by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val entries by AlertHistory.entries.collectAsState()
-    Column(modifier = Modifier.fillMaxWidth()) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                s.alertHistoryTitle,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        if (expanded) {
-            Spacer(Modifier.height(4.dp))
-            if (entries.isEmpty()) {
-                Text(
-                    s.alertHistoryEmpty,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                val now = System.currentTimeMillis()
-                var prevBucket = -1
-                entries.asReversed().forEach { entry ->
-                    val age = now - entry.atMillis
-                    val bucket = when {
-                        age < ALERT_AGE_MIN_MS -> 0
-                        age < ALERT_AGE_HR_MS -> 1
-                        else -> 2
-                    }
-                    if (prevBucket != -1 && bucket != prevBucket) {
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    }
-                    AlertHistoryRow(entry, s, lang, iconSet, now)
-                    prevBucket = bucket
-                }
-                Spacer(Modifier.height(8.dp))
-                TextButton(
-                    onClick = { scope.launch(Dispatchers.IO) { AlertHistory.clear() } },
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) {
-                    Text(s.alertHistoryClear)
-                }
-            }
-            Text(
-                s.alertHistoryAutoClearNote,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 4.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun AlertHistoryRow(
-    entry: AlertHistoryEntry,
-    s: Strings.StringSet,
-    lang: AppLanguage,
-    iconSet: ThreatIconSet,
-    now: Long
-) {
-    val time = formatAlertAge(now, entry.atMillis, s)
-    val isOfficial = entry.tier == null
-    val typeLabel = entry.threatType?.let { type ->
-        val info = ThreatTypeCatalog.INFO.getValue(type)
-        if (lang == AppLanguage.UA) info.labelUa else info.labelEn
-    } ?: s.alertHistoryOfficialLabel
-    val titleColor = when (entry.tier) {
-        ThreatZone.INNER -> Color(0xFFE57373)
-        ThreatZone.OUTER -> Color(0xFFF9A825)
-        null -> Color(0xFF64B5F6)
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(
-            painter = if (isOfficial && entry.threatType == null) {
-                painterResource(R.drawable.ic_trident)
-            } else {
-                painterResource(IconCatalog.res(entry.threatType ?: ThreatType.UNKNOWN, iconSet))
-            },
-            contentDescription = null,
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                typeLabel,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = titleColor
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    time,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                entry.endMillis?.let { end ->
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        String.format(s.alertHistoryEndedFormat, formatAlertAge(now, end, s)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                entry.locality?.let { locality ->
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (lang == AppLanguage.UA) locality
-                        else Cities.byUa[locality]?.nameEn ?: Transliteration.transliterate(locality),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-        entry.distanceKm?.let { km ->
-            Spacer(Modifier.width(8.dp))
-            Text(
-                String.format(s.alertHistoryDistanceFormat, km.roundToInt()),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

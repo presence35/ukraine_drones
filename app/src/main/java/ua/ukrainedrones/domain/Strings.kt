@@ -239,17 +239,16 @@ object Strings {
         val vibrationMedium: String,
         val vibrationStrong: String,
         val vibrationUrgent: String,
-        val alertHistoryTitle: String,
-        val alertHistoryEmpty: String,
-        val alertHistoryDistanceFormat: String,
-        val alertHistoryOfficialLabel: String,
-        val alertHistoryClear: String,
-        val alertHistoryAutoClearNote: String,
-        val alertHistoryEndedFormat: String,
+        val logDistanceFormat: String,
         val alertAgeSecSuffix: String,
         val alertAgeMinSuffix: String,
         val alertAgeHrSuffix: String,
-        val debugLogTitle: String,
+        val logsTitle: String,
+        val logsFilterAll: String,
+        val logsFilterMine: String,
+        val logsFilterConnections: String,
+        val logsFilterDecisions: String,
+        val logsShowMore: String,
         val debugLogEmpty: String,
         val debugLogClear: String,
         val debugLogOpen: String,
@@ -759,17 +758,16 @@ object Strings {
         val vibrationMedium: String get() = misc.vibrationMedium
         val vibrationStrong: String get() = misc.vibrationStrong
         val vibrationUrgent: String get() = misc.vibrationUrgent
-        val alertHistoryTitle: String get() = misc.alertHistoryTitle
-        val alertHistoryEmpty: String get() = misc.alertHistoryEmpty
-        val alertHistoryDistanceFormat: String get() = misc.alertHistoryDistanceFormat
-        val alertHistoryOfficialLabel: String get() = misc.alertHistoryOfficialLabel
-        val alertHistoryClear: String get() = misc.alertHistoryClear
-        val alertHistoryAutoClearNote: String get() = misc.alertHistoryAutoClearNote
-        val alertHistoryEndedFormat: String get() = misc.alertHistoryEndedFormat
+        val logDistanceFormat: String get() = misc.logDistanceFormat
         val alertAgeSecSuffix: String get() = misc.alertAgeSecSuffix
         val alertAgeMinSuffix: String get() = misc.alertAgeMinSuffix
         val alertAgeHrSuffix: String get() = misc.alertAgeHrSuffix
-        val debugLogTitle: String get() = misc.debugLogTitle
+        val logsTitle: String get() = misc.logsTitle
+        val logsFilterAll: String get() = misc.logsFilterAll
+        val logsFilterMine: String get() = misc.logsFilterMine
+        val logsFilterConnections: String get() = misc.logsFilterConnections
+        val logsFilterDecisions: String get() = misc.logsFilterDecisions
+        val logsShowMore: String get() = misc.logsShowMore
         val debugLogEmpty: String get() = misc.debugLogEmpty
         val debugLogClear: String get() = misc.debugLogClear
         val debugLogOpen: String get() = misc.debugLogOpen
@@ -1192,20 +1190,19 @@ val iconSetTitle: String get() = misc.iconSetTitle
         vibrationMedium = "Середня",
         vibrationStrong = "Сильна",
         vibrationUrgent = "Термінова",
-        alertHistoryTitle = "Тривоги",
-        alertHistoryEmpty = "Тривог ще не було",
-        alertHistoryDistanceFormat = "%1\$d км",
-        alertHistoryOfficialLabel = "Офіційна тривога",
-        alertHistoryClear = "Очистити",
-        alertHistoryAutoClearNote = "Показується за останні 12 годин",
-        alertHistoryEndedFormat = "завершено %1\$s тому",
+        logDistanceFormat = "%1\$d км",
         alertAgeSecSuffix = "сек",
         alertAgeMinSuffix = "хв",
         alertAgeHrSuffix = "год",
-        debugLogTitle = "Журнал діагностики",
+        logsTitle = "Журнал",
+        logsFilterAll = "Усі",
+        logsFilterMine = "Мої тривоги",
+        logsFilterConnections = "З'єднання",
+        logsFilterDecisions = "Рішення",
+        logsShowMore = "Показати ще",
         debugLogEmpty = "Рішень ще не зафіксовано",
         debugLogClear = "Очистити",
-        debugLogOpen = "Журнал діагностики",
+        debugLogOpen = "Журнал",
         debugLogDay = "День",
         debugLogNight = "Ніч",
         debugLogFired = "Сповіщення надіслано",
@@ -1687,20 +1684,19 @@ alertBannerFormat = "%1\$s: alert",
         vibrationMedium = "Medium",
         vibrationStrong = "Strong",
         vibrationUrgent = "Urgent",
-        alertHistoryTitle = "Alerts",
-        alertHistoryEmpty = "No alerts yet",
-        alertHistoryDistanceFormat = "%1\$d km",
-        alertHistoryOfficialLabel = "Official alert",
-        alertHistoryClear = "Clear",
-        alertHistoryAutoClearNote = "Shows a rolling 12-hour window",
-        alertHistoryEndedFormat = "ended %1\$s ago",
+        logDistanceFormat = "%1\$d km",
         alertAgeSecSuffix = "sec",
         alertAgeMinSuffix = "min",
         alertAgeHrSuffix = "hr",
-        debugLogTitle = "Debug log",
+        logsTitle = "Logs",
+        logsFilterAll = "All",
+        logsFilterMine = "My alerts",
+        logsFilterConnections = "Connections",
+        logsFilterDecisions = "Decisions",
+        logsShowMore = "Show more",
         debugLogEmpty = "No decisions logged yet",
         debugLogClear = "Clear",
-        debugLogOpen = "Debug log",
+        debugLogOpen = "Logs",
         debugLogDay = "Day",
         debugLogNight = "Night",
         debugLogFired = "Notification fired",
@@ -2110,7 +2106,7 @@ fun formatAlertAge(nowMillis: Long, atMillis: Long, s: Strings.StringSet): Strin
 
 /**
  * Absolute timestamp rendered per the selected app language, not the device locale — the single
- * site-wide datetime formatter (connection log, alert history). UA: "17.08, 14:30", EN: "Aug 17, 14:30".
+ * site-wide datetime formatter (Logs screen). UA: "17.08, 14:30", EN: "Aug 17, 14:30".
  */
 fun formatDateTime(lang: AppLanguage, millis: Long): String {
     val zoned = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault())

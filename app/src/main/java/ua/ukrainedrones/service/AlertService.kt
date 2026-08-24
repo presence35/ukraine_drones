@@ -170,15 +170,12 @@ private var notif3minShown = false
     override fun onCreate() {
         super.onCreate()
         createChannels()
-        // Await the persisted log/history restore before NeptunClient.start() brings up the
-        // watchdog (ConnectionLog.observe) and monitoring starts writing AlertHistory — an
-        // async restore finishing after a fresh write would clobber it.
+        // Await the persisted log restore before NeptunClient.start() brings up the watchdog
+        // (ConnectionLog.observe) — an async restore finishing after a fresh write would clobber it.
         scope.launch {
             ConnectionLog.attach(applicationContext)
-            AlertHistory.attach(applicationContext)
             DebugLog.attach(applicationContext)
             ConnectionLog.awaitAttached()
-            AlertHistory.awaitAttached()
             DebugLog.awaitAttached()
             NeptunClient.start()
         }
@@ -600,12 +597,6 @@ private var notif3minShown = false
             )
             posted = true
             knownZones = knownZones + (id to zone)
-            AlertHistory.openAlert(
-                "id:$id", zone, t?.type,
-                t?.let { it.locality ?: it.district ?: it.region },
-                distanceFromFocusKm(t, state),
-                System.currentTimeMillis()
-            )
         }
         // Drop ids that left zoneThreats entirely (resolved/expired/out of range) so a future
         // re-entry is treated as new — except ids the user shot down within the grace window:
@@ -618,9 +609,6 @@ private var notif3minShown = false
                 (userShotAt[id]?.let { now - it <= NeptunClient.USER_SHOT_GRACE_MS } ?: false)
         }
         knownZones = knownZones.filterKeys { it !in droppedZoneIds }
-        if (droppedZoneIds.isNotEmpty()) {
-            droppedZoneIds.forEach { AlertHistory.closeAlert("id:$it", now) }
-        }
 
         // Official-alert notifications were turned back on while an alert is live: the alert
         // was never announced while muted, so force a fresh announce. wasFocusAlertActive only
@@ -635,17 +623,6 @@ private var notif3minShown = false
         // never the Red/Yellow zone alerts.
         val officialActive = state.officialAlertsEnabled && state.focusOblastAlertActive
         val officialBody = state.officialReason ?: state.focusRegion
-        if (officialActive && !wasFocusAlertActive) {
-            // Record the official alert in the history on its very first tick even when a zone
-            // alert wins the notification post — so the all-clear close below always has a row.
-            val reasonThreat = state.officialReasonThreatId?.let { all[it] }
-            AlertHistory.openAlert(
-                "official", null, reasonThreat?.type,
-                reasonThreat?.let { it.locality ?: it.district ?: it.region } ?: state.focusCityUa,
-                distanceFromFocusKm(reasonThreat, state),
-                System.currentTimeMillis()
-            )
-        }
         // Debug log: track the RAW official-alert lifecycle (independent of the notification
         // toggle) so an alert that was never announced still shows up, with the why.
         if (!debugOfficialActive && state.focusOblastAlertActive) {
@@ -723,7 +700,6 @@ private var notif3minShown = false
             if (alertable.isEmpty()) {
                 cancelAlert()
             }
-            AlertHistory.closeAlert("official", System.currentTimeMillis())
             postAllClear(s, state.focusBannerCity)
             currentReasonThreatId = null
             officialRegionToken = null
@@ -752,7 +728,6 @@ private var notif3minShown = false
             if (alertable.isEmpty()) {
                 cancelAlert()
             }
-            AlertHistory.closeAlert("official", System.currentTimeMillis())
             currentReasonThreatId = null
             debugOfficialActive = false
             officialRegionToken = null
@@ -812,7 +787,6 @@ private var notif3minShown = false
             } else if (System.currentTimeMillis() - since >= CENTRE_ALERT_GRACE_MS) {
                 emptySince = null
                 cancelAlert()
-                AlertHistory.closeAllZoneAlerts(System.currentTimeMillis())
                 knownZones = emptyMap()
             }
         } else {
@@ -825,7 +799,7 @@ private var notif3minShown = false
         ThreatZone.OUTER -> s.yellowZoneAlert
     }
 
-    /** Approx. distance from the focus point (GPS/pin) to a threat, km — for the alert history. */
+    /** Approx. distance from the focus point (GPS/pin) to a threat, km. */
     private fun distanceFromFocusKm(t: Threat?, state: MonitorEvent.State): Double? {
         val focus = state.focusLocation ?: return null
         if (t == null) return null

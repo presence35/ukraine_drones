@@ -52,7 +52,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         cleanLegacyOsmdroidCache()
         ConnectionLog.attach(applicationContext)
-        AlertHistory.attach(applicationContext)
         DebugLog.attach(applicationContext)
         AlertService.start(this)
         setContent {

@@ -62,7 +62,6 @@ class ZonePrefs(private val context: Context) {
     private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
     private val batteryOnboardShownKey = booleanPreferencesKey("battery_onboard_shown")
     private val permissionPromptDeferredKey = booleanPreferencesKey("permission_prompt_deferred")
-    private val alertHistoryKey = stringPreferencesKey("alert_history")
     private val debugLogKey = stringPreferencesKey("debug_log")
     private val nightEnabledKey = booleanPreferencesKey("night_enabled")
     private val nightStartMinKey = intPreferencesKey("night_start_min")
@@ -506,14 +505,6 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setPermissionPromptDeferred(deferred: Boolean) {
         context.dataStore.edit { it[permissionPromptDeferredKey] = deferred }
-    }
-
-    /** Serialized fired-alert history ("at|end|tier|type|locality|distance" lines), for the status popup. */
-    fun alertHistory(): Flow<String> =
-        context.dataStore.data.map { prefs -> prefs[alertHistoryKey] ?: "" }
-
-    suspend fun setAlertHistory(serialized: String) {
-        context.dataStore.edit { it[alertHistoryKey] = serialized }
     }
 
     /** Serialized debug decision log ("at|kind|reason|..." lines), for the Debug log screen. */
