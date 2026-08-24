@@ -406,6 +406,33 @@ private fun flourishesBoundingBox(records: List<FlourishRecord>, focus: LatLng?)
     )
 }
 
+/**
+ * Greedy spatial clustering of a replay flourish into groups, so the camera can zoom onto each
+ * group in turn instead of one over-wide fit. A record joins a group when it is within
+ * [maxDistanceMeters] of that group's centroid (recomputed as it grows). Deterministic (input
+ * order preserved), pure, and cheap for the ≤21-record memory cap.
+ */
+internal fun clusterFlourish(
+    records: List<FlourishRecord>,
+    maxDistanceMeters: Double
+): List<List<FlourishRecord>> {
+    val groups = mutableListOf<MutableList<FlourishRecord>>()
+    for (r in records) {
+        var placed = false
+        for (g in groups) {
+            val cLat = g.map { it.lat }.average()
+            val cLon = g.map { it.lon }.average()
+            if (distanceMeters(cLat, cLon, r.lat, r.lon) <= maxDistanceMeters) {
+                g.add(r)
+                placed = true
+                break
+            }
+        }
+        if (!placed) groups.add(mutableListOf(r))
+    }
+    return groups
+}
+
 @Composable
 fun NeptunMapView(
     uiState: UiState,
@@ -430,6 +457,7 @@ fun NeptunMapView(
     selectedShelter: NearestShelter? = null,
     onShelterTapped: (NearestShelter) -> Unit = {},
     onExitShelterMode: () -> Unit = {},
+    onDeathActiveChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1044,9 +1072,14 @@ fun NeptunMapView(
                         rotationDeg = rotation,
                         alpha = marker.alpha ?: 1f
                     )
-                    // A short pulse as the projectile detonates on the map. USAGE_ALARM keeps it
-                    // audible as a vibration even when the system "touch feedback" haptics are off.
+                    // Fun haptics: a short crisp "shot" as the bullet fires, then a longer
+                    // pulse when it detonates. USAGE_ALARM keeps both audible as vibration even
+                    // when the system "touch feedback" haptics are off.
                     if (vibrator != null) mapScope.launch {
+                        vibrator.vibrate(
+                            VibrationEffect.createOneShot(40L, VibrationEffect.DEFAULT_AMPLITUDE),
+                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
+                        )
                         delay(DEATH_EXPLOSION_START_MS)
                         vibrator.vibrate(
                             VibrationEffect.createOneShot(120L, VibrationEffect.DEFAULT_AMPLITUDE),
@@ -1057,9 +1090,10 @@ fun NeptunMapView(
             }
         }
 
-        // Tally-tap replay flourish: zoom out to fit every remembered resolution at once, then
-        // fire the bullets 0.42s apart so it reads as a single show. The camera returns to where
-        // the user was only after the LAST bullet has exploded. Pure flourish — a red alert
+        // Tally-tap replay flourish: group the remembered resolutions by how close they sit in the
+        // current viewport (screen-size × zoom adaptive), then for each group zoom onto just it,
+        // fire its bullets 0.42s apart, and move to the next group — the camera finally returns
+        // to where the user was after the LAST group explodes. Pure flourish — a red alert
         // ejects it (see the ejection effect below). The tick is only consumed once the map is
         // actually available, so a cold-start tap (map not attached yet on the first pass)
         // retries on the next recomposition instead of silently dropping the show.
@@ -1077,29 +1111,58 @@ fun NeptunMapView(
                         val preCenter = mapView.mapCenter
                         cameraReturnJob.value?.cancel()
                         cameraReturnJob.value = mapScope.launch {
-                            // One zoom that fits the whole group — no per-threat panning.
-                            val box = flourishesBoundingBox(records, uiState.focusLocation)
-                            mapView.zoomToBoundingBox(box, true)
-                            records.forEachIndexed { i, rec ->
-                                delay(if (i == 0) 300L else FLOURISH_STAGGER_MS)
-                                val anchor = GeoPoint(rec.lat, rec.lon)
-                                val origin = strikeOrigin(anchor)
-                                val icon = threatIconFor(
-                                    context, rec.type, iconSetState
-                                )
-                                deathFx.spawn(
-                                    id = "flourish:$i",
-                                    geo = anchor,
-                                    origin = origin,
-                                    icon = icon,
-                                    rotationDeg = 0f,
-                                    alpha = 1f
-                                )
-                                mapView.invalidate()
+                            // A group spans about a third of the current viewport width —
+                            // zoomed in, groups are tight; zoomed out, everything clusters.
+                            val mpp = TileSystem.GroundResolution(
+                                mapView.mapCenter.latitude, mapView.zoomLevelDouble
+                            )
+                            val groupDist = mpp * mapView.width * 0.33f
+                            val groups = clusterFlourish(records, groupDist.toDouble())
+                            var index = 0
+                            groups.forEachIndexed { gi, group ->
+                                // Centre + zoom onto this group only (with margin).
+                                val box = flourishesBoundingBox(group, null)
+                                mapView.zoomToBoundingBox(box, true)
+                                delay(if (gi == 0) 300L else 400L)
+                                group.forEach { rec ->
+                                    delay(if (index == 0) 0L else FLOURISH_STAGGER_MS)
+                                    index++
+                                    val anchor = GeoPoint(rec.lat, rec.lon)
+                                    val origin = strikeOrigin(anchor)
+                                    val icon = threatIconFor(
+                                        context, rec.type, iconSetState
+                                    )
+                                    deathFx.spawn(
+                                        id = "flourish:$index",
+                                        geo = anchor,
+                                        origin = origin,
+                                        icon = icon,
+                                        rotationDeg = 0f,
+                                        alpha = 1f
+                                    )
+                                    mapView.invalidate()
+                                    // Shot haptic now, kill haptic at the boom.
+                                    if (vibrator != null) mapScope.launch {
+                                        vibrator.vibrate(
+                                            VibrationEffect.createOneShot(
+                                                40L, VibrationEffect.DEFAULT_AMPLITUDE
+                                            ),
+                                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
+                                        )
+                                        delay(DEATH_EXPLOSION_START_MS)
+                                        vibrator.vibrate(
+                                            VibrationEffect.createOneShot(
+                                                120L, VibrationEffect.DEFAULT_AMPLITUDE
+                                            ),
+                                            VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM)
+                                        )
+                                    }
+                                }
+                                // Wait for this group's last bullet to finish before panning on.
+                                delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS +
+                                    DEATH_EXPLOSION_LEN_MS)
                             }
-                            // Wait for the last bullet to finish before returning the camera.
-                            delay((records.size - 1) * FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS +
-                                DEATH_EXPLOSION_LEN_MS + 300L)
+                            // Back home, at peace.
                             mapViewRef.value?.controller?.animateTo(preCenter)
                         }
                     }
@@ -1114,6 +1177,12 @@ fun NeptunMapView(
                 cameraReturnJob.value?.cancel()
                 deathFx.clear()
             }
+        }
+
+        // Surface the death-animation state up so the footer can swap its copy while a bullet
+        // is flying / an explosion is on screen.
+        LaunchedEffect(Unit) {
+            deathFx.active.collect { active -> onDeathActiveChange(active) }
         }
 
         // Redraw the map at ~60fps while a death animation is playing and the map is visible,

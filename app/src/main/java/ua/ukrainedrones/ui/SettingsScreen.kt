@@ -747,8 +747,9 @@ fun SettingsScreen(
                         description = s.neutralizedTallyDesc,
                         checked = neutralizedTallyEnabled,
                         onCheckedChange = onNeutralizedTallyChange,
-                        icon = painterResource(R.drawable.ic_tally_bell),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                        icon = rememberVectorPainter(Icons.Default.Notifications),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        iconBadge = "3"
                     )
                     if (neutralizedTallyEnabled) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1558,6 +1559,7 @@ private fun AlertToggleRow(
     onCheckedChange: (Boolean) -> Unit,
     icon: Painter? = null,
     iconTint: Color? = null,
+    iconBadge: String? = null,
     emoji: String? = null,
     note: String? = null,
     flash: Boolean = false
@@ -1578,12 +1580,30 @@ private fun AlertToggleRow(
             )
         } else {
             icon?.let {
-                Image(
-                    painter = it,
-                    contentDescription = null,
-                    colorFilter = iconTint?.let { c -> ColorFilter.tint(c) },
-                    modifier = Modifier.padding(end = 12.dp).size(24.dp)
-                )
+                Box(modifier = Modifier.padding(end = 12.dp).size(24.dp)) {
+                    Image(
+                        painter = it,
+                        contentDescription = null,
+                        colorFilter = iconTint?.let { c -> ColorFilter.tint(c) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (iconBadge != null) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(13.dp)
+                                .background(Color(0xFFD32F2F), RoundedCornerShape(50)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = iconBadge,
+                                color = Color.White,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
         Column(modifier = Modifier.weight(1f)) {

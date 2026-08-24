@@ -10,6 +10,9 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.os.SystemClock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Overlay
@@ -68,7 +71,16 @@ class ThreatDeathOverlay : Overlay() {
 
     private val deaths = mutableListOf<ActiveDeath>()
 
+    private val _active = MutableStateFlow(false)
+    /** True while at least one bullet/explosion is on screen — the footer can swap its copy. */
+    val active: StateFlow<Boolean> = _active.asStateFlow()
+
     val isActive: Boolean get() = deaths.isNotEmpty()
+
+    private fun syncActive() {
+        val nowActive = deaths.isNotEmpty()
+        if (_active.value != nowActive) _active.value = nowActive
+    }
 
     /** Whether a death animation is already in flight for [id]. */
     fun isActiveFor(id: String?): Boolean = id != null && deaths.any { it.id == id }
@@ -86,6 +98,7 @@ class ThreatDeathOverlay : Overlay() {
         deaths.add(
             ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, hideAtBoom, dud = false)
         )
+        syncActive()
     }
 
     /** Follow-up projectile for an already-destroyed threat: no icon, never explodes, just
@@ -95,11 +108,13 @@ class ThreatDeathOverlay : Overlay() {
         deaths.add(
             ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), null, 0f, 1f, hideAtBoom = false, dud = true)
         )
+        syncActive()
     }
 
     /** Drop every active death instantly — used when a red alert ejects the flourish. */
     fun clear() {
         deaths.clear()
+        syncActive()
     }
 
     private val ringPaint = Paint().apply {
@@ -127,7 +142,10 @@ class ThreatDeathOverlay : Overlay() {
             val elapsed = now - it.start
             elapsed > DEATH_DURATION_MS || (it.dud && elapsed > DEATH_EXPLOSION_START_MS)
         }
-        if (deaths.isEmpty()) return
+        if (deaths.isEmpty()) {
+            syncActive()
+            return
+        }
 
         for (d in deaths) {
             mapView.projection.toPixels(d.geo, reuse)

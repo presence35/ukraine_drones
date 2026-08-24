@@ -973,6 +973,7 @@ private fun MapScreen(
     var shelterSelectTick by remember { mutableStateOf(0) }
     var showNearbyShelters by remember { mutableStateOf(false) }
     var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
+    var deathActive by remember { mutableStateOf(false) }
 
     // Surface shelter-mode to the ViewModel so the resolved-threat flourish/card is
     // suppressed while the shelter overlay is up.
@@ -1180,6 +1181,7 @@ private fun MapScreen(
                             showNearbyShelters = false
                             selectedShelter = null
                         },
+                        onDeathActiveChange = { deathActive = it },
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -1232,13 +1234,13 @@ private fun MapScreen(
                     }
                     if (total == 0) {
                         Text(
-                            noThreatsMessage(
+                            if (deathActive) s.neutralizedLabel else noThreatsMessage(
                                 uiState.language,
                                 uiState.now / 86_400_000L,
                                 uiState.calmMessagesEnabled
                             ),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF4CAF50),
+                            color = if (deathActive) Color(0xFFF9A825) else Color(0xFF4CAF50),
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()

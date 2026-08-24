@@ -949,7 +949,6 @@ private var notif3minShown = false
             val text = if (lastLine != null) "$lastLine · $scopeText" else scopeText
             val builder = NotificationCompat.Builder(this@AlertService, CHANNEL_NEUTRALIZED)
                 .setSmallIcon(R.drawable.ic_trident)
-                .setNumber(neutralizedCount)
                 .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
                 .setContentText(text)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
