@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -58,18 +59,50 @@ private val DebugAmber = Color(0xFFF9A825)
 private val DebugGreen = Color(0xFF4CAF50)
 private val DebugBlue = Color(0xFF64B5F6)
 
+/** Distance bands (km from the focus point) used to group threat rows. */
+private const val BAND_1 = 10
+private const val BAND_2 = 30
+private const val BAND_3 = 60
+
+/** Top-level groups of debug rows, in display order. */
+private enum class LogGroupKind { OFFICIAL, BAND_1, BAND_2, BAND_3, BAND_FAR, LEFT }
+
+/** Rows of a single threat type within a group, or [entries] for a non-type group. */
+private data class TypeSubGroup(
+    val type: ThreatType?,
+    val entries: List<DebugLogEntry>
+)
+
+private data class LogGroup(
+    val kind: LogGroupKind,
+    val entries: List<DebugLogEntry>
+) {
+    /** Sub-groups by threat type (only meaningful for the band groups). */
+    val subGroups: List<TypeSubGroup> = when (kind) {
+        LogGroupKind.OFFICIAL, LogGroupKind.LEFT -> listOf(TypeSubGroup(null, entries))
+        else -> entries.groupBy { it.threatType ?: ThreatType.UNKNOWN }
+            .entries
+            .sortedBy { it.key.ordinal }
+            .map { (type, rows) -> TypeSubGroup(type, rows) }
+    }
+}
+
 /**
  * Debug log screen: an audit trail of every alert/threat decision in the active region —
  * official alerts on/off, threats entering red/yellow zones, and why a notification did or
- * didn't fire (bell muted, already notified, coalesced, type off, advisory, stale, outside
- * zones, notifications off). Every row is a color-coded card with a leading icon: red trident
- * for an official alert on, green check for all-clear, red/amber warning for red/yellow zone
- * entries, blue pin for a threat in the region (named), gray close for exits — plus day/night,
- * the effective sound setting, the vibration level, and an "ago" timestamp.
+ * didn't fire. Rows group into official alerts, then threats by distance band (from the focus
+ * point) and threat type (each showing its own icon), then threats that left the region. Every
+ * row carries a color-coded card with day/night, the effective sound setting, and an "ago"
+ * timestamp. The vibration level is intentionally not shown (it never varies).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DebugLogScreen(s: Strings.StringSet, lang: AppLanguage, onBack: () -> Unit) {
+fun DebugLogScreen(
+    s: Strings.StringSet,
+    lang: AppLanguage,
+    iconSet: ThreatIconSet,
+    onBack: () -> Unit
+) {
     val entries by DebugLog.entries.collectAsState()
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -81,6 +114,7 @@ fun DebugLogScreen(s: Strings.StringSet, lang: AppLanguage, onBack: () -> Unit) 
     }
     // Rolling 24-hour window: rows older than a day drop off live even with no new events.
     val window = entries.filter { now - it.atMillis < DebugLog.AUTO_CLEAR_AGE_MS }
+    val groups = buildGroups(window)
     Scaffold(
         topBar = {
             TopAppBar(
@@ -96,9 +130,9 @@ fun DebugLogScreen(s: Strings.StringSet, lang: AppLanguage, onBack: () -> Unit) 
         LazyColumn(
             modifier = Modifier.padding(padding).fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            if (window.isEmpty()) {
+            if (groups.isEmpty()) {
                 item {
                     Text(
                         s.debugLogEmpty,
@@ -111,8 +145,23 @@ fun DebugLogScreen(s: Strings.StringSet, lang: AppLanguage, onBack: () -> Unit) 
                     )
                 }
             } else {
-                items(window.asReversed()) { entry ->
-                    DebugLogRow(entry, s, lang, now)
+                groups.forEach { group ->
+                    item(key = "header-${group.kind}") {
+                        GroupHeader(group, s)
+                    }
+                    group.subGroups.forEach { sub ->
+                        if (sub.type != null) {
+                            item(key = "sub-${group.kind}-${sub.type}") {
+                                TypeSubHeader(sub, lang, iconSet)
+                            }
+                        }
+                        items(
+                            sub.entries.asReversed(),
+                            key = { "row-${it.atMillis}-${it.threatId}" }
+                        ) { entry ->
+                            DebugLogRow(entry, s, lang, now, iconSet)
+                        }
+                    }
                 }
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -123,6 +172,109 @@ fun DebugLogScreen(s: Strings.StringSet, lang: AppLanguage, onBack: () -> Unit) 
                 }
             }
         }
+    }
+}
+
+/**
+ * Build the ordered groups from the flat newest-first window. Official alerts first, then
+ * threat rows bucketed by distance band (nearest first), each band sub-grouped by threat type,
+ * then a trailing group for threats that left the region / have no distance.
+ */
+private fun buildGroups(entries: List<DebugLogEntry>): List<LogGroup> {
+    val official = entries.filter { it.kind == DebugLogKind.OFFICIAL_ON || it.kind == DebugLogKind.OFFICIAL_OFF }
+    val threat = entries.filter {
+        it.kind == DebugLogKind.ZONE_ENTER ||
+            it.kind == DebugLogKind.ZONE_EXIT ||
+            it.kind == DebugLogKind.REGION_THREAT
+    }
+    val exits = threat.filter { it.kind == DebugLogKind.ZONE_EXIT || it.distanceKm == null }
+    val inRegion = threat.filter { it.kind != DebugLogKind.ZONE_EXIT && it.distanceKm != null }
+
+    val groups = mutableListOf<LogGroup>()
+    if (official.isNotEmpty()) {
+        groups.add(LogGroup(LogGroupKind.OFFICIAL, official))
+    }
+
+    fun bandOf(km: Double): LogGroupKind = when {
+        km <= BAND_1 -> LogGroupKind.BAND_1
+        km <= BAND_2 -> LogGroupKind.BAND_2
+        km <= BAND_3 -> LogGroupKind.BAND_3
+        else -> LogGroupKind.BAND_FAR
+    }
+    val order = listOf(LogGroupKind.BAND_1, LogGroupKind.BAND_2, LogGroupKind.BAND_3, LogGroupKind.BAND_FAR)
+    order.forEach { kind ->
+        val bandEntries = inRegion.filter { bandOf(it.distanceKm!!) == kind }
+        if (bandEntries.isNotEmpty()) groups.add(LogGroup(kind, bandEntries))
+    }
+
+    if (exits.isNotEmpty()) {
+        groups.add(LogGroup(LogGroupKind.LEFT, exits))
+    }
+    return groups
+}
+
+@Composable
+private fun GroupHeader(group: LogGroup, s: Strings.StringSet) {
+    val accent = when (group.kind) {
+        LogGroupKind.OFFICIAL -> DebugRed
+        LogGroupKind.LEFT -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> DebugBlue
+    }
+    val title = when (group.kind) {
+        LogGroupKind.OFFICIAL -> s.debugGroupOfficial
+        LogGroupKind.LEFT -> s.debugGroupLeft
+        LogGroupKind.BAND_1 -> String.format(s.debugBandCloseFormat, BAND_1)
+        LogGroupKind.BAND_2 -> String.format(s.debugBandMidFormat, BAND_1, BAND_2)
+        LogGroupKind.BAND_3 -> String.format(s.debugBandFarFormat, BAND_2, BAND_3)
+        LogGroupKind.BAND_FAR -> String.format(s.debugBandFarthestFormat, BAND_3)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(accent)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = accent,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            String.format(s.debugBandCountFormat, group.entries.size),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun TypeSubHeader(sub: TypeSubGroup, lang: AppLanguage, iconSet: ThreatIconSet) {
+    val type = sub.type ?: return
+    val info = ThreatTypeCatalog.INFO.getValue(type)
+    val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ThreatIcon(type = type, set = iconSet, size = 16.dp, contentDescription = label)
+        Spacer(Modifier.width(6.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -138,7 +290,7 @@ private fun DebugLogKind.accent(tier: ThreatZone?): Color = when (this) {
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-private fun DebugLogKind.icon(tier: ThreatZone?): ImageVector = when (this) {
+private fun DebugLogKind.icon(): ImageVector = when (this) {
     DebugLogKind.OFFICIAL_ON -> Icons.Filled.Warning
     DebugLogKind.OFFICIAL_OFF -> Icons.Filled.CheckCircle
     DebugLogKind.ZONE_ENTER -> Icons.Filled.Warning
@@ -181,16 +333,14 @@ private fun DebugLogReason.label(s: Strings.StringSet): String = when (this) {
     DebugLogReason.FIRED -> ""
 }
 
-private fun vibrationLabel(level: Int, s: Strings.StringSet): String = when (level) {
-    0 -> s.vibrationOff
-    1 -> s.vibrationSoft
-    2 -> s.vibrationMedium
-    3 -> s.vibrationStrong
-    else -> s.vibrationUrgent
-}
-
 @Composable
-private fun DebugLogRow(entry: DebugLogEntry, s: Strings.StringSet, lang: AppLanguage, now: Long) {
+private fun DebugLogRow(
+    entry: DebugLogEntry,
+    s: Strings.StringSet,
+    lang: AppLanguage,
+    now: Long,
+    iconSet: ThreatIconSet
+) {
     val accent = entry.kind.accent(entry.tier)
     val typeLabel = entry.threatType?.let { type ->
         val info = ThreatTypeCatalog.INFO.getValue(type)
@@ -204,21 +354,7 @@ private fun DebugLogRow(entry: DebugLogEntry, s: Strings.StringSet, lang: AppLan
             .padding(12.dp),
         verticalAlignment = Alignment.Top
     ) {
-        if (entry.kind == DebugLogKind.OFFICIAL_ON) {
-            Image(
-                painter = painterResource(R.drawable.ic_trident),
-                contentDescription = null,
-                colorFilter = ColorFilter.tint(accent),
-                modifier = Modifier.size(22.dp)
-            )
-        } else {
-            Icon(
-                imageVector = entry.kind.icon(entry.tier),
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+        LeadingIcon(entry, accent, lang, iconSet)
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -284,14 +420,6 @@ private fun DebugLogRow(entry: DebugLogEntry, s: Strings.StringSet, lang: AppLan
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                entry.vibrationLevel?.let { level ->
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        String.format(s.debugLogVibrationFormat, vibrationLabel(level, s)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -326,4 +454,33 @@ private fun DebugLogRow(entry: DebugLogEntry, s: Strings.StringSet, lang: AppLan
             }
         }
     }
+}
+
+@Composable
+private fun LeadingIcon(entry: DebugLogEntry, accent: Color, lang: AppLanguage, iconSet: ThreatIconSet) {
+    if (entry.kind == DebugLogKind.OFFICIAL_ON) {
+        Image(
+            painter = painterResource(R.drawable.ic_trident),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(accent),
+            modifier = Modifier.size(22.dp)
+        )
+        return
+    }
+    entry.threatType?.let { type ->
+        val label = typeLabel(type, lang)
+        ThreatIcon(type = type, set = iconSet, size = 22.dp, contentDescription = label)
+        return
+    }
+    Icon(
+        imageVector = entry.kind.icon(),
+        contentDescription = null,
+        tint = accent,
+        modifier = Modifier.size(22.dp)
+    )
+}
+
+private fun typeLabel(type: ThreatType, lang: AppLanguage): String {
+    val info = ThreatTypeCatalog.INFO.getValue(type)
+    return if (lang == AppLanguage.UA) info.labelUa else info.labelEn
 }

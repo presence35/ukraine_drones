@@ -259,7 +259,13 @@ object Strings {
         val debugLogSuppressed: String,
         val debugLogSoundOverride: String,
         val debugLogSoundFollows: String,
-        val debugLogVibrationFormat: String,
+        val debugGroupOfficial: String,
+        val debugGroupLeft: String,
+        val debugBandCloseFormat: String,
+        val debugBandMidFormat: String,
+        val debugBandFarFormat: String,
+        val debugBandFarthestFormat: String,
+        val debugBandCountFormat: String,
         val debugReasonBellMuted: String,
         val debugReasonAlreadyNotified: String,
         val debugReasonCoalesced: String,
@@ -773,7 +779,13 @@ object Strings {
         val debugLogSuppressed: String get() = misc.debugLogSuppressed
         val debugLogSoundOverride: String get() = misc.debugLogSoundOverride
         val debugLogSoundFollows: String get() = misc.debugLogSoundFollows
-        val debugLogVibrationFormat: String get() = misc.debugLogVibrationFormat
+        val debugGroupOfficial: String get() = misc.debugGroupOfficial
+        val debugGroupLeft: String get() = misc.debugGroupLeft
+        val debugBandCloseFormat: String get() = misc.debugBandCloseFormat
+        val debugBandMidFormat: String get() = misc.debugBandMidFormat
+        val debugBandFarFormat: String get() = misc.debugBandFarFormat
+        val debugBandFarthestFormat: String get() = misc.debugBandFarthestFormat
+        val debugBandCountFormat: String get() = misc.debugBandCountFormat
         val debugReasonBellMuted: String get() = misc.debugReasonBellMuted
         val debugReasonAlreadyNotified: String get() = misc.debugReasonAlreadyNotified
         val debugReasonCoalesced: String get() = misc.debugReasonCoalesced
@@ -1182,7 +1194,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         vibrationUrgent = "Термінова",
         alertHistoryTitle = "Тривоги",
         alertHistoryEmpty = "Тривог ще не було",
-        alertHistoryDistanceFormat = "≈%1\$d км",
+        alertHistoryDistanceFormat = "%1\$d км",
         alertHistoryOfficialLabel = "Офіційна тривога",
         alertHistoryClear = "Очистити",
         alertHistoryAutoClearNote = "Автоматично очищається через 6 годин",
@@ -1200,7 +1212,13 @@ val iconSetTitle: String get() = misc.iconSetTitle
         debugLogSuppressed = "Без сповіщення — %1\$s",
         debugLogSoundOverride = "Сигнал завжди",
         debugLogSoundFollows = "За режимом звуку",
-        debugLogVibrationFormat = "Вібрація: %1\$s",
+        debugGroupOfficial = "Офіційні тривоги",
+        debugGroupLeft = "Покинули регіон",
+        debugBandCloseFormat = "≤ %1\$d км",
+        debugBandMidFormat = "%1\$d–%2\$d км",
+        debugBandFarFormat = "%1\$d–%2\$d км",
+        debugBandFarthestFormat = "> %1\$d км",
+        debugBandCountFormat = "%1\$d",
         debugReasonBellMuted = "дзвінок вимкнено для цього типу",
         debugReasonAlreadyNotified = "вже сповіщено для цього рівня",
         debugReasonCoalesced = "спочатку надіслано іншу тривогу",
@@ -1671,7 +1689,7 @@ alertBannerFormat = "%1\$s: alert",
         vibrationUrgent = "Urgent",
         alertHistoryTitle = "Alerts",
         alertHistoryEmpty = "No alerts yet",
-        alertHistoryDistanceFormat = "≈%1\$d km",
+        alertHistoryDistanceFormat = "%1\$d km",
         alertHistoryOfficialLabel = "Official alert",
         alertHistoryClear = "Clear",
         alertHistoryAutoClearNote = "Auto-clears after 6 hours",
@@ -1689,7 +1707,13 @@ alertBannerFormat = "%1\$s: alert",
         debugLogSuppressed = "No notification — %1\$s",
         debugLogSoundOverride = "Siren override",
         debugLogSoundFollows = "Follows ringer",
-        debugLogVibrationFormat = "Vibrate: %1\$s",
+        debugGroupOfficial = "Official alerts",
+        debugGroupLeft = "Left the region",
+        debugBandCloseFormat = "≤ %1\$d km",
+        debugBandMidFormat = "%1\$d–%2\$d km",
+        debugBandFarFormat = "%1\$d–%2\$d km",
+        debugBandFarthestFormat = "> %1\$d km",
+        debugBandCountFormat = "%1\$d",
         debugReasonBellMuted = "bell muted for this type",
         debugReasonAlreadyNotified = "already notified for this tier",
         debugReasonCoalesced = "another alert posted first",

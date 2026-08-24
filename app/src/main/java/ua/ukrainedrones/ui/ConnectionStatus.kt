@@ -184,14 +184,14 @@ internal fun ConnectionStatus(
                         Spacer(Modifier.width(8.dp))
                         Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
-                    AlertHistorySection(s, lang, iconSet)
-                    ConnectionLogSection(s, lang)
                     TextButton(
                         onClick = onOpenDebug,
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     ) {
                         Text(s.debugLogOpen)
                     }
+                    AlertHistorySection(s, lang, iconSet)
+                    ConnectionLogSection(s, lang)
                 }
             }
         }

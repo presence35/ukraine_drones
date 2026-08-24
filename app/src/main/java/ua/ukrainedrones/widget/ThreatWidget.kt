@@ -1,7 +1,7 @@
 package ua.ukrainedrones
 
 import android.content.Context
-import android.os.Bundle
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
@@ -14,13 +14,12 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
-import androidx.glance.action.ActionParameters
-import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.action.actionStartActivity as actionStartActivityWithIntent
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
@@ -66,24 +65,28 @@ class ThreatWidget : GlanceAppWidget() {
             )
         }
         provideContent {
-            WidgetContent(snapshot = snapshot, lang = lang, iconSet = iconSet)
+            WidgetContent(snapshot = snapshot, lang = lang, iconSet = iconSet, context = context)
         }
     }
 
     @Composable
-    private fun WidgetContent(snapshot: WidgetSnapshot, lang: AppLanguage, iconSet: ThreatIconSet) {
+    private fun WidgetContent(
+        snapshot: WidgetSnapshot,
+        lang: AppLanguage,
+        iconSet: ThreatIconSet,
+        context: Context
+    ) {
         val strings = Strings.get(lang)
         val size = LocalSize.current
         val openApp = actionStartActivity<MainActivity>()
         // Tapping the primary threat icon opens the map centered on that threat — same reveal
         // extras as a threat alert notification tap, so the map pans and selects it.
         val revealAction = snapshot.primaryThreat?.let { pt ->
-            actionStartActivity<MainActivity>(
-                actionParametersOf(),
-                Bundle().apply {
-                    putString(AlertService.EXTRA_REVEAL_ID, pt.id)
-                    putDouble(AlertService.EXTRA_REVEAL_LAT, pt.lat)
-                    putDouble(AlertService.EXTRA_REVEAL_LON, pt.lon)
+            actionStartActivityWithIntent(
+                Intent(context, MainActivity::class.java).apply {
+                    putExtra(AlertService.EXTRA_REVEAL_ID, pt.id)
+                    putExtra(AlertService.EXTRA_REVEAL_LAT, pt.lat)
+                    putExtra(AlertService.EXTRA_REVEAL_LON, pt.lon)
                 }
             )
         }

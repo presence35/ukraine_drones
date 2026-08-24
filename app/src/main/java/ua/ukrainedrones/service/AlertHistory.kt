@@ -36,8 +36,8 @@ object AlertHistory {
 
     internal const val MAX_ENTRIES = 20
 
-    /** Entries older than this are pruned on load/append (6 hours — older alerts don't matter). */
-    internal const val AUTO_CLEAR_AGE_MS = 6L * 60 * 60 * 1000
+    /** Entries older than this are pruned on load/append (rolling 12 hours). */
+    internal const val AUTO_CLEAR_AGE_MS = 12L * 60 * 60 * 1000
 
     private val _entries = MutableStateFlow<List<AlertHistoryEntry>>(emptyList())
     val entries: StateFlow<List<AlertHistoryEntry>> = _entries.asStateFlow()
@@ -130,7 +130,7 @@ object AlertHistory {
     }
 }
 
-/** Drop entries older than [maxAgeMs] — the 6-hour auto-clear. Pure, unit-tested. */
+/** Drop entries older than [maxAgeMs] — the 12-hour auto-clear. Pure, unit-tested. */
 internal fun pruneExpiredEntries(
     entries: List<AlertHistoryEntry>,
     now: Long,

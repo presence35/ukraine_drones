@@ -373,6 +373,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             DebugLogScreen(
                 s = Strings.get(uiState.language),
                 lang = uiState.language,
+                iconSet = uiState.iconSet,
                 onBack = { screen = Screen.MAP }
             )
         }
