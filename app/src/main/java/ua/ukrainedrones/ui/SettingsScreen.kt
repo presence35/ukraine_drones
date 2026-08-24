@@ -749,7 +749,7 @@ fun SettingsScreen(
                         onCheckedChange = onNeutralizedTallyChange,
                         icon = rememberVectorPainter(Icons.Default.Notifications),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBadge = "3"
+                        iconBadge = "21"
                     )
                     if (neutralizedTallyEnabled) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1588,20 +1588,13 @@ private fun AlertToggleRow(
                         modifier = Modifier.fillMaxSize()
                     )
                     if (iconBadge != null) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .size(13.dp)
-                                .background(Color(0xFFD32F2F), RoundedCornerShape(50)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = iconBadge,
-                                color = Color.White,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Text(
+                            text = iconBadge,
+                            color = iconTint ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.align(Alignment.BottomEnd)
+                        )
                     }
                 }
             }

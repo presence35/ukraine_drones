@@ -53,9 +53,8 @@ class DeathFxController(
         origin: GeoPoint? = null,
         icon: Drawable? = null,
         rotationDeg: Float = 0f,
-        alpha: Float = 1f,
-        hideAtBoom: Boolean = false
-    ) = overlay.spawn(id, geo, origin, icon, rotationDeg, alpha, hideAtBoom)
+        alpha: Float = 1f
+    ) = overlay.spawn(id, geo, origin, icon, rotationDeg, alpha)
 
     /** Follow-up projectile for an already-destroyed threat: no icon, never explodes. */
     fun strikeDud(id: String?, geo: GeoPoint, origin: GeoPoint?) = overlay.spawnDud(id, geo, origin)

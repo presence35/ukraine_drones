@@ -1234,7 +1234,7 @@ private fun MapScreen(
                     }
                     if (total == 0) {
                         Text(
-                            if (deathActive) s.neutralizedLabel else noThreatsMessage(
+                            if (deathActive) s.neutralizingLabel else noThreatsMessage(
                                 uiState.language,
                                 uiState.now / 86_400_000L,
                                 uiState.calmMessagesEnabled

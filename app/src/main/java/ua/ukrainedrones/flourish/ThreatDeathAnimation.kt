@@ -34,13 +34,11 @@ const val DEATH_EXPLOSION_START_MS = 2000L
 const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
 
 /**
- * A dying threat. For real server removals [icon] is the marker's own drawable, so the icon
- * keeps rendering here for the full [DEATH_DURATION_MS] and is hidden forever the moment the
- * animation completes. Long-pressed test triggers pass [icon] = the same marker drawable but with
- * [hideAtBoom] = true, so the icon vanishes when the explosion starts instead (the threat
- * re-draws on the next overlay rebuild). [origin] is where the projectile takes off from — the
- * nearest major city to the target (else your GPS position / pinned city) at spawn time; null
- * skips the flight visuals.
+ * A dying threat. [icon] is the marker's own drawable, so the icon keeps rendering here through
+ * the bullet flight and vanishes the instant the explosion starts (the threat re-draws on the
+ * next overlay rebuild). [origin] is where the projectile takes off from — the nearest major
+ * city to the target (else your GPS position / pinned city) at spawn time; null skips the
+ * flight visuals.
  *
  * A [dud] carries no icon and never explodes: it's a follow-up projectile fired when the
  * threat turned out to be already destroyed (e.g. the server re-sent the resolution), so it
@@ -54,7 +52,6 @@ private class ActiveDeath(
     val icon: Drawable?,
     val rotationDeg: Float,
     val alpha: Float,
-    val hideAtBoom: Boolean,
     val dud: Boolean
 )
 
@@ -91,12 +88,11 @@ class ThreatDeathOverlay : Overlay() {
         origin: GeoPoint? = null,
         icon: Drawable? = null,
         rotationDeg: Float = 0f,
-        alpha: Float = 1f,
-        hideAtBoom: Boolean = false
+        alpha: Float = 1f
     ) {
         if (deaths.size >= 6) return
         deaths.add(
-            ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, hideAtBoom, dud = false)
+            ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, dud = false)
         )
         syncActive()
     }
@@ -106,7 +102,7 @@ class ThreatDeathOverlay : Overlay() {
     fun spawnDud(id: String?, geo: GeoPoint, origin: GeoPoint?) {
         if (origin == null || deaths.size >= 6) return
         deaths.add(
-            ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), null, 0f, 1f, hideAtBoom = false, dud = true)
+            ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), null, 0f, 1f, dud = true)
         )
         syncActive()
     }
@@ -153,17 +149,12 @@ class ThreatDeathOverlay : Overlay() {
             val y = reuse.y.toFloat()
             val t = ((now - d.start).toFloat() / DEATH_DURATION_MS).coerceIn(0f, 1f)
 
-            // The threat's own icon lingers here through the flight. Long-pressed test triggers
-            // (hideAtBoom) drop it the instant the explosion starts; real removals keep it
-            // until the prune above ends the animation (hidden forever at 5s).
+            // The threat's own icon lingers through the bullet flight, then vanishes the instant
+            // the explosion starts — no fading away, the detonation replaces it.
             d.icon?.let { icon ->
                 val w = icon.intrinsicWidth.coerceAtLeast(1) / 2f
                 val h = icon.intrinsicHeight.coerceAtLeast(1) / 2f
-                val fade = when {
-                    d.hideAtBoom && t >= boomT -> 0f
-                    t >= boomT -> 1f - ((t - boomT) / boomLenT).coerceIn(0f, 1f)
-                    else -> 1f
-                }
+                val fade = if (t >= boomT) 0f else 1f
                 icon.alpha = (d.alpha * fade * 255).toInt()
                 canvas.save()
                 canvas.translate(x, y)

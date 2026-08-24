@@ -892,9 +892,9 @@ fun NeptunMapView(
                                             origin = origin,
                                             icon = nearest.icon,
                                             rotationDeg = nearest.rotation,
-                                            alpha = nearest.alpha,
-                                            hideAtBoom = true
+                                            alpha = nearest.alpha
                                         )
+                                        deathFx.strikeHaptics()
                                     }
                                 }
                                 return true
