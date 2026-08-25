@@ -1,7 +1,9 @@
 package ua.ukrainedrones
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -29,6 +31,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -186,9 +189,19 @@ fun ThreatPopupCard(
     // threat is selected (first open included). Stream refreshes keep the threat id, so they
     // never re-trigger. Hoisted here so card-size toggles don't reset the pop. With system
     // animations removed there is no pop at all — just the tick.
-    val hapticsEnabled = LocalHapticsEnabled.current
+        val hapticsEnabled = LocalHapticsEnabled.current
     val appContext = LocalContext.current.applicationContext
     val animsOff = animationsOff()
+    // Entrance: the card grows 0.94 -> 1 as it appears. The shared fade covers opacity; this
+    // gives the full-width card visible motion (its icon pop alone drowns at that size).
+    val entrance = remember { Animatable(if (animsOff) 1f else 0.94f) }
+    LaunchedEffect(Unit) {
+        if (!animsOff) {
+            entrance.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+        } else {
+            entrance.snapTo(1f)
+        }
+    }
     val iconScale = remember { Animatable(1f) }
     var lastSelectedId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(threat.id, interactive) {
@@ -259,9 +272,21 @@ fun ThreatPopupCard(
         return
     }
 
-    val cardInteraction = remember { MutableInteractionSource() }
+        val cardInteraction = remember { MutableInteractionSource() }
     Surface(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = entrance.value
+                scaleY = entrance.value
+            }
+            // Size changes (SMALL <-> LARGE stepper, body swaps) glide instead of snapping.
+            .animateContentSize(
+                animationSpec = if (animsOff) tween(0)
+                else spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
             .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             .then(
                 if (interactive) Modifier.pressTick().clickable(

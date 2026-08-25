@@ -33,6 +33,10 @@ const val DEATH_EXPLOSION_START_MS = 2000L
  *  fades out across it. */
 const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
 
+/** Compressed explosion for quick-boom deaths (intermediate replay groups): a brief flash
+ *  after impact, then gone — the show pans on instead of lingering through every burst. */
+private const val QUICK_EXPLOSION_LEN_MS = 800L
+
 /** Concurrent-death ceiling. A full 21-record replay at [ua.ukrainedrones.FLOURISH_STAGGER_MS]
  *  spacing holds ~13 deaths alive at once (5s lifespan each), so the old hard-coded 6 was
  *  silently eating bullets mid-show. */
@@ -57,7 +61,9 @@ private class ActiveDeath(
     val icon: Drawable?,
     val rotationDeg: Float,
     val alpha: Float,
-    val dud: Boolean
+    val dud: Boolean,
+    /** Total lifetime; quick-boom deaths (replay intermediates) compress the explosion. */
+    val durationMs: Long = DEATH_DURATION_MS
 )
 
 /**
@@ -93,11 +99,18 @@ class ThreatDeathOverlay : Overlay() {
         origin: GeoPoint? = null,
         icon: Drawable? = null,
         rotationDeg: Float = 0f,
-        alpha: Float = 1f
+        alpha: Float = 1f,
+        quickBoom: Boolean = false
     ) {
         if (deaths.size >= MAX_DEATHS) return
         deaths.add(
-            ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, dud = false)
+            ActiveDeath(
+                id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, dud = false,
+                // Quick boom: impact + a brief flash — used for intermediate replay groups so the
+                // show pans on right after the hits instead of lingering through every explosion.
+                durationMs = if (quickBoom) DEATH_EXPLOSION_START_MS + QUICK_EXPLOSION_LEN_MS
+                             else DEATH_DURATION_MS
+            )
         )
         syncActive()
     }
@@ -159,17 +172,15 @@ class ThreatDeathOverlay : Overlay() {
         return bmp
     }
 
-    override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+        override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
         if (shadow) return
         if (deaths.isEmpty()) return
         val density = mapView.context.resources.displayMetrics.density
         val now = SystemClock.elapsedRealtime()
-        val boomT = DEATH_EXPLOSION_START_MS.toFloat() / DEATH_DURATION_MS
-        val boomLenT = DEATH_EXPLOSION_LEN_MS.toFloat() / DEATH_DURATION_MS
 
         deaths.removeAll {
             val elapsed = now - it.start
-            elapsed > DEATH_DURATION_MS || (it.dud && elapsed > DEATH_EXPLOSION_START_MS)
+            elapsed > it.durationMs || (it.dud && elapsed > DEATH_EXPLOSION_START_MS)
         }
         if (deaths.isEmpty()) {
             syncActive()
@@ -177,10 +188,15 @@ class ThreatDeathOverlay : Overlay() {
         }
 
         for (d in deaths) {
+            // Per-death timeline: quick-boom deaths compress the explosion window, so boomT
+            // and the fade curve are derived from each death's own duration.
+                        val dur = d.durationMs.toFloat()
+            val boomT = DEATH_EXPLOSION_START_MS / dur
+            val boomLenT = (d.durationMs - DEATH_EXPLOSION_START_MS) / dur
             mapView.projection.toPixels(d.geo, reuse)
             val x = reuse.x.toFloat()
             val y = reuse.y.toFloat()
-            val t = ((now - d.start).toFloat() / DEATH_DURATION_MS).coerceIn(0f, 1f)
+            val t = ((now - d.start).toFloat() / dur).coerceIn(0f, 1f)
 
             // The threat's own icon lingers through the bullet flight, then vanishes the instant
             // the explosion starts — no fading away, the detonation replaces it.

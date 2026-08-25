@@ -480,6 +480,7 @@ fun NeptunMapView(
             context = context,
             mapView = { mapViewRef.value },
             iconFor = { type -> threatIconFor(context, type, iconSetState) },
+            showDetail = { rec, grp -> String.format(strings.flourishLogDetailFormat, rec, grp) },
             scope = mapScope
         )
     }

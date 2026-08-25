@@ -24,6 +24,9 @@ private const val UA_MAX_LAT = 52.7
 private const val UA_MIN_LON = 21.7
 private const val UA_MAX_LON = 40.6
 
+/** Settle time after an intermediate group's last impact before panning to the next one. */
+private const val REPLAY_QUICK_TAIL_MS = 300L
+
 /**
  * Map-side flourish facade: owns the death-animation overlay plus everything that drives it —
  * the strike camera glide, the shot/kill haptics, the bullet take-off origin (a random point on
@@ -35,6 +38,8 @@ class DeathFxController(
     private val context: Context,
     private val mapView: () -> MapView?,
     private val iconFor: (ThreatType) -> Drawable,
+    /** Formats the FIRED audit line, e.g. "Shots: 21 · Groups: 10" — localized by the caller. */
+    private val showDetail: (records: Int, groups: Int) -> String,
     private val scope: CoroutineScope
 ) {
     /** The overlay itself — added to the map's overlay list and driven per frame. */
@@ -114,10 +119,13 @@ class DeathFxController(
      *  back to where the user was once the explosion has finished. It never scrolls to the
      *  launching city. Off: the camera stays still while the animation plays. A fresh strike
      *  replaces any pending return so rapid successive shots don't fight over the camera. */
-    fun followStrike(target: GeoPoint, followBullet: Boolean) {
+        fun followStrike(target: GeoPoint, followBullet: Boolean) {
         val mapView = mapView() ?: return
         if (mapView.width <= 0 || mapView.height <= 0 || !followBullet) return
-        val preCenter = mapView.mapCenter
+        // Snapshot the coordinates: osmdroid's getMapCenter() returns its projection's reusable
+        // internal point, which keeps mutating as the camera moves — holding it across the
+        // animation would "return" to whatever that shared point held later (a random spot).
+        val preCenter = GeoPoint(mapView.mapCenter.latitude, mapView.mapCenter.longitude)
         cameraReturnJob?.cancel()
         cameraReturnJob = scope.launch {
             mapView.controller.animateTo(target)
@@ -155,7 +163,8 @@ class DeathFxController(
     suspend fun replay(records: List<FlourishRecord>) {
         val mapView = mapView() ?: return
         if (records.isEmpty()) return
-        val preCenter = mapView.mapCenter
+        // Snapshot — see followStrike; getMapCenter() hands back a live mutable point.
+        val preCenter = GeoPoint(mapView.mapCenter.latitude, mapView.mapCenter.longitude)
         cameraReturnJob?.cancel()
         // A group spans about a third of the current viewport width — zoomed in, groups are
         // tight; zoomed out, everything clusters.
@@ -164,15 +173,18 @@ class DeathFxController(
         val groups = clusterFlourish(records, groupDist.toDouble())
         DebugLog.recordFlourish(
             DebugLogReason.FIRED,
-            detail = "${records.size}x${groups.size}",
+            detail = showDetail(records.size, groups.size),
             now = System.currentTimeMillis()
         )
-        var index = 0
+                var index = 0
+        val lastGi = groups.lastIndex
         groups.forEachIndexed { gi, group ->
-            // Centre + zoom onto this group only (with margin).
+            // Jump straight onto this group (no animated glide — bullets must never fly while
+            // the camera is still moving), give it a short beat to settle, then fire.
             val box = flourishesBoundingBox(group, null)
-            mapView.zoomToBoundingBox(box, true)
-            delay(if (gi == 0) 300L else 400L)
+            runCatching { mapView.zoomToBoundingBox(box, false) }
+            delay(if (gi == 0) 350L else 450L)
+            val finalGroup = gi == lastGi
             group.forEachIndexed { groupIndex, rec ->
                 delay(if (index == 0) 0L else FLOURISH_STAGGER_MS)
                 index++
@@ -193,13 +205,20 @@ class DeathFxController(
                     origin = randomEdgeOrigin(),
                     icon = icon,
                     rotationDeg = 0f,
-                    alpha = 1f
+                    alpha = 1f,
+                    // Intermediate groups only show the hits; the LAST group gets the full show.
+                    quickBoom = !finalGroup
                 )
                 mapView.invalidate()
                 strikeHaptics()
             }
-            // Wait for this group's last bullet to finish before panning on.
-            delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS)
+            if (finalGroup) {
+                // Full animation for the finale: linger through the complete explosion window.
+                delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS)
+            } else {
+                // Quick boom: pan on shortly after the last impact (brief flash already done).
+                delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS + REPLAY_QUICK_TAIL_MS)
+            }
         }
         _replayProgress.value = null
         // Back home, at peace.

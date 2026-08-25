@@ -286,6 +286,7 @@ object Strings {
         val debugKindZoneExit: String,
         val debugKindRegionThreat: String,
         val debugKindFlourish: String,
+        val flourishLogDetailFormat: String,
         val debugKindRegionFormat: String,
         val debugTierRed: String,
         val debugTierYellow: String,
@@ -826,6 +827,7 @@ object Strings {
         val debugKindZoneExit: String get() = misc.debugKindZoneExit
         val debugKindRegionThreat: String get() = misc.debugKindRegionThreat
         val debugKindFlourish: String get() = misc.debugKindFlourish
+        val flourishLogDetailFormat: String get() = misc.flourishLogDetailFormat
         val debugKindRegionFormat: String get() = misc.debugKindRegionFormat
         val debugTierRed: String get() = misc.debugTierRed
         val debugTierYellow: String get() = misc.debugTierYellow
@@ -1269,6 +1271,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         debugKindZoneExit = "Покинула зону",
         debugKindRegionThreat = "Загроза в регіоні",
         debugKindFlourish = "Шоу знешкодження",
+        flourishLogDetailFormat = "Пострілів: %1\$d · Груп: %2\$d",
         debugKindRegionFormat = "Загроза у %1\$s",
         debugTierRed = "Червона зона",
         debugTierYellow = "Жовта зона",
@@ -1774,6 +1777,7 @@ alertBannerFormat = "%1\$s: alert",
         debugKindZoneExit = "Left zone",
         debugKindRegionThreat = "Threat in region",
         debugKindFlourish = "Shoot-down show",
+        flourishLogDetailFormat = "Shots: %1\$d · Groups: %2\$d",
         debugKindRegionFormat = "Threat in %1\$s",
         debugTierRed = "Red zone",
         debugTierYellow = "Yellow zone",

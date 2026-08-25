@@ -2,7 +2,7 @@
 
 ## Trigger phrase: "release it"
 
-When the user says **"release it"**, perform a full release:
+Only when the user says **"release it"**, perform a full release:
 
 1. Read the `## [Unreleased]` entries in `CHANGELOG.md`.
 2. Infer the new version from `app/version.properties`.
