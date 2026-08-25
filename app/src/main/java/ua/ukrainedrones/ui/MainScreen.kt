@@ -1263,7 +1263,6 @@ private fun MapScreen(
                                 else String.format(s.resolvingThreatsFormat, cur, n)
                             }
                             deathActive -> s.neutralizingLabel
-                            uiState.fakeNeutralize -> s.fakeNeutralizingLabel
                             else -> noThreatsMessage(
                                 uiState.language,
                                 uiState.now / 86_400_000L,

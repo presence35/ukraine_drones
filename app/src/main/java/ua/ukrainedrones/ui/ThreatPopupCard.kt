@@ -317,7 +317,8 @@ fun ThreatPopupCard(
                                 fontWeight = FontWeight.SemiBold,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = Color.White,
-                                modifier = Modifier.weight(1f)
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             if (alertsOff) {
                                 AlertsOffChip(s)

@@ -43,6 +43,8 @@ class DeathFxController(
     private val vibrator = context.getSystemService(Vibrator::class.java)
     // A pending "return the camera to where the user was" job — replaced by each new strike.
     private var cameraReturnJob: Job? = null
+    // The running tally-tap replay, so a red alert can cancel it mid-show (clear()).
+    private var replayJob: Job? = null
 
     private val _replayProgress = MutableStateFlow<Pair<Int, Int>?>(null)
     /** During the tally-tap replay: the current bullet (1-based) within the CURRENT group and
@@ -54,12 +56,20 @@ class DeathFxController(
 
     fun isActiveFor(id: String?): Boolean = overlay.isActiveFor(id)
 
-    /** Drop every active death + cancel a pending camera return instantly — a red alert ejects
-     *  the flourish (safety outranks the playful replay). */
+    /** Drop every active death + cancel a pending camera return or running replay instantly —
+     *  a red alert ejects the flourish (safety outranks the playful replay). */
     fun clear() {
         cameraReturnJob?.cancel()
+        replayJob?.cancel()
+        replayJob = null
         _replayProgress.value = null
         overlay.clear()
+    }
+
+    /** Launch the tally-tap replay on the controller's scope, replacing any show in flight. */
+    fun startReplay(records: List<FlourishRecord>) {
+        replayJob?.cancel()
+        replayJob = scope.launch { replay(records) }
     }
 
     /** User-initiated or server-driven strike: spawn the projectile + explosion. The bullet
@@ -138,8 +148,8 @@ class DeathFxController(
      * current viewport (screen-size × zoom adaptive), then for each group zoom onto just it,
      * fire its bullets [FLOURISH_STAGGER_MS] apart, and move to the next group — the camera
      * finally returns to where the user was after the LAST group explodes. Pure flourish — a
-     * red alert ejects it (see [clear]). Runs on the caller's scope; the caller already gated
-     * on visibility/alert/lifecycle before invoking.
+     * red alert ejects it (see [clear], which also cancels this show mid-flight). Launched via
+     * [startReplay]; the caller gates on visibility/alert/lifecycle before invoking.
      */
     suspend fun replay(records: List<FlourishRecord>) {
         val mapView = mapView() ?: return
@@ -151,6 +161,7 @@ class DeathFxController(
         val mpp = TileSystem.GroundResolution(mapView.mapCenter.latitude, mapView.zoomLevelDouble)
         val groupDist = mpp * mapView.width * 0.33f
         val groups = clusterFlourish(records, groupDist.toDouble())
+        DebugLog.recordFlourish(DebugLogReason.FIRED, System.currentTimeMillis())
         var index = 0
         groups.forEachIndexed { gi, group ->
             // Centre + zoom onto this group only (with margin).

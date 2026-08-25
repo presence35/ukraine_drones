@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /** Event kinds shown in the Debug log screen. */
-enum class DebugLogKind { OFFICIAL_ON, OFFICIAL_OFF, ZONE_ENTER, ZONE_EXIT, REGION_THREAT }
+enum class DebugLogKind { OFFICIAL_ON, OFFICIAL_OFF, ZONE_ENTER, ZONE_EXIT, REGION_THREAT, FLOURISH }
 
 /**
  * Why a decision landed the way it did. [FIRED] = a notification was actually posted
@@ -139,6 +139,22 @@ object DebugLog {
             DebugLogEntry(
                 now, kind, night, sirenOverride, vibrationLevel, notified, reason,
                 threatId, threatType, null, distanceKm, locality
+            )
+        )
+    }
+
+    /**
+     * Audit trail for the shoot-down flourish replay — tap OUTCOMES only (started /
+     * blocked by the animation toggle / dropped for a live alert), never per-bullet spam.
+     * [FIRED] = the show actually started; every other reason is a "why not".
+     */
+    fun recordFlourish(reason: DebugLogReason, now: Long) {
+        record(
+            DebugLogEntry(
+                now, DebugLogKind.FLOURISH, night = false, sirenOverride = false,
+                vibrationLevel = null, notified = reason == DebugLogReason.FIRED,
+                reason = reason, threatId = null, threatType = null, tier = null,
+                distanceKm = null, locality = null
             )
         )
     }

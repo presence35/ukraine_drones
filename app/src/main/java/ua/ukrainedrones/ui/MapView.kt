@@ -1016,21 +1016,33 @@ fun NeptunMapView(
         }
 
         // Tally-tap replay flourish: the whole show (viewport clustering, per-group zoom, staggered
-        // bullets, haptics, camera return) is orchestrated by [DeathFxController]. This hook only
-        // consumes the tick once the map is actually available, so a cold-start tap (map not
-        // attached yet on the first pass) retries on the next recomposition instead of silently
-        // dropping the show. Pure flourish — a red alert ejects it (see the ejection effect
-        // below), and it never runs while the animation toggle is off.
+        // bullets, haptics, camera return) is orchestrated by [DeathFxController]. The tick is
+        // consumed ONLY when a decision is actually made — transient blockers (cold start,
+        // Settings open, shelter overlay) leave it pending so it retries on the next
+        // recomposition instead of silently dropping the show.
         val flourishShow = uiState.flourish
         if (flourishShow != null && flourishShow.tick != lastFlourishTick.value) {
-            val mapView = mapViewRef.value
-            if (mapView != null) {
+            val playable = mapViewRef.value != null &&
+                !pausedState && mapVisibleState && !showNearbySheltersState &&
+                lifecycle.currentState >= Lifecycle.State.STARTED
+            if (!playable) {
+                // Transient — retried on a later recomposition; nothing consumed yet.
+            } else {
                 lastFlourishTick.value = flourishShow.tick
-                if (!pausedState && mapVisibleState && !alertActiveState &&
-                    !showNearbySheltersState && deathAnimationEnabledState &&
-                    lifecycle.currentState >= Lifecycle.State.STARTED
-                ) {
-                    mapScope.launch { deathFx.replay(flourishShow.records) }
+                when {
+                    !deathAnimationEnabledState -> {
+                        // Permanent blocker: tell the user why nothing played.
+                        showToast(
+                            context,
+                            String.format(strings.flourishDisabledToastFormat, strings.deathAnimationTitle)
+                        )
+                        DebugLog.recordFlourish(DebugLogReason.TOGGLE_OFF, System.currentTimeMillis())
+                    }
+                    alertActiveState -> {
+                        // Safety outranks flourish: drop silently, but audit it.
+                        DebugLog.recordFlourish(DebugLogReason.COALESCED, System.currentTimeMillis())
+                    }
+                    else -> deathFx.startReplay(flourishShow.records)
                 }
             }
         }

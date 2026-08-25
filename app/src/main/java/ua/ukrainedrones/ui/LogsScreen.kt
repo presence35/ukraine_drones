@@ -20,11 +20,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -32,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -70,19 +73,13 @@ private const val VISIBLE_INITIAL = 25
 private const val VISIBLE_STEP = 50
 
 /** Which data source to show. */
-private enum class LogsFilter { MINE, CONNECTIONS, DECISIONS }
+private enum class LogsFilter { DECISIONS, CONNECTIONS }
 
 /** How to group decision rows. */
-private enum class GroupBy { FLAT, PROXIMITY, TYPE, OUTCOME }
-
-/** Row (and flat-list) ordering. Group order stays canonical in every mode. */
-private enum class SortOrder { NEWEST, OLDEST }
-
-/** Show only notifications that were actually posted, only suppressed ones, or everything. */
-private enum class OutcomeFilter { ALL, SHOWN, NOT_SHOWN }
+private enum class GroupBy { TIMELINE, PROXIMITY, TYPE }
 
 /** Accent for a group header. */
-private enum class GroupAccent { OFFICIAL, RED, YELLOW, OBLAST, LEFT, SHOWN, NOT_SHOWN }
+private enum class GroupAccent { OFFICIAL, RED, YELLOW, OBLAST, LEFT }
 
 /** Rows of a single threat type inside a proximity group. */
 private data class TypeSubGroup(
@@ -90,7 +87,7 @@ private data class TypeSubGroup(
     val entries: List<DebugLogEntry>
 )
 
-/** One rendered group of decision rows. [title] null = flat list, no header. */
+/** One rendered group of decision rows. [title] null = timeline list, no header. */
 private data class LogGroupSpec(
     val id: String,
     val title: String?,
@@ -115,10 +112,10 @@ private data class ConnectionRow(val entry: ConnLogEntry) : LogRow {
 }
 
 /**
- * Logs screen: a single card list over the three log sources — "my" alerts (only rows where a
- * notification was actually shown), decisions (the audit trail), and connection episodes.
- * Decision views offer group-by (flat / proximity / type / outcome), newest-oldest sort and a
- * shown/not-shown outcome filter; a double arrow at the bottom reveals more rows.
+ * Logs screen: a single card list over the decision audit trail and connection episodes.
+ * The Decisions tab offers group-by (Timeline / Proximity / Type), a standard sort-direction
+ * toggle (newest or oldest first) and a "shown only" switch (only rows where a notification
+ * was actually shown); a double arrow at the bottom reveals more rows.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -132,11 +129,10 @@ fun LogsScreen(
     val connEntries by ConnectionLog.entries.collectAsState()
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    var filter by rememberSaveable { mutableStateOf(LogsFilter.MINE) }
-    var groupByDecision by rememberSaveable { mutableStateOf(GroupBy.PROXIMITY) }
-    var groupByMine by rememberSaveable { mutableStateOf(GroupBy.FLAT) }
-    var sortNewestFirst by rememberSaveable { mutableStateOf(true) }
-    var outcome by rememberSaveable { mutableStateOf(OutcomeFilter.ALL) }
+    var filter by rememberSaveable { mutableStateOf(LogsFilter.DECISIONS) }
+    var groupBy by rememberSaveable { mutableStateOf(GroupBy.PROXIMITY) }
+    var newestFirst by rememberSaveable { mutableStateOf(true) }
+    var shownOnly by rememberSaveable { mutableStateOf(true) }
     var visibleCount by remember { mutableIntStateOf(VISIBLE_INITIAL) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -146,12 +142,11 @@ fun LogsScreen(
     }
     // Rolling 24-hour window: decision rows older than a day drop off live.
     val window = entries.filter { now - it.atMillis < DebugLog.AUTO_CLEAR_AGE_MS }
-    val grouped = filter != LogsFilter.CONNECTIONS
-    val groupBy = if (filter == LogsFilter.MINE) groupByMine else groupByDecision
-    val rows: List<LogRow> = buildRows(filter, window, connEntries, now, grouped, groupBy, sortNewestFirst, outcome)
+    val isDecisions = filter == LogsFilter.DECISIONS
+    val rows: List<LogRow> = buildRows(filter, window, connEntries, now, isDecisions, newestFirst, shownOnly)
     val visible = rows.take(visibleCount)
     val hasMore = visibleCount < rows.size
-    val groups = if (grouped) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy) else emptyList()
+    val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy) else emptyList()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -175,20 +170,20 @@ fun LogsScreen(
                     visibleCount = VISIBLE_INITIAL
                 }
             }
-            if (grouped && visible.isNotEmpty()) {
+            if (isDecisions) {
                 item(key = "viewopts") {
                     ViewOptionsRow(
                         groupBy = groupBy,
-                        sortNewestFirst = sortNewestFirst,
-                        outcome = outcome,
+                        newestFirst = newestFirst,
+                        shownOnly = shownOnly,
                         s = s,
                         onGroupBy = {
-                            if (filter == LogsFilter.MINE) groupByMine = it else groupByDecision = it
+                            groupBy = it
                             visibleCount = VISIBLE_INITIAL
                         },
-                        onSortToggle = { sortNewestFirst = !sortNewestFirst },
-                        onOutcome = {
-                            outcome = it
+                        onSortToggle = { newestFirst = !newestFirst },
+                        onShownOnlyChange = {
+                            shownOnly = it
                             visibleCount = VISIBLE_INITIAL
                         }
                     )
@@ -197,11 +192,7 @@ fun LogsScreen(
             if (visible.isEmpty()) {
                 item {
                     Text(
-                        when (filter) {
-                            LogsFilter.MINE -> s.logsEmptyMine
-                            LogsFilter.CONNECTIONS -> s.logsEmptyConnections
-                            else -> s.debugLogEmpty
-                        },
+                        if (filter == LogsFilter.CONNECTIONS) s.logsEmptyConnections else s.debugLogEmpty,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -248,7 +239,7 @@ fun LogsScreen(
                         }
                     }
                 }
-                if (filter != LogsFilter.CONNECTIONS) {
+                if (isDecisions) {
                     item(key = "clear") {
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             TextButton(onClick = { scope.launch(Dispatchers.IO) { DebugLog.clear() } }) {
@@ -263,46 +254,41 @@ fun LogsScreen(
 }
 
 /**
- * Assemble the row list for the active filter, ordered per [sortNewestFirst]. Decision views
- * apply the outcome filter first; connection rows include the live in-progress episode.
+ * Assemble the row list for the active filter, ordered per [newestFirst]. The Decisions view
+ * drops rows whose notification was not shown when [shownOnly]; connection rows include the
+ * live in-progress episode.
  */
 private fun buildRows(
     filter: LogsFilter,
     decisions: List<DebugLogEntry>,
     connEntries: List<ConnLogEntry>,
     now: Long,
-    grouped: Boolean,
-    groupBy: GroupBy,
-    sortNewestFirst: Boolean,
-    outcome: OutcomeFilter
+    isDecisions: Boolean,
+    newestFirst: Boolean,
+    shownOnly: Boolean
 ): List<LogRow> {
-    val comparator = compareBy<LogRow> { it.atMillis }.let {
-        if (sortNewestFirst) it.reversed() else it
-    }
-    if (!grouped) {
+    if (!isDecisions) {
         val connRows = (ConnectionLog.currentEpisode(now)?.let { listOf(ConnectionRow(it)) }
             ?: emptyList()) + connEntries.map { ConnectionRow(it) }
-        return connRows.sortedWith(comparator)
+        return if (newestFirst) connRows.sortedByDescending { it.atMillis } else connRows.sortedBy { it.atMillis }
     }
-    val filtered = when (outcome) {
-        OutcomeFilter.ALL -> decisions
-        OutcomeFilter.SHOWN -> decisions.filter { it.notified }
-        OutcomeFilter.NOT_SHOWN -> decisions.filter { !it.notified }
-    }.map { DecisionRow(it) }
-    return filtered.sortedWith(comparator)
+    val filtered = if (shownOnly) decisions.filter { it.notified } else decisions
+    val rows = filtered.map { DecisionRow(it) }
+    return if (newestFirst) rows.sortedByDescending { it.atMillis } else rows.sortedBy { it.atMillis }
 }
 
 /**
  * Build the ordered group specs from sorted decision rows. Canonical group order regardless of
  * sort direction: proximity = official / red / yellow / oblast / left; type = official / types /
- * left; outcome = shown / not shown. Flat mode returns a single header-less spec.
+ * left. Timeline returns a single header-less spec.
  */
 private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGroupSpec> {
     if (rows.isEmpty()) return emptyList()
     return when (groupBy) {
-        GroupBy.FLAT -> listOf(LogGroupSpec("flat", null, null, null, rows, subTypes = false))
+        GroupBy.TIMELINE -> listOf(LogGroupSpec("timeline", null, null, null, rows, subTypes = false))
         GroupBy.PROXIMITY -> {
             val official = rows.filter { it.kind == DebugLogKind.OFFICIAL_ON || it.kind == DebugLogKind.OFFICIAL_OFF }
+            val flourish = rows.filter { it.kind == DebugLogKind.FLOURISH }
             val threat = rows.filter {
                 it.kind == DebugLogKind.ZONE_ENTER ||
                     it.kind == DebugLogKind.ZONE_EXIT ||
@@ -315,6 +301,7 @@ private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGr
             val oblast = rest.filter { it.tier == null }
             buildList {
                 if (official.isNotEmpty()) add(LogGroupSpec("official", "official", GroupAccent.OFFICIAL, null, official, subTypes = false))
+                if (flourish.isNotEmpty()) add(LogGroupSpec("flourish", "flourish", GroupAccent.LEFT, null, flourish, subTypes = false))
                 if (red.isNotEmpty()) add(LogGroupSpec("red", "red", GroupAccent.RED, null, red, subTypes = true))
                 if (yellow.isNotEmpty()) add(LogGroupSpec("yellow", "yellow", GroupAccent.YELLOW, null, yellow, subTypes = true))
                 if (oblast.isNotEmpty()) add(LogGroupSpec("oblast", "oblast", GroupAccent.OBLAST, null, oblast, subTypes = true))
@@ -323,6 +310,7 @@ private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGr
         }
         GroupBy.TYPE -> {
             val official = rows.filter { it.kind == DebugLogKind.OFFICIAL_ON || it.kind == DebugLogKind.OFFICIAL_OFF }
+            val flourish = rows.filter { it.kind == DebugLogKind.FLOURISH }
             val exits = rows.filter {
                 it.kind == DebugLogKind.ZONE_EXIT &&
                     it.kind != DebugLogKind.OFFICIAL_ON && it.kind != DebugLogKind.OFFICIAL_OFF
@@ -330,6 +318,7 @@ private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGr
             val typed = rows.filter { it !in official && it !in exits && it.threatType != null }
             buildList {
                 if (official.isNotEmpty()) add(LogGroupSpec("official", "official", GroupAccent.OFFICIAL, null, official, subTypes = false))
+                if (flourish.isNotEmpty()) add(LogGroupSpec("flourish", "flourish", GroupAccent.LEFT, null, flourish, subTypes = false))
                 typed.groupBy { it.threatType!! }
                     .entries
                     .sortedBy { it.key.ordinal }
@@ -339,21 +328,12 @@ private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGr
                 if (exits.isNotEmpty()) add(LogGroupSpec("left", "left", GroupAccent.LEFT, null, exits, subTypes = false))
             }
         }
-        GroupBy.OUTCOME -> {
-            val shown = rows.filter { it.notified }
-            val notShown = rows.filter { !it.notified }
-            buildList {
-                if (shown.isNotEmpty()) add(LogGroupSpec("shown", "shown", GroupAccent.SHOWN, null, shown, subTypes = false))
-                if (notShown.isNotEmpty()) add(LogGroupSpec("not-shown", "not-shown", GroupAccent.NOT_SHOWN, null, notShown, subTypes = false))
-            }
-        }
     }
 }
 
 @Composable
 private fun FilterRow(filter: LogsFilter, s: Strings.StringSet, onChange: (LogsFilter) -> Unit) {
     val options = listOf(
-        LogsFilter.MINE to s.logsFilterMine,
         LogsFilter.DECISIONS to s.logsFilterDecisions,
         LogsFilter.CONNECTIONS to s.logsFilterConnections
     )
@@ -376,12 +356,12 @@ private fun FilterRow(filter: LogsFilter, s: Strings.StringSet, onChange: (LogsF
 @Composable
 private fun ViewOptionsRow(
     groupBy: GroupBy,
-    sortNewestFirst: Boolean,
-    outcome: OutcomeFilter,
+    newestFirst: Boolean,
+    shownOnly: Boolean,
     s: Strings.StringSet,
     onGroupBy: (GroupBy) -> Unit,
     onSortToggle: () -> Unit,
-    onOutcome: (OutcomeFilter) -> Unit
+    onShownOnlyChange: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
         Row(
@@ -390,10 +370,9 @@ private fun ViewOptionsRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             val groupOptions = listOf(
-                GroupBy.FLAT to s.logsGroupFlat,
+                GroupBy.TIMELINE to s.logsGroupTimeline,
                 GroupBy.PROXIMITY to s.logsGroupProximity,
-                GroupBy.TYPE to s.logsGroupType,
-                GroupBy.OUTCOME to s.logsGroupOutcome
+                GroupBy.TYPE to s.logsGroupType
             )
             groupOptions.forEach { (value, label) ->
                 FilterChip(
@@ -405,24 +384,28 @@ private fun ViewOptionsRow(
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onSortToggle) {
                 Icon(
-                    if (sortNewestFirst) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                    imageVector = if (newestFirst) {
+                        Icons.Filled.ArrowDownward
+                    } else {
+                        Icons.Filled.ArrowUpward
+                    },
                     contentDescription = s.logsSortDesc
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val outcomeOptions = listOf(
-                OutcomeFilter.ALL to s.logsOutcomeAll,
-                OutcomeFilter.SHOWN to s.logsOutcomeShown,
-                OutcomeFilter.NOT_SHOWN to s.logsOutcomeNotShown
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                s.logsShownOnly,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
             )
-            outcomeOptions.forEach { (value, label) ->
-                FilterChip(
-                    selected = outcome == value,
-                    onClick = { onOutcome(value) },
-                    label = { Text(label) }
-                )
-            }
+            Switch(
+                checked = shownOnly,
+                onCheckedChange = onShownOnlyChange
+            )
         }
     }
 }
@@ -431,19 +414,17 @@ private fun ViewOptionsRow(
 private fun GroupHeader(group: LogGroupSpec, s: Strings.StringSet) {
     val accent = when (group.accent) {
         GroupAccent.OFFICIAL, GroupAccent.RED -> DebugRed
-        GroupAccent.YELLOW, GroupAccent.NOT_SHOWN -> DebugAmber
+        GroupAccent.YELLOW -> DebugAmber
         GroupAccent.OBLAST -> DebugBlue
-        GroupAccent.SHOWN -> DebugGreen
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val title = when (group.title) {
         "official" -> s.debugGroupOfficial
+        "flourish" -> s.debugKindFlourish
         "red" -> s.debugTierRed
         "yellow" -> s.debugTierYellow
         "oblast" -> s.logsProxOblast
         "left" -> s.debugGroupLeft
-        "shown" -> s.logsOutcomeShown
-        "not-shown" -> s.logsOutcomeNotShown
         else -> group.title ?: ""
     }
     Row(
@@ -558,6 +539,7 @@ private fun DebugLogKind.icon(): ImageVector = when (this) {
     DebugLogKind.ZONE_ENTER -> Icons.Filled.Warning
     DebugLogKind.ZONE_EXIT -> Icons.Filled.Close
     DebugLogKind.REGION_THREAT -> Icons.Filled.Place
+    DebugLogKind.FLOURISH -> Icons.Filled.Star
 }
 
 private fun DebugLogKind.label(
@@ -577,6 +559,7 @@ private fun DebugLogKind.label(
     DebugLogKind.REGION_THREAT -> localityText(locality, lang)?.let {
         String.format(s.debugKindRegionFormat, it)
     } ?: s.debugKindRegionThreat
+    DebugLogKind.FLOURISH -> s.debugKindFlourish
 }
 
 private fun localityText(locality: String?, lang: AppLanguage): String? =

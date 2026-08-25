@@ -246,19 +246,14 @@ object Strings {
         val alertAgeMinSuffix: String,
         val alertAgeHrSuffix: String,
         val logsTitle: String,
-        val logsFilterMine: String,
         val logsFilterConnections: String,
         val logsFilterDecisions: String,
         val logsShowMore: String,
-        val logsEmptyMine: String,
         val logsEmptyConnections: String,
-        val logsGroupFlat: String,
+        val logsGroupTimeline: String,
         val logsGroupProximity: String,
         val logsGroupType: String,
-        val logsGroupOutcome: String,
-        val logsOutcomeAll: String,
-        val logsOutcomeShown: String,
-        val logsOutcomeNotShown: String,
+        val logsShownOnly: String,
         val logsProxOblast: String,
         val logsSortDesc: String,
         val debugLogEmpty: String,
@@ -291,6 +286,7 @@ object Strings {
         val debugKindZoneEnter: String,
         val debugKindZoneExit: String,
         val debugKindRegionThreat: String,
+        val debugKindFlourish: String,
         val debugKindRegionFormat: String,
         val debugTierRed: String,
         val debugTierYellow: String,
@@ -462,7 +458,8 @@ object Strings {
         val fakeNeutralizingLabel: String,
         val fakeNeutralizingNote: String,
         val resolvingThreat: String,
-        val resolvingThreatsFormat: String
+        val resolvingThreatsFormat: String,
+        val flourishDisabledToastFormat: String
     )
 
     /** One-time explainer copy. [items] order: threatToggles, officialAlerts, sirenOverride,
@@ -791,19 +788,14 @@ object Strings {
         val alertAgeMinSuffix: String get() = misc.alertAgeMinSuffix
         val alertAgeHrSuffix: String get() = misc.alertAgeHrSuffix
         val logsTitle: String get() = misc.logsTitle
-        val logsFilterMine: String get() = misc.logsFilterMine
         val logsFilterConnections: String get() = misc.logsFilterConnections
         val logsFilterDecisions: String get() = misc.logsFilterDecisions
         val logsShowMore: String get() = misc.logsShowMore
-        val logsEmptyMine: String get() = misc.logsEmptyMine
         val logsEmptyConnections: String get() = misc.logsEmptyConnections
-        val logsGroupFlat: String get() = misc.logsGroupFlat
+        val logsGroupTimeline: String get() = misc.logsGroupTimeline
         val logsGroupProximity: String get() = misc.logsGroupProximity
         val logsGroupType: String get() = misc.logsGroupType
-        val logsGroupOutcome: String get() = misc.logsGroupOutcome
-        val logsOutcomeAll: String get() = misc.logsOutcomeAll
-        val logsOutcomeShown: String get() = misc.logsOutcomeShown
-        val logsOutcomeNotShown: String get() = misc.logsOutcomeNotShown
+        val logsShownOnly: String get() = misc.logsShownOnly
         val logsProxOblast: String get() = misc.logsProxOblast
         val logsSortDesc: String get() = misc.logsSortDesc
         val debugLogEmpty: String get() = misc.debugLogEmpty
@@ -836,6 +828,7 @@ object Strings {
         val debugKindZoneEnter: String get() = misc.debugKindZoneEnter
         val debugKindZoneExit: String get() = misc.debugKindZoneExit
         val debugKindRegionThreat: String get() = misc.debugKindRegionThreat
+        val debugKindFlourish: String get() = misc.debugKindFlourish
         val debugKindRegionFormat: String get() = misc.debugKindRegionFormat
         val debugTierRed: String get() = misc.debugTierRed
         val debugTierYellow: String get() = misc.debugTierYellow
@@ -994,6 +987,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val fakeNeutralizingNote: String get() = guide.fakeNeutralizingNote
         val resolvingThreat: String get() = guide.resolvingThreat
         val resolvingThreatsFormat: String get() = guide.resolvingThreatsFormat
+        val flourishDisabledToastFormat: String get() = guide.flourishDisabledToastFormat
         val explainerVisualLabel: String get() = explainers.visualLabel
         val explainerScenarioLabel: String get() = explainers.scenarioLabel
         val explainerGotIt: String get() = explainers.gotIt
@@ -1239,19 +1233,14 @@ val iconSetTitle: String get() = misc.iconSetTitle
         alertAgeMinSuffix = "хв",
         alertAgeHrSuffix = "год",
         logsTitle = "Журнал",
-        logsFilterMine = "Мої тривоги",
         logsFilterConnections = "З'єднання",
         logsFilterDecisions = "Рішення",
         logsShowMore = "Показати ще",
-        logsEmptyMine = "Для вас ще не лунали тривоги",
         logsEmptyConnections = "Змін з'єднання ще не було",
-        logsGroupFlat = "Список",
+        logsGroupTimeline = "Хронологія",
         logsGroupProximity = "Відстань",
         logsGroupType = "Тип",
-        logsGroupOutcome = "Результат",
-        logsOutcomeAll = "Усі",
-        logsOutcomeShown = "Показані",
-        logsOutcomeNotShown = "Не показані",
+        logsShownOnly = "Лише показані",
         logsProxOblast = "У області",
         logsSortDesc = "Новіші зверху / старіші зверху",
         debugLogEmpty = "Рішень ще не зафіксовано",
@@ -1284,6 +1273,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         debugKindZoneEnter = "Увійшла в зону",
         debugKindZoneExit = "Покинула зону",
         debugKindRegionThreat = "Загроза в регіоні",
+        debugKindFlourish = "Шоу знешкодження",
         debugKindRegionFormat = "Загроза у %1\$s",
         debugTierRed = "Червона зона",
         debugTierYellow = "Жовта зона",
@@ -1456,6 +1446,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         fakeNeutralizingNote = "Надсилаю сигнал у штаб…",
         resolvingThreat = "Знешкоджуємо загрозу",
         resolvingThreatsFormat = "Знешкоджуємо загрозу %1\$d з %2\$d",
+        flourishDisabledToastFormat = "Увімкніть «%1\$s» у налаштуваннях, щоб повторити шоу",
     )
 
     private fun uaExplainers() = ExplainerStrings(
@@ -1749,19 +1740,14 @@ alertBannerFormat = "%1\$s: alert",
         alertAgeMinSuffix = "min",
         alertAgeHrSuffix = "hr",
         logsTitle = "Logs",
-        logsFilterMine = "My alerts",
         logsFilterConnections = "Connections",
         logsFilterDecisions = "Decisions",
         logsShowMore = "Show more",
-        logsEmptyMine = "No notifications shown for you yet",
         logsEmptyConnections = "No connection changes yet",
-        logsGroupFlat = "Flat",
+        logsGroupTimeline = "Timeline",
         logsGroupProximity = "Proximity",
         logsGroupType = "Type",
-        logsGroupOutcome = "Outcome",
-        logsOutcomeAll = "All",
-        logsOutcomeShown = "Shown",
-        logsOutcomeNotShown = "Not shown",
+        logsShownOnly = "Shown only",
         logsProxOblast = "In oblast",
         logsSortDesc = "Toggle newest/oldest first",
         debugLogEmpty = "No decisions logged yet",
@@ -1794,6 +1780,7 @@ alertBannerFormat = "%1\$s: alert",
         debugKindZoneEnter = "Entered zone",
         debugKindZoneExit = "Left zone",
         debugKindRegionThreat = "Threat in region",
+        debugKindFlourish = "Shoot-down show",
         debugKindRegionFormat = "Threat in %1\$s",
         debugTierRed = "Red zone",
         debugTierYellow = "Yellow zone",
@@ -1966,6 +1953,7 @@ alertBannerFormat = "%1\$s: alert",
         fakeNeutralizingNote = "Sending signal to HQ…",
         resolvingThreat = "Resolving threat",
         resolvingThreatsFormat = "Resolving threat %1\$d of %2\$d",
+        flourishDisabledToastFormat = "Turn on \"%1\$s\" in Settings to replay the show",
     )
 
     private fun enExplainers() = ExplainerStrings(

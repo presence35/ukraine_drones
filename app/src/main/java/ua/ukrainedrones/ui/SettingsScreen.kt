@@ -739,7 +739,7 @@ fun SettingsScreen(
                         flash = flashId == "officialAlerts"
                     )
                     AnimatedVisibility(visible = officialAlertsEnabled) {
-                        Column(modifier = Modifier.padding(start = 24.dp)) {
+                        Column(modifier = Modifier.padding(start = 40.dp)) {
                             AlertToggleRow(
                                 title = s.officialAlertScopeTitle,
                                 description = s.officialAlertScopeDesc,
@@ -1097,6 +1097,14 @@ fun SettingsScreen(
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // Haptic press feedback
+                    AlertToggleRow(
+                        title = s.hapticsTitle,
+                        description = s.hapticsDesc,
+                        checked = hapticsEnabled,
+                        onCheckedChange = onHapticsEnabledChange
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Reset tip counters
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                         OutlinedButton(
@@ -1168,7 +1176,7 @@ fun SettingsScreen(
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     AnimatedVisibility(visible = deathAnimationEnabled) {
-                        Column(modifier = Modifier.padding(start = 24.dp)) {
+                        Column(modifier = Modifier.padding(start = 40.dp)) {
                             AlertToggleRow(
                                 title = s.followBulletTitle,
                                 description = s.followBulletDesc,
@@ -1192,7 +1200,7 @@ fun SettingsScreen(
                     )
                     if (neutralizedTallyEnabled) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Box(modifier = Modifier.padding(start = 24.dp)) {
+                        Box(modifier = Modifier.padding(start = 40.dp)) {
                             AlertToggleRow(
                                 title = s.neutralizedTallyAllUkraineTitle,
                                 description = s.neutralizedTallyAllUkraineDesc,
@@ -1202,14 +1210,6 @@ fun SettingsScreen(
                             )
                         }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // Haptic press feedback
-                    AlertToggleRow(
-                        title = s.hapticsTitle,
-                        description = s.hapticsDesc,
-                        checked = hapticsEnabled,
-                        onCheckedChange = onHapticsEnabledChange
-                    )
                 }
             }
 
