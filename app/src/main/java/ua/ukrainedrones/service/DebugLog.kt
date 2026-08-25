@@ -145,16 +145,17 @@ object DebugLog {
 
     /**
      * Audit trail for the shoot-down flourish replay — tap OUTCOMES only (started /
-     * blocked by the animation toggle / dropped for a live alert), never per-bullet spam.
-     * [FIRED] = the show actually started; every other reason is a "why not".
+     * blocked by the animation toggle), never per-bullet spam. [FIRED] = the show actually
+     * started; every other reason is a "why not". [detail] is a short locale-neutral
+     * suffix (e.g. "7x2" = records×groups) shown as grey text on the row.
      */
-    fun recordFlourish(reason: DebugLogReason, now: Long) {
+    fun recordFlourish(reason: DebugLogReason, detail: String? = null, now: Long) {
         record(
             DebugLogEntry(
                 now, DebugLogKind.FLOURISH, night = false, sirenOverride = false,
                 vibrationLevel = null, notified = reason == DebugLogReason.FIRED,
                 reason = reason, threatId = null, threatType = null, tier = null,
-                distanceKm = null, locality = null
+                distanceKm = null, locality = detail
             )
         )
     }

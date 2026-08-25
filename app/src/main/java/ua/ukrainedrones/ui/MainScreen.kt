@@ -9,7 +9,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -998,7 +1001,7 @@ private fun MapScreen(
     var showNearbyShelters by remember { mutableStateOf(false) }
     var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
     var deathActive by remember { mutableStateOf(false) }
-    var replayProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var replayProgress by remember { mutableStateOf<ReplayProgress?>(null) }
 
     // Surface shelter-mode to the ViewModel so the resolved-threat flourish/card is
     // suppressed while the shelter overlay is up.
@@ -1254,14 +1257,51 @@ private fun MapScreen(
                     val total = ThreatType.values().sumOf {
                         (innerCounts[it] ?: 0) + (outerCounts[it] ?: 0)
                     }
-                    if (total == 0) {
-                        val replay = replayProgress
-                        val footerText = when {
-                            replay != null -> {
-                                val (cur, n) = replay
-                                if (n <= 1) s.resolvingThreat
-                                else String.format(s.resolvingThreatsFormat, cur, n)
+                    val replay = replayProgress
+                    if (replay != null) {
+                        // A tally replay owns the whole footer while it runs — the per-group
+                        // "Resolving threat X of N" replaces even the threat strip, with a
+                        // slim overall-progress bar along the footer's bottom edge; the strip
+                        // returns the moment the show ends.
+                        val barFraction by animateFloatAsState(
+                            targetValue = replay.fraction,
+                            animationSpec = tween(250),
+                            label = "flourishProgress"
+                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Text(
+                                if (replay.groupSize <= 1) s.resolvingThreat
+                                else String.format(s.resolvingThreatsFormat, replay.bulletInGroup, replay.groupSize),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFF9A825),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            // Slim progress bar: faint track, amber fill easing across the
+                            // bottom edge as the show advances.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(barFraction.coerceIn(0f, 1f))
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Color(0xFFF9A825))
+                                )
                             }
+                        }
+                    } else if (total == 0) {
+                        val footerText = when {
                             deathActive -> s.neutralizingLabel
                             else -> noThreatsMessage(
                                 uiState.language,
@@ -1272,7 +1312,7 @@ private fun MapScreen(
                         Text(
                             footerText,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (deathActive || replay != null) Color(0xFFF9A825) else Color(0xFF4CAF50),
+                            color = if (deathActive) Color(0xFFF9A825) else Color(0xFF4CAF50),
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1332,13 +1372,20 @@ private fun MapScreen(
             // top-centred and full-width. The measured height feeds the map so a selected or
             // struck threat is centred in the viewport left visible below the card.
             val smallCard = uiState.threatCardSize == ThreatCardSize.SMALL
-            Crossfade(
+            val animsOff = animationsOff()
+            AnimatedContent(
                 targetState = when {
                     uiState.selectedThreat != null -> 1
                     uiState.neutralizedThreat != null -> 2
                     else -> 0
                 },
-                animationSpec = tween(300),
+                // Fast fade-in so the card feels like it appears on the tap; the slower fade-out
+                // keeps the dismiss / neutralized transitions smooth. With system animations
+                // removed, snap instantly instead of running transition machinery.
+                transitionSpec = {
+                    if (animsOff) fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+                    else fadeIn(tween(100)) togetherWith fadeOut(tween(300))
+                },
                 label = "threatCardSwap",
                 modifier = Modifier
                     .align(if (smallCard) Alignment.TopStart else Alignment.TopCenter)

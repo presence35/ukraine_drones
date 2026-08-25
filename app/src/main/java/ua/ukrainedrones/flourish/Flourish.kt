@@ -14,6 +14,22 @@ data class FlourishShow(
 /** Gap between consecutive bullets in the tally-tap replay flourish. */
 const val FLOURISH_STAGGER_MS = 420L
 
+/**
+ * Replay playback position, emitted per bullet by the controller: [bulletInGroup]/[groupSize]
+ * drives the footer's "Resolving threat X of N" copy (per group, never a global total), while
+ * [bulletOverall]/[totalRecords] drives the footer's overall progress bar.
+ */
+data class ReplayProgress(
+    val bulletInGroup: Int,
+    val groupSize: Int,
+    val bulletOverall: Int,
+    val totalRecords: Int
+) {
+    /** Overall show completion 0f..1f for the footer progress bar. */
+    val fraction: Float
+        get() = if (totalRecords <= 0) 0f else bulletOverall.coerceAtMost(totalRecords) / totalRecords.toFloat()
+}
+
 /** Floor for the reveal frame's lat/lon span — stops over-zoom on a very close threat. */
 const val REVEAL_MIN_SPAN_LAT = 0.10
 const val REVEAL_MIN_SPAN_LON = 0.16

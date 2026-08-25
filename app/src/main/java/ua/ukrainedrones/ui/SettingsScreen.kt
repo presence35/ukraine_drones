@@ -1210,6 +1210,14 @@ fun SettingsScreen(
                             )
                         }
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // How-it-works + safety footnote for the whole flourish section.
+                    Text(
+                        s.justFunNote,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
                 }
             }
 
@@ -1808,14 +1816,6 @@ private fun ThreatSettingsCard(
                             )
                         }
                     }
-                    joke.takeIf { it.isNotBlank() }?.let {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "— $it",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                     Spacer(Modifier.height(16.dp))
                     Box(
                         modifier = Modifier
@@ -1833,8 +1833,16 @@ private fun ThreatSettingsCard(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .then(
-                                    if (type == ThreatType.UNKNOWN) Modifier.scale(1.35f) else Modifier
+                                    if (type == ThreatType.UNKNOWN) Modifier.scale(1.15f) else Modifier
                                 )
+                        )
+                    }
+                    joke.takeIf { it.isNotBlank() }?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

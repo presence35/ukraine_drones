@@ -306,6 +306,7 @@ object Strings {
         val neutralizedTallyAllUkraineDesc: String,
         val neutralizedScopeNearMe: String,
         val neutralizedScopeAllUkraine: String,
+        val justFunNote: String,
         val iconSetTitle: String,
         val iconSetPhotoLabel: String,
         val iconSetArmyLabel: String,
@@ -844,6 +845,7 @@ object Strings {
         val followBulletDesc: String get() = misc.followBulletDesc
         val neutralizedTallyTitle: String get() = misc.neutralizedTallyTitle
         val neutralizedTallyDesc: String get() = misc.neutralizedTallyDesc
+        val justFunNote: String get() = misc.justFunNote
         val neutralizedTallyAllUkraineTitle: String get() = misc.neutralizedTallyAllUkraineTitle
         val neutralizedTallyAllUkraineDesc: String get() = misc.neutralizedTallyAllUkraineDesc
         val neutralizedScopeNearMe: String get() = misc.neutralizedScopeNearMe
@@ -1293,6 +1295,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizedTallyAllUkraineDesc = "Враховувати знешкоджені загрози по всій Україні, а не лише у твоїй області.",
         neutralizedScopeNearMe = "поруч",
         neutralizedScopeAllUkraine = "по всій Україні",
+        justFunNote = "Це просто розвага — жодного впливу на моніторинг чи сповіщення. Під час активної тривоги повтор усе одно доступний (це ваш власний дотик), але якщо нова тривога почнеться посеред шоу — воно миттєво зникне, щоб сигнал володів екраном. У сумнівах довіряйте офіційній сирені, а не феєрверкам.",
         iconSetTitle = "Оберіть свої улюблені іконки загроз!",
         iconSetPhotoLabel = "Фото",
         iconSetArmyLabel = "Армія",
@@ -1800,6 +1803,7 @@ alertBannerFormat = "%1\$s: alert",
         neutralizedTallyAllUkraineDesc = "Also count neutralized threats anywhere in Ukraine, not just your oblast.",
         neutralizedScopeNearMe = "near you",
         neutralizedScopeAllUkraine = "across Ukraine",
+        justFunNote = "These are just for fun — they never affect monitoring or alerts. During a live air alert you can still replay a show (it's your own tap), but if a new alert starts mid-show it clears instantly so the siren owns your screen. When in doubt, trust the official siren over any fireworks.",
         iconSetTitle = "Choose your favourite threat icons!",
         iconSetPhotoLabel = "Photos",
         iconSetArmyLabel = "Army",

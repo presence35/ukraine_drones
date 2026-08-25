@@ -8,9 +8,23 @@ import org.junit.Test
 class CitiesTest {
 
     @Test
-    fun `no duplicate city names`() {
-        val names = Cities.ALL.map { it.nameUa }
-        assertEquals(names.size, names.distinct().size)
+    fun `same-named towns are distinct places far apart`() {
+        // Ukraine has a few same-named towns in different oblasts; entries may share a name
+        // only if they are genuinely different map places (well beyond label-collision range).
+        val groups = Cities.ALL.groupBy { it.nameUa }.filterValues { it.size > 1 }
+        for ((name, group) in groups) {
+            for (i in group.indices) {
+                for (j in i + 1 until group.size) {
+                    val a = group[i]
+                    val b = group[j]
+                    val km = distanceMeters(a.lat, a.lon, b.lat, b.lon) / 1000.0
+                    assertTrue("same name '$name' too close: ${a.nameUa} vs ${b.nameUa}", km >= 20.0)
+                }
+            }
+            assertEquals("name lookups must resolve to the largest holder", group.maxByOrNull { it.pop }, Cities.byUa[name])
+            assertTrue(Cities.uaToEn[name]!!.isNotBlank())
+            assertTrue(Cities.cityOblast.containsKey(name))
+        }
     }
 
     @Test
@@ -30,10 +44,20 @@ class CitiesTest {
 
     @Test
     fun `list is large enough for country-scale context`() {
-        val majors = Cities.ALL.count { it.major }
-        val minors = Cities.ALL.count { !it.major }
+        val majors = Cities.ALL.count { it.tier == CityTier.MAJOR }
+        val mediums = Cities.ALL.count { it.tier == CityTier.MEDIUM }
+        val minors = Cities.ALL.count { it.tier == CityTier.MINOR }
         assertEquals(26, majors)
-        assertTrue("expected ~300+ minors, got $minors", minors >= 300)
+        assertEquals(14, mediums)
+        assertTrue("expected ~400+ minors, got $minors", minors >= 400)
+    }
+
+    @Test
+    fun `every city is inside Ukraine's bounding box`() {
+        for (c in Cities.ALL) {
+            assertTrue("lat out of range for ${c.nameUa}: ${c.lat}", c.lat in 44.0..53.5)
+            assertTrue("lon out of range for ${c.nameUa}: ${c.lon}", c.lon in 22.0..41.0)
+        }
     }
 
     @Test
@@ -65,6 +89,5 @@ class CitiesTest {
         )
         assertNull(fa.token)
         assertEquals("", fa.bannerCityUa)
-        assertEquals("", fa.bannerCityEn)
     }
 }

@@ -46,10 +46,10 @@ class DeathFxController(
     // The running tally-tap replay, so a red alert can cancel it mid-show (clear()).
     private var replayJob: Job? = null
 
-    private val _replayProgress = MutableStateFlow<Pair<Int, Int>?>(null)
-    /** During the tally-tap replay: the current bullet (1-based) within the CURRENT group and
-     *  that group's size, so the footer can read "Resolving threat X of N" per group. */
-    val replayProgress: StateFlow<Pair<Int, Int>?> = _replayProgress.asStateFlow()
+    private val _replayProgress = MutableStateFlow<ReplayProgress?>(null)
+    /** During the tally-tap replay: per-group position for the footer copy + overall position
+     *  for its progress bar. */
+    val replayProgress: StateFlow<ReplayProgress?> = _replayProgress.asStateFlow()
 
     val active: StateFlow<Boolean> get() = overlay.active
     val isActive: Boolean get() = overlay.isActive
@@ -69,6 +69,7 @@ class DeathFxController(
     /** Launch the tally-tap replay on the controller's scope, replacing any show in flight. */
     fun startReplay(records: List<FlourishRecord>) {
         replayJob?.cancel()
+        _replayProgress.value = null
         replayJob = scope.launch { replay(records) }
     }
 
@@ -161,7 +162,11 @@ class DeathFxController(
         val mpp = TileSystem.GroundResolution(mapView.mapCenter.latitude, mapView.zoomLevelDouble)
         val groupDist = mpp * mapView.width * 0.33f
         val groups = clusterFlourish(records, groupDist.toDouble())
-        DebugLog.recordFlourish(DebugLogReason.FIRED, System.currentTimeMillis())
+        DebugLog.recordFlourish(
+            DebugLogReason.FIRED,
+            detail = "${records.size}x${groups.size}",
+            now = System.currentTimeMillis()
+        )
         var index = 0
         groups.forEachIndexed { gi, group ->
             // Centre + zoom onto this group only (with margin).
@@ -173,9 +178,15 @@ class DeathFxController(
                 index++
                 val anchor = GeoPoint(rec.lat, rec.lon)
                 val icon = iconFor(rec.type)
-                // Per-group progress (1-based within the current group) so the footer reads
-                // "Resolving threat X of N" — a fresh 1..N for each cluster, never a global total.
-                _replayProgress.value = (groupIndex + 1) to group.size
+                // Per-group copy (1-based within the current group) for "Resolving threat X of N" — a
+                // fresh 1..N for each cluster, never a global total — plus overall position
+                // for the footer's progress bar.
+                _replayProgress.value = ReplayProgress(
+                    bulletInGroup = groupIndex + 1,
+                    groupSize = group.size,
+                    bulletOverall = index,
+                    totalRecords = records.size
+                )
                 overlay.spawn(
                     id = "flourish:$index",
                     geo = anchor,

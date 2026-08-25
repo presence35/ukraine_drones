@@ -1,5 +1,14 @@
 package ua.ukrainedrones
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,9 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -160,6 +171,41 @@ fun ThreatPopupCard(
         null -> Color(0xFF9E9E9E)
     }
 
+    // Selection-change feedback: hold the title icon small while the body slides in (~140 ms),
+    // then pop it 0.4 → 1 with a slow bouncy spring, plus a haptic tick — whenever a different
+    // threat is selected (first open included). Stream refreshes keep the threat id, so they
+    // never re-trigger. Hoisted here so card-size toggles don't reset the pop. With system
+    // animations removed there is no pop at all — just the tick.
+    val hapticsEnabled = LocalHapticsEnabled.current
+    val appContext = LocalContext.current.applicationContext
+    val animsOff = animationsOff()
+    val iconScale = remember { Animatable(1f) }
+    var lastSelectedId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(threat.id, interactive) {
+        when {
+            !interactive -> {
+                iconScale.snapTo(1f)
+                lastSelectedId = threat.id
+            }
+            threat.id == lastSelectedId -> {}
+            else -> {
+                lastSelectedId = threat.id
+                if (hapticsEnabled) hapticTick(appContext)
+                if (!animsOff) {
+                    iconScale.snapTo(0.4f)
+                    kotlinx.coroutines.delay(140)
+                    iconScale.animateTo(
+                        1f,
+                        spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     // Neutralized state: a compact, non-interactive card that just announces the resolved
     // threat by its type — no pills, skull, region or close.
     if (neutralized) {
@@ -219,6 +265,19 @@ fun ThreatPopupCard(
         border = BorderStroke(2.dp, if (stale) Color(0xFF3A3A3A) else bandColor),
         tonalElevation = 8.dp
     ) {
+        AnimatedContent(
+            targetState = threat.id,
+            transitionSpec = {
+                if (animsOff) {
+                    fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+                } else {
+                    val enter = fadeIn(tween(180)) +
+                        slideInHorizontally(tween(180)) { it / 6 }
+                    enter togetherWith fadeOut(tween(100))
+                }
+            },
+            label = "threatBodySwap"
+        ) { _ ->
         when (cardSize) {
             // Narrow, top-left card: icon + type on the title row, the ETA + distance pills
             // in one row, horizontal reliability and threat-level bars underneath, and
@@ -247,12 +306,14 @@ fun ThreatPopupCard(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(verticalAlignment = Alignment.Top) {
-                                ThreatIcon(
-                                    type = threat.type,
-                                    set = iconSet,
-                                    size = 40.dp,
-                                    contentDescription = typeLabel
-                                )
+                                Box(modifier = Modifier.scale(iconScale.value)) {
+                                    ThreatIcon(
+                                        type = threat.type,
+                                        set = iconSet,
+                                        size = 40.dp,
+                                        contentDescription = typeLabel
+                                    )
+                                }
                                 Spacer(Modifier.width(12.dp))
                                 Text(
                                     typeLabel,
@@ -305,12 +366,14 @@ fun ThreatPopupCard(
                 } else {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.Top) {
-                            ThreatIcon(
-                                type = threat.type,
-                                set = iconSet,
-                                size = 40.dp,
-                                contentDescription = typeLabel
-                            )
+                            Box(modifier = Modifier.scale(iconScale.value)) {
+                                ThreatIcon(
+                                    type = threat.type,
+                                    set = iconSet,
+                                    size = 40.dp,
+                                    contentDescription = typeLabel
+                                )
+                            }
                             Spacer(Modifier.width(12.dp))
                             Text(
                                 typeLabel,
@@ -346,12 +409,14 @@ fun ThreatPopupCard(
                     Column(modifier = Modifier.weight(1f)) {
                         // Header: icon, type + region/course, close.
                         Row(verticalAlignment = Alignment.Top) {
-                            ThreatIcon(
-                                type = threat.type,
-                                set = iconSet,
-                                size = 40.dp,
-                                contentDescription = typeLabel
-                            )
+                            Box(modifier = Modifier.scale(iconScale.value)) {
+                                ThreatIcon(
+                                    type = threat.type,
+                                    set = iconSet,
+                                    size = 40.dp,
+                                    contentDescription = typeLabel
+                                )
+                            }
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -468,6 +533,7 @@ fun ThreatPopupCard(
                     ThreatLevelGauge(level = threatLevel)
                 }
             }
+        }
         }
     }
 }

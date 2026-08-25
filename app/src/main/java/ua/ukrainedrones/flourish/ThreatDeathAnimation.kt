@@ -33,6 +33,11 @@ const val DEATH_EXPLOSION_START_MS = 2000L
  *  fades out across it. */
 const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
 
+/** Concurrent-death ceiling. A full 21-record replay at [ua.ukrainedrones.FLOURISH_STAGGER_MS]
+ *  spacing holds ~13 deaths alive at once (5s lifespan each), so the old hard-coded 6 was
+ *  silently eating bullets mid-show. */
+private const val MAX_DEATHS = 14
+
 /**
  * A dying threat. [icon] is the marker's own drawable, so the icon keeps rendering here through
  * the bullet flight and vanishes the instant the explosion starts (the threat re-draws on the
@@ -90,7 +95,7 @@ class ThreatDeathOverlay : Overlay() {
         rotationDeg: Float = 0f,
         alpha: Float = 1f
     ) {
-        if (deaths.size >= 6) return
+        if (deaths.size >= MAX_DEATHS) return
         deaths.add(
             ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, dud = false)
         )
@@ -100,7 +105,7 @@ class ThreatDeathOverlay : Overlay() {
     /** Follow-up projectile for an already-destroyed threat: no icon, never explodes, just
      *  flies through and off-screen. Without an [origin] there's nothing to fly, so skip. */
     fun spawnDud(id: String?, geo: GeoPoint, origin: GeoPoint?) {
-        if (origin == null || deaths.size >= 6) return
+        if (origin == null || deaths.size >= MAX_DEATHS) return
         deaths.add(
             ActiveDeath(id, geo, origin, SystemClock.elapsedRealtime(), null, 0f, 1f, dud = true)
         )
@@ -121,10 +126,38 @@ class ThreatDeathOverlay : Overlay() {
     private val flashPaint = Paint().apply { isAntiAlias = true }
     private val sparkPaint = Paint().apply { isAntiAlias = true }
     private val bulletPaint = Paint().apply { isAntiAlias = true }
+    // Explosion glow, pre-rendered once per density instead of allocating a RadialGradient
+    // every frame per exploding death (the old per-frame shader churn was the jank source).
+    private var glowBitmap: Bitmap? = null
     private val reuse = android.graphics.Point()
     private val reuseOrigin = android.graphics.Point()
+    private val reuseRect = RectF()
 
     private var bulletBitmap: Bitmap? = null
+
+    /** White-hot core -> amber -> transparent radial glow, rendered once and scaled per frame. */
+    private fun explosionGlow(density: Float): Bitmap {
+        glowBitmap?.let { return it }
+        val size = (96 * density).toInt().coerceAtLeast(32)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val half = size / 2f
+        c.drawCircle(half, half, half, Paint().apply {
+            isAntiAlias = true
+            shader = RadialGradient(
+                half, half, half,
+                intArrayOf(
+                    Color.argb(255, 255, 229, 127),
+                    Color.argb(200, 255, 152, 0),
+                    Color.argb(0, 255, 152, 0)
+                ),
+                floatArrayOf(0f, 0.6f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        })
+        glowBitmap = bmp
+        return bmp
+    }
 
     override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
         if (shadow) return
@@ -247,18 +280,12 @@ class ThreatDeathOverlay : Overlay() {
                 val maxR = 46f * density
                 val br = maxR * e
                 val fade = 1f - e
-                flashPaint.shader = RadialGradient(
-                    x, y, br.coerceAtLeast(1f),
-                    intArrayOf(
-                        Color.argb((255 * fade).toInt(), 255, 229, 127),
-                        Color.argb((200 * fade).toInt(), 255, 152, 0),
-                        Color.argb(0, 255, 152, 0)
-                    ),
-                    floatArrayOf(0f, 0.6f, 1f),
-                    Shader.TileMode.CLAMP
-                )
-                canvas.drawCircle(x, y, br, flashPaint)
-                flashPaint.shader = null
+                // Pre-rendered glow sprite scaled to the blast radius — no per-frame shader.
+                val glow = explosionGlow(density)
+                flashPaint.alpha = (255 * fade).toInt()
+                reuseRect.set(x - br, y - br, x + br, y + br)
+                canvas.drawBitmap(glow, null, reuseRect, flashPaint)
+                flashPaint.alpha = 255
                 flashPaint.color = Color.argb((230 * fade).toInt(), 255, 255, 255)
                 canvas.drawCircle(x, y, br * 0.3f, flashPaint)
                 ringPaint.color = Color.argb((255 * fade).toInt(), 255, 213, 0)

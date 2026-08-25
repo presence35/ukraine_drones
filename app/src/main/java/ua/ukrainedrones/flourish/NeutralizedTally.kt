@@ -36,10 +36,18 @@ class NeutralizedTally(
     private data class ResolvedRecord(val lat: Double, val lon: Double, val type: ThreatType)
     private val resolvedMemory = ArrayDeque<ResolvedRecord>()
 
+    // NEPTUN re-sends resolutions (the same re-send the map's dud mechanism guards against) —
+    // remember recent removal ids so a duplicate frame neither inflates the count nor plants
+    // two memory records at the same spot ("two bullets, one threat").
+    private val seenRemovalIds = ArrayDeque<String>()
+
     /** A server-driven resolution just arrived: count it into the tally and remember it for the
      *  replay. Keeps the last 21 (the tally count itself can run much higher after a long
      *  absence — the replay only needs enough to be fun, not exhaustive). */
     fun onResolved(removed: ThreatRemoved, lang: AppLanguage) {
+        if (seenRemovalIds.contains(removed.id)) return
+        seenRemovalIds.addLast(removed.id)
+        while (seenRemovalIds.size > 64) seenRemovalIds.removeFirst()
         neutralizedCount++
         lastNeutralizedType = removed.type
         resolvedMemory.addLast(ResolvedRecord(removed.lat, removed.lon, removed.type))

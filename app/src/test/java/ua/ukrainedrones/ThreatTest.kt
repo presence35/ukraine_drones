@@ -214,7 +214,8 @@ class ThreatTest {
 
     @Test
     fun `courseDeg falls back to pseudo-course when the message names no known place`() {
-        val t = threat(explanationShort = "БпЛА курсом на Золоте")
+        // "Золоте" joined the city dictionary, so use a place that can never resolve.
+        val t = threat(explanationShort = "БпЛА курсом на Атлантиду")
         assertEquals(Threat.fallbackCourse("t1"), t.courseDeg, 1e-9)
     }
 
