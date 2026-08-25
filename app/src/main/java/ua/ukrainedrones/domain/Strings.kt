@@ -294,6 +294,10 @@ object Strings {
         val additionalSettingsTitle: String,
         val showMapScaleTitle: String,
         val showMapScaleDesc: String,
+        val cityLabelsTitle: String,
+        val cityLabelsDesc: String,
+        val mediumCitiesChip: String,
+        val smallCitiesChip: String,
         val calmMessagesTitle: String,
         val calmMessagesDesc: String,
         val deathAnimationTitle: String,
@@ -835,6 +839,10 @@ object Strings {
         val additionalSettingsTitle: String get() = misc.additionalSettingsTitle
         val showMapScaleTitle: String get() = misc.showMapScaleTitle
         val showMapScaleDesc: String get() = misc.showMapScaleDesc
+        val cityLabelsTitle: String get() = misc.cityLabelsTitle
+        val cityLabelsDesc: String get() = misc.cityLabelsDesc
+        val mediumCitiesChip: String get() = misc.mediumCitiesChip
+        val smallCitiesChip: String get() = misc.smallCitiesChip
         val calmMessagesTitle: String get() = misc.calmMessagesTitle
         val calmMessagesDesc: String get() = misc.calmMessagesDesc
         val deathAnimationTitle: String get() = misc.deathAnimationTitle
@@ -1279,6 +1287,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         additionalSettingsTitle = "Додаткові налаштування",
         showMapScaleTitle = "Показати масштаб",
         showMapScaleDesc = "Масштабна шкала в нижньому правому куті карти.",
+        cityLabelsTitle = "Міста на карті",
+        cityLabelsDesc = "Підписи середніх і дрібних міст.",
+        mediumCitiesChip = "Середні",
+        smallCitiesChip = "Дрібні",
         calmMessagesTitle = "Заспокійливі повідомлення",
         calmMessagesDesc = "Показувати короткі підбадьорювання в нижній панелі, коли загроз немає. Вимкни, щоб залишати лише «Немає актуальних загроз».",
         deathAnimationTitle = "Збиття загрози",
@@ -1785,6 +1797,10 @@ alertBannerFormat = "%1\$s: alert",
         additionalSettingsTitle = "Additional settings",
         showMapScaleTitle = "Show scale",
         showMapScaleDesc = "Scale bar in the map's bottom-right corner.",
+        cityLabelsTitle = "City labels",
+        cityLabelsDesc = "Labels for medium and small towns.",
+        mediumCitiesChip = "Mid-size",
+        smallCitiesChip = "Small",
         calmMessagesTitle = "Calm messages",
         calmMessagesDesc = "Show short encouragements in the bottom bar when there are no threats. Turn off to just say \"No relevant threats\".",
         deathAnimationTitle = "Shoot-down animation",

@@ -412,6 +412,8 @@ fun NeptunMapView(
         uiState.pinnedCity?.nameUa,
         uiState.focusLocation,
         uiState.focusOblastAlertActive,
+        uiState.showMediumCities,
+        uiState.showSmallCities,
         showNearbyShelters,
         selectedShelter?.shelter?.id,
         uiState.redCities,
@@ -424,6 +426,8 @@ fun NeptunMapView(
             append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
             append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
             append('O').append(uiState.focusOblastAlertActive)
+            append('M').append(uiState.showMediumCities)
+            append('N').append(uiState.showSmallCities)
             append('S').append(showNearbyShelters)
             if (showNearbyShelters) {
                 append('L').append(selectedShelter?.shelter?.id)
@@ -713,7 +717,10 @@ fun NeptunMapView(
 
                 // City labels (English names on top of label-free tiles)
                 mapView.overlays.add(
-                    CityLabelOverlay(context, lang, uiState.redCities)
+                    CityLabelOverlay(
+                        context, lang, uiState.redCities,
+                        uiState.showMediumCities, uiState.showSmallCities
+                    )
                 )
 
                 // Focus-centered alert zones: yellow ring (outer) and red circle (inner) for

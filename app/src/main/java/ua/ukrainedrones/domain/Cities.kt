@@ -654,13 +654,17 @@ fun focusAttribution(followMe: Boolean, userLocation: LatLng?, pinned: City?): F
     }
 }
 
-/** Draws city names in the current language, sized to zoom level. Cities in [redCityNames]
- *  (by Ukrainian name) are drawn red — the set already respects the official-alert scope
- *  (whole oblast by default, city-level when the City scope is on). */
+/** Draws city names in the current language, sized to zoom level. MAJOR labels always show;
+ *  MEDIUM/MINOR respect the Settings toggles ([showMediumCities] / [showSmallCities], both on
+ *  by default). Cities in [redCityNames] (by Ukrainian name) are drawn red — the set already
+ *  respects the official-alert scope (whole oblast by default, city-level when the City scope
+ *  is on). */
 class CityLabelOverlay(
     context: Context,
     private val lang: AppLanguage,
-    private val redCityNames: Set<String> = emptySet()
+    private val redCityNames: Set<String> = emptySet(),
+    private val showMediumCities: Boolean = true,
+    private val showSmallCities: Boolean = true
 ) : Overlay() {
 
     private val density = context.resources.displayMetrics.density
@@ -679,8 +683,8 @@ class CityLabelOverlay(
         for (c in Cities.ALL) {
             val minZoom = when (c.tier) {
                 CityTier.MAJOR -> 4.0
-                CityTier.MEDIUM -> 6.5
-                CityTier.MINOR -> 10.0
+                CityTier.MEDIUM -> if (showMediumCities) 6.5 else Double.MAX_VALUE
+                CityTier.MINOR -> if (showSmallCities) 10.0 else Double.MAX_VALUE
             }
             if (zoom < minZoom) continue
             mapView.projection.toPixels(GeoPoint(c.lat, c.lon), reuse)

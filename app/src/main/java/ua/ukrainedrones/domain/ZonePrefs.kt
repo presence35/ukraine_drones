@@ -49,6 +49,8 @@ class ZonePrefs(private val context: Context) {
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
     private val threatIconSetKey = stringPreferencesKey("threat_icon_set")
     private val showMapScaleKey = booleanPreferencesKey("show_map_scale")
+    private val showMediumCitiesKey = booleanPreferencesKey("show_medium_cities")
+    private val showSmallCitiesKey = booleanPreferencesKey("show_small_cities")
     private val deathAnimationEnabledKey = booleanPreferencesKey("death_animation_enabled")
     private val followBulletKey = booleanPreferencesKey("follow_bullet")
     private val neutralizedTallyEnabledKey = booleanPreferencesKey("neutralized_tally_enabled")
@@ -364,6 +366,22 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setShowMapScale(show: Boolean) {
         context.dataStore.edit { it[showMapScaleKey] = show }
+    }
+
+    /** Whether medium-tier city labels are drawn on the map — default on. */
+    fun showMediumCities(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[showMediumCitiesKey] ?: true }
+
+    suspend fun setShowMediumCities(show: Boolean) {
+        context.dataStore.edit { it[showMediumCitiesKey] = show }
+    }
+
+    /** Whether small-city labels are drawn on the map — default on. */
+    fun showSmallCities(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[showSmallCitiesKey] ?: true }
+
+    suspend fun setShowSmallCities(show: Boolean) {
+        context.dataStore.edit { it[showSmallCitiesKey] = show }
     }
 
     /** Whether the "Go to shelter" button shows on the map — default on. */

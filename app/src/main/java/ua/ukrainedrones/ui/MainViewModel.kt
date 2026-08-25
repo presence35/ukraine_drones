@@ -96,6 +96,8 @@ data class UiState(
     val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
     val iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     val showMapScale: Boolean = true,
+    val showMediumCities: Boolean = true,
+    val showSmallCities: Boolean = true,
     val deathAnimationEnabled: Boolean = true,
     val followBullet: Boolean = true,
     val neutralizedTallyEnabled: Boolean = true,
@@ -271,6 +273,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet,
         val showMapScale: Boolean,
+        val showMediumCities: Boolean,
+        val showSmallCities: Boolean,
         val deathAnimationEnabled: Boolean,
         val followBullet: Boolean,
         val neutralizedTallyEnabled: Boolean,
@@ -319,6 +323,8 @@ val fastGroupCollapsed: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
         val showMapScale: Boolean,
+        val showMediumCities: Boolean,
+        val showSmallCities: Boolean,
         val deathAnimationEnabled: Boolean,
         val followBullet: Boolean,
         val neutralizedTallyEnabled: Boolean,
@@ -378,6 +384,8 @@ val fastGroupCollapsed: Boolean,
             prefs.sirenOverride(),
             prefs.followMe(),
             prefs.showMapScale(),
+            prefs.showMediumCities(),
+            prefs.showSmallCities(),
             prefs.deathAnimationEnabled(),
             prefs.followBullet(),
             prefs.neutralizedTallyEnabled(),
@@ -388,7 +396,7 @@ val fastGroupCollapsed: Boolean,
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4], flags[5],
                 flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12],
-                flags[13], flags[14]
+                flags[13], flags[14], flags[15], flags[16]
             )
         },
         combine(
@@ -472,6 +480,8 @@ combine(
             cardSize = c.cardSize,
             iconSet = c.iconSet,
             showMapScale = b.showMapScale,
+            showMediumCities = b.showMediumCities,
+            showSmallCities = b.showSmallCities,
             deathAnimationEnabled = b.deathAnimationEnabled,
             followBullet = b.followBullet,
             neutralizedTallyEnabled = b.neutralizedTallyEnabled,
@@ -634,6 +644,8 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             threatCardSize = prefs.cardSize,
             iconSet = prefs.iconSet,
             showMapScale = prefs.showMapScale,
+            showMediumCities = prefs.showMediumCities,
+            showSmallCities = prefs.showSmallCities,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
             followBullet = prefs.followBullet,
             neutralizedTallyEnabled = prefs.neutralizedTallyEnabled,
@@ -1075,6 +1087,14 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
     fun setThreatIconSet(set: ThreatIconSet) {
         viewModelScope.launch { prefs.setThreatIconSet(set) }
+    }
+
+    fun setShowMediumCities(show: Boolean) {
+        viewModelScope.launch { prefs.setShowMediumCities(show) }
+    }
+
+    fun setShowSmallCities(show: Boolean) {
+        viewModelScope.launch { prefs.setShowSmallCities(show) }
     }
 
     fun setFastGroupCollapsed(collapsed: Boolean) {

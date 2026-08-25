@@ -366,6 +366,8 @@ fun SettingsScreen(
     threatCardSize: ThreatCardSize,
     iconSet: ThreatIconSet,
     showMapScale: Boolean,
+    showMediumCities: Boolean,
+    showSmallCities: Boolean,
     sheltersEnabled: Boolean,
     periodicGps: Boolean,
     calmMessagesEnabled: Boolean,
@@ -414,6 +416,8 @@ fun SettingsScreen(
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onShowMapScaleChange: (Boolean) -> Unit,
+    onShowMediumCitiesChange: (Boolean) -> Unit,
+    onShowSmallCitiesChange: (Boolean) -> Unit,
     onSheltersEnabledChange: (Boolean) -> Unit,
     onOpenShelterList: () -> Unit = {},
     onDeathAnimationChange: (Boolean) -> Unit,
@@ -1097,6 +1101,17 @@ fun SettingsScreen(
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    CityLabelTogglesRow(
+                        title = s.cityLabelsTitle,
+                        description = s.cityLabelsDesc,
+                        mediumChecked = showMediumCities,
+                        smallChecked = showSmallCities,
+                        mediumLabel = s.mediumCitiesChip,
+                        smallLabel = s.smallCitiesChip,
+                        onMediumChange = onShowMediumCitiesChange,
+                        onSmallChange = onShowSmallCitiesChange
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Haptic press feedback
                     AlertToggleRow(
                         title = s.hapticsTitle,
@@ -1680,6 +1695,62 @@ private fun AlertToggleRow(
             checked = checked,
             onCheckedChange = null,
             modifier = Modifier.scale(if (isPressed) 0.92f else 1f)
+        )
+    }
+}
+
+/** City-labels row: title/description with two independent FilterChips (medium / small towns),
+ *  each acting as its own on/off toggle. Both default on. */
+@Composable
+private fun CityLabelTogglesRow(
+    title: String,
+    description: String,
+    mediumChecked: Boolean,
+    smallChecked: Boolean,
+    mediumLabel: String,
+    smallLabel: String,
+    onMediumChange: (Boolean) -> Unit,
+    onSmallChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(3.dp))
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        FilterChip(
+            selected = mediumChecked,
+            onClick = { onMediumChange(!mediumChecked) },
+            label = { Text(mediumLabel, style = MaterialTheme.typography.labelLarge) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_city),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        )
+        FilterChip(
+            selected = smallChecked,
+            onClick = { onSmallChange(!smallChecked) },
+            label = { Text(smallLabel, style = MaterialTheme.typography.labelLarge) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_house),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         )
     }
 }
