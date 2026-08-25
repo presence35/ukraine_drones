@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import androidx.compose.runtime.Immutable
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.Projection
@@ -14,6 +15,7 @@ import org.osmdroid.views.overlay.Overlay
 enum class CityTier { MAJOR, MEDIUM, MINOR }
 
 /** A place name drawn on the map. Tier controls when the label appears ([CityLabelOverlay]). */
+@Immutable
 data class City(
     val nameUa: String,
     val lat: Double,

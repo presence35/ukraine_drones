@@ -1,5 +1,7 @@
 package ua.ukrainedrones
 
+import androidx.compose.runtime.Immutable
+
 /** The two alert tiers, most specific first: INNER (urgent siren) then OUTER (warning chime). */
 enum class ThreatZone { INNER, OUTER }
 
@@ -17,6 +19,7 @@ internal val FastThreatTypes = setOf(
  * [fastYellowMin] OUTER). Defaults: slow red 20 km, slow yellow 50 km, fast red 5 min,
  * fast yellow 20 min.
  */
+@Immutable
 data class ZoneParams(
     val slowRedKm: Int,
     val slowYellowKm: Int,

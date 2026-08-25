@@ -1,11 +1,14 @@
 package ua.ukrainedrones
 
+import androidx.compose.runtime.Immutable
 import org.osmdroid.util.BoundingBox
 
 /** A resolved threat remembered by the service for the tally-tap replay flourish. */
+@Immutable
 data class FlourishRecord(val lat: Double, val lon: Double, val type: ThreatType)
 
 /** One-shot replay show: the remembered resolutions to shoot down, in arrival order. */
+@Immutable
 data class FlourishShow(
     val tick: Int,
     val records: List<FlourishRecord>
@@ -19,6 +22,7 @@ const val FLOURISH_STAGGER_MS = 420L
  * drives the footer's "Resolving threat X of N" copy (per group, never a global total), while
  * [bulletOverall]/[totalRecords] drives the footer's overall progress bar.
  */
+@Immutable
 data class ReplayProgress(
     val bulletInGroup: Int,
     val groupSize: Int,

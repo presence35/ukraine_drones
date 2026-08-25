@@ -1,5 +1,6 @@
 package ua.ukrainedrones
 
+import androidx.compose.runtime.Immutable
 import org.osmdroid.util.GeoPoint
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -7,6 +8,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Simple lat/lon value (independent of any mapping library). */
+@Immutable
 data class LatLng(val lat: Double, val lon: Double)
 
 /** Where a speed estimate came from — affects how it's labelled in the popup. */

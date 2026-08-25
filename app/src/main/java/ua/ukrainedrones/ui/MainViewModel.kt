@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.text.SpannableString
 import android.text.style.StyleSpan
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import java.io.File
@@ -13,9 +14,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -104,12 +109,11 @@ data class UiState(
     val hapticsEnabled: Boolean = true,
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
     val mapVisible: Boolean = true,          // the map screen is the visible screen (not settings/shelters/guide)
-    val alertActive: Boolean = false,        // any threat or official alert live right now
-    val lastFrameAt: Long = 0,               // epoch millis of the last live frame — 0 until the feed settles
-    val now: Long = 0L                       // wall-clock epoch millis of this snapshot (shelter header age)
+    val alertActive: Boolean = false         // any threat or official alert live right now
 )
 
 /** One-shot request from a notification tap to bring the camera onto a threat. */
+@Immutable
 data class RevealRequest(
     val tick: Int,
     val id: String?,
@@ -118,6 +122,7 @@ data class RevealRequest(
 )
 
 /** Distance/ETA facts for the threat popup, computed from the predicted position. */
+@Immutable
 data class ThreatProximity(
     val predicted: LatLng,
     val distToUserKm: Double?,   // null when GPS unavailable
@@ -155,7 +160,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Bumped each time a Settings-open check finds an available update (remind-only or fresh). */
     private val updateReminderFlow = MutableStateFlow(0)
     val updateReminderTick: StateFlow<Int> get() = updateReminderFlow
-    private val nowFlow = MutableStateFlow(System.currentTimeMillis())
+    /** Sampled NEPTUN state for UI (120ms) — bounds recomposition rate during heavy streams.
+     *  AlertService still consumes the raw stream directly (mirror rule). */
+    @OptIn(FlowPreview::class)
+    private val neptunForUi = NeptunClient.state.sample(120)
+    /** Wall-clock epoch millis, updated once per second. UI components that need a live
+     *  timestamp (shelter fix age, calm message day count) collect this instead of reading
+     *  it from UiState — removing it from UiState lets StateFlow dedup no-op ticks. */
+    val now: StateFlow<Long> = MutableStateFlow(System.currentTimeMillis()).also { it ->
+        viewModelScope.launch { while (isActive) { delay(1000); it.value = System.currentTimeMillis() } }
+    }
+    /** Last NEPTUN frame timestamp, derived from the sampled UI stream. Collected by the
+     *  connection status sheet to show "last update Xs ago" without polluting UiState. */
+    val lastFrameAt: Flow<Long> = neptunForUi.map { it.lastFrameAt }.distinctUntilChanged()
     private val shelterIndexFlow = MutableStateFlow<ShelterIndex?>(null)
     /** Whether the map screen is the visible screen — the neutralizing animation and death
      *  flourish only run while it is, so no stale half-consumed animations play on return. */
@@ -174,14 +191,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        // 1s clock so stale threats expire off the map/counts in real time, not just on the
-        // next WebSocket frame.
-        viewModelScope.launch {
-            while (isActive) {
-                delay(1000)
-                nowFlow.value = System.currentTimeMillis()
-            }
-        }
         LocationTracker.start(getApplication())
         // Auto-check for updates at most once per day; pops only when no alert is active.
         autoCheckForUpdates(allowPopup = true)
@@ -286,7 +295,6 @@ val fastGroupCollapsed: Boolean,
         val userLocation: LatLng?,
         val gpsFixAvailable: Boolean,
         val selected: Threat?,
-        val now: Long,
         val reveal: RevealRequest?,
         val flourish: FlourishShow?,
         val neutralizedId: String?,
@@ -320,12 +328,11 @@ val fastGroupCollapsed: Boolean,
     )
 
     private val liveSnapshot = combine(
-        NeptunClient.state,
+        neptunForUi,
         zonesFlow,
         LocationTracker.location,
         LocationTracker.lastFixAtMs,
         selectedThreatFlow,
-        nowFlow,
         revealFlow,
         flourishFlow,
         neutralizedFlow,
@@ -338,17 +345,16 @@ val fastGroupCollapsed: Boolean,
         val location = values[2] as LatLng?
         val lastFix = values[3] as Long?
         val selected = values[4] as Threat?
-        val now = values[5] as Long
-        val reveal = values[6] as RevealRequest?
-        val flourish = values[7] as FlourishShow?
-        val neutralizedId = values[8] as String?
-        val fakeNeutralize = values[9] as Boolean
-        val mapVisible = values[10] as Boolean
-        val shelterModeActive = values[11] as Boolean
+        val reveal = values[5] as RevealRequest?
+        val flourish = values[6] as FlourishShow?
+        val neutralizedId = values[7] as String?
+        val fakeNeutralize = values[8] as Boolean
+        val mapVisible = values[9] as Boolean
+        val shelterModeActive = values[10] as Boolean
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, lastFix != null, selected, now, reveal, flourish, neutralizedId, fakeNeutralize, mapVisible, shelterModeActive
+            location, lastFix != null, selected, reveal, flourish, neutralizedId, fakeNeutralize, mapVisible, shelterModeActive
         )
     }
 
@@ -527,16 +533,22 @@ combine(
         emit(Unit)
     }.flowOn(Dispatchers.IO)
 
-val uiState: StateFlow<UiState> = combine(
+val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         seedFlow,
         liveSnapshot,
         prefsSnapshot,
         updateUiFlow,
-        shelterIndexFlow
-    ) { _, live, prefs, updateUi, shelterIndex ->
+        shelterIndexFlow,
+        now
+    ) { values ->
+        val live = values[1] as LiveSnapshot
+        val prefs = values[2] as PrefsSnapshot
+        val updateUi = values[3] as UpdateUi
+        val shelterIndex = values[4] as ShelterIndex?
+        val now = values[5] as Long
         val nightActive = isNightActive(
             NightConfig(prefs.night.window.enabled, prefs.night.window.startMin, prefs.night.window.endMin),
-            live.now
+            now
         )
         val nightZones = NightZones(
             prefs.night.zones.slowRedKm, prefs.night.zones.slowYellowKm,
@@ -572,7 +584,7 @@ val uiState: StateFlow<UiState> = combine(
                 Cities.ALL.firstOrNull { it.nameUa == name }
             },
             selected = live.selected,
-            now = live.now,
+            now = now,
             reveal = live.reveal,
             flourish = live.flourish,
             neutralizedId = live.neutralizedId,
@@ -754,7 +766,6 @@ val uiState: StateFlow<UiState> = combine(
             connected = neptun.connected,
             neptunDown = neptunDown,
             forceOffline = neptun.forceOffline,
-            lastFrameAt = neptun.lastFrameAt,
             threatsInner = inInner,
             threatsOuter = inOuter,
             mapThreats = mapThreats,
@@ -781,8 +792,7 @@ val uiState: StateFlow<UiState> = combine(
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
             flourish = flourish,
-            alertActive = alertActive,
-            now = now
+            alertActive = alertActive
         )
     }
 

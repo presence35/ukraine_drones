@@ -1,9 +1,11 @@
 package ua.ukrainedrones
 
+import androidx.compose.runtime.Immutable
 import org.json.JSONObject
 import java.time.Instant
 
 /** A single past coordinate fix of a threat's trail, with an optional timestamp. */
+@Immutable
 data class TrailPoint(
     val lat: Double,
     val lon: Double,
@@ -139,6 +141,7 @@ enum class Reliability { LOW, MEDIUM, HIGH, UNKNOWN;
     }
 }
 
+@Immutable
 data class Threat(
     val id: String,
     val type: ThreatType,

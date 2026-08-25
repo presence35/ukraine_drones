@@ -114,6 +114,26 @@ private fun fontScale(): Float = min(LocalDensity.current.fontScale, 1.5f)
 @Composable
 private fun fontAware(dp: Dp): Dp = dp * fontScale()
 
+/** Leaf composable that runs its own 1s clock and returns the formatted elapsed time
+ *  and stale flag for a threat. Isolated here so the parent card doesn't recompose every second. */
+@Composable
+private fun ThreatElapsedText(
+    threat: Threat,
+    strings: Strings.StringSet
+): Pair<String, Boolean> {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val stale = threat.isStale(now)
+    val elapsedText = if (stale) strings.lastSeenAgoFormat.format(formatElapsedMss(threat.updatedAtMillis, now))
+        else formatElapsedMss(threat.updatedAtMillis, now)
+    return elapsedText to stale
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ThreatPopupCard(
@@ -147,18 +167,8 @@ fun ThreatPopupCard(
     val displayRegion =
         if (lang == AppLanguage.EN) Transliteration.transliterate(regionText) else regionText
 
-    // Live 1s clock so the elapsed readout (and the stale "last seen" note) stays fresh.
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(1000)
-            now = System.currentTimeMillis()
-        }
-    }
-    val stale = threat.isStale(now)
-    val elapsedText =
-        if (stale) s.lastSeenAgoFormat.format(formatElapsedMss(threat.updatedAtMillis, now))
-        else formatElapsedMss(threat.updatedAtMillis, now)
+    // Elapsed time + stale flag from leaf composable (runs its own 1s clock, doesn't invalidate parent).
+    val (elapsedText, stale) = ThreatElapsedText(threat, s)
 
     val confirmations = threat.confirmations.takeIf { it > 0 }
 

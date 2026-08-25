@@ -89,7 +89,10 @@ private val AlertRed = Color(0xFFD32F2F)
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+    val now by viewModel.now.collectAsState()
+    val lastFrameAt by viewModel.lastFrameAt.collectAsState(initial = 0L)
     val context = LocalContext.current
+
     var screen by remember { mutableStateOf(Screen.MAP) }
     // The neutralizing card + map death flourish only run while the map is the visible
     // screen — off-map (Settings/Shelters/Guide) the popup just closes silently.
@@ -203,6 +206,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     Box(modifier = Modifier.fillMaxSize()) {
         MapScreen(
             uiState = uiState,
+            now = now,
             settingsOpen = screen == Screen.SETTINGS,
             mapVisible = screen == Screen.MAP,
             onOpenSettings = openSettings,
@@ -387,7 +391,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 index = uiState.shelterIndex,
                 withKids = uiState.sheltersWithKids,
                 onWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
-                now = uiState.now,
+                now = now,
                 onBack = { screen = if (sheltersFromSettings) Screen.SETTINGS else Screen.MAP }
             )
         }
@@ -448,7 +452,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         if (!uiState.alertActive) wizardOpenedDuringAlert = false
     }
     if (!uiState.languageChosen &&
-        (uiState.lastFrameAt > 0 || wizardSettleDeadline) &&
+        (lastFrameAt > 0 || wizardSettleDeadline) &&
         (!uiState.alertActive || wizardOpenedDuringAlert)
     ) {
         FirstLaunchWizard(
@@ -948,6 +952,7 @@ private fun WizardZoneButton(color: Color, contentDescription: String) {
 @Composable
 private fun MapScreen(
     uiState: UiState,
+    now: Long,
     settingsOpen: Boolean,
     mapVisible: Boolean,
     onOpenSettings: () -> Unit,
@@ -981,6 +986,7 @@ private fun MapScreen(
 ) {
     val s = Strings.get(uiState.language)
     val context = LocalContext.current
+
     val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
     // The settings gear rotates gently while the "open Settings" hint is active, drawing the
     // eye to it. Infinite transition = always animating, so the value is continuously observed;
@@ -1040,7 +1046,7 @@ private fun MapScreen(
             shelterZoomTick++
             // A fix younger than 5 minutes is fine to reuse — repeated toggling in a red
             // alert shouldn't hammer the GPS; the shelter list screen can force a fresh fix.
-            val fixAgeMs = lastPreciseFixMs?.let { uiState.now - it }
+            val fixAgeMs = lastPreciseFixMs?.let { now - it }
             if (fixAgeMs == null || fixAgeMs >= 5 * 60_000L) {
                 showToast(
                     context,
@@ -1310,7 +1316,7 @@ private fun MapScreen(
                             deathActive -> s.neutralizingLabel
                             else -> noThreatsMessage(
                                 uiState.language,
-                                uiState.now / 86_400_000L,
+                                now / 86_400_000L,
                                 uiState.calmMessagesEnabled
                             )
                         }

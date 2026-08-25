@@ -116,13 +116,14 @@ private fun sheltersBoundingBox(near: List<NearestShelter>): BoundingBox? {
     return BoundingBox(maxLat + pad, maxLon + pad, minLat - pad, minLon - pad)
 }
 
-private fun StringBuilder.appendThreatKey(t: Threat, now: Long) {
+private fun StringBuilder.appendThreatKey(t: Threat) {
     // Identity + lifecycle only. Continuously-changing fields (lat/lon/courseDeg) are
     // deliberately excluded: they churn on nearly every WebSocket frame during an alert,
     // defeating the key's whole purpose (avoid clears + full rebuilds). Position smoothing
     // and course/staleness rendering happen in-place in the 1s marker loop instead.
-    append(t.id).append('@').append(t.status).append('@')
-    append(if (t.isStale(now)) 'S' else 'L').append(';')
+    // Staleness is NOT included in the key (would churn on every tick) — marker loop
+    // handles dimming in-place via alpha.
+    append(t.id).append('@').append(t.status).append('@').append('L').append(';')
 }
 
 // Bounded cache for rendered marker-icon BITMAPS — key "type|iconSet|revealed". Rendering a
@@ -399,19 +400,37 @@ fun NeptunMapView(
     // Only rebuild overlays when the threat data actually changes. Pan/zoom and
     // unrelated recompositions (language, popup selection) must not clear + redraw
     // the map, which is what made the banner above it flicker.
-    val overlayKey = buildString {
-        append(lang).append('A').append(uiState.activeZone)
-        append('I').append(iconSet)
-        append('R').append(uiState.activeZoneParams.slowRedKm).append('Y').append(uiState.activeZoneParams.slowYellowKm)
-        append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
-        append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
-        append('O').append(uiState.focusOblastAlertActive)
-        append('S').append(showNearbyShelters)
-        if (showNearbyShelters) {
-            append('L').append(selectedShelter?.shelter?.id)
+    // Hoisted into remember so we only rebuild the key when its data dependencies change.
+    // Note: staleness is handled in-place by the marker loop (alpha), so we don't need
+    // currentTimeMillis in the key — that would defeat memoization.
+    val overlayKey = remember(
+        uiState.activeZone,
+        iconSet,
+        uiState.activeZoneParams.slowRedKm,
+        uiState.activeZoneParams.slowYellowKm,
+        uiState.followMe,
+        uiState.pinnedCity?.nameUa,
+        uiState.focusLocation,
+        uiState.focusOblastAlertActive,
+        showNearbyShelters,
+        selectedShelter?.shelter?.id,
+        uiState.redCities,
+        uiState.mapThreats
+    ) {
+        buildString {
+            append(lang).append('A').append(uiState.activeZone)
+            append('I').append(iconSet)
+            append('R').append(uiState.activeZoneParams.slowRedKm).append('Y').append(uiState.activeZoneParams.slowYellowKm)
+            append('F').append(uiState.followMe).append('P').append(uiState.pinnedCity?.nameUa)
+            append('G').append(uiState.focusLocation?.lat).append(',').append(uiState.focusLocation?.lon)
+            append('O').append(uiState.focusOblastAlertActive)
+            append('S').append(showNearbyShelters)
+            if (showNearbyShelters) {
+                append('L').append(selectedShelter?.shelter?.id)
+            }
+            for (city in uiState.redCities) append('C').append(city).append(';')
+            for (t in uiState.mapThreats) appendThreatKey(t) // staleness handled in marker loop
         }
-        for (city in uiState.redCities) append('C').append(city).append(';')
-        for (t in uiState.mapThreats) appendThreatKey(t, System.currentTimeMillis())
     }
     val lastOverlayKey = remember { mutableStateOf<String?>(null) }
     val lastFitUkraineTick = remember { mutableStateOf(-1) }

@@ -1,10 +1,12 @@
 package ua.ukrainedrones
 
+import androidx.compose.runtime.Immutable
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 
 /** Night-mode schedule window. Times are minutes since midnight (0–1439). */
+@Immutable
 data class NightConfig(
     val enabled: Boolean,
     val startMin: Int,
@@ -12,6 +14,7 @@ data class NightConfig(
 )
 
 /** The four independent armed bells: slow/fast x red/yellow. */
+@Immutable
 data class ZoneArmed(
     val slowRed: Boolean,
     val slowYellow: Boolean,
@@ -20,6 +23,7 @@ data class ZoneArmed(
 )
 
 /** Night-mode zone values: custom thresholds + armed bells, applied while the window is active. */
+@Immutable
 data class NightZones(
     val slowRedKm: Int,
     val slowYellowKm: Int,
