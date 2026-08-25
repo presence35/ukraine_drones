@@ -120,7 +120,10 @@ class DeathFxController(
      *  back to where the user was once the explosion has finished. It never scrolls to the
      *  launching city. Off: the camera stays still while the animation plays. A fresh strike
      *  replaces any pending return so rapid successive shots don't fight over the camera. */
-        fun followStrike(target: GeoPoint, followBullet: Boolean) {
+            fun followStrike(target: GeoPoint, followBullet: Boolean) {
+        // A running replay owns the camera (group jumps + precise return home) — a live
+        // resolution's follow-strike would fight its final pan with a competing animateTo.
+        if (replayJob?.isActive == true) return
         val mapView = mapView() ?: return
         if (mapView.width <= 0 || mapView.height <= 0 || !followBullet) return
         // Snapshot the coordinates: osmdroid's getMapCenter() returns its projection's reusable
@@ -177,16 +180,12 @@ class DeathFxController(
             detail = showDetail(records.size, groups.size),
             now = System.currentTimeMillis()
         )
-                        var index = 0
+                                var index = 0
         val lastGi = groups.lastIndex
         groups.forEachIndexed { gi, group ->
             val finalGroup = gi == lastGi
-            // Jump straight onto this group (no animated glide — bullets must never fly while
-            // the camera is still moving).
-            val box = flourishesBoundingBox(group, null)
-            runCatching { mapView.zoomToBoundingBox(box, false) }
-            // Pre-spawn EVERY target right now, with staggered fire times: their icons stand
-            // on-screen during the settle beat, so nothing pops up as its bullet launches.
+            // Pre-spawn EVERY target BEFORE the jump: their icons exist in the death list
+            // before the viewport changes, so nothing pops in after the camera lands.
             val settle = if (gi == 0) 350L else 250L
             val fireBase = SystemClock.elapsedRealtime() + settle
             group.forEachIndexed { k, rec ->
@@ -202,6 +201,11 @@ class DeathFxController(
                     fireAtDelayMs = settle + k * FLOURISH_STAGGER_MS
                 )
             }
+            // Jump straight onto this group (no animated glide — bullets must never fly while
+            // the camera is still moving), then re-point pending flights to the new edges.
+            val box = flourishesBoundingBox(group, null)
+            runCatching { mapView.zoomToBoundingBox(box, false) }
+            overlay.rebasePendingOrigins { randomEdgeOrigin() }
             mapView.invalidate()
             // Fire loop aligned to the pre-spawned schedule (drift-free vs the spawn clock):
             // shot k launches at fireBase + k*STAGGER; haptic + footer progress advance per shot.

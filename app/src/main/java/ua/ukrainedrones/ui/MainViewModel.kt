@@ -11,11 +11,13 @@ import androidx.lifecycle.viewModelScope
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -28,11 +30,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.osmdroid.util.GeoPoint
+import kotlin.random.Random
 
+@Immutable
 data class UiState(
     val connected: Boolean = false,
     val neptunDown: Boolean = false,                 // NEPTUN offline (real or simulated via test toggle)
     val forceOffline: Boolean = false,             // TEMP test toggle — simulate NEPTUN offline
+    val testMig: Boolean = false,                  // TEMP test toggle — synthetic MiG-31K injected
     val threatsInner: List<Threat> = emptyList(), // reaching within the red time tier
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
@@ -80,10 +85,6 @@ data class UiState(
     val pinnedCity: City? = null,
     val focusLocation: LatLng? = null,            // camera + zone center: GPS (follow) or pinned city
     val redCities: Set<String> = emptySet(),      // nameUa of cities shown red (scope-aware)
-    val selectedThreat: Threat? = null,
-    val selectedThreatInfo: ThreatProximity? = null,
-    val neutralizedThreat: Threat? = null,   // selected threat just resolved — fades out
-    val fakeNeutralize: Boolean = false,   // user-initiated neutralization (long-press) → show fake text
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
     val revealRequest: RevealRequest? = null,      // notification tap: pan the camera onto a threat
     val flourish: FlourishShow? = null,            // tally tap: replay the shot-down show
@@ -113,7 +114,21 @@ data class UiState(
     val hapticsEnabled: Boolean = true,
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
     val mapVisible: Boolean = true,          // the map screen is the visible screen (not settings/shelters/guide)
+    val shelterOverlayUp: Boolean = false,   // the shelter overlay is showing (suppresses flourish)
     val alertActive: Boolean = false         // any threat or official alert live right now
+)
+
+/**
+ * Popup-only state, deliberately OUTSIDE [UiState]: tapping a threat updates only this flow,
+ * so the header/map/footer scopes never recompose on selection. Derived from the selection
+ * flows + the latest UiState ambient values (focus/params/policy flags) — no duplicated logic.
+ */
+@Immutable
+data class SelectionUi(
+    val selected: Threat? = null,
+    val proximity: ThreatProximity? = null,
+    val neutralized: Threat? = null,   // resolved card while the death window plays
+    val fakeNeutralize: Boolean = false
 )
 
 /** One-shot request from a notification tap to bring the camera onto a threat. */
@@ -190,6 +205,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether the shelter overlay is showing on the map — the resolved-threat flourish and
      *  neutralizing card are suppressed while it is (nothing should steal the user's focus). */
     private val shelterModeFlow = MutableStateFlow(false)
+    /** Whether the app process is actually foregrounded (unlike [mapVisibleFlow], which tracks
+     *  the visible tab even when backgrounded) — the flyby auto-trigger only plays live, so an
+     *  off-phone user gets it on notification-tap reveal instead of it firing unseen. */
+    private val appForegroundFlow = MutableStateFlow(true)
     /** Whether the current neutralization is user-initiated (long-press) so we show the
      *  "fake" text instead of the real "neutralizing" copy. Cleared on selection change. */
     private val fakeNeutralizeFlow = MutableStateFlow(false)
@@ -306,11 +325,8 @@ val fastGroupCollapsed: Boolean,
         val fastYellowMin: Int,
         val userLocation: LatLng?,
         val gpsFixAvailable: Boolean,
-        val selected: Threat?,
         val reveal: RevealRequest?,
         val flourish: FlourishShow?,
-        val neutralizedId: String?,
-        val fakeNeutralize: Boolean,
         val mapVisible: Boolean,
         val shelterModeActive: Boolean
     )
@@ -346,29 +362,23 @@ val fastGroupCollapsed: Boolean,
         zonesFlow,
         LocationTracker.location,
         LocationTracker.lastFixAtMs,
-        selectedThreatFlow,
         revealFlow,
         flourishFlow,
-        neutralizedFlow,
         mapVisibleFlow,
-        shelterModeFlow,
-        fakeNeutralizeFlow
+        shelterModeFlow
     ) { values: Array<Any?> ->
         val neptun = values[0] as NeptunState
         val radii = values[1] as ZoneParams
         val location = values[2] as LatLng?
         val lastFix = values[3] as Long?
-        val selected = values[4] as Threat?
-        val reveal = values[5] as RevealRequest?
-        val flourish = values[6] as FlourishShow?
-        val neutralizedId = values[7] as String?
-        val fakeNeutralize = values[8] as Boolean
-        val mapVisible = values[9] as Boolean
-        val shelterModeActive = values[10] as Boolean
+        val reveal = values[4] as RevealRequest?
+        val flourish = values[5] as FlourishShow?
+        val mapVisible = values[6] as Boolean
+        val shelterModeActive = values[7] as Boolean
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, lastFix != null, selected, reveal, flourish, neutralizedId, fakeNeutralize, mapVisible, shelterModeActive
+            location, lastFix != null, reveal, flourish, mapVisible, shelterModeActive
         )
     }
 
@@ -601,20 +611,15 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             pinnedCity = prefs.pinnedCity?.let { name ->
                 Cities.ALL.firstOrNull { it.nameUa == name }
             },
-            selected = live.selected,
             now = now,
             reveal = live.reveal,
             flourish = live.flourish,
-            neutralizedId = live.neutralizedId,
-            fakeNeutralize = live.fakeNeutralize,
-            deathAnimationEnabled = prefs.deathAnimationEnabled,
-            mapVisible = live.mapVisible,
-            shelterModeActive = live.shelterModeActive,
             officialAlertCityScope = prefs.officialAlertCityScope
         ).copy(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
             latestVersion = updateUi.latestVersion,
+            testMig = live.neptun.testMig,
             disclaimerCollapsed = prefs.disclaimerCollapsed,
             disclaimerReadCount = prefs.disclaimerReadCount,
             slowRedArmed = prefs.slowRedArmed,
@@ -665,12 +670,15 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             periodicGps = prefs.periodicGps,
             calmMessagesEnabled = prefs.calmMessagesEnabled,
             hapticsEnabled = prefs.hapticsEnabled,
-            shelterIndex = shelterIndex
+            shelterIndex = shelterIndex,
+            shelterOverlayUp = live.shelterModeActive
         )
         // A fresh INNER AVIATION (bell on) plays one full-size pass across the viewport; the
-        // threat card opens when it lands (onFlybyFinished).
+        // threat card opens when it lands (onFlybyFinished). Only while genuinely foregrounded
+        // — a user away from the phone gets the flyby on notification-tap reveal instead.
         val flyby = AviationFlyby.nextShow(
-            uiState.threatsInner, flybyPlayedIds, uiState.focusLocation, live.mapVisible, flybyTick + 1
+            uiState.threatsInner, flybyPlayedIds,
+            live.mapVisible && appForegroundFlow.value, flybyTick + 1
         )
         if (flyby != null) {
             flybyTick++
@@ -678,11 +686,78 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             flybyFlow.value = flyby
         }
         uiState.copy(flyby = flybyFlow.value)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            UiState()
+        )
+
+    private data class SelectionInput(
+        val selected: Threat?,
+        val neutralizedId: String?,
+        val fakeNeutralize: Boolean,
+        val mapVisible: Boolean,
+        val shelterOverlayUp: Boolean
+    )
+
+    private val selectionInput = combine(
+        selectedThreatFlow,
+        neutralizedFlow,
+        fakeNeutralizeFlow,
+        mapVisibleFlow,
+        shelterModeFlow
+    ) { selected, neutralizedId, fake, mapVisible, shelterUp ->
+        SelectionInput(selected, neutralizedId, fake, mapVisible, shelterUp)
+    }
+
+    /**
+     * Popup state, derived cheaply per selection change (one map lookup + one proximity
+     * computation — the expensive evaluate() is NOT re-run). Re-derived on ambient UiState
+     * changes too, so focus/params/policy flags always match what the rest of the UI shows.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectionUi: StateFlow<SelectionUi> = selectionInput.flatMapLatest { sel ->
+        uiState.map { ui ->
+            val animOn = ui.deathAnimationEnabled
+            // Keep the selected threat pointer fresh (position/status may have updated)
+            val refreshed = sel.selected?.let { s -> NeptunClient.state.value.threats[s.id] }
+            val nowMs = System.currentTimeMillis()
+            // The selected threat is gone (removed by the server, marked resolved/area-only, a
+            // ghost past the hard cap, or long-pressed) — show a brief neutralized card.
+            val selectedGone = sel.selected != null && (
+                (refreshed?.let { t -> t.status == "resolved" || t.areaOnly || t.isGhost(nowMs) } ?: true) ||
+                    sel.selected.id == sel.neutralizedId
+                )
+            // With the death animation disabled the card never flips to the "Neutralized"
+            // compact form nor auto-dismisses; the flourish only runs while the map is visible
+            // and the shelter overlay is down (identical gating to the pre-split logic).
+            val neutralizedThreat =
+                if (FlourishPolicy.showNeutralizedCard(selectedGone, animOn, sel.mapVisible, sel.shelterOverlayUp)) sel.selected else null
+            SelectionUi(
+                selected = if (FlourishPolicy.dropSelection(selectedGone, animOn)) null else refreshed,
+                proximity = ThreatEvaluator.computeProximity(
+                    t = refreshed,
+                    focusLocation = ui.focusLocation,
+                    params = ui.activeZoneParams,
+                    now = nowMs
+                ),
+                neutralized = neutralizedThreat,
+                fakeNeutralize = sel.fakeNeutralize
+            )
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        UiState()
+        SelectionUi()
     )
+
+    /** Marker highlight feed for the map — selection without dragging the whole popup object around. */
+    val selectedThreatId: StateFlow<String?> = selectionUi
+        .map { it.selected?.id }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private fun buildUiState(
         neptun: NeptunState,
@@ -698,18 +773,11 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         gpsFixAvailable: Boolean,
         followMe: Boolean,
         pinnedCity: City?,
-        selected: Threat?,
         now: Long,
         reveal: RevealRequest?,
         flourish: FlourishShow?,
-        neutralizedId: String?,
-        fakeNeutralize: Boolean,
-        deathAnimationEnabled: Boolean,
-        mapVisible: Boolean,
-        shelterModeActive: Boolean,
         officialAlertCityScope: Boolean
     ): UiState {
-        val animOn = deathAnimationEnabled
         val params = effectiveParams
         // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
         // Before the first GPS fix the map still needs a complete first visual, so it anchors on
@@ -761,32 +829,8 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         val mapThreats = evaluation.mapThreats
         val threatScores = evaluation.threatScores
 
-        // Keep the selected threat pointer fresh (position/status may have updated)
-        val refreshedSelected = selected?.let { s -> neptun.threats[s.id] }
-        // The selected threat is gone (removed by the server, marked resolved/area-only, a ghost
-        // past the hard cap, or long-pressed) — show a brief neutralized card, then drop
-        // the selection.
-        val selectedGone = selected != null && (
-            (refreshedSelected?.let { t ->
-                t.status == "resolved" || t.areaOnly || t.isGhost(now)
-            } ?: true) || selected.id == neutralizedId
-            )
-        // With the death animation disabled the card never flips to the "Neutralized" compact
-        // form nor auto-dismisses: it stays open on the last-known snapshot until the user
-        // closes it, so nothing animates anywhere. The neutralize flourish also only runs while
-        // the map is the visible screen and the shelter overlay is down — during an alert it
-        // still plays because the threat was already on screen (the user was looking at it).
         val activeZone = evaluation.activeZone
         val alertActive = activeZone != null || focusOblastAlertActive
-        val neutralizedThreat =
-            if (FlourishPolicy.showNeutralizedCard(selectedGone, animOn, mapVisible, shelterModeActive)) selected else null
-
-        val proximity = ThreatEvaluator.computeProximity(
-            t = refreshedSelected,
-            focusLocation = focusLocation,
-            params = params,
-            now = now
-        )
 
         // Short socket blips (drops that recover inside the shared grace window) are invisible
         // here — the pill and status text stay "online" instead of flashing on every handoff.
@@ -816,10 +860,6 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             pinnedCity = pinnedCity,
             focusLocation = focusLocation,
             redCities = redCities,
-            selectedThreat = if (FlourishPolicy.dropSelection(selectedGone, animOn)) null else refreshedSelected,
-            selectedThreatInfo = proximity,
-            neutralizedThreat = neutralizedThreat,
-            fakeNeutralize = fakeNeutralize,
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
             flourish = flourish,
@@ -1023,6 +1063,9 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         }
     }
 
+    /** TEMP test toggle: inject a synthetic MiG-31K takeoff as if NEPTUN had sent it. */
+    fun setTestMig(on: Boolean) = NeptunClient.setTestMig(on)
+
     /** Pin the map to a city. Pinning auto-disables follow-me so the pin takes effect. */
     fun setPinnedCity(city: City?) {
         viewModelScope.launch {
@@ -1084,8 +1127,20 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         showToast(
             getApplication(),
             message,
-            cardVisible = uiState.value.mapVisible && uiState.value.selectedThreat != null
+            cardVisible = uiState.value.mapVisible && selectionUi.value.selected != null
         )
+    }
+
+    /** One-time hint (first 3 ejections ever): a modal/background cut a running or queued
+     *  shoot-down show — tell the user it will wait until they're back on the map. */
+    fun notifyFlourishEjected() {
+        viewModelScope.launch {
+            val remaining = prefs.flourishEjectHintRemaining().first()
+            if (remaining <= 0) return@launch
+            prefs.setFlourishEjectHintRemaining(remaining - 1)
+            val s = Strings.get(prefs.language().first())
+            showToast(getApplication(), s.flourishEjectToast, cardVisible = false)
+        }
     }
 
     fun setDisclaimerCollapsed(collapsed: Boolean) {
@@ -1179,13 +1234,16 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     }
 
     fun selectThreat(threat: Threat?) {
+        android.util.Log.d("PerfTrace", "tap selectThreat ${threat?.id} t=${System.currentTimeMillis()}")
         neutralizedFlow.value = null
         fakeNeutralizeFlow.value = false
         selectedThreatFlow.value = threat
     }
 
-    /** Flyby landed: open the threat card with the takeoff's details (no camera pan). */
+    /** Flyby landed: unmount the overlay (the contrail must not linger) and open the threat
+     *  card with the takeoff's details (no camera pan). */
     fun onFlybyFinished(threatId: String?) {
+        flybyFlow.value = null
         val t = threatId?.let { NeptunClient.state.value.threats[it] } ?: return
         selectThreat(t)
     }
@@ -1194,6 +1252,11 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     fun neutralizeThreat(id: String) {
         neutralizedFlow.value = id
         fakeNeutralizeFlow.value = true
+    }
+
+    /** Whether the app process is foregrounded — drives the flyby auto-trigger gate. */
+    fun setAppForeground(foreground: Boolean) {
+        appForegroundFlow.value = foreground
     }
 
     /**
@@ -1210,6 +1273,13 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             selectedThreatFlow.value = NeptunClient.state.value.threats[id]
         }
         revealFlow.value = RevealRequest(revealTick, id, lat, lon)
+        // A MiG-31K tap greets with a full flyby pass — every press, fresh random bearing.
+        // Marking it played also suppresses the live auto-trigger for the same id.
+        if (id != null && NeptunClient.state.value.threats[id]?.type == ThreatType.AVIATION) {
+            flybyPlayedIds.add(id)
+            flybyTick++
+            flybyFlow.value = AviationFlybyShow(flybyTick, id, Random.nextDouble(0.0, 360.0))
+        }
     }
 
     /** Tally-tap replay: ask the map to shoot down the remembered resolutions in sequence. */

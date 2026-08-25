@@ -37,6 +37,7 @@ data class NeptunState(
     val reconnectStartMillis: Long = 0L,
     val lastFrameAt: Long = 0,     // epoch millis of the last frame (any type) from the stream
     val forceOffline: Boolean = false,   // TEMP test toggle — simulate NEPTUN being offline
+    val testMig: Boolean = false,        // TEMP test toggle — a synthetic MiG-31K is injected
     /** Epoch millis when each id was last shot down by the user (map long-press). */
     val userShotAt: Map<String, Long> = emptyMap()
 ) {
@@ -163,6 +164,78 @@ object NeptunClient {
         // Turning the toggle back off while the socket is genuinely down must kick a real
         // reconnect — otherwise the toggle looks like it did nothing.
         if (!force && !_state.value.connected && !manuallyStopped) retryNow()
+    }
+
+    /** Serial number for the TEMP test MiG, so every enable is a fresh id (fresh siren + flyby). */
+    private var testMigSerial = 0
+    private var testMigId: String? = null
+    private var testMigRetireJob: Job? = null
+
+    /** How long the injected MiG stays live before it "flies on" and clears itself. */
+    private const val TEST_MIG_LINGER_MS = 20_000L
+
+    /**
+     * Plausible MiG-31K launch-airbase pins — varied so every run crosses the screen on a
+     * different bearing (the flyby aims along airbase→focus).
+     */
+    private val TEST_MIG_BASES = listOf(
+        49.83 to 36.75, // Chuhuiv area
+        46.05 to 38.35, // Primorsko-Akhtarsk area
+        48.35 to 42.50, // Morozovsk area
+        51.48 to 46.20  // Engels area
+    )
+
+    /**
+     * TEMP test toggle: inject a MiG-31K takeoff alert as if NEPTUN itself had sent it. The
+     * synthetic threat lives in the shared state, so the whole pipeline runs for real — zone
+     * tiering, siren/notification, debug log, widget, map marker and the flyby flourish.
+     *
+     * Lifecycle mirrors the real feed: ON behaves like an upsert from a random launch base
+     * (a fresh id per enable, so repeats are never deduped as a known zone); ~20 s later it
+     * "flies on" and silently leaves the feed — no shoot-down explosion — and the dialog
+     * switch flips itself back off. Toggling OFF early retires it like a "remove" frame
+     * (map plays its death animation). Session-only: nothing is persisted. Invariant: only
+     * the WS `snapshot` handler replaces the threats map wholesale, so that site re-merges
+     * the test threat; upsert/remove/REST all copy from the live state and keep it naturally.
+     */
+    fun setTestMig(on: Boolean) {
+        testMigRetireJob?.cancel()
+        testMigRetireJob = null
+        if (!on) {
+            retireTestMig(announceRemoval = true)
+            return
+        }
+        if (testMigId != null) return
+        testMigSerial++
+        val id = "test_mig31k_$testMigSerial"
+        testMigId = id
+        _state.update { withTestMig(it).copy(testMig = true) }
+        testMigRetireJob = scope.launch {
+            delay(TEST_MIG_LINGER_MS)
+            retireTestMig(announceRemoval = false)
+        }
+    }
+
+    /** Drop the armed test threat. [announceRemoval] drives the map's shoot-down flourish. */
+    private fun retireTestMig(announceRemoval: Boolean) {
+        val id = testMigId ?: return
+        testMigId = null
+        val gone = _state.value.threats[id]
+        _state.update { s -> s.copy(threats = s.threats - id, testMig = false) }
+        if (announceRemoval && gone != null) {
+            _removedThreats.tryEmit(
+                ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
+            )
+        }
+    }
+
+    /** Re-attach the current test threat to [state] when one is armed (no-op otherwise). */
+    private fun withTestMig(state: NeptunState): NeptunState {
+        val id = testMigId ?: return state
+        val (lat, lon) = TEST_MIG_BASES.random()
+        return state.copy(
+            threats = state.threats + (id to buildTestMig(id, System.currentTimeMillis(), lat, lon))
+        )
     }
 
     /**
@@ -439,7 +512,9 @@ object NeptunClient {
                         if (now - shotAt <= USER_SHOT_GRACE_MS) map[id] = prev.getValue(id)
                     }
                     pruneUserShot(now)
-                    _state.update { it.copy(threats = map) }
+                    // Snapshot replaces the map wholesale — the only site that must re-merge
+                    // the TEMP test threat; every other write copies the live state.
+                    _state.update { withTestMig(it.copy(threats = map)) }
                 }
                 "upsert" -> {
                     val data = env.optJSONObject("data") ?: return
@@ -489,4 +564,38 @@ object NeptunClient {
             // Malformed frame — ignore and keep listening, don't crash the stream.
         }
     }
+}
+
+/**
+ * The synthetic MiG-31K takeoff injected by the TEMP [NeptunClient.setTestMig] toggle: a
+ * static airbase-style pin (no velocity, like a real takeoff alert), active, not advisory.
+ */
+internal fun buildTestMig(id: String, now: Long, lat: Double, lon: Double): Threat {
+    val nowIso = java.time.Instant.ofEpochMilli(now).toString()
+    return Threat(
+        id = id,
+        type = ThreatType.AVIATION,
+        title = "",
+        region = null,
+        district = null,
+        locality = null,
+        lat = lat,
+        lon = lon,
+        heading = null,
+        bearingDeg = null,
+        status = "active",
+        advisory = false,
+        areaOnly = false,
+        confirmations = 2,
+        reliability = Reliability.HIGH,
+        count = 0,
+        explanationShort = null,
+        speedKmh = null,
+        uncertaintyKm = null,
+        positionQuality = "confirmed",
+        confirmedAt = nowIso,
+        confirmedAtMillis = now,
+        updatedAt = nowIso,
+        updatedAtMillis = now
+    )
 }

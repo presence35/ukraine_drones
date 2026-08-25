@@ -41,7 +41,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -637,11 +636,16 @@ fun SettingsScreen(
                 // "Official signals come first" — first, default expanded, needs two taps to collapse.
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.fillMaxWidth()) {
+                        val disclaimerInteraction = remember { MutableInteractionSource() }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .pressTick()
-                                .clickable(onClick = onDisclaimerClick)
+                                .pressTick(disclaimerInteraction)
+                                .clickable(
+                                    interactionSource = disclaimerInteraction,
+                                    indication = ripple(bounded = true),
+                                    onClick = onDisclaimerClick
+                                )
                                 .padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1636,7 +1640,7 @@ private fun AlertToggleRow(
             .fillMaxWidth()
             .explainerFlash(flash)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (isPressed) 0.06f else 0f))
-            .pressTick()
+            .pressTick(interactionSource)
             .toggleable(
                 value = checked,
                 role = Role.Switch,
@@ -1734,7 +1738,11 @@ private fun CityLabelTogglesRow(
             onClick = { onMediumChange(!mediumChecked) },
             label = { Text(mediumLabel, style = MaterialTheme.typography.labelLarge) },
             leadingIcon = {
-                ChipStateIcon(selected = mediumChecked, iconRes = R.drawable.ic_city)
+                Icon(
+                    painter = painterResource(R.drawable.ic_city),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
             },
             colors = CityChipColors(selected = mediumChecked)
         )
@@ -1743,15 +1751,19 @@ private fun CityLabelTogglesRow(
             onClick = { onSmallChange(!smallChecked) },
             label = { Text(smallLabel, style = MaterialTheme.typography.labelLarge) },
             leadingIcon = {
-                ChipStateIcon(selected = smallChecked, iconRes = R.drawable.ic_house)
+                Icon(
+                    painter = painterResource(R.drawable.ic_house),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
             },
             colors = CityChipColors(selected = smallChecked)
         )
     }
 }
 
-/** ON = vivid primary pill with dark content and a checkmark; OFF = muted grey pill
- *  with the tier's own icon — the two states can't be confused in the dark theme. */
+/** ON = vivid primary pill with dark content; OFF = muted grey pill — the two states
+ *  can't be confused in the dark theme. */
 @Composable
 private fun CityChipColors(selected: Boolean) = FilterChipDefaults.filterChipColors(
     containerColor = Color(0xFF1E1E1E),
@@ -1761,23 +1773,6 @@ private fun CityChipColors(selected: Boolean) = FilterChipDefaults.filterChipCol
     selectedLabelColor = Color(0xFF0D1117),
     selectedLeadingIconColor = Color(0xFF0D1117)
 )
-
-@Composable
-private fun ChipStateIcon(selected: Boolean, iconRes: Int) {
-    if (selected) {
-        Icon(
-            imageVector = Icons.Default.Check,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp)
-        )
-    } else {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            modifier = Modifier.size(18.dp)
-        )
-    }
-}
 
 /** Bordered, rounded box that visually groups a set of zone slider rows (night custom zones). */
 @Composable
@@ -1836,7 +1831,7 @@ private fun ThreatSettingsCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .pressTick()
+                        .pressTick(expandInteraction)
                         .clickable(
                             interactionSource = expandInteraction,
                             indication = ripple(bounded = true),
@@ -2357,7 +2352,7 @@ internal fun IconSetTile(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .pressTick()
+            .pressTick(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true),
@@ -2467,7 +2462,7 @@ private fun CollapsibleSectionCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .pressTick()
+                    .pressTick(interactionSource)
                     .clickable(
                         interactionSource = interactionSource,
                         indication = ripple(bounded = true),
@@ -2573,7 +2568,7 @@ internal fun LanguageFlag(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .pressTick()
+            .pressTick(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true),

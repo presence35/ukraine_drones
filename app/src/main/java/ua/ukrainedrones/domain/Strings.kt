@@ -124,6 +124,7 @@ object Strings {
         val connNeptunLabel: String,
         val connActiveLabel: String,
         val connForceOfflineTitle: String,
+        val connSimMigTitle: String,
         val reliabilityLow: String,
         val reliabilityMedium: String,
         val reliabilityHigh: String,
@@ -287,6 +288,7 @@ object Strings {
         val debugKindRegionThreat: String,
         val debugKindFlourish: String,
         val flourishLogDetailFormat: String,
+        val flourishEjectToast: String,
         val debugKindRegionFormat: String,
         val debugTierRed: String,
         val debugTierYellow: String,
@@ -678,6 +680,7 @@ object Strings {
         val connNeptunLabel: String get() = status.connNeptunLabel
         val connActiveLabel: String get() = status.connActiveLabel
         val connForceOfflineTitle: String get() = status.connForceOfflineTitle
+        val connSimMigTitle: String get() = status.connSimMigTitle
         val reliabilityLow: String get() = status.reliabilityLow
         val reliabilityMedium: String get() = status.reliabilityMedium
         val reliabilityHigh: String get() = status.reliabilityHigh
@@ -832,6 +835,7 @@ object Strings {
         val debugKindRegionThreat: String get() = misc.debugKindRegionThreat
         val debugKindFlourish: String get() = misc.debugKindFlourish
         val flourishLogDetailFormat: String get() = misc.flourishLogDetailFormat
+        val flourishEjectToast: String get() = misc.flourishEjectToast
         val debugKindRegionFormat: String get() = misc.debugKindRegionFormat
         val debugTierRed: String get() = misc.debugTierRed
         val debugTierYellow: String get() = misc.debugTierYellow
@@ -1117,6 +1121,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connNeptunLabel = "NEPTUN",
         connActiveLabel = "Активне",
         connForceOfflineTitle = "Тест: імітувати офлайн NEPTUN",
+        connSimMigTitle = "Тест: імітувати злет МіГ-31К",
         reliabilityLow = "Достовірність: Низька",
         reliabilityMedium = "Достовірність: Середня",
         reliabilityHigh = "Достовірність: Висока",
@@ -1280,6 +1285,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         debugKindRegionThreat = "Загроза в регіоні",
         debugKindFlourish = "Шоу знешкодження",
         flourishLogDetailFormat = "Пострілів: %1\$d · Груп: %2\$d",
+        flourishEjectToast = "Шоу знешкодження почекає, доки ви не повернетеся на мапу",
         debugKindRegionFormat = "Загроза у %1\$s",
         debugTierRed = "Червона зона",
         debugTierYellow = "Жовта зона",
@@ -1627,6 +1633,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connNeptunLabel = "NEPTUN",
         connActiveLabel = "Active",
         connForceOfflineTitle = "Test: simulate NEPTUN offline",
+        connSimMigTitle = "Test: simulate MiG-31K takeoff",
         reliabilityLow = "Reliability: Low",
         reliabilityMedium = "Reliability: Average",
         reliabilityHigh = "Reliability: High",
@@ -1790,6 +1797,7 @@ alertBannerFormat = "%1\$s: alert",
         debugKindRegionThreat = "Threat in region",
         debugKindFlourish = "Shoot-down show",
         flourishLogDetailFormat = "Shots: %1\$d · Groups: %2\$d",
+        flourishEjectToast = "Shoot-down show waits until you're back on the map",
         debugKindRegionFormat = "Threat in %1\$s",
         debugTierRed = "Red zone",
         debugTierYellow = "Yellow zone",

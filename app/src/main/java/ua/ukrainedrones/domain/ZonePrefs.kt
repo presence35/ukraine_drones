@@ -45,6 +45,7 @@ class ZonePrefs(private val context: Context) {
     private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
     private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
     private val threatToggleHintRemainingKey = intPreferencesKey("threat_toggle_hint_remaining")
+    private val flourishEjectHintRemainingKey = intPreferencesKey("flourish_eject_hint_remaining")
     private val shelterTipRemainingKey = intPreferencesKey("shelter_tip_remaining")
     private val threatCardSizeKey = stringPreferencesKey("threat_card_size")
     private val threatIconSetKey = stringPreferencesKey("threat_icon_set")
@@ -216,11 +217,12 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[booleanPreferencesKey("explainer_seen_$id")] = seen }
     }
 
-    /** Re-arm every first-use hint: reset the toast counters and re-show the explainers. */
+        /** Re-arm every first-use hint: reset the toast counters and re-show the explainers. */
     suspend fun resetAllTips() {
         context.dataStore.edit { prefs ->
             prefs[settingsHintRemainingKey] = 10
             prefs[threatToggleHintRemainingKey] = 3
+            prefs[flourishEjectHintRemainingKey] = 3
             prefs[shelterTipRemainingKey] = 0
             listOf("followMe", "nightMode", "officialAlerts", "sirenOverride", "threatToggles", "cardSize")
                 .forEach { id -> prefs.remove(booleanPreferencesKey("explainer_seen_$id")) }
@@ -317,11 +319,19 @@ class ZonePrefs(private val context: Context) {
     }
 
     /** How many more Map/Alerts toggles should show the one-time "how it works" hint toast. */
-    fun threatToggleHintRemaining(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[threatToggleHintRemainingKey] ?: 3 }
+fun threatToggleHintRemaining(): Flow<Int> =
+    context.dataStore.data.map { prefs -> prefs[threatToggleHintRemainingKey] ?: 3 }
 
     suspend fun setThreatToggleHintRemaining(remaining: Int) {
         context.dataStore.edit { it[threatToggleHintRemainingKey] = remaining.coerceAtLeast(0) }
+    }
+
+    /** How many more times the "show waits off-map" hint may appear (first 3 ejections). */
+    fun flourishEjectHintRemaining(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[flourishEjectHintRemainingKey] ?: 3 }
+
+    suspend fun setFlourishEjectHintRemaining(remaining: Int) {
+        context.dataStore.edit { it[flourishEjectHintRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
     /**

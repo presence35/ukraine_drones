@@ -104,7 +104,7 @@ object Cities {
             City("Любашівка", 47.8370, 30.2630),
             City("Великодолинське", 46.3464, 30.579, pop = 13856), // pop ~13856
             City("Лиманка", 46.3856, 30.6774, pop = 13085), // pop ~13085
-            City("Черемушки", 46.4325, 30.7115, pop = 120000), // pop ~120000
+            City("Черемушки", 46.4325, 30.7115),
         )),
         Region("Львівськ", listOf(
             City("Львів", 49.8397, 24.0297, CityTier.MAJOR),
@@ -151,7 +151,7 @@ object Cities {
             City("Верхівцеве", 48.4813, 34.24, pop = 10262), // pop ~10262
             City("Вільногірськ", 48.4842, 34.0171, pop = 22079), // pop ~22079
             City("Зеленодольськ", 47.555, 33.659, pop = 12692), // pop ~12692
-            City("Інгулець", 47.7301, 33.2519, pop = 62173), // pop ~62173
+            City("Інгулець", 47.7301, 33.2519),
             City("Нові Кодаки", 48.4867, 34.9564, pop = 15000), // pop ~15000
             City("Підгороднє", 48.5742, 35.097, pop = 19138), // pop ~19138
             City("Самар", 48.6289, 35.2589, pop = 70550), // pop ~70550
@@ -479,9 +479,9 @@ object Cities {
             City("Соледар", 48.6921, 38.071, pop = 10490), // pop ~10490
             City("Софіївка", 48.2638, 38.1593, pop = 11458), // pop ~11458
             City("Українськ", 48.0978, 37.3653, pop = 10655), // pop ~10655
-            City("Ханжонківський район", 48.0951, 38.042, pop = 53040), // pop ~53040
+            City("Ханжонківський район", 48.0951, 38.042),
             City("Часів Яр", 48.5877, 37.8341, pop = 12250), // pop ~12250
-            City("Часткове", 48.0388, 38.5969, pop = 53462), // pop ~53462
+            City("Часткове", 48.0388, 38.5969),
             City("Шахтарськ", 48.0566, 38.4383, pop = 71700), // pop ~71700
             City("Юнокомунарівськ", 48.2214, 38.2836, pop = 13495), // pop ~13495
             City("Ясинувата", 48.1268, 37.8592, pop = 37600), // pop ~37600
@@ -580,8 +580,14 @@ object Cities {
         ))
     )
 
-    /** All cities, flat, in the order defined above. */
+    /** Population from which a non-seat place is labeled from mid-zoom ([CityTier.MEDIUM]). */
+    private const val MEDIUM_POP = 50_000
+
+    /** All cities, flat, in the order defined above; big non-seats auto-promoted to MEDIUM. */
     val ALL: List<City> = REGIONS.flatMap { it.cities }
+        .map { c ->
+            if (c.tier == CityTier.MINOR && c.pop >= MEDIUM_POP) c.copy(tier = CityTier.MEDIUM) else c
+        }
 
     /** Ukrainian name → representative city (highest-population holder of that name —
      *  Ukraine has a few same-named towns in different oblasts). Used when translating

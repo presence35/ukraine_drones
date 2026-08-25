@@ -58,7 +58,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -82,8 +81,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
@@ -105,6 +108,20 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     // The neutralizing card + map death flourish only run while the map is the visible
     // screen — off-map (Settings/Shelters/Guide) the popup just closes silently.
     LaunchedEffect(screen) { viewModel.setMapVisible(screen == Screen.MAP) }
+    // Foreground tracking for the flyby gate: unlike the tab state above, this follows the
+    // process — a backgrounded app must not "play" the animation nobody can see.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.setAppForeground(true)
+                Lifecycle.Event.ON_PAUSE -> viewModel.setAppForeground(false)
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var showConnectionInfo by remember { mutableStateOf(false) }
     var showZonesSheet by remember { mutableStateOf(false) }
     var activeExplainer by remember { mutableStateOf<Explainer?>(null) }
@@ -214,6 +231,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     Box(modifier = Modifier.fillMaxSize()) {
         MapScreen(
             uiState = uiState,
+            selection = viewModel.selectionUi,
+            selectedThreatId = viewModel.selectedThreatId,
             now = now,
             settingsOpen = screen == Screen.SETTINGS,
             mapVisible = screen == Screen.MAP,
@@ -226,7 +245,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 else settingsCollapse.copy(threats = true)
                 scrollToThreatsTick++
             },
-            onThreatTapped = { showConnectionInfo = false; showZonesSheet = false; viewModel.selectThreat(it) },
+                        onThreatTapped = { showConnectionInfo = false; showZonesSheet = false; viewModel.selectThreat(it) },
+            onFlourishEjected = viewModel::notifyFlourishEjected,
             onThreatStripTap = { viewModel.panToThreat(it) },
             onDismissPopup = { viewModel.selectThreat(null) },
             onMapTapped = { viewModel.selectThreat(null) },
@@ -240,6 +260,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onFastYellowArmedChange = { if (editingNight) viewModel.setNightFastYellowArmed(it) else viewModel.setFastYellowArmed(it) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
+            onTestMigChange = viewModel::setTestMig,
             onNeutralize = { id -> viewModel.neutralizeThreat(id) },
             onFlybyFinished = { id -> viewModel.onFlybyFinished(id) },
             showConnectionInfo = showConnectionInfo,
@@ -753,6 +774,7 @@ private fun WizardThreatGrid(
                         }
                         val onColor = MaterialTheme.colorScheme.onSurface
                         val offColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val cellInteraction = remember { MutableInteractionSource() }
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
@@ -764,8 +786,12 @@ private fun WizardThreatGrid(
                                     else MaterialTheme.colorScheme.outlineVariant,
                                     shape = RoundedCornerShape(12.dp)
                                 )
-                                .pressTick()
-                                .clickable { onThreatEnabledToggle(type, !on) }
+                                .pressTick(cellInteraction)
+                                .clickable(
+                                    interactionSource = cellInteraction,
+                                    indication = ripple(bounded = true),
+                                    onClick = { onThreatEnabledToggle(type, !on) }
+                                )
                                 .padding(vertical = 14.dp, horizontal = 6.dp)
                         ) {
                             ThreatIcon(
@@ -965,6 +991,8 @@ private fun WizardZoneButton(color: Color, contentDescription: String) {
 @Composable
 private fun MapScreen(
     uiState: UiState,
+    selection: StateFlow<SelectionUi>,
+    selectedThreatId: StateFlow<String?>,
     now: Long,
     settingsOpen: Boolean,
     mapVisible: Boolean,
@@ -984,7 +1012,9 @@ private fun MapScreen(
     onFastYellowArmedChange: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit,
+    onTestMigChange: (Boolean) -> Unit,
     onNeutralize: (String) -> Unit,
+    onFlourishEjected: () -> Unit,
     onFlybyFinished: (String) -> Unit,
     showConnectionInfo: Boolean,
     onShowConnectionInfoChange: (Boolean) -> Unit,
@@ -1065,7 +1095,7 @@ private fun MapScreen(
                 showToast(
                     context,
                     s.updatingPreciseGpsToast,
-                    cardVisible = uiState.selectedThreat != null || selectedShelter != null || showZonesSheet
+                    cardVisible = selection.value.selected != null || selectedShelter != null || showZonesSheet
                 )
                 val hasFine = ContextCompat.checkSelfPermission(
                     context,
@@ -1079,8 +1109,6 @@ private fun MapScreen(
         }
     }
 
-    // Last strip-tapped threat id per type, so repeated taps cycle through each of that type.
-    val stripCycle = remember { mutableStateMapOf<ThreatType, String>() }
     // The zones sheet edits whatever the map is currently showing.
     val editingNight = uiState.nightActive && uiState.nightUseCustomZones
 
@@ -1100,9 +1128,9 @@ private fun MapScreen(
         onOpenThreatSettings()
     }
 
-    // Back closes the popup first, then exits — fixes "back stuck on home page".
+    // Back closes the shelter card first; the threat popup installs its own back handler
+    // inside ThreatCardHost (scoped to the selection flow, so taps don't rebuild this scope).
     BackHandler(enabled = selectedShelter != null) { selectedShelter = null }
-    BackHandler(enabled = uiState.selectedThreat != null) { onDismissPopup() }
     BackHandler(enabled = showZonesSheet) { onShowZonesSheetChange(false) }
 
     Scaffold(
@@ -1149,7 +1177,7 @@ private fun MapScreen(
                     Text(
                         text = alertText,
                         modifier = Modifier
-                            .pressTick()
+                            .pressTick(titleInteraction)
                             .clickable(
                                 interactionSource = titleInteraction,
                                 indication = ripple(),
@@ -1171,13 +1199,20 @@ private fun MapScreen(
                     neptunDown = uiState.neptunDown,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
+                    testMig = uiState.testMig,
+                    onTestMigChange = onTestMigChange,
                     onOpenLogs = onOpenLogs,
                     showInfo = showConnectionInfo,
                     onShowInfoChange = onShowConnectionInfoChange,
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
                 )
-                IconButton(onClick = openSettings, modifier = Modifier.size(32.dp).pressTick()) {
+                val gearButtonInteraction = remember { MutableInteractionSource() }
+                IconButton(
+                    onClick = openSettings,
+                    modifier = Modifier.size(32.dp).pressTick(gearButtonInteraction),
+                    interactionSource = gearButtonInteraction
+                ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_settings_ua),
                         contentDescription = s.settingsButton,
@@ -1195,6 +1230,7 @@ private fun MapScreen(
                 Box(modifier = Modifier.weight(1f)) {
                     NeptunMapView(
                         uiState = uiState,
+                        selectedThreatId = selectedThreatId,
                         lang = uiState.language,
                         iconSet = uiState.iconSet,
                         onScaleChange = { scaleMpp = it },
@@ -1232,6 +1268,7 @@ private fun MapScreen(
                         },
                         onDeathActiveChange = { deathActive = it },
                         onReplayProgressChange = { replayProgress = it },
+                        onFlourishEjected = onFlourishEjected,
                         modifier = Modifier.fillMaxSize()
                     )
                     uiState.flyby?.let { show ->
@@ -1284,116 +1321,20 @@ private fun MapScreen(
                 }
 
                 Surface(tonalElevation = 2.dp) {
-                    val innerCounts = uiState.threatsInner.groupingBy { it.type }.eachCount()
-                    val outerCounts = uiState.threatsOuter.groupingBy { it.type }.eachCount()
-                    val total = ThreatType.values().sumOf {
-                        (innerCounts[it] ?: 0) + (outerCounts[it] ?: 0)
-                    }
-                    val replay = replayProgress
-                    if (replay != null) {
-                        // A tally replay owns the whole footer while it runs — the per-group
-                        // "Resolving threat X of N" replaces even the threat strip, with a
-                        // slim overall-progress bar along the footer's bottom edge; the strip
-                        // returns the moment the show ends.
-                        val barFraction by animateFloatAsState(
-                            targetValue = replay.fraction,
-                            animationSpec = tween(250),
-                            label = "flourishProgress"
-                        )
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            Text(
-                                if (replay.groupSize <= 1) s.resolvingThreat
-                                else String.format(s.resolvingThreatsFormat, replay.bulletInGroup, replay.groupSize),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFFF9A825),
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            // Slim progress bar: faint track, amber fill easing across the
-                            // bottom edge as the show advances.
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(3.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f))
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(barFraction.coerceIn(0f, 1f))
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(Color(0xFFF9A825))
-                                )
-                            }
-                        }
-                    } else if (total == 0) {
-                        val footerText = when {
-                            deathActive -> s.neutralizingLabel
-                            else -> noThreatsMessage(
-                                uiState.language,
-                                now / 86_400_000L,
-                                uiState.calmMessagesEnabled
-                            )
-                        }
-                        Text(
-                            footerText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (deathActive) Color(0xFFF9A825) else Color(0xFF4CAF50),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                        )
-                    } else {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ThreatType.values().forEach { type ->
-                                val count = (innerCounts[type] ?: 0) + (outerCounts[type] ?: 0)
-                                val visible = type !in uiState.hiddenTypes
-                                val alerting = type !in uiState.silencedTypes
-                                if (count > 0 && visible && alerting) {
-                                    val focus = uiState.focusLocation
-                                    val list = (uiState.threatsInner + uiState.threatsOuter)
-                                        .filter { it.type == type }
-                                        .sortedBy {
-                                            if (focus != null) distanceMeters(focus.lat, focus.lon, it.lat, it.lon)
-                                            else 0.0
-                                        }
-                                    ThreatStatusCell(
-                                        type = type,
-                                        count = count,
-                                        enabled = true,
-                                        iconSet = uiState.iconSet,
-                                        onClick = {
-                                            list.firstOrNull()?.let { nearest ->
-                                                val current = stripCycle[type]
-                                                val next = if (current == null || list.size == 1) {
-                                                    nearest
-                                                } else {
-                                                    val idx = list.indexOfFirst { it.id == current }
-                                                    if (idx in 0 until list.size - 1) list[idx + 1] else list[0]
-                                                }
-                                                stripCycle[type] = next.id
-                                                onThreatStripTap(next)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    ThreatStripFooter(
+                        inner = uiState.threatsInner,
+                        outer = uiState.threatsOuter,
+                        hiddenTypes = uiState.hiddenTypes,
+                        silencedTypes = uiState.silencedTypes,
+                        focusLocation = uiState.focusLocation,
+                        iconSet = uiState.iconSet,
+                        language = uiState.language,
+                        calmMessagesEnabled = uiState.calmMessagesEnabled,
+                        deathActive = deathActive,
+                        replayProgress = replayProgress,
+                        s = s,
+                        onThreatStripTap = onThreatStripTap
+                    )
                 }
             }
 
@@ -1403,94 +1344,21 @@ private fun MapScreen(
             // The small card hugs the top-left corner and stays narrow; the large card is
             // top-centred and full-width. The measured height feeds the map so a selected or
             // struck threat is centred in the viewport left visible below the card.
-            val smallCard = uiState.threatCardSize == ThreatCardSize.SMALL
-            val animsOff = animationsOff()
-            AnimatedContent(
-                targetState = when {
-                    uiState.selectedThreat != null -> 1
-                    uiState.neutralizedThreat != null -> 2
-                    else -> 0
-                },
-                                // Card appears/disappears in one frame — tap must feel instant. Selection
-                // motion is the map's bullet + the card's icon pop; the slower fade below is
-                // reserved for the neutralized state's death-window exit.
-                transitionSpec = {
-                    fadeIn(tween(0)) togetherWith fadeOut(tween(0))
-                },
-                label = "threatCardSwap",
-                modifier = Modifier
-                    .align(if (smallCard) Alignment.TopStart else Alignment.TopCenter)
-                    .padding(top = 12.dp, start = 16.dp, end = 16.dp)
-            ) { state ->
-                when (state) {
-                    1 -> uiState.selectedThreat?.let { threat ->
-                        Column {
-                            ThreatPopupCard(
-                                threat = threat,
-                                lang = uiState.language,
-                                iconSet = uiState.iconSet,
-                                proximity = uiState.selectedThreatInfo,
-                                pinnedCity = if (uiState.followMe) null else uiState.pinnedCity,
-                                threatLevel = uiState.threatLevel,
-                                cardSize = uiState.threatCardSize,
-                                alertsOff = threat.type in uiState.silencedTypes,
-                                onDismiss = onDismissPopup,
-                                fakeNeutralize = uiState.fakeNeutralize,
-                                modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Start
-                            ) {
-                                ThreatCardSizeControl(
-                                    current = uiState.threatCardSize,
-                                    contentDescription = s.cardSizeLabel,
-                                    onClick = {
-                                        onThreatCardSizeChange(nextThreatCardSize(uiState.threatCardSize))
-                                    },
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
-                            }
-                        }
-                    }
-                    2 -> uiState.neutralizedThreat?.let { threat ->
-                        val fade = remember { Animatable(1f) }
-                        var neutralizing by remember { mutableStateOf(true) }
-                        LaunchedEffect(Unit) {
-                            delay(DEATH_EXPLOSION_START_MS)
-                            neutralizing = false
-                        }
-                        // A short readable hold, then one smooth, clearly visible alpha ramp that
-                        // runs across the whole death window — never a hard hide at impact.
-                        LaunchedEffect(Unit) {
-                            val holdMs = 700L
-                            delay(holdMs)
-                            fade.animateTo(
-                                0f,
-                                tween((DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS - holdMs).toInt())
-                            )
-                            onDismissPopup()
-                        }
-                        Box(modifier = Modifier.graphicsLayer { alpha = fade.value }) {
-                            ThreatPopupCard(
-                                threat = threat,
-                                lang = uiState.language,
-                                iconSet = uiState.iconSet,
-                                proximity = null,
-                                pinnedCity = null,
-                                threatLevel = 0.0,
-                                cardSize = uiState.threatCardSize,
-                                interactive = false,
-                                neutralized = true,
-                                neutralizing = neutralizing,
-                                onDismiss = onDismissPopup,
-                                fakeNeutralize = uiState.fakeNeutralize,
-                                modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-            }
+            // Scoped to its own composable collecting `selection` — a tap recomposes ONLY this
+            // host, not the map/header/footer scopes around it.
+            ThreatCardHost(
+                selection = selection,
+                language = uiState.language,
+                iconSet = uiState.iconSet,
+                followMe = uiState.followMe,
+                pinnedCity = uiState.pinnedCity,
+                threatLevel = uiState.threatLevel,
+                cardSize = uiState.threatCardSize,
+                silencedTypes = uiState.silencedTypes,
+                s = s,
+                onDismiss = onDismissPopup,
+                onThreatCardSizeChange = onThreatCardSizeChange
+            )
 
             // Shelter info card: tapping a shelter marker on the map opens it here (the same
             // data as the list rows); tapping the map or the back button closes it.
@@ -1510,6 +1378,7 @@ private fun MapScreen(
             // red/yellow circles update while you drag, and the map above stays pannable.
             // Every control (sliders + Fast/Slow group toggles) is visible at once.
             // Slides up/down like the connection sheet; snaps when system animations are off.
+            val animsOff = animationsOff()
             AnimatedVisibility(
                 visible = showZonesSheet,
                 enter = if (animsOff) EnterTransition.None
@@ -1532,11 +1401,16 @@ private fun MapScreen(
                         val dismissThresholdPx = with(density) { 80.dp.toPx() }
                         var dragAccum by remember { mutableFloatStateOf(0f) }
                         val closeSheet = { onShowZonesSheetChange(false) }
+                        val sheetDismissInteraction = remember { MutableInteractionSource() }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .pressTick()
-                                .clickable(onClick = closeSheet)
+                                .pressTick(sheetDismissInteraction)
+                                .clickable(
+                                    interactionSource = sheetDismissInteraction,
+                                    indication = ripple(bounded = true),
+                                    onClick = closeSheet
+                                )
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
@@ -1582,6 +1456,249 @@ private fun MapScreen(
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Threat popup host. Collects [selection] here — the ONLY reactive reader of selection in the
+ * tree — so a tap recomposes just this scope: header, map body and footer never see it.
+ */
+@Composable
+private fun ThreatCardHost(
+    selection: StateFlow<SelectionUi>,
+    language: AppLanguage,
+    iconSet: ThreatIconSet,
+    followMe: Boolean,
+    pinnedCity: City?,
+    threatLevel: Double,
+    cardSize: ThreatCardSize,
+    silencedTypes: Set<ThreatType>,
+    s: Strings.StringSet,
+    onDismiss: () -> Unit,
+    onThreatCardSizeChange: (ThreatCardSize) -> Unit
+) {
+    val sel = selection.collectAsState().value
+    SideEffect {
+        sel.selected?.let {
+            android.util.Log.d("PerfTrace", "card composed id=${it.id} t=${System.currentTimeMillis()}")
+        }
+    }
+    // Back closes the popup first, then exits — fixes "back stuck on home page".
+    BackHandler(enabled = sel.selected != null || sel.neutralized != null) { onDismiss() }
+
+    val smallCard = cardSize == ThreatCardSize.SMALL
+    AnimatedContent(
+        targetState = when {
+            sel.selected != null -> 1
+            sel.neutralized != null -> 2
+            else -> 0
+        },
+        // Card appears/disappears in one frame — tap must feel instant. Selection
+        // motion is the map's bullet + the card's icon pop; the slower fade below is
+        // reserved for the neutralized state's death-window exit.
+        transitionSpec = {
+            fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+        },
+        label = "threatCardSwap",
+        modifier = Modifier
+            .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+    ) { state ->
+        when (state) {
+            1 -> sel.selected?.let { threat ->
+                Column {
+                    ThreatPopupCard(
+                        threat = threat,
+                        lang = language,
+                        iconSet = iconSet,
+                        proximity = sel.proximity,
+                        pinnedCity = if (followMe) null else pinnedCity,
+                        threatLevel = threatLevel,
+                        cardSize = cardSize,
+                        alertsOff = threat.type in silencedTypes,
+                        onDismiss = onDismiss,
+                        fakeNeutralize = sel.fakeNeutralize,
+                        modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        ThreatCardSizeControl(
+                            current = cardSize,
+                            contentDescription = s.cardSizeLabel,
+                            onClick = { onThreatCardSizeChange(nextThreatCardSize(cardSize)) },
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+            }
+            2 -> sel.neutralized?.let { threat ->
+                val fade = remember { Animatable(1f) }
+                var neutralizing by remember { mutableStateOf(true) }
+                LaunchedEffect(Unit) {
+                    delay(DEATH_EXPLOSION_START_MS)
+                    neutralizing = false
+                }
+                // A short readable hold, then one smooth, clearly visible alpha ramp that
+                // runs across the whole death window — never a hard hide at impact.
+                LaunchedEffect(Unit) {
+                    val holdMs = 700L
+                    delay(holdMs)
+                    fade.animateTo(
+                        0f,
+                        tween((DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS - holdMs).toInt())
+                    )
+                    onDismiss()
+                }
+                Box(modifier = Modifier.graphicsLayer { alpha = fade.value }) {
+                    ThreatPopupCard(
+                        threat = threat,
+                        lang = language,
+                        iconSet = iconSet,
+                        proximity = null,
+                        pinnedCity = null,
+                        threatLevel = 0.0,
+                        cardSize = cardSize,
+                        interactive = false,
+                        neutralized = true,
+                        neutralizing = neutralizing,
+                        onDismiss = onDismiss,
+                        fakeNeutralize = sel.fakeNeutralize,
+                        modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Footer strip / calm message / replay progress bar. Owns its per-type cycle state so
+ *  unrelated recompositions of the surrounding scope don't re-run grouping or sorting. */
+@Composable
+private fun ThreatStripFooter(
+    inner: List<Threat>,
+    outer: List<Threat>,
+    hiddenTypes: Set<ThreatType>,
+    silencedTypes: Set<ThreatType>,
+    focusLocation: LatLng?,
+    iconSet: ThreatIconSet,
+    language: AppLanguage,
+    calmMessagesEnabled: Boolean,
+    deathActive: Boolean,
+    replayProgress: ReplayProgress?,
+    s: Strings.StringSet,
+    onThreatStripTap: (Threat) -> Unit
+) {
+    val innerCounts = inner.groupingBy { it.type }.eachCount()
+    val outerCounts = outer.groupingBy { it.type }.eachCount()
+    val total = ThreatType.values().sumOf {
+        (innerCounts[it] ?: 0) + (outerCounts[it] ?: 0)
+    }
+    val replay = replayProgress
+    if (replay != null) {
+        // A tally replay owns the whole footer while it runs — the per-group
+        // "Resolving threat X of N" replaces even the threat strip, with a
+        // slim overall-progress bar along the footer's bottom edge; the strip
+        // returns the moment the show ends.
+        val barFraction by animateFloatAsState(
+            targetValue = replay.fraction,
+            animationSpec = tween(250),
+            label = "flourishProgress"
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+        ) {
+            Text(
+                if (replay.groupSize <= 1) s.resolvingThreat
+                else String.format(s.resolvingThreatsFormat, replay.bulletInGroup, replay.groupSize),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFF9A825),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(6.dp))
+            // Slim progress bar: faint track, amber fill easing across the
+            // bottom edge as the show advances.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(barFraction.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color(0xFFF9A825))
+                )
+            }
+        }
+    } else if (total == 0) {
+        val footerText = when {
+            deathActive -> s.neutralizingLabel
+            else -> noThreatsMessage(
+                language,
+                System.currentTimeMillis() / 86_400_000L,
+                calmMessagesEnabled
+            )
+        }
+        Text(
+            footerText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (deathActive) Color(0xFFF9A825) else Color(0xFF4CAF50),
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        )
+    } else {
+        // Last strip-tapped threat id per type, so repeated taps cycle through each of that type.
+        val stripCycle = remember { mutableStateMapOf<ThreatType, String>() }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ThreatType.values().forEach { type ->
+                val count = (innerCounts[type] ?: 0) + (outerCounts[type] ?: 0)
+                val visible = type !in hiddenTypes
+                val alerting = type !in silencedTypes
+                if (count > 0 && visible && alerting) {
+                    val list = (inner + outer)
+                        .filter { it.type == type }
+                        .sortedBy {
+                            if (focusLocation != null) distanceMeters(focusLocation.lat, focusLocation.lon, it.lat, it.lon)
+                            else 0.0
+                        }
+                    ThreatStatusCell(
+                        type = type,
+                        count = count,
+                        enabled = true,
+                        iconSet = iconSet,
+                        onClick = {
+                            list.firstOrNull()?.let { nearest ->
+                                val current = stripCycle[type]
+                                val next = if (current == null || list.size == 1) {
+                                    nearest
+                                } else {
+                                    val idx = list.indexOfFirst { it.id == current }
+                                    if (idx in 0 until list.size - 1) list[idx + 1] else list[0]
+                                }
+                                stripCycle[type] = next.id
+                                onThreatStripTap(next)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -1695,7 +1812,7 @@ private fun ShelterButton(
         color = bg.copy(alpha = if (isPressed) 0.8f else 1f),
         border = border,
         modifier = modifier
-            .pressTick()
+            .pressTick(interactionSource)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true, color = fg.copy(alpha = 0.3f)),
@@ -1753,7 +1870,7 @@ private fun ZoneButtons(
                     .background(MaterialTheme.colorScheme.surface)
                     .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                     .semantics { semanticsContentDescription = s.editZonesLabel }
-                    .pressTick()
+                    .pressTick(gearInteraction)
                     .clickable(
                         interactionSource = gearInteraction,
                         indication = null,
@@ -1781,7 +1898,7 @@ private fun AllAlertsOffWarning(label: String, onClick: () -> Unit) {
         shape = RoundedCornerShape(50),
         color = Color.Black.copy(alpha = 0.55f),
         modifier = Modifier
-            .pressTick()
+            .pressTick(interactionSource)
             .clickable(
             interactionSource = interactionSource,
             indication = ripple(bounded = true),
@@ -1877,7 +1994,7 @@ private fun ZonePill(
             .background(if (armed) zoneColor.copy(alpha = bgAlpha.value) else Color(0xFF2A2A2A))
             .border(2.dp, if (armed) zoneColor else Color(0xFF666666), CircleShape)
             .semantics { semanticsContentDescription = contentDescription }
-            .pressTick()
+            .pressTick(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -1909,7 +2026,7 @@ private fun ThreatStatusCell(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (isPressed) 0.12f else 0.06f))
-            .pressTick()
+            .pressTick(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true),
@@ -1950,10 +2067,6 @@ private fun AviationFlybyOverlay(
     iconSet: ThreatIconSet,
     onFinished: (String) -> Unit
 ) {
-    val density = LocalDensity.current
-    val iconSize = 160.dp
-    val iconPx = with(density) { iconSize.toPx() }
-    val trailPx = with(density) { 200.dp.toPx() }
     var canvasPx by remember { mutableStateOf(IntSize.Zero) }
     val progress = remember(show.tick) { Animatable(0f) }
     LaunchedEffect(show.tick) {
@@ -1961,40 +2074,74 @@ private fun AviationFlybyOverlay(
         progress.animateTo(1f, tween(show.durationMs.toInt(), easing = LinearEasing))
         onFinished(show.threatId)
     }
-    if (canvasPx == IntSize.Zero) return
-    // Map markers rotate by courseDeg minus the asset's baked-in facing; mirror that here so
-    // every icon set flies nose-first along the pass.
-    val rotation = show.courseDeg.toFloat() - IconCatalog.baseDeg(ThreatType.AVIATION, iconSet)
+    // The measuring Box must always compose (the size callback lives on it) — only the
+    // contents wait for a real size.
     Box(modifier = Modifier.fillMaxSize().onSizeChanged { canvasPx = it }) {
+        if (canvasPx == IntSize.Zero) return@Box
+        // A screen-wide event needs a screen-scale plane: ~60% of the viewport width.
+        val planeW = canvasPx.width * 0.6f
+        val trailLen = planeW * 1.4f
+        val trailStroke = (planeW * 0.02f).coerceIn(6f, 14f)
         val (entry, exit) = AviationFlyby.endpoints(
-            show.courseDeg, canvasPx.width.toFloat(), canvasPx.height.toFloat(), iconPx
+            show.courseDeg, canvasPx.width.toFloat(), canvasPx.height.toFloat(), planeW
         )
         val x = lerp(entry.first, exit.first, progress.value)
         val y = lerp(entry.second, exit.second, progress.value)
         val dir = AviationFlyby.direction(show.courseDeg)
         Canvas(modifier = Modifier.matchParentSize()) {
-            val tailX = (x - trailPx * dir.first).toFloat()
-            val tailY = (y - trailPx * dir.second).toFloat()
+            // Anchor the trail behind the exhausts, tucked under the airframe (a fraction of
+            // the plane's own size, so it holds at any rotation or icon set) — the plane
+            // covers the seam and the exact nozzle pixel never matters.
+            val anchorX = x - planeW * 0.4f * dir.first
+            val anchorY = y - planeW * 0.4f * dir.second
+            val tailX = (anchorX - trailLen * dir.first).toFloat()
+            val tailY = (anchorY - trailLen * dir.second).toFloat()
             drawLine(
                 brush = Brush.linearGradient(
-                    colors = listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.5f)),
+                    colors = listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.55f)),
                     start = Offset(tailX, tailY),
-                    end = Offset(x, y)
+                    end = Offset(anchorX.toFloat(), anchorY.toFloat())
                 ),
                 start = Offset(tailX, tailY),
-                end = Offset(x, y),
-                strokeWidth = 6f,
+                end = Offset(anchorX.toFloat(), anchorY.toFloat()),
+                strokeWidth = trailStroke,
                 cap = StrokeCap.Round
             )
         }
-        Box(
-            modifier = Modifier
-                .offset { IntOffset((x - iconPx / 2).roundToInt(), (y - iconPx / 2).roundToInt()) }
-                .size(iconSize)
-                .rotate(rotation)
-        ) {
-            ThreatIcon(type = ThreatType.AVIATION, set = iconSet, size = iconSize)
-        }
+        // Map markers rotate by courseDeg minus the asset's baked-in facing; mirror that here
+        // so every icon set flies nose-first along the pass.
+        val rotation = show.courseDeg.toFloat() - IconCatalog.baseDeg(ThreatType.AVIATION, iconSet)
+        PlaneSprite(planeW, rotation, iconSet, alpha = 0.35f, tint = Color.Black,
+            modifier = Modifier.offset {
+                IntOffset(
+                    (x - planeW / 2 + planeW * 0.02f).roundToInt(),
+                    (y - planeW / 2 + planeW * 0.03f).roundToInt()
+                )
+            })
+        PlaneSprite(planeW, rotation, iconSet,
+            modifier = Modifier.offset {
+                IntOffset((x - planeW / 2).roundToInt(), (y - planeW / 2).roundToInt())
+            })
+    }
+}
+
+/** One rotated copy of the aviation asset in a [sidePx]-square slot, optionally a flat shadow. */
+@Composable
+private fun PlaneSprite(
+    sidePx: Float,
+    rotation: Float,
+    iconSet: ThreatIconSet,
+    modifier: Modifier = Modifier,
+    alpha: Float = 1f,
+    tint: Color = Color.Unspecified
+) {
+    val side = with(LocalDensity.current) { sidePx.toDp() }
+    Box(
+        modifier = modifier
+            .size(side)
+            .graphicsLayer { this.alpha = alpha; this.rotationZ = rotation }
+    ) {
+        ThreatIcon(type = ThreatType.AVIATION, set = iconSet, size = side, tint = tint)
     }
 }
 
@@ -2021,7 +2168,7 @@ private fun ThreatCardSizeControl(
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = if (isPressed) 0.95f else 0.85f))
             .semantics { semanticsContentDescription = contentDescription }
-            .pressTick()
+            .pressTick(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true),

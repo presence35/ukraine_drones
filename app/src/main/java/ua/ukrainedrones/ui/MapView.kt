@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
@@ -369,6 +371,7 @@ private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox 
 @OptIn(ExperimentalCoroutinesApi::class)
 fun NeptunMapView(
     uiState: UiState,
+    selectedThreatId: StateFlow<String?>,
     lang: AppLanguage,
     iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     onScaleChange: (Double) -> Unit,
@@ -392,6 +395,7 @@ fun NeptunMapView(
     onExitShelterMode: () -> Unit = {},
     onDeathActiveChange: (Boolean) -> Unit = {},
     onReplayProgressChange: (ReplayProgress?) -> Unit = {},
+    onFlourishEjected: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -457,24 +461,12 @@ fun NeptunMapView(
     // While shelter mode is entered, the camera animates from its current zoom up to the
     // fitted range; intermediate frames dip below SHELTER_AUTO_EXIT_ZOOM and would trigger
     // the auto-exit listener mid-animation. Suppress that exit for a short window after entry.
-    val shelterEntryGuardUntil = remember { mutableStateOf(0L) }
+        val shelterEntryGuardUntil = remember { mutableStateOf(0L) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    // osmdroid owns a tile-fetch thread pool that must be paused/resumed with the host
-    // lifecycle (and detached on release) — without this it keeps spinning in background.
-    DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> mapViewRef.value?.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapViewRef.value?.onPause()
-                else -> {}
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
-    }
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
     val iconSetState by rememberUpdatedState(uiState.iconSet)
-    val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
+    val selectedId by selectedThreatId.collectAsState()
+    val selectedThreatIdState by rememberUpdatedState(selectedId)
     val focusLocationState by rememberUpdatedState(uiState.focusLocation)
     val deathAnimationEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)
         val followBulletState by rememberUpdatedState(uiState.followBullet)
@@ -489,7 +481,25 @@ fun NeptunMapView(
             scope = mapScope
         )
     }
-    val zoneRefitJob = remember { mutableStateOf<Job?>(null) }
+        val zoneRefitJob = remember { mutableStateOf<Job?>(null) }
+
+    // osmdroid owns a tile-fetch thread pool that must be paused/resumed with the host
+    // lifecycle (and detached on release) — without this it keeps spinning in background.
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapViewRef.value?.onResume()
+                Lifecycle.Event.ON_PAUSE -> {
+                    mapViewRef.value?.onPause()
+                    // Backgrounding ejects the flourish too — come back to a clean map.
+                    deathFx.clear()
+                }
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     // Centre + zoom so the whole yellow zone sits in the visible area ABOVE the zones sheet.
     // The bbox is extended downward so the zone occupies the top 60% of the viewport (the
@@ -1057,6 +1067,19 @@ fun NeptunMapView(
         // already-drawn bullets so nothing playful distracts from the real alarm.
         LaunchedEffect(uiState.alertActive) {
             if (uiState.alertActive) deathFx.clear()
+        }
+
+        // Any modal covering the map (Settings, shelter overlay, …) ejects a RUNNING flourish
+        // instantly — same rule as red alerts. A merely QUEUED replay stays queued and plays
+        // when the map is uncovered again. The hint callback fires only when something was
+        // actually interrupted/queued AND the animation toggle is on (they wanted to see it).
+        LaunchedEffect(paused, mapVisible, showNearbyShelters) {
+            if (paused || !mapVisible || showNearbyShelters) {
+                val interrupted = deathFx.isActive
+                val queuedPending = uiState.flourish?.let { it.tick != lastFlourishTick.value } == true
+                if ((interrupted || queuedPending) && deathAnimationEnabledState) onFlourishEjected()
+                deathFx.clear()
+            }
         }
 
         // Surface the death-animation state up so the footer can swap its copy while a bullet

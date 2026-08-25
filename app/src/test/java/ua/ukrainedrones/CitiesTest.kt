@@ -48,7 +48,7 @@ class CitiesTest {
         val mediums = Cities.ALL.count { it.tier == CityTier.MEDIUM }
         val minors = Cities.ALL.count { it.tier == CityTier.MINOR }
         assertEquals(26, majors)
-        assertEquals(14, mediums)
+        assertEquals(20, mediums)
         assertTrue("expected ~400+ minors, got $minors", minors >= 400)
     }
 

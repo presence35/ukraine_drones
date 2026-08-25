@@ -5,13 +5,16 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.*
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,12 +49,17 @@ fun ShelterPopupCard(
         ShelterType.BASIC -> s.shelterTypeBasic
     }
 
+    val dismissInteraction = remember { MutableInteractionSource() }
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
-            .pressTick()
-            .clickable(onClick = onDismiss),
+            .pressTick(dismissInteraction)
+            .clickable(
+                interactionSource = dismissInteraction,
+                indication = ripple(bounded = true),
+                onClick = onDismiss
+            ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF1E2124)

@@ -56,7 +56,9 @@ private const val MAX_DEATHS = 32
 private class ActiveDeath(
     val id: String?,
     val geo: GeoPoint,
-    val origin: GeoPoint?,
+    /** Take-off point for the pending flight. Mutable: pre-spawned replay targets re-base it
+     *  to the new viewport's edge once the camera lands ([rebasePendingOrigins]). */
+    var origin: GeoPoint?,
     /** When the bullet FIRES (epochRealtime). Pre-spawned replay targets use a future start:
      *  until then only the icon renders — the threat already stands there when the camera
      *  lands, so nothing appears out of nowhere. */
@@ -95,6 +97,16 @@ class ThreatDeathOverlay : Overlay() {
 
     /** Whether a death animation is already in flight for [id]. */
     fun isActiveFor(id: String?): Boolean = id != null && deaths.any { it.id == id }
+
+    /** Re-point every not-yet-fired bullet's take-off edge via [newOrigin]. Called right after
+     *  a camera jump so pre-spawned flights enter from the CURRENT screen edge (their edge
+     *  was picked on whatever viewport was up when they were pre-spawned). */
+    fun rebasePendingOrigins(newOrigin: () -> GeoPoint?) {
+        val now = SystemClock.elapsedRealtime()
+        for (d in deaths) {
+            if (now < d.start) d.origin = newOrigin()
+        }
+    }
 
     fun spawn(
         id: String? = null,

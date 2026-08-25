@@ -212,6 +212,12 @@ private var notif3minShown = false
             // reset the count and memory so any later neutralizations start a fresh tally
             // instead of resurrecting the dismissed one, and drop the notification itself.
             tally.reset()
+            // The dismiss receiver can spin up a fresh service after "Stop Monitoring & Exit"
+            // (the swipe races the shutdown) — that swipe must not resurrect monitoring.
+            if (monitoringJob == null) {
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
         }
         startMonitoring()
         return START_STICKY
@@ -1206,6 +1212,9 @@ private var notif3minShown = false
         monitoringJob?.cancel()
         NeptunClient.stop()
         LocationTracker.stop()
+        // The tally is promised to live only "while monitoring runs" — dropping it here also
+        // prevents a stale tap/swipe from relaunching the app (and restarting sockets).
+        tally.reset()
         scope.cancel()
         super.onDestroy()
     }

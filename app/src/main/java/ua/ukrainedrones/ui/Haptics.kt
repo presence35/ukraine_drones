@@ -5,15 +5,14 @@ import android.os.Build
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.provider.Settings
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 
 /** Global toggle for press haptics — provided from the user setting at the app root. */
@@ -28,40 +27,41 @@ val LocalHapticsEnabled = staticCompositionLocalOf { true }
 fun animationsOff(): Boolean {
     val resolver = LocalContext.current.contentResolver
     return remember {
-        Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+        android.provider.Settings.Global.getFloat(
+            resolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f
+        ) == 0f
     }
 }
 
 /**
- * Plays a small haptic tick when a tap goes down. A passive listener (does not consume the
- * gesture), so it layers cleanly on top of any clickable/combinedClickable/toggleable.
- * Add it in the modifier chain right before the clickable it should accompany.
+ * Plays a small haptic tick while [source] reports a press. Driven by the interaction source
+ * that already powers each control's press animation (a signal proven to fire in this app) —
+ * not by pointer events, which proved unreliable here.
+ *
+ * The source must also be passed to the element's clickable/toggleable, so both observe it:
+ * ```
+ * val interaction = remember { MutableInteractionSource() }
+ * Modifier.pressTick(interaction).clickable(interactionSource = interaction, ...)
+ * ```
  *
  * Vibrates via the raw Vibrator service (same as the shot-down flourish) rather than Compose's
  * haptic feedback: USAGE_ALARM keeps the tick working even when system touch feedback is off.
  */
 @Composable
-fun Modifier.pressTick(): Modifier {
+fun Modifier.pressTick(source: InteractionSource): Modifier {
     val enabled = LocalHapticsEnabled.current
-    val appContext = LocalContext.current.applicationContext
     if (!enabled) return this
-    return this.pointerInput(Unit) {
-        awaitEachGesture {
-            val down = awaitFirstDown()
-            if (down.pressed) {
-                hapticTick(appContext)
-            }
-            waitForUpOrCancellation()
+    val appContext = LocalContext.current.applicationContext
+    val pressed by source.collectIsPressedAsState()
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            tick(appContext)
         }
     }
+    return this
 }
 
-/**
- * One short haptic tick (30 ms, full amplitude) via the raw Vibrator service — the same
- * mechanism as [pressTick] and the shoot-down flourish: USAGE_ALARM keeps it working even
- * when system touch feedback is off. Callers gate on [LocalHapticsEnabled].
- */
-internal fun hapticTick(context: Context) {
+private fun tick(context: Context) {
     val vibrator = context.getSystemService(Vibrator::class.java) ?: return
     if (!vibrator.hasVibrator()) return
     // One-shot with full amplitude (same mechanism as the shoot-down flourish) — the
@@ -76,3 +76,10 @@ internal fun hapticTick(context: Context) {
         vibrator.vibrate(effect)
     }
 }
+
+/**
+ * Imperative one-shot for call sites with no interaction source to observe (e.g. osmdroid's
+ * marker click listener, where a tap must feel instant before anything composes). Callers
+ * gate on [LocalHapticsEnabled] themselves.
+ */
+internal fun hapticTick(context: Context) = tick(context)

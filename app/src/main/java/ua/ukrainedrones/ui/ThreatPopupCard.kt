@@ -84,7 +84,7 @@ internal fun AlertsOffChip(s: Strings.StringSet) {
     Surface(
         shape = RoundedCornerShape(50),
         color = Color(0xFF2A2A2A).copy(alpha = if (isPressed) 0.9f else 1f),
-        modifier = Modifier.pressTick().clickable(
+        modifier = Modifier.pressTick(interactionSource).clickable(
             interactionSource = interactionSource,
             indication = ripple(bounded = true),
             onClick = {}
@@ -263,7 +263,7 @@ fun ThreatPopupCard(
         modifier = modifier
             .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             .then(
-                if (interactive) Modifier.pressTick().clickable(
+                if (interactive) Modifier.pressTick(cardInteraction).clickable(
                     interactionSource = cardInteraction,
                     indication = ripple(bounded = true, radius = 200.dp),
                     onClick = onDismiss

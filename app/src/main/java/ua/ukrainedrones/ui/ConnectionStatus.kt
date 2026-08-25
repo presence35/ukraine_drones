@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +30,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +53,8 @@ internal fun ConnectionStatus(
     neptunDown: Boolean,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
+    testMig: Boolean,
+    onTestMigChange: (Boolean) -> Unit,
     onOpenLogs: () -> Unit,
     showInfo: Boolean,
     onShowInfoChange: (Boolean) -> Unit,
@@ -58,13 +63,18 @@ internal fun ConnectionStatus(
 ) {
     val dotColor = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50)
     val label = if (neptunDown) s.connOffline else s.connOnline
+    val pillInteraction = remember { MutableInteractionSource() }
         Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(horizontal = 8.dp, vertical = 3.dp)
-            .pressTick()
-            .clickable { onShowInfoChange(true) },
+            .pressTick(pillInteraction)
+            .clickable(
+                interactionSource = pillInteraction,
+                indication = ripple(bounded = true),
+                onClick = { onShowInfoChange(true) }
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Image(
@@ -171,6 +181,20 @@ internal fun ConnectionStatus(
                         Switch(
                             checked = forceOffline,
                             onCheckedChange = onForceOfflineChange
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            s.connSimMigTitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = testMig,
+                            onCheckedChange = onTestMigChange
                         )
                     }
                 }

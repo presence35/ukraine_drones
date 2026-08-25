@@ -3,6 +3,7 @@ package ua.ukrainedrones
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AviationFlybyTest {
@@ -16,44 +17,34 @@ class AviationFlybyTest {
             mig,
             threat(id = "m2", type = ThreatType.AVIATION)
         )
-        val show = AviationFlyby.nextShow(inner, emptySet(), LatLng(46.0, 30.0), true, tick = 1)
+        val show = AviationFlyby.nextShow(inner, emptySet(), true, tick = 1)
         assertNotNull(show)
         assertEquals("m1", show!!.threatId)
     }
 
     @Test
     fun `nextShow skips already-played ids`() {
-        assertNull(AviationFlyby.nextShow(listOf(mig), setOf("m1"), null, true, 1))
+        assertNull(AviationFlyby.nextShow(listOf(mig), setOf("m1"), true, 1))
     }
 
     @Test
     fun `nextShow ignores non-aviation tiers`() {
         val inner = listOf(threat(id = "s1", type = ThreatType.SHAHED))
-        assertNull(AviationFlyby.nextShow(inner, emptySet(), null, true, 1))
+        assertNull(AviationFlyby.nextShow(inner, emptySet(), true, 1))
     }
 
     @Test
-    fun `nextShow never plays while the map is hidden`() {
-        assertNull(AviationFlyby.nextShow(listOf(mig), emptySet(), null, mapVisible = false, tick = 1))
+    fun `nextShow never plays while the map is hidden or app backgrounded`() {
+        assertNull(AviationFlyby.nextShow(listOf(mig), emptySet(), false, 1))
     }
 
     @Test
-    fun `course falls back to west-to-east without a focus`() {
-        val show = AviationFlyby.nextShow(listOf(mig), emptySet(), null, true, 1)
-        assertEquals(90.0, show!!.courseDeg, 1e-9)
-    }
-
-    @Test
-    fun `course points from the airbase toward the focus`() {
-        // Airbase due south of the focus → the plane flies north ("at you").
-        val show = AviationFlyby.nextShow(
-            listOf(threat(id = "m1", type = ThreatType.AVIATION, lat = 45.0, lon = 32.0)),
-            emptySet(),
-            LatLng(47.0, 32.0),
-            true,
-            1
-        )
-        assertEquals(0.0, show!!.courseDeg, 0.5)
+    fun `course is a fresh random full-circle bearing`() {
+        repeat(20) {
+            val show = AviationFlyby.nextShow(listOf(mig), emptySet(), true, 1L + it)
+            assertNotNull(show)
+            assertTrue(show!!.courseDeg in 0.0..360.0)
+        }
     }
 
     @Test
