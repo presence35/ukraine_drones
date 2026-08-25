@@ -80,7 +80,6 @@ class AlertService : Service() {
 
     private var wasFocusAlertActive = false
     private var officialRegionToken: String? = null
-    private var wasOfficialAlertsEnabled = true
     private var currentReasonThreatId: String? = null
     private var officialAnnouncedToken: String? = null
     private var officialAnnouncedSince: String? = null
@@ -193,12 +192,6 @@ private var notif3minShown = false
                 wasConnected = false
                 offlineRestorePending = true
             }
-            // Restore the last announced official-alert episode so a service restart mid-alert
-            // doesn't re-ring the siren for an alert that already fired (mirrors the offline
-            // persistence above). handleState reconciles these against the live episode.
-            officialAnnouncedToken = prefs.officialAnnouncedToken().first().ifBlank { null }
-            officialAnnouncedSince = prefs.officialAnnouncedSince().first().ifBlank { null }
-            officialAnnouncedReasonId = prefs.officialAnnouncedReasonId().first().ifBlank { null }
         }
         LocationTracker.start(this)
         WidgetUpdater.start(this, scope)
@@ -271,6 +264,14 @@ private var notif3minShown = false
                 }
         }
         monitoringJob = scope.launch {
+            // Restore the last announced official-alert episode BEFORE any tick can evaluate the
+            // announce branch. Doing it here (not onCreate) removes the startup race where the
+            // first handleState tick could re-ring an alert that a service kill already announced.
+            // handleState reconciles these against the live episode; the prefs stay until the
+            // episode truly ends, so repeated kills mid-episode still won't re-ring.
+            officialAnnouncedToken = prefs.officialAnnouncedToken().first().ifBlank { null }
+            officialAnnouncedSince = prefs.officialAnnouncedSince().first().ifBlank { null }
+            officialAnnouncedReasonId = prefs.officialAnnouncedReasonId().first().ifBlank { null }
             val nowFlow = MutableStateFlow(System.currentTimeMillis())
             launch {
                 while (true) {
@@ -630,29 +631,13 @@ private var notif3minShown = false
         }
         knownZones = knownZones.filterKeys { it !in droppedZoneIds }
 
-        // Official-alert notifications were turned back on while an alert is live: the alert
-        // was never announced while muted, so force a fresh announce. wasFocusAlertActive only
-        // tracks alerts we actually posted a notification for.
-        if (state.officialAlertsEnabled != wasOfficialAlertsEnabled) {
-            wasOfficialAlertsEnabled = state.officialAlertsEnabled
-            if (state.officialAlertsEnabled) {
-                // Turning the toggle back on forces a fresh announce even for a live alert
-                // (it was never announced while muted) — clear any persisted episode so the
-                // restart-reconciliation can't suppress this intentional re-announce.
-                wasFocusAlertActive = false
-                officialAnnouncedToken = null
-                officialAnnouncedSince = null
-                officialAnnouncedReasonId = null
-                scope.launch {
-                    ZonePrefs(applicationContext).setOfficialAnnounced(null, null, null)
-                }
-            }
-        }
-
         // Restart reconciliation: an episode we already announced before a service kill must
         // not re-ring. The persisted identity (focus token + NEPTUN `since`) is restored into
         // the instance flags once, then the in-memory copy is dropped — the prefs stay until
         // the episode truly ends, so a second kill mid-episode still won't re-ring.
+        // Re-enabling the official-alerts toggle is NOT a re-announce trigger: an already-rung
+        // alert stays rung (wasFocusAlertActive is still true), and an alert that genuinely
+        // started while muted falls through to the announce branch below on its own.
         if (!wasFocusAlertActive && officialAnnouncedToken != null && officialAnnouncedSince != null &&
             state.focusToken == officialAnnouncedToken &&
             state.focusOblastAlertSince != null &&
@@ -713,14 +698,18 @@ private var notif3minShown = false
             wasFocusAlertActive = true
             persistOfficialAnnounced(state)
         } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
-            state.officialReasonThreatId != currentReasonThreatId
+            state.officialReasonThreatId != currentReasonThreatId && alertNotificationShowing()
         ) {
             // Wait-for-reason: the official alert fired with only a region-level body; keep
             // updating the SAME NOTIF_ALERT silently as a specific threat reason arrives.
             // Mirrors the knownZones change-tracking above — a same-id re-post is guarded on
             // the threat behind the reason (not its text, which NEPTUN refreshes as
             // confirmations tick up) so the siren isn't re-triggered — and never clobbers a
-            // ringing zone alert (alertable is non-empty then).
+            // ringing zone alert (alertable is non-empty then). It only refreshes while the
+            // alert notification is STILL showing: if the user tapped/swiped it away, a re-post
+            // would be a brand-new notification that rings again (setOnlyAlertOnce only
+            // suppresses updates to an existing one) — a same-episode reason refresh must never
+            // resurrect a dismissed "official alert" as a new siren.
             val reasonThreat = state.officialReasonThreatId?.let { all[it] }
             postAlert(
                 null,
@@ -942,6 +931,13 @@ private var notif3minShown = false
         } catch (_: SecurityException) {
         }
     }
+
+    /** Whether the alert notification is currently showing. A silent reason refresh must not
+     *  re-post once it's gone: a dismissed notification re-posted is a brand-new notification
+     *  that rings again (setOnlyAlertOnce only suppresses updates to a live one). */
+    private fun alertNotificationShowing(): Boolean =
+        runCatching { NotificationManagerCompat.from(this).activeNotifications.any { it.id == NOTIF_ALERT } }
+            .getOrDefault(false)
 
     /** Persist the current outage start across service restarts (0 clears it). */
     private suspend fun persistOfflineSince(ts: Long) {

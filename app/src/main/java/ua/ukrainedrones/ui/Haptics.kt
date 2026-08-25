@@ -44,11 +44,9 @@ fun Modifier.pressTick(): Modifier {
 private fun pressTickVibrate(context: Context) {
     val vibrator = context.getSystemService(Vibrator::class.java) ?: return
     if (!vibrator.hasVibrator()) return
-    val effect = if (Build.VERSION.SDK_INT >= 29) {
-        VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
-    } else {
-        VibrationEffect.createOneShot(25L, VibrationEffect.DEFAULT_AMPLITUDE)
-    }
+    // One-shot with full amplitude (same mechanism as the shoot-down flourish) — the
+    // predefined EFFECT_TICK is a device-tuned "keyboard tap" that many OEMs render as a no-op.
+    val effect = VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE)
     if (Build.VERSION.SDK_INT >= 30) {
         vibrator.vibrate(
             effect,

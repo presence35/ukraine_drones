@@ -1,5 +1,6 @@
 package ua.ukrainedrones
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,12 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -51,10 +52,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -382,29 +385,36 @@ private fun ViewOptionsRow(
                 )
             }
             Spacer(Modifier.weight(1f))
+            val sortRotation by animateFloatAsState(
+                targetValue = if (newestFirst) 0f else 180f,
+                label = "sortRotation"
+            )
             IconButton(onClick = onSortToggle) {
                 Icon(
-                    imageVector = if (newestFirst) {
-                        Icons.Filled.ArrowDownward
-                    } else {
-                        Icons.Filled.ArrowUpward
-                    },
-                    contentDescription = s.logsSortDesc
+                    imageVector = Icons.AutoMirrored.Filled.Sort,
+                    contentDescription = s.logsSortDesc,
+                    modifier = Modifier.rotate(sortRotation)
                 )
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = shownOnly,
+                    role = Role.Switch,
+                    onValueChange = onShownOnlyChange
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                s.logsShownOnly,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f)
-            )
             Switch(
                 checked = shownOnly,
-                onCheckedChange = onShownOnlyChange
+                onCheckedChange = null
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                s.logsShownOnly,
+                style = MaterialTheme.typography.bodyMedium
             )
         }
     }

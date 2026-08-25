@@ -246,7 +246,7 @@ fun ThreatPopupCard(
                         )
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.Top) {
                                 ThreatIcon(
                                     type = threat.type,
                                     set = iconSet,
@@ -286,7 +286,7 @@ fun ThreatPopupCard(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         s.reliabilityShort,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.titleSmall,
                                         color = Color(0xFF9E9E9E)
                                     )
                                     Spacer(Modifier.width(4.dp))
@@ -304,7 +304,7 @@ fun ThreatPopupCard(
                     }
                 } else {
                     Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.Top) {
                             ThreatIcon(
                                 type = threat.type,
                                 set = iconSet,
@@ -395,6 +395,7 @@ fun ThreatPopupCard(
                         // NEPTUN's course assessment, e.g. "UAV heading toward Chornomorsk"
                         val course = translateCourseAssessment(threat.explanationShort, lang)
                             ?.let { firstSentence(it) }
+                            ?.takeUnless { repeatsShownInfo(it, typeLabel, displayRegion) }
                         course?.let {
                             Text(it, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
                             Spacer(Modifier.height(8.dp))
@@ -487,6 +488,28 @@ private fun firstSentence(text: String): String {
     return text
 }
 
+/** True when the course line carries nothing beyond the type label and the place names
+ *  already shown in the header: deleting those leaves no real words behind. */
+internal fun repeatsShownInfo(course: String, typeLabel: String, regionText: String): Boolean {
+    fun norm(s: String): String = s.lowercase()
+        .map { if (it.isLetterOrDigit()) it else ' ' }
+        .joinToString("")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    var rest = " ${norm(course)} "
+    val drops = (listOf(typeLabel) +
+            listOf("UAV", "БпЛА", "Shahed", "Шахед", "Шахеди", "Drone", "Дрон") +
+            regionText.split('·', ','))
+        .map { norm(it) }
+        .filter { it.isNotBlank() }
+        .sortedByDescending { it.length }
+    for (d in drops) {
+        val padded = " $d "
+        while (padded in rest) rest = rest.replace(padded, " ")
+    }
+    return rest.isBlank()
+}
+
 /** Small skull icon tinted by the threat level (grey below 3). */
 @Composable
 private fun LevelSkullIcon(level: Double, size: Dp = 30.dp) {
@@ -504,7 +527,7 @@ private fun HorizontalLevelBar(level: Double) {
     val fraction = (level / 10.0).coerceIn(0.0, 1.0)
     val barWidth = fontAware(64.dp)
     Row(verticalAlignment = Alignment.CenterVertically) {
-        LevelSkullIcon(level = level, size = fontAware(18.dp))
+        LevelSkullIcon(level = level, size = fontAware(14.dp))
         Spacer(Modifier.width(6.dp))
         Box(
             modifier = Modifier
