@@ -48,10 +48,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -89,6 +91,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
+import kotlin.math.cos
+import kotlin.math.sin
 
 private enum class Screen { MAP, SETTINGS, GUIDE, SHELTERS, LOGS }
 
@@ -494,9 +498,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             iconSet = uiState.iconSet,
             hiddenTypes = uiState.hiddenTypes,
             silencedTypes = uiState.silencedTypes,
+            followMe = uiState.followMe,
+            pinnedCity = uiState.pinnedCity,
             onChoose = { viewModel.setLanguage(it) },
             onIconSetChange = { viewModel.setThreatIconSet(it) },
             onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
+            onFollowMeChange = { viewModel.setFollowMe(it) },
+            onPinnedCityChange = { viewModel.setPinnedCity(it) },
             onComplete = {
                 viewModel.skipLanguageChoose()
                 if (wizardFromSettings) {
@@ -541,22 +549,27 @@ private fun FirstLaunchWizard(
     iconSet: ThreatIconSet,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
+    followMe: Boolean,
+    pinnedCity: City?,
     onChoose: (AppLanguage) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onThreatEnabledToggle: (ThreatType, Boolean) -> Unit,
+    onFollowMeChange: (Boolean) -> Unit,
+    onPinnedCityChange: (City?) -> Unit,
     onComplete: () -> Unit,
     onLater: () -> Unit
 ) {
     val s = Strings.get(current)
     val other = if (current == AppLanguage.UA) AppLanguage.EN else AppLanguage.UA
-    val totalSteps = 4
+    val totalSteps = 5
     var step by remember { mutableStateOf(0) }
     var tipsRevealed by remember { mutableStateOf(false) }
     BackHandler(enabled = step > 0) { step-- }
     val stepTitle = when (step) {
         0 -> Strings.get(other).languageChooseTitle
         1 -> s.wizardCareTitle
-        2 -> s.wizardZonesTitle
+        2 -> s.wizardLocationTitle
+        3 -> s.wizardZonesTitle
         else -> s.onboardingFeaturesTitle
     }
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -639,7 +652,8 @@ private fun FirstLaunchWizard(
                             slot = 28.dp
                         )
                     }
-                    2 -> SetupZoneControlsStep(s)
+                    2 -> SetupLocationStep(current, followMe, pinnedCity, onFollowMeChange, onPinnedCityChange)
+                    3 -> SetupZoneControlsStep(s)
                     else -> SetupFeaturesStep(s)
                 }
             }
@@ -655,33 +669,28 @@ private fun FirstLaunchWizard(
                     OutlinedButton(onClick = onLater) { Text(s.languageChooseLater) }
                 }
                 val progressFrac = (step + 1) / totalSteps.toFloat()
+                val nextEnabled = step != 0 || tipsRevealed
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(42.dp)
                         .clip(RoundedCornerShape(50))
                         .background(
-                            Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0f to UkraineYellow,
-                                    progressFrac to UkraineYellow,
-                                    progressFrac to UkraineBlue,
-                                    1f to UkraineBlue
-                                )
-                            )
+                            if (nextEnabled) MaterialTheme.colorScheme.surfaceContainerHigh
+                            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Button(
                         onClick = { if (step < totalSteps - 1) step++ else onComplete() },
-                        enabled = step != 0 || tipsRevealed,
+                        enabled = nextEnabled,
                         modifier = Modifier.fillMaxSize(),
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.Transparent,
                             contentColor = Color.White,
                             disabledContainerColor = Color.Transparent,
-                            disabledContentColor = Color.White.copy(alpha = 0.55f)
+                            disabledContentColor = Color.White.copy(alpha = 0.4f)
                         ),
                         contentPadding = PaddingValues(0.dp)
                     ) {
@@ -690,6 +699,24 @@ private fun FirstLaunchWizard(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth(progressFrac)
+                            .height(3.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(UkraineYellow, UkraineBlue)
+                                )
+                            )
+                    )
                 }
             }
         }
@@ -919,6 +946,158 @@ private fun OnboardingGradualTip(text: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
+    }
+}
+
+/** Wizard page: where the user's position comes from — GPS follow-me or a pinned city. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SetupLocationStep(
+    lang: AppLanguage,
+    followMe: Boolean,
+    pinnedCity: City?,
+    onFollowMeChange: (Boolean) -> Unit,
+    onPinnedCityChange: (City?) -> Unit
+) {
+    val s = Strings.get(lang)
+    val context = LocalContext.current
+    val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+        PackageManager.PERMISSION_GRANTED
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(
+            s.wizardLocationSubtitle,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        WizardLocationCard(
+            selected = followMe,
+            onClick = {
+                onFollowMeChange(true)
+                if (!fineGranted) {
+                    permLauncher.launch(
+                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                    )
+                }
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.LocationOn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = s.followMeTitle,
+            desc = s.followMeDesc
+        )
+        WizardLocationCard(
+            selected = !followMe,
+            onClick = { onFollowMeChange(false) },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Place,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = s.pinCityTitle,
+            desc = s.pinCityDesc
+        )
+        AnimatedVisibility(visible = !followMe) {
+            WizardCityPicker(lang, pinnedCity, onPinnedCityChange)
+        }
+    }
+}
+
+@Composable
+private fun WizardLocationCard(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+    title: String,
+    desc: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = 1.5.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                else Color.Transparent
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        icon()
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                desc,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WizardCityPicker(
+    lang: AppLanguage,
+    pinnedCity: City?,
+    onChange: (City?) -> Unit
+) {
+    val cities = remember(lang) {
+        Cities.ALL.filter { it.major }
+            .sortedBy { if (lang == AppLanguage.UA) it.nameUa else it.nameEn }
+    }
+    val label: (City) -> String = { c -> if (lang == AppLanguage.UA) c.nameUa else c.nameEn }
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = pinnedCity?.let(label) ?: "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(Strings.get(lang).pinCityTitle) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            cities.forEach { city ->
+                DropdownMenuItem(
+                    text = { Text(label(city)) },
+                    onClick = {
+                        onChange(city)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -2087,16 +2266,28 @@ private fun AviationFlybyOverlay(
         val x = lerp(entry.first, exit.first, progress.value)
         val y = lerp(entry.second, exit.second, progress.value)
         val dir = AviationFlyby.direction(show.courseDeg)
+        // Sprite transform-chain inputs, shared with the trail anchor so both move as one:
+        // rot is exactly what PlaneSprite applies (course − art facing), mirrored when inverted.
+        val baseDeg = IconCatalog.baseDeg(ThreatType.AVIATION, iconSet)
+        val rotNorm = ((show.courseDeg.toFloat() - baseDeg) % 360f + 360f) % 360f
+        val flipped = rotNorm >= 90f && rotNorm <= 270f
         Canvas(modifier = Modifier.matchParentSize()) {
-            // Trail origin glued to the exhausts in the airframe's OWN frame: backwards along
-            // the fuselage plus a lateral nudge toward the nozzle, both rotated with the
-            // course — so "a bit below the tail" stays put no matter which way it flies.
-            val backX = -dir.first
-            val backY = -dir.second
-            val perpX = -dir.second
-            val perpY = dir.first
-            val anchorX = (x + planeW * (TRAIL_BACK_FRAC * backX + TRAIL_SIDE_FRAC * perpX)).toFloat()
-            val anchorY = (y + planeW * (TRAIL_BACK_FRAC * backY + TRAIL_SIDE_FRAC * perpY)).toFloat()
+            // Trail origin in the ARTWORK's slot frame, run through the same mirror→rotate
+            // chain graphicsLayer applies to the sprite (scaleY first, then rotationZ). This
+            // pins it to the actual nozzle pixel at every bearing, mirrored passes included.
+            val baseRad = Math.toRadians(baseDeg.toDouble())
+            val rotRad = Math.toRadians(rotNorm.toDouble())
+            val backSlotX = -sin(baseRad)   // out the exhaust: opposite the art's nose bearing
+            val backSlotY = cos(baseRad)
+            val sideSlotX = -cos(baseRad)   // 90° off the tail axis — nozzle-side nudge
+            val sideSlotY = -sin(baseRad)
+            var ox = planeW * (TRAIL_BACK_FRAC * backSlotX + TRAIL_SIDE_FRAC * sideSlotX)
+            var oy = planeW * (TRAIL_BACK_FRAC * backSlotY + TRAIL_SIDE_FRAC * sideSlotY)
+            if (flipped) oy = -oy           // step 1: the scaleY mirror, same as the sprite
+            val wx = cos(rotRad) * ox - sin(rotRad) * oy   // step 2: rotationZ
+            val wy = sin(rotRad) * ox + cos(rotRad) * oy
+            val anchorX = (x + wx).toFloat()
+            val anchorY = (y + wy).toFloat()
             val tailX = (anchorX - trailLen * dir.first).toFloat()
             val tailY = (anchorY - trailLen * dir.second).toFloat()
             drawLine(
@@ -2111,9 +2302,7 @@ private fun AviationFlybyOverlay(
                 cap = StrokeCap.Round
             )
         }
-        // Map markers rotate by courseDeg minus the asset's baked-in facing; mirror that here
-        // so every icon set flies nose-first along the pass.
-        val rotation = show.courseDeg.toFloat() - IconCatalog.baseDeg(ThreatType.AVIATION, iconSet)
+        val rotation = show.courseDeg.toFloat() - baseDeg
         PlaneSprite(planeW, rotation, iconSet, alpha = 0.35f, tint = Color.Black,
             modifier = Modifier.offset {
                 IntOffset(
@@ -2128,7 +2317,7 @@ private fun AviationFlybyOverlay(
     }
 }
 
-/** Contrail origin in the airframe's frame, as fractions of the plane's width. */
+/** Contrail origin in the artwork's slot frame, as fractions of the plane slot's size. */
 private const val TRAIL_BACK_FRAC = 0.42f
 private const val TRAIL_SIDE_FRAC = 0.06f
 

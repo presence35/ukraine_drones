@@ -30,6 +30,8 @@ object Strings {
         val wizardCareOn: String,
         val wizardCareOff: String,
         val wizardStartButton: String,
+        val wizardLocationTitle: String,
+        val wizardLocationSubtitle: String,
         val wizardZonesTitle: String,
         val wizardZonesSubtitle: String,
         val wizardEditZonesHint: String,
@@ -516,6 +518,8 @@ object Strings {
         val wizardCareOn: String get() = onboarding.wizardCareOn
         val wizardCareOff: String get() = onboarding.wizardCareOff
         val wizardStartButton: String get() = onboarding.wizardStartButton
+        val wizardLocationTitle: String get() = onboarding.wizardLocationTitle
+        val wizardLocationSubtitle: String get() = onboarding.wizardLocationSubtitle
         val wizardZonesTitle: String get() = onboarding.wizardZonesTitle
         val wizardZonesSubtitle: String get() = onboarding.wizardZonesSubtitle
         val wizardEditZonesHint: String get() = onboarding.wizardEditZonesHint
@@ -1027,6 +1031,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         wizardCareOn = "Сповіщати",
         wizardCareOff = "Вимкнено",
         wizardStartButton = "Будьте в безпеці…",
+        wizardLocationTitle = "Де ви перебуваєте?",
+        wizardLocationSubtitle = "Оберіть, звідки брати вашу позицію — від цього залежать зони та сповіщення.",
         wizardZonesTitle = "Зони тривог",
         wizardZonesSubtitle = "Кнопки на мапі наближають зони, а повзунки змінюють їх розмір — червона зона ближче, жовта далі. Тут усе видно одразу.",
         wizardEditZonesHint = "Повзунок повільно рухає коло на мапі — червона зона завжди всередині жовтої.",
@@ -1539,6 +1545,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         wizardCareOn = "Alert",
         wizardCareOff = "Off",
         wizardStartButton = "Stay safe…",
+        wizardLocationTitle = "Where are you?",
+        wizardLocationSubtitle = "Choose where your position comes from — it drives your zones and alerts.",
         wizardZonesTitle = "Alert zones",
         wizardZonesSubtitle = "The buttons on the map zoom to a zone; the sliders resize them — red is close, yellow is further out. Everything is visible at once.",
         wizardEditZonesHint = "Dragging a slider moves the circle live — red always stays inside yellow.",
