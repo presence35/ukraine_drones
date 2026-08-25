@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- Night mode: the night zone-siren toggle is now titled "Sirens always sound", matching the Alerts section wording / Нічний режим: перемикач нічних сирен тепер називається «Сирена звучить завжди» — узгоджено з формулюванням розділу «Сповіщення».
 - Fix: the resolved-threats tally notification is now removed when you "Stop Monitoring & Exit" (or the service dies) — a stale tap or swipe can no longer relaunch the app and silently restart sockets/monitoring. / Виправлення: сповіщення лічильника знешкоджених тепер зникає після «Зупинити моніторинг і вийти» (або зупинки сервісу) — застарілий дотик чи свайп більше не перезапускає застосунок і не вмикає мовчки сокети й моніторинг.
 - Perf: tapping a threat now opens the card fast and keeps it fast during live waves. Selection moved out of the shared UI-state into its own popup-only stream, so a tap no longer rebuilds the header, map or footer — only the card; the heavy per-frame threat evaluation runs off the main thread; and the footer strip owns its grouping/sorting in an isolated scope. / Перф: дотик до загрози тепер відкриває картку швидко й не гальмує під час живої хвилі. Вибрану загрозу винесено із спільного UI-стану в окремий потік лише для картки, тож дотик більше не перебудовує шапку, мапу чи нижню панель — тільки картку; важкий погрозовий розрахунок кожного кадру виконується поза головним потоком, а стрічка внизу групує й сортує дані у власній ізольованій області.
 

@@ -260,7 +260,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onFastYellowArmedChange = { if (editingNight) viewModel.setNightFastYellowArmed(it) else viewModel.setFastYellowArmed(it) },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
-            onTestMigChange = viewModel::setTestMig,
+            onSimulateMig = viewModel::simulateMig,
             onNeutralize = { id -> viewModel.neutralizeThreat(id) },
             onFlybyFinished = { id -> viewModel.onFlybyFinished(id) },
             showConnectionInfo = showConnectionInfo,
@@ -1012,7 +1012,7 @@ private fun MapScreen(
     onFastYellowArmedChange: (Boolean) -> Unit,
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit,
-    onTestMigChange: (Boolean) -> Unit,
+    onSimulateMig: () -> Unit,
     onNeutralize: (String) -> Unit,
     onFlourishEjected: () -> Unit,
     onFlybyFinished: (String) -> Unit,
@@ -1199,8 +1199,7 @@ private fun MapScreen(
                     neptunDown = uiState.neptunDown,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
-                    testMig = uiState.testMig,
-                    onTestMigChange = onTestMigChange,
+                    onSimulateMig = onSimulateMig,
                     onOpenLogs = onOpenLogs,
                     showInfo = showConnectionInfo,
                     onShowInfoChange = onShowConnectionInfoChange,
@@ -2057,9 +2056,9 @@ private fun nextThreatCardSize(current: ThreatCardSize): ThreatCardSize {
 }
 
 /**
- * Full-size MiG-31K takeoff flourish: the plane crosses the whole viewport along the
- * airbase→focus bearing with a contrail, then the threat card opens ([onFinished]). Pure
- * overlay — consumes no input, moves no camera.
+ * Full-size MiG-31K takeoff flourish: a screen-wide plane crosses the viewport on a random
+ * bearing with a contrail, then the threat card opens ([onFinished]). Pure overlay — consumes
+ * no input, moves no camera.
  */
 @Composable
 private fun AviationFlybyOverlay(
@@ -2089,21 +2088,25 @@ private fun AviationFlybyOverlay(
         val y = lerp(entry.second, exit.second, progress.value)
         val dir = AviationFlyby.direction(show.courseDeg)
         Canvas(modifier = Modifier.matchParentSize()) {
-            // Anchor the trail behind the exhausts, tucked under the airframe (a fraction of
-            // the plane's own size, so it holds at any rotation or icon set) — the plane
-            // covers the seam and the exact nozzle pixel never matters.
-            val anchorX = x - planeW * 0.4f * dir.first
-            val anchorY = y - planeW * 0.4f * dir.second
+            // Trail origin glued to the exhausts in the airframe's OWN frame: backwards along
+            // the fuselage plus a lateral nudge toward the nozzle, both rotated with the
+            // course — so "a bit below the tail" stays put no matter which way it flies.
+            val backX = -dir.first
+            val backY = -dir.second
+            val perpX = -dir.second
+            val perpY = dir.first
+            val anchorX = (x + planeW * (TRAIL_BACK_FRAC * backX + TRAIL_SIDE_FRAC * perpX)).toFloat()
+            val anchorY = (y + planeW * (TRAIL_BACK_FRAC * backY + TRAIL_SIDE_FRAC * perpY)).toFloat()
             val tailX = (anchorX - trailLen * dir.first).toFloat()
             val tailY = (anchorY - trailLen * dir.second).toFloat()
             drawLine(
                 brush = Brush.linearGradient(
                     colors = listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.55f)),
                     start = Offset(tailX, tailY),
-                    end = Offset(anchorX.toFloat(), anchorY.toFloat())
+                    end = Offset(anchorX, anchorY)
                 ),
                 start = Offset(tailX, tailY),
-                end = Offset(anchorX.toFloat(), anchorY.toFloat()),
+                end = Offset(anchorX, anchorY),
                 strokeWidth = trailStroke,
                 cap = StrokeCap.Round
             )
@@ -2125,21 +2128,36 @@ private fun AviationFlybyOverlay(
     }
 }
 
-/** One rotated copy of the aviation asset in a [sidePx]-square slot, optionally a flat shadow. */
+/** Contrail origin in the airframe's frame, as fractions of the plane's width. */
+private const val TRAIL_BACK_FRAC = 0.42f
+private const val TRAIL_SIDE_FRAC = 0.06f
+
+/**
+ * One rotated copy of the aviation asset in a [sidePx]-square slot, optionally a flat shadow.
+ * Never renders upside-down: when the pass would invert the jet (|rot| > 90°), the sprite is
+ * mirrored vertically in its own frame before the rotation — scale applies before rotation in
+ * graphicsLayer, so the nose still points along the flight path but the fuselage reads upright.
+ */
 @Composable
 private fun PlaneSprite(
     sidePx: Float,
-    rotation: Float,
+    rotationDeg: Float,
     iconSet: ThreatIconSet,
     modifier: Modifier = Modifier,
     alpha: Float = 1f,
     tint: Color = Color.Unspecified
 ) {
     val side = with(LocalDensity.current) { sidePx.toDp() }
+    val rot = ((rotationDeg % 360f) + 360f) % 360f
+    val flipped = rot >= 90f && rot <= 270f
     Box(
         modifier = modifier
             .size(side)
-            .graphicsLayer { this.alpha = alpha; this.rotationZ = rotation }
+            .graphicsLayer {
+                this.alpha = alpha
+                this.rotationZ = rot
+                this.scaleY = if (flipped) -1f else 1f
+            }
     ) {
         ThreatIcon(type = ThreatType.AVIATION, set = iconSet, size = side, tint = tint)
     }

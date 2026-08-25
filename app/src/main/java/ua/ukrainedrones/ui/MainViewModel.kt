@@ -36,8 +36,7 @@ import kotlin.random.Random
 data class UiState(
     val connected: Boolean = false,
     val neptunDown: Boolean = false,                 // NEPTUN offline (real or simulated via test toggle)
-    val forceOffline: Boolean = false,             // TEMP test toggle — simulate NEPTUN offline
-    val testMig: Boolean = false,                  // TEMP test toggle — synthetic MiG-31K injected
+    val forceOffline: Boolean = false,              // TEMP test toggle — simulate NEPTUN offline
     val threatsInner: List<Threat> = emptyList(), // reaching within the red time tier
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
     val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
@@ -619,7 +618,6 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             update = updateUi.update,
             needsInstallPermission = updateUi.needsInstallPermission,
             latestVersion = updateUi.latestVersion,
-            testMig = live.neptun.testMig,
             disclaimerCollapsed = prefs.disclaimerCollapsed,
             disclaimerReadCount = prefs.disclaimerReadCount,
             slowRedArmed = prefs.slowRedArmed,
@@ -1063,8 +1061,8 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         }
     }
 
-    /** TEMP test toggle: inject a synthetic MiG-31K takeoff as if NEPTUN had sent it. */
-    fun setTestMig(on: Boolean) = NeptunClient.setTestMig(on)
+    /** TEMP test button: fire one synthetic MiG-31K takeoff through the real pipeline. */
+    fun simulateMig() = NeptunClient.fireTestMig()
 
     /** Pin the map to a city. Pinning auto-disables follow-me so the pin takes effect. */
     fun setPinnedCity(city: City?) {
@@ -1269,17 +1267,19 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     fun revealThreat(id: String?, lat: Double, lon: Double, select: Boolean = true) {
         revealTick++
         neutralizedFlow.value = null
-        if (select && id != null) {
-            selectedThreatFlow.value = NeptunClient.state.value.threats[id]
-        }
-        revealFlow.value = RevealRequest(revealTick, id, lat, lon)
-        // A MiG-31K tap greets with a full flyby pass — every press, fresh random bearing.
-        // Marking it played also suppresses the live auto-trigger for the same id.
-        if (id != null && NeptunClient.state.value.threats[id]?.type == ThreatType.AVIATION) {
+        val threat = id?.let { NeptunClient.state.value.threats[it] }
+        val aviation = threat?.type == ThreatType.AVIATION
+        // A MiG-31K tap greets with a full flyby pass — every press, fresh random bearing —
+        // and the card only opens when the jet is gone (onFlybyFinished), so selection is
+        // deferred here. Marking it played also suppresses the live auto-trigger for the id.
+        if (aviation && id != null) {
             flybyPlayedIds.add(id)
             flybyTick++
             flybyFlow.value = AviationFlybyShow(flybyTick, id, Random.nextDouble(0.0, 360.0))
+        } else if (select && id != null) {
+            selectedThreatFlow.value = threat
         }
+        revealFlow.value = RevealRequest(revealTick, id, lat, lon)
     }
 
     /** Tally-tap replay: ask the map to shoot down the remembered resolutions in sequence. */

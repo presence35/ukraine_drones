@@ -37,7 +37,6 @@ data class NeptunState(
     val reconnectStartMillis: Long = 0L,
     val lastFrameAt: Long = 0,     // epoch millis of the last frame (any type) from the stream
     val forceOffline: Boolean = false,   // TEMP test toggle — simulate NEPTUN being offline
-    val testMig: Boolean = false,        // TEMP test toggle — a synthetic MiG-31K is injected
     /** Epoch millis when each id was last shot down by the user (map long-press). */
     val userShotAt: Map<String, Long> = emptyMap()
 ) {
@@ -166,17 +165,16 @@ object NeptunClient {
         if (!force && !_state.value.connected && !manuallyStopped) retryNow()
     }
 
-    /** Serial number for the TEMP test MiG, so every enable is a fresh id (fresh siren + flyby). */
+    /** Serial number for the TEMP test MiG, so every fire is a fresh id (fresh siren + flyby). */
     private var testMigSerial = 0
     private var testMigId: String? = null
-    private var testMigRetireJob: Job? = null
 
     /** How long the injected MiG stays live before it "flies on" and clears itself. */
     private const val TEST_MIG_LINGER_MS = 20_000L
 
     /**
      * Plausible MiG-31K launch-airbase pins — varied so every run crosses the screen on a
-     * different bearing (the flyby aims along airbase→focus).
+     * different bearing.
      */
     private val TEST_MIG_BASES = listOf(
         49.83 to 36.75, // Chuhuiv area
@@ -186,50 +184,33 @@ object NeptunClient {
     )
 
     /**
-     * TEMP test toggle: inject a MiG-31K takeoff alert as if NEPTUN itself had sent it. The
+     * TEMP test button: inject a MiG-31K takeoff alert as if NEPTUN itself had sent it. The
      * synthetic threat lives in the shared state, so the whole pipeline runs for real — zone
      * tiering, siren/notification, debug log, widget, map marker and the flyby flourish.
      *
-     * Lifecycle mirrors the real feed: ON behaves like an upsert from a random launch base
-     * (a fresh id per enable, so repeats are never deduped as a known zone); ~20 s later it
-     * "flies on" and silently leaves the feed — no shoot-down explosion — and the dialog
-     * switch flips itself back off. Toggling OFF early retires it like a "remove" frame
-     * (map plays its death animation). Session-only: nothing is persisted. Invariant: only
-     * the WS `snapshot` handler replaces the threats map wholesale, so that site re-merges
-     * the test threat; upsert/remove/REST all copy from the live state and keep it naturally.
+     * One-shot per press: a fresh id from a random launch base (so repeats are never deduped
+     * as a known zone), then after [TEST_MIG_LINGER_MS] it "flies on" and silently leaves the
+     * feed — no shoot-down explosion. A press while one is already airborne is a no-op, so
+     * sirens never stack. Session-only: nothing is persisted. Invariant: only the WS
+     * `snapshot` handler replaces the threats map wholesale, so that site re-merges the test
+     * threat; upsert/remove/REST all copy from the live state and keep it naturally.
      */
-    fun setTestMig(on: Boolean) {
-        testMigRetireJob?.cancel()
-        testMigRetireJob = null
-        if (!on) {
-            retireTestMig(announceRemoval = true)
-            return
-        }
+    fun fireTestMig() {
         if (testMigId != null) return
         testMigSerial++
         val id = "test_mig31k_$testMigSerial"
         testMigId = id
-        _state.update { withTestMig(it).copy(testMig = true) }
-        testMigRetireJob = scope.launch {
+        _state.update { withTestMig(it) }
+        scope.launch {
             delay(TEST_MIG_LINGER_MS)
-            retireTestMig(announceRemoval = false)
+            if (testMigId == id) {
+                testMigId = null
+                _state.update { s -> s.copy(threats = s.threats - id) }
+            }
         }
     }
 
-    /** Drop the armed test threat. [announceRemoval] drives the map's shoot-down flourish. */
-    private fun retireTestMig(announceRemoval: Boolean) {
-        val id = testMigId ?: return
-        testMigId = null
-        val gone = _state.value.threats[id]
-        _state.update { s -> s.copy(threats = s.threats - id, testMig = false) }
-        if (announceRemoval && gone != null) {
-            _removedThreats.tryEmit(
-                ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
-            )
-        }
-    }
-
-    /** Re-attach the current test threat to [state] when one is armed (no-op otherwise). */
+    /** Re-attach the current test threat to [state] when one is airborne (no-op otherwise). */
     private fun withTestMig(state: NeptunState): NeptunState {
         val id = testMigId ?: return state
         val (lat, lon) = TEST_MIG_BASES.random()

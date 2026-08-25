@@ -53,8 +53,7 @@ internal fun ConnectionStatus(
     neptunDown: Boolean,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
-    testMig: Boolean,
-    onTestMigChange: (Boolean) -> Unit,
+    onSimulateMig: () -> Unit,
     onOpenLogs: () -> Unit,
     showInfo: Boolean,
     onShowInfoChange: (Boolean) -> Unit,
@@ -183,19 +182,11 @@ internal fun ConnectionStatus(
                             onCheckedChange = onForceOfflineChange
                         )
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                    Button(
+                        onClick = onSimulateMig,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            s.connSimMigTitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = testMig,
-                            onCheckedChange = onTestMigChange
-                        )
+                        Text(s.connSimMigTitle)
                     }
                 }
             }
