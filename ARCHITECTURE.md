@@ -113,7 +113,7 @@ detail that matters when editing that file.
 
 | File | Responsibility |
 | --- | --- |
-| `Zones.kt` | `ThreatZone`, `ZoneParams`, `FastThreatTypes`, `zoneTier(...)` — the single source of truth for tiering — plus `etaMinutes`, `reachKm`, `BALLISTIC_SPEED_KMH`. |
+| `Zones.kt` | `ThreatZone`, `ZoneParams`, `FastThreatTypes`, `zoneTier(...)` — the single source of truth for tiering — plus `etaMinutes`, `reachKm`. AVIATION bypasses ETA tiering (always INNER within reach). |
 | `NightMode.kt` | Shared night helpers for **both** consumers (mirror rule): `isNightActive`, `effectiveZoneParams`/`effectiveArmed`, `NightConfig`/`NightZones`/`ZoneArmed`. |
 | `ThreatLevel.kt` | `ThreatLevelModel` — experimental 0–10 gauge (severity × distance × reliability × sources × count × quality × staleness × ETA). |
 | `Cities.kt` | ~483 places grouped by oblast in three zoom tiers (`CityTier`: 26 MAJOR always / 14 MEDIUM from mid-zoom / rest MINOR up close; non-curated places derived from GeoNames CC BY 4.0 via `tools/gen_cities.ps1`, 2 km dedupe, same-name towns resolved by population) + `CityLabelOverlay` (colors labels red for the `redCities` set — scope-aware: whole oblast by default, city-level when the City scope is on); EN names from the app's own КМУ №55 transliteration; `focusAttribution` maps focus point → oblast stem via `cityOblast` (majors only). |
@@ -147,6 +147,7 @@ detail that matters when editing that file.
 | `flourish/Flourish.kt` | Pure flourish core: `FlourishRecord`/`FlourishShow`/`ReplayProgress` (per-group copy + overall position for the footer bar); `FLOURISH_STAGGER_MS` + `REVEAL_MIN_SPAN_*`; `clusterFlourish`/`flourishesBoundingBox` (viewport-adaptive replay grouping); `FlourishPolicy` (the neutralized-card gate, pure + tested). |
 | `flourish/DeathFxController.kt` | Map-side facade: owns `ThreatDeathOverlay` + strike camera glide/return, shot/kill haptics, a random viewport-edge take-off origin (clamped to Ukraine, so a projectile never launches from "another country") and the tally-tap replay orchestration (exposes `replayProgress: ReplayProgress?` for the footer's per-group "Resolving threat X of N" + overall progress bar; `startReplay` owns the replay job so `clear()` cancels a show mid-flight). Camera notes: `getMapCenter()` is snapshotted into a new GeoPoint everywhere (osmdroid hands back its live mutable projection point — holding it made "return home" land randomly); replay jumps per group via `zoomToBoundingBox(box, false)`. Pacing: each group's targets are PRE-SPAWNED on arrival with staggered `fireAtDelayMs` leads (the overlay renders pre-fired deaths as standing icons, so nothing pops up as its bullet launches); the fire loop aligns to the prespawn clock; intermediate groups pan `REPLAY_PAN_BEAT_MS` (120ms) after the last impact via quickBoom deaths; only the final group plays the full 5s lifecycle. The tally-tap tick is consumed only on a real decision — transient blockers (cold start, Settings, shelters) retry; animation-off toasts + audits (`DebugLog.recordFlourish`, detail localized via the `showDetail` lambda); a live official alert does NOT block the replay (explicit user action) though a NEW alert onset mid-show still ejects it via `clear()`. `MapView` keeps only thin policy hooks and delegates every flourish mechanic here. |
 | `flourish/NeutralizedTally.kt` | Service-side facade: tally count + 21-record resolution memory + the silent tally notification (tap replays the show, swipe resets), with a recent-ids ring deduping NEPTUN's re-sent removals so duplicates never double-count nor plant twin replay records. Owns `CHANNEL_NEUTRALIZED`/`NOTIF_NEUTRALIZED`/`EXTRA_FLOURISH_*`/`ACTION_NEUTRALIZED_DISMISS`. `AlertService` keeps only the enabled-pref subscription gate + focus-scope filter. |
+| `flourish/AviationFlyby.kt` | Pure policy/geometry for the MiG-31K takeoff flyby: `nextShow` picks each new INNER-tier AVIATION once per process (never while the map is hidden), the pass flies the airbase→focus bearing; `endpoints` computes edge-to-edge entry/exit through the viewport center. `MainScreen.AviationFlybyOverlay` renders it (full-size icon via `ThreatIcon` + contrail, no input consumed); when it lands `MainViewModel.onFlybyFinished` opens the threat card. Tested by `AviationFlybyTest`. |
 | `flourish/ThreatDeathAnimation.kt` | `ThreatDeathOverlay`: 5s neutralized flourish (projectile enters from just off the screen edge along a random edge-clamped origin -> explosion). Per-death `durationMs`: `quickBoom` deaths (intermediate replay groups) compress the explosion to impact + ~0.8s flash; boom/fade curves and pruning derive from each death's own duration. Perf practices: explosion glow is a lazily pre-rendered per-density bitmap (no per-frame `RadialGradient` allocation), icons are cached bitmaps with fresh drawable wrappers (the per-frame alpha mutation must never touch a live marker's icon), concurrent deaths capped at `MAX_DEATHS = 14` (sized for a full replay, the old 6 silently ate bullets), and the map redraws at 30fps while active (16ms -> 33ms; invalidate redraws the whole overlay stack). `DEATH_EXPLOSION_START_MS` drives the card flip; dud on duplicate resolutions; `isActiveFor(id)` guards double-strikes; the target icon vanishes at the explosion (no fade); `active` StateFlow tells the UI when a bullet/explosion is on screen. |
 
 ### Background / alerting
@@ -233,8 +234,10 @@ Treat these as a contract. If you change one, update **every** place that relies
   INNER, ≤ fastYellowMin → OUTER); slow types by distance (≤ slowRedKm → INNER, ≤ slowYellowKm
   → OUTER). Slow distance is to the **confirmed raw fix**, never the dead-reckoned position, so
   the drawn circles and alerts always agree. Speed from `ThreatSpeedTracker` (server → measured
-  → nominal); AVIATION forced to `BALLISTIC_SPEED_KMH`; a fast threat with no usable speed never
-  tiers. `reachKm` caps distance (KAB 70, FPV 40, recon 50, Shahed 1000, else 1500 km). Map
+  → nominal); a fast threat with no usable speed never tiers. **AVIATION is the exception:** a
+  MiG-31K takeoff alert is a country-wide Kinzhal warning — within `reachKm` it always rings
+  INNER regardless of ETA or thresholds; the only opt-out is the type's bell. `reachKm` caps
+  distance (KAB 70, FPV 40, recon 50, Shahed 1000, else 1500 km). Map
   circles show the slow km thresholds only. Advisory (observation) threats never tier/sound.
   Armed bells are per group×tier (slow/fast × red/yellow), stored for day and night, resolved
   per tick by `effectiveArmed`. **Slider coupling:** the yellow threshold is relative to red —
@@ -244,7 +247,11 @@ Treat these as a contract. If you change one, update **every** place that relies
 - **Expiry / ghosts.** `staleAfterMs` per type (90s ballistic … 300s UAV). Stale threats stay
   mapped **dimmed** (alpha 0.45, tappable) but are excluded from strip, tiers, gauge, alerts.
   Removal only on server resolve / `remove` frame / `isGhost` (staleness + `STALE_GHOST_CAP_MS`
-  ~30 min). When the **selected** threat disappears that way, `MainViewModel` swaps the popup
+  ~30 min). **AVIATION never locally expires:** a MiG-31K takeoff pin sits at the launch airbase
+  without fix refreshes, so age-based expiry would kill every real alert before it rang — only
+  the server's `status: "stale"` retires it early, and its ghost cap is its own
+  `AVIATION_GHOST_CAP_MS` (~2h) instead of window + `STALE_GHOST_CAP_MS`. When the **selected**
+  threat disappears that way, `MainViewModel` swaps the popup
   for the neutralizing card (flips at `DEATH_EXPLOSION_START_MS`, fades across the explosion) —
   but only while the map screen is visible and the shelter overlay is down (a background screen
   never plays the flourish); it *does* play during an alert because the selected threat was

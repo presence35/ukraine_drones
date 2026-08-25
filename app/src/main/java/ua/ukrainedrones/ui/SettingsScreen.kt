@@ -41,6 +41,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -1733,24 +1734,47 @@ private fun CityLabelTogglesRow(
             onClick = { onMediumChange(!mediumChecked) },
             label = { Text(mediumLabel, style = MaterialTheme.typography.labelLarge) },
             leadingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.ic_city),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+                ChipStateIcon(selected = mediumChecked, iconRes = R.drawable.ic_city)
+            },
+            colors = CityChipColors(selected = mediumChecked)
         )
         FilterChip(
             selected = smallChecked,
             onClick = { onSmallChange(!smallChecked) },
             label = { Text(smallLabel, style = MaterialTheme.typography.labelLarge) },
             leadingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.ic_house),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+                ChipStateIcon(selected = smallChecked, iconRes = R.drawable.ic_house)
+            },
+            colors = CityChipColors(selected = smallChecked)
+        )
+    }
+}
+
+/** ON = vivid primary pill with dark content and a checkmark; OFF = muted grey pill
+ *  with the tier's own icon — the two states can't be confused in the dark theme. */
+@Composable
+private fun CityChipColors(selected: Boolean) = FilterChipDefaults.filterChipColors(
+    containerColor = Color(0xFF1E1E1E),
+    labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+    iconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+    selectedContainerColor = MaterialTheme.colorScheme.primary,
+    selectedLabelColor = Color(0xFF0D1117),
+    selectedLeadingIconColor = Color(0xFF0D1117)
+)
+
+@Composable
+private fun ChipStateIcon(selected: Boolean, iconRes: Int) {
+    if (selected) {
+        Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+    } else {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
         )
     }
 }

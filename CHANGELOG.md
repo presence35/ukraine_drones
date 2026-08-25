@@ -1,6 +1,10 @@
 # Changelog
 
 ## [Unreleased]
+- Alerts: MiG-31K takeoff alerts finally ring — an aviation threat is never locally expired anymore (only NEPTUN's own «stale» retires it), and while its bell is on a takeoff rings the red zone country-wide, regardless of distance or your fast-zone thresholds. / Сповіщення: тривоги про злет МіГ-31К нарешті спрацьовують — авіаційну загрозу більше не «протухає» локально (її знімає лише серверне «stale»), а з увімкненим дзвіночком злет дзвонить у червоній зоні на всю країну, незалежно від відстані та ваших порогів швидких зон.
+
+- Map: new MiG-31K flyby — when the alert fires, the full-size plane crosses the whole screen on the bearing from its airbase toward you with a contrail, and the threat card opens when it lands. / Мапа: новий прольот МіГ-31К — коли спрацьовує тривога, літак у повний розмір перетинає весь екран за азимутом від свого аеродрому на вас, зі слідом конденсату, а після приземлення відкривається картка загрози.
+
 - Perf: tapping a drone is instant now — the haptic ticks on touch itself (at the marker, before anything composes), and the threat card renders in a single frame: all card entrance/size/body animations are gone, selection motion is the title-icon pop alone. / Перф: дотик до дрона тепер миттєвий — вібрація спрацьовує на самому дотику (на маркері, до будь-якої композиції), а картка загрози малюється за один кадр: усі анімації появи/розміру/тіла картки прибрано, з руху лишився лише «стрибок» іконки заголовка.
 
 - Replay: every target of the next group already stands on-screen before its bullets fly (targets pre-spawn when the camera lands), and the camera pans to the next group right after the last bullet hits — no explosion wait. Only the final group plays the full blast. / Повтор: усі цілі наступної групи вже стоять на екрані до польоту куль (цілі попередньо розставляються при прибуттї камери), а камера переходить до наступної групи одразу після влучання останньої кулі — без очікування вибуху. Повну анімацію грає лише фінальна група.

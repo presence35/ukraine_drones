@@ -62,6 +62,39 @@ class PredictionTest {
     }
 
     @Test
+    fun `aviation never locally expires - only the server flags it stale`() {
+        val now = 1_000_000L
+        // Way past the 4-minute AVIATION window: a MiG-31K takeoff pin sits at the airbase
+        // without fix refreshes, so it must stay live until NEPTUN itself retires it.
+        assertFalse(threat(type = ThreatType.AVIATION, updatedAtMillis = now - 3_600_000L).isStale(now))
+        assertFalse(
+            threat(
+                type = ThreatType.AVIATION,
+                updatedAtMillis = null,
+                confirmedAtMillis = now - 3_600_000L
+            ).isStale(now)
+        )
+        assertTrue(threat(type = ThreatType.AVIATION, status = "stale", updatedAtMillis = now).isStale(now))
+    }
+
+    @Test
+    fun `aviation ghosts at its own hard cap`() {
+        val now = 1_000_000L
+        assertFalse(
+            threat(
+                type = ThreatType.AVIATION,
+                updatedAtMillis = now - AVIATION_GHOST_CAP_MS + 60_000L
+            ).isGhost(now)
+        )
+        assertTrue(
+            threat(
+                type = ThreatType.AVIATION,
+                updatedAtMillis = now - AVIATION_GHOST_CAP_MS - 1_000L
+            ).isGhost(now)
+        )
+    }
+
+    @Test
     fun `isGhost requires staleness window plus the hard cap`() {
         val now = 1_000_000L
         val window = staleAfterMs(ThreatType.SHAHED) // 300_000L

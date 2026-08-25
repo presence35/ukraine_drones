@@ -28,6 +28,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -57,12 +58,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -71,8 +76,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -233,6 +241,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
             onNeutralize = { id -> viewModel.neutralizeThreat(id) },
+            onFlybyFinished = { id -> viewModel.onFlybyFinished(id) },
             showConnectionInfo = showConnectionInfo,
             onShowConnectionInfoChange = { showConnectionInfo = it },
             showZonesSheet = showZonesSheet,
@@ -976,6 +985,7 @@ private fun MapScreen(
     onThreatCardSizeChange: (ThreatCardSize) -> Unit,
     onForceOfflineChange: (Boolean) -> Unit,
     onNeutralize: (String) -> Unit,
+    onFlybyFinished: (String) -> Unit,
     showConnectionInfo: Boolean,
     onShowConnectionInfoChange: (Boolean) -> Unit,
     showZonesSheet: Boolean,
@@ -1224,6 +1234,13 @@ private fun MapScreen(
                         onReplayProgressChange = { replayProgress = it },
                         modifier = Modifier.fillMaxSize()
                     )
+                    uiState.flyby?.let { show ->
+                        AviationFlybyOverlay(
+                            show = show,
+                            iconSet = uiState.iconSet,
+                            onFinished = onFlybyFinished
+                        )
+                    }
                     if (uiState.showMapScale) {
                         ScaleIndicator(
                             metersPerPixel = scaleMpp,
@@ -1920,6 +1937,65 @@ private fun ThreatStatusCell(
 private fun nextThreatCardSize(current: ThreatCardSize): ThreatCardSize {
     val values = ThreatCardSize.values()
     return values[(current.ordinal + 1) % values.size]
+}
+
+/**
+ * Full-size MiG-31K takeoff flourish: the plane crosses the whole viewport along the
+ * airbase→focus bearing with a contrail, then the threat card opens ([onFinished]). Pure
+ * overlay — consumes no input, moves no camera.
+ */
+@Composable
+private fun AviationFlybyOverlay(
+    show: AviationFlybyShow,
+    iconSet: ThreatIconSet,
+    onFinished: (String) -> Unit
+) {
+    val density = LocalDensity.current
+    val iconSize = 160.dp
+    val iconPx = with(density) { iconSize.toPx() }
+    val trailPx = with(density) { 200.dp.toPx() }
+    var canvasPx by remember { mutableStateOf(IntSize.Zero) }
+    val progress = remember(show.tick) { Animatable(0f) }
+    LaunchedEffect(show.tick) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(show.durationMs.toInt(), easing = LinearEasing))
+        onFinished(show.threatId)
+    }
+    if (canvasPx == IntSize.Zero) return
+    // Map markers rotate by courseDeg minus the asset's baked-in facing; mirror that here so
+    // every icon set flies nose-first along the pass.
+    val rotation = show.courseDeg.toFloat() - IconCatalog.baseDeg(ThreatType.AVIATION, iconSet)
+    Box(modifier = Modifier.fillMaxSize().onSizeChanged { canvasPx = it }) {
+        val (entry, exit) = AviationFlyby.endpoints(
+            show.courseDeg, canvasPx.width.toFloat(), canvasPx.height.toFloat(), iconPx
+        )
+        val x = lerp(entry.first, exit.first, progress.value)
+        val y = lerp(entry.second, exit.second, progress.value)
+        val dir = AviationFlyby.direction(show.courseDeg)
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val tailX = (x - trailPx * dir.first).toFloat()
+            val tailY = (y - trailPx * dir.second).toFloat()
+            drawLine(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.5f)),
+                    start = Offset(tailX, tailY),
+                    end = Offset(x, y)
+                ),
+                start = Offset(tailX, tailY),
+                end = Offset(x, y),
+                strokeWidth = 6f,
+                cap = StrokeCap.Round
+            )
+        }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset((x - iconPx / 2).roundToInt(), (y - iconPx / 2).roundToInt()) }
+                .size(iconSize)
+                .rotate(rotation)
+        ) {
+            ThreatIcon(type = ThreatType.AVIATION, set = iconSet, size = iconSize)
+        }
+    }
 }
 
 /** Two stacked lines (thin/thick) under the popup; tap cycles the card size. */

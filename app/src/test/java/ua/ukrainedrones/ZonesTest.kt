@@ -81,18 +81,19 @@ class ZonesTest {
     }
 
     @Test
-    fun `aviation tiering uses ballistic speed regardless of reported speed`() {
+    fun `aviation rings INNER country-wide regardless of ETA or zones`() {
         val mig = threat(type = ThreatType.AVIATION)
-        // At the plane's own 900 km/h a 100 km approach would be OUTER (~6.7 min is INNER anyway);
-        // the override matters at distance — 400 km at 900 km/h = 26.7 min (OUTER), but the
-        // Kinzhal covers it in ~7.3 min, so it must be INNER.
+        // A MiG-31K takeoff is a country-wide Kinzhal warning: any distance within reach rings,
+        // whatever the reported speed and however tight the thresholds are.
         assertEquals(ThreatZone.INNER, zoneTier(mig, 400.0, 900.0, params))
+        assertEquals(ThreatZone.INNER, zoneTier(mig, 1400.0, null, params))
+        val tight = params.copy(fastRedMin = 1, fastYellowMin = 3)
+        assertEquals(ThreatZone.INNER, zoneTier(mig, 900.0, 900.0, tight))
     }
 
     @Test
-    fun `aviation tiers even with no reported speed`() {
-        val mig = threat(type = ThreatType.AVIATION)
-        assertEquals(ThreatZone.INNER, zoneTier(mig, 400.0, null, params))
+    fun `aviation beyond reach never tiers`() {
+        assertNull(zoneTier(threat(type = ThreatType.AVIATION), 1500.1, 900.0, params))
     }
 
     @Test

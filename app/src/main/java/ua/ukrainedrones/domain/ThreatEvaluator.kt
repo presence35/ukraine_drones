@@ -119,7 +119,7 @@ object ThreatEvaluator {
         var bestScore = -1.0
         for (t in st.threats.values) {
             if (t.status != "active" || t.advisory || t.areaOnly || t.type !in enabled ||
-                isExpired(t, now) || !inFocusOblast(t, token)
+                t.isStale(now) || !inFocusOblast(t, token)
             ) continue
             ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: now, t.lat, t.lon)
             val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }

@@ -9,6 +9,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,6 +87,7 @@ data class UiState(
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
     val revealRequest: RevealRequest? = null,      // notification tap: pan the camera onto a threat
     val flourish: FlourishShow? = null,            // tally tap: replay the shot-down show
+    val flyby: AviationFlybyShow? = null,          // MiG-31K takeoff: full-size pass across the viewport
     val disclaimerCollapsed: Boolean = false,
     val disclaimerReadCount: Int = 0,
     val update: UpdateState = UpdateState.Idle,
@@ -155,6 +157,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Tally-tap replay: remembered resolved threats to shoot down on the map (flourish only). */
     private val flourishFlow = MutableStateFlow<FlourishShow?>(null)
     private var flourishTick = 0
+    /** MiG-31K takeoff flyby — one full-size pass across the viewport per new INNER aviation. */
+    private val flybyFlow = MutableStateFlow<AviationFlybyShow?>(null)
+    private var flybyTick = 0L
+    /** AVIATION ids whose flyby already played this process (concurrent — the state combine
+     *  lambda runs on whichever dispatcher its upstream flows last emitted on). */
+    private val flybyPlayedIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val updateStateFlow = MutableStateFlow<UpdateState>(UpdateState.Idle)
     private val installPermissionFlow = MutableStateFlow(false)
     private val latestVersionFlow = MutableStateFlow<String?>(null)
@@ -577,7 +585,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             ),
             nightZones, prefs.night.window.useCustomZones, nightActive
         )
-        buildUiState(
+        val uiState = buildUiState(
             neptun = live.neptun,
             slowRedKm = live.slowRedKm,
             slowYellowKm = live.slowYellowKm,
@@ -659,6 +667,17 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             hapticsEnabled = prefs.hapticsEnabled,
             shelterIndex = shelterIndex
         )
+        // A fresh INNER AVIATION (bell on) plays one full-size pass across the viewport; the
+        // threat card opens when it lands (onFlybyFinished).
+        val flyby = AviationFlyby.nextShow(
+            uiState.threatsInner, flybyPlayedIds, uiState.focusLocation, live.mapVisible, flybyTick + 1
+        )
+        if (flyby != null) {
+            flybyTick++
+            flybyPlayedIds.add(flyby.threatId)
+            flybyFlow.value = flyby
+        }
+        uiState.copy(flyby = flybyFlow.value)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -1163,6 +1182,12 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         neutralizedFlow.value = null
         fakeNeutralizeFlow.value = false
         selectedThreatFlow.value = threat
+    }
+
+    /** Flyby landed: open the threat card with the takeoff's details (no camera pan). */
+    fun onFlybyFinished(threatId: String?) {
+        val t = threatId?.let { NeptunClient.state.value.threats[it] } ?: return
+        selectThreat(t)
     }
 
     /** Treat [id] as neutralized so its card self-destructs (map long-press trigger). */

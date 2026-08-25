@@ -114,11 +114,24 @@ fun isExpired(t: Threat, now: Long): Boolean {
  */
 const val STALE_GHOST_CAP_MS = 30 * 60 * 1000L
 
+/**
+ * Hard local lifetime for an AVIATION takeoff alert with no fresh fix. These pins sit at the
+ * launch airbase and NEPTUN often never refreshes them, so the per-type window can't judge
+ * their liveness — but a never-resolved alert must still die eventually.
+ */
+const val AVIATION_GHOST_CAP_MS = 2 * 60 * 60 * 1000L
+
 /** Minimum displacement between recorded fixes for a measured heading to be trusted. */
 private const val HEADING_MIN_METERS = 100.0
 
-/** True when the threat is past its per-type staleness window or the server flagged it stale. */
-fun Threat.isStale(now: Long): Boolean = status == "stale" || isExpired(this, now)
+/**
+ * True when the threat is past its per-type staleness window or the server flagged it stale.
+ * AVIATION is exempt from local age-expiry: a MiG-31K takeoff alert is pinned to the launch
+ * airbase without fix refreshes, so it would arrive already past the 4-minute window and never
+ * ring — server status stays the only authority for its liveness.
+ */
+fun Threat.isStale(now: Long): Boolean =
+    status == "stale" || (type != ThreatType.AVIATION && isExpired(this, now))
 
 /**
  * True when a stale threat has been on screen for longer than the staleness window plus the
@@ -126,6 +139,7 @@ fun Threat.isStale(now: Long): Boolean = status == "stale" || isExpired(this, no
  */
 fun Threat.isGhost(now: Long): Boolean {
     val updated = updatedAtMillis ?: confirmedAtMillis ?: return false
+    if (type == ThreatType.AVIATION) return now - updated > AVIATION_GHOST_CAP_MS
     return now - updated > staleAfterMs(type) + STALE_GHOST_CAP_MS
 }
 
