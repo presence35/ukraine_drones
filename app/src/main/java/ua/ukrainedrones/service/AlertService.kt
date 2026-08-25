@@ -82,6 +82,9 @@ class AlertService : Service() {
     private var officialRegionToken: String? = null
     private var wasOfficialAlertsEnabled = true
     private var currentReasonThreatId: String? = null
+    private var officialAnnouncedToken: String? = null
+    private var officialAnnouncedSince: String? = null
+    private var officialAnnouncedReasonId: String? = null
     private var knownZones: Map<String, ThreatZone> = emptyMap()
     private var debugOfficialActive = false
     private var lastChannelLang: AppLanguage? = null
@@ -104,6 +107,7 @@ private var notif3minShown = false
         data class State(
             val focusOblastAlertActive: Boolean,
             val focusToken: String?,
+            val focusOblastAlertSince: String?,
             val focusBannerCity: String,
             val focusCityUa: String?,
             val focusRegion: String,
@@ -189,6 +193,12 @@ private var notif3minShown = false
                 wasConnected = false
                 offlineRestorePending = true
             }
+            // Restore the last announced official-alert episode so a service restart mid-alert
+            // doesn't re-ring the siren for an alert that already fired (mirrors the offline
+            // persistence above). handleState reconciles these against the live episode.
+            officialAnnouncedToken = prefs.officialAnnouncedToken().first().ifBlank { null }
+            officialAnnouncedSince = prefs.officialAnnouncedSince().first().ifBlank { null }
+            officialAnnouncedReasonId = prefs.officialAnnouncedReasonId().first().ifBlank { null }
         }
         LocationTracker.start(this)
         WidgetUpdater.start(this, scope)
@@ -359,12 +369,21 @@ private var notif3minShown = false
                 val zoneSirenOverride = if (nightActive) night.zoneSirenOverride else config.sirenOverride
                 val officialSirenOverride = if (nightActive) night.officialSirenOverride else config.sirenOverride
                 val attribution = focusAttribution(followMe, gps, pinned)
+                val cityUa = attribution.bannerCityUa.takeIf { it.isNotBlank() }
                 val officialActive = officialAlertActiveFor(
                     neptun.oblastAlerts,
                     attribution.token,
-                    attribution.bannerCityUa.takeIf { it.isNotBlank() },
+                    cityUa,
                     config.officialAlertCityScope
                 )
+                val officialSince: String? = attribution.token?.let { token ->
+                    neptun.oblastAlerts
+                        .firstOrNull { alert ->
+                            alert.inOblast(token) &&
+                                (!config.officialAlertCityScope || cityUa.isNullOrBlank() || alert.coversCity(cityUa))
+                        }
+                        ?.since
+                }
                 val (officialReason, officialReasonThreatId) = if (officialActive) {
                     ThreatEvaluator.buildOfficialReason(
                         neptun, attribution.token, lang, focus,
@@ -376,6 +395,7 @@ private var notif3minShown = false
                 MonitorEvent.State(
                     focusOblastAlertActive = officialActive,
                     focusToken = attribution.token,
+                    focusOblastAlertSince = officialSince,
                     focusBannerCity = (
                         if (lang == AppLanguage.UA) attribution.bannerCityUa else attribution.bannerCityEn
                     ).ifBlank { Strings.get(lang).unknownLocation },
@@ -615,8 +635,36 @@ private var notif3minShown = false
         // tracks alerts we actually posted a notification for.
         if (state.officialAlertsEnabled != wasOfficialAlertsEnabled) {
             wasOfficialAlertsEnabled = state.officialAlertsEnabled
-            if (state.officialAlertsEnabled) wasFocusAlertActive = false
+            if (state.officialAlertsEnabled) {
+                // Turning the toggle back on forces a fresh announce even for a live alert
+                // (it was never announced while muted) — clear any persisted episode so the
+                // restart-reconciliation can't suppress this intentional re-announce.
+                wasFocusAlertActive = false
+                officialAnnouncedToken = null
+                officialAnnouncedSince = null
+                officialAnnouncedReasonId = null
+                scope.launch {
+                    ZonePrefs(applicationContext).setOfficialAnnounced(null, null, null)
+                }
+            }
         }
+
+        // Restart reconciliation: an episode we already announced before a service kill must
+        // not re-ring. The persisted identity (focus token + NEPTUN `since`) is restored into
+        // the instance flags once, then the in-memory copy is dropped — the prefs stay until
+        // the episode truly ends, so a second kill mid-episode still won't re-ring.
+        if (!wasFocusAlertActive && officialAnnouncedToken != null && officialAnnouncedSince != null &&
+            state.focusToken == officialAnnouncedToken &&
+            state.focusOblastAlertSince != null &&
+            state.focusOblastAlertSince == officialAnnouncedSince
+        ) {
+            wasFocusAlertActive = true
+            currentReasonThreatId = officialAnnouncedReasonId
+            officialRegionToken = state.focusToken
+        }
+        officialAnnouncedToken = null
+        officialAnnouncedSince = null
+        officialAnnouncedReasonId = null
 
         // Official oblast-level alert (independent of zone membership). Gated by the
         // Settings toggle — turning it off stops only official-alert notifications,
@@ -663,6 +711,7 @@ private var notif3minShown = false
             currentReasonThreatId = state.officialReasonThreatId
             officialRegionToken = state.focusToken
             wasFocusAlertActive = true
+            persistOfficialAnnounced(state)
         } else if (officialActive && wasFocusAlertActive && !posted && alertable.isEmpty() &&
             state.officialReasonThreatId != currentReasonThreatId
         ) {
@@ -685,6 +734,7 @@ private var notif3minShown = false
                 silent = true
             )
             currentReasonThreatId = state.officialReasonThreatId
+            persistOfficialAnnounced(state)
         }
         // All clear: the official alert that was ringing has just ended. The cheerful chime
         // fires only for the official oblast alert — zone-threat clears stay silent — and
@@ -704,6 +754,7 @@ private var notif3minShown = false
             currentReasonThreatId = null
             officialRegionToken = null
             debugOfficialActive = false
+            clearOfficialAnnounced()
             DebugLog.recordOfficial(
                 DebugLogKind.OFFICIAL_OFF,
                 night = state.nightActive,
@@ -732,6 +783,7 @@ private var notif3minShown = false
             debugOfficialActive = false
             officialRegionToken = null
             wasFocusAlertActive = false
+            clearOfficialAnnounced()
         }
         // An alert that ends (or was never notified) while notifications are off must not leave
         // the "already notified" flag stuck on for a future alert.
@@ -755,6 +807,7 @@ private var notif3minShown = false
             }
             wasFocusAlertActive = false
             officialRegionToken = null
+            clearOfficialAnnounced()
         }
 
         // Debug verdict sweep: log every threat in the active region and why it did or
@@ -893,6 +946,24 @@ private var notif3minShown = false
     /** Persist the current outage start across service restarts (0 clears it). */
     private suspend fun persistOfflineSince(ts: Long) {
         ZonePrefs(applicationContext).setOfflinePendingSince(ts)
+    }
+
+    /** Persist the just-announced official alert episode so a service restart mid-episode
+     *  doesn't re-ring it (see the restart reconciliation in handleState). */
+    private fun persistOfficialAnnounced(state: MonitorEvent.State) {
+        scope.launch {
+            ZonePrefs(applicationContext).setOfficialAnnounced(
+                state.focusToken, state.focusOblastAlertSince, state.officialReasonThreatId
+            )
+        }
+    }
+
+    /** Clear the persisted official-alert episode when it genuinely ends (all-clear, focus
+     *  switch, alert gone) so a future alert announces fresh. */
+    private fun clearOfficialAnnounced() {
+        scope.launch {
+            ZonePrefs(applicationContext).setOfficialAnnounced(null, null, null)
+        }
     }
 
     private fun postAllClear(s: Strings.StringSet, city: String) {

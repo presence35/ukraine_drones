@@ -194,6 +194,13 @@ Treat these as a contract. If you change one, update **every** place that relies
   labels (`redCities`) follow the same gate, so a city-scoped user sees only covered cities lit. Call `zoneTier` from
   `Zones.kt` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never inline
   it. (Why/mitigation: Deliberate tradeoffs.)
+- **Official alert announces once per episode, surviving service restarts.** `AlertService`
+  persists the announced episode identity (focus token + NEPTUN `since` + reason threat id) to
+  `ZonePrefs` (`officialAnnounced*`) and reconciles it on the first tick after a START_STICKY
+  restart, so an alert already fired before a service kill never re-rings. The persisted
+  identity is cleared only when the episode genuinely ends (all-clear / focus switch / alert
+  gone / toggle re-armed). When NEPTUN omits `since`, dedup falls back to the old in-memory
+  behavior (may re-ring once after a restart).
 - **Night mode is shared, not mirrored.** Both sides call `isNightActive`/
   `effectiveZoneParams`/`effectiveArmed` resolved per tick (`now`); a new
   night knob needs only a pref + a `NightMode.kt` change. Vibration is fixed, not per-night.

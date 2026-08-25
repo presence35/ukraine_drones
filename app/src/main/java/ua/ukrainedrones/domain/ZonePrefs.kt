@@ -60,6 +60,9 @@ class ZonePrefs(private val context: Context) {
     private val connLogPendingSinceKey = longPreferencesKey("conn_log_pending_since")
     private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
     private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
+    private val officialAnnouncedTokenKey = stringPreferencesKey("official_announced_token")
+    private val officialAnnouncedSinceKey = stringPreferencesKey("official_announced_since")
+    private val officialAnnouncedReasonIdKey = stringPreferencesKey("official_announced_reason_id")
     private val batteryOnboardShownKey = booleanPreferencesKey("battery_onboard_shown")
     private val permissionPromptDeferredKey = booleanPreferencesKey("permission_prompt_deferred")
     private val debugLogKey = stringPreferencesKey("debug_log")
@@ -497,6 +500,27 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setOfflinePendingSince(ts: Long) {
         context.dataStore.edit { it[offlinePendingSinceKey] = ts }
+    }
+
+    /** Focus token the last official alert episode was announced for (null = none), across restarts. */
+    fun officialAnnouncedToken(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[officialAnnouncedTokenKey] ?: "" }
+
+    /** The alert `since` value of the last announced official episode ("" = none / unknown). */
+    fun officialAnnouncedSince(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[officialAnnouncedSinceKey] ?: "" }
+
+    /** Reason-threat id attached to the last announced official episode ("" = none). */
+    fun officialAnnouncedReasonId(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[officialAnnouncedReasonIdKey] ?: "" }
+
+    /** Persist (or clear, with nulls) the currently-announced official alert episode identity. */
+    suspend fun setOfficialAnnounced(token: String?, since: String?, reasonId: String?) {
+        context.dataStore.edit {
+            it[officialAnnouncedTokenKey] = token ?: ""
+            it[officialAnnouncedSinceKey] = since ?: ""
+            it[officialAnnouncedReasonIdKey] = reasonId ?: ""
+        }
     }
 
     /** Whether the first-run battery-exemption prompt has been shown once (dismissed or allowed). */
