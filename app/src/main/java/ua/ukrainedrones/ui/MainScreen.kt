@@ -10,8 +10,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -1478,11 +1483,17 @@ private fun MapScreen(
             // Alert-zone editor: a non-modal bottom panel over the live map so the
             // red/yellow circles update while you drag, and the map above stays pannable.
             // Every control (sliders + Fast/Slow group toggles) is visible at once.
-            if (showZonesSheet) {
+            // Slides up/down like the connection sheet; snaps when system animations are off.
+            AnimatedVisibility(
+                visible = showZonesSheet,
+                enter = if (animsOff) EnterTransition.None
+                else slideInVertically(tween(200)) { it } + fadeIn(tween(100)),
+                exit = if (animsOff) ExitTransition.None
+                else slideOutVertically(tween(250)) { it } + fadeOut(tween(200)),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
                 Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     color = if (editingNight) NightSectionBg else Color(0xFF1E1E1E),
                     shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     border = BorderStroke(
