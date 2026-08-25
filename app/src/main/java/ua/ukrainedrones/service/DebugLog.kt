@@ -173,13 +173,15 @@ object DebugLog {
                 notified = false
                 reason = DebugLogReason.BELL_MUTED
             }
-            ctx.knownZones[t.id] == effective -> {
-                notified = false
-                reason = DebugLogReason.ALREADY_NOTIFIED
-            }
+            // FIRED must win over ALREADY_NOTIFIED: AlertService marks the id known BEFORE the
+            // sweep runs, so a just-posted siren arrives here with knownZones already updated.
             ctx.postedId == t.id -> {
                 notified = true
                 reason = DebugLogReason.FIRED
+            }
+            ctx.knownZones[t.id] == effective -> {
+                notified = false
+                reason = DebugLogReason.ALREADY_NOTIFIED
             }
             else -> {
                 notified = false

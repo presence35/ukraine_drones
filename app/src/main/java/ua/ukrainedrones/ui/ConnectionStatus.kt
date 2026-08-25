@@ -22,7 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -32,16 +32,17 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +63,7 @@ internal fun ConnectionStatus(
             .clip(RoundedCornerShape(50))
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(horizontal = 8.dp, vertical = 3.dp)
+            .pressTick()
             .clickable { onShowInfoChange(true) },
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -83,7 +85,8 @@ internal fun ConnectionStatus(
         val context = LocalContext.current
         ModalBottomSheet(
             onDismissRequest = { onShowInfoChange(false) },
-            sheetState = rememberModalBottomSheetState()
+            sheetState = rememberModalBottomSheetState(),
+            dragHandle = { SheetDragHandle() }
         ) {
             Column(
                 modifier = Modifier
@@ -94,7 +97,7 @@ internal fun ConnectionStatus(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
+                        .padding(bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -126,15 +129,27 @@ internal fun ConnectionStatus(
                             )
                         }
                     )
-                    Spacer(Modifier.width(10.dp))
-                    FilledTonalButton(onClick = onOpenLogs) {
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
+                    Button(
+                        onClick = onOpenLogs,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Icon(
                             Icons.AutoMirrored.Filled.List,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(22.dp)
                         )
-                        Spacer(Modifier.width(4.dp))
-                        Text(s.debugLogOpen)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            s.debugLogOpen,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -157,26 +172,6 @@ internal fun ConnectionStatus(
                             checked = forceOffline,
                             onCheckedChange = onForceOfflineChange
                         )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF4CAF50))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(s.connUpLine, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFE57373))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(s.connDownLine, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

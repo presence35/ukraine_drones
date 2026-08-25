@@ -140,6 +140,21 @@ class DebugLogTest {
     }
 
     @Test
+    fun `just-posted siren is fired even though the service marked the id known this tick`() {
+        val t = threat(id = "t1", lat = 46.48, lon = 30.73)
+        val (entries, _) = computeSweep(
+            ctx(mapOf("t1" to t), zoneThreats = mapOf("t1" to ThreatZone.INNER),
+                alertable = mapOf("t1" to ThreatZone.INNER),
+                knownZones = mapOf("t1" to ThreatZone.INNER),
+                postedId = "t1"),
+            emptyMap()
+        )
+        assertEquals(1, entries.size)
+        assertEquals(true, entries.first().notified)
+        assertEquals(DebugLogReason.FIRED, entries.first().reason)
+    }
+
+    @Test
     fun `steady state produces no duplicate entries`() {
         val t = threat(id = "t1", lat = 46.48, lon = 30.73)
         val base = ctx(

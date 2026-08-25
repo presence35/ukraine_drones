@@ -121,8 +121,6 @@ object Strings {
         val connOnline: String,
         val connOffline: String,
         val connServerLine: String,
-        val connUpLine: String,
-        val connDownLine: String,
         val connStatusTitle: String,
         val connNeptunLabel: String,
         val connActiveLabel: String,
@@ -240,23 +238,35 @@ object Strings {
         val vibrationSoft: String,
         val vibrationMedium: String,
         val vibrationStrong: String,
+        val hapticsTitle: String,
+        val hapticsDesc: String,
         val vibrationUrgent: String,
         val logDistanceFormat: String,
         val alertAgeSecSuffix: String,
         val alertAgeMinSuffix: String,
         val alertAgeHrSuffix: String,
         val logsTitle: String,
-        val logsFilterAll: String,
         val logsFilterMine: String,
         val logsFilterConnections: String,
         val logsFilterDecisions: String,
         val logsShowMore: String,
+        val logsEmptyMine: String,
+        val logsEmptyConnections: String,
+        val logsGroupFlat: String,
+        val logsGroupProximity: String,
+        val logsGroupType: String,
+        val logsGroupOutcome: String,
+        val logsOutcomeAll: String,
+        val logsOutcomeShown: String,
+        val logsOutcomeNotShown: String,
+        val logsProxOblast: String,
+        val logsSortDesc: String,
         val debugLogEmpty: String,
         val debugLogClear: String,
         val debugLogOpen: String,
         val debugLogDay: String,
         val debugLogNight: String,
-        val debugLogFired: String,
+        val debugLogShown: String,
         val debugLogSuppressed: String,
         val debugLogSoundOverride: String,
         val debugLogSoundFollows: String,
@@ -448,7 +458,11 @@ object Strings {
         val neutralizedLabel: String,
         val neutralizedNote: String,
         val neutralizingLabel: String,
-        val neutralizingNote: String
+        val neutralizingNote: String,
+        val fakeNeutralizingLabel: String,
+        val fakeNeutralizingNote: String,
+        val resolvingThreat: String,
+        val resolvingThreatsFormat: String
     )
 
     /** One-time explainer copy. [items] order: threatToggles, officialAlerts, sirenOverride,
@@ -661,8 +675,6 @@ object Strings {
         val connOnline: String get() = status.connOnline
         val connOffline: String get() = status.connOffline
         val connServerLine: String get() = status.connServerLine
-        val connUpLine: String get() = status.connUpLine
-        val connDownLine: String get() = status.connDownLine
         val connStatusTitle: String get() = status.connStatusTitle
         val connNeptunLabel: String get() = status.connNeptunLabel
         val connActiveLabel: String get() = status.connActiveLabel
@@ -771,23 +783,35 @@ object Strings {
         val vibrationSoft: String get() = misc.vibrationSoft
         val vibrationMedium: String get() = misc.vibrationMedium
         val vibrationStrong: String get() = misc.vibrationStrong
+        val hapticsTitle: String get() = misc.hapticsTitle
+        val hapticsDesc: String get() = misc.hapticsDesc
         val vibrationUrgent: String get() = misc.vibrationUrgent
         val logDistanceFormat: String get() = misc.logDistanceFormat
         val alertAgeSecSuffix: String get() = misc.alertAgeSecSuffix
         val alertAgeMinSuffix: String get() = misc.alertAgeMinSuffix
         val alertAgeHrSuffix: String get() = misc.alertAgeHrSuffix
         val logsTitle: String get() = misc.logsTitle
-        val logsFilterAll: String get() = misc.logsFilterAll
         val logsFilterMine: String get() = misc.logsFilterMine
         val logsFilterConnections: String get() = misc.logsFilterConnections
         val logsFilterDecisions: String get() = misc.logsFilterDecisions
         val logsShowMore: String get() = misc.logsShowMore
+        val logsEmptyMine: String get() = misc.logsEmptyMine
+        val logsEmptyConnections: String get() = misc.logsEmptyConnections
+        val logsGroupFlat: String get() = misc.logsGroupFlat
+        val logsGroupProximity: String get() = misc.logsGroupProximity
+        val logsGroupType: String get() = misc.logsGroupType
+        val logsGroupOutcome: String get() = misc.logsGroupOutcome
+        val logsOutcomeAll: String get() = misc.logsOutcomeAll
+        val logsOutcomeShown: String get() = misc.logsOutcomeShown
+        val logsOutcomeNotShown: String get() = misc.logsOutcomeNotShown
+        val logsProxOblast: String get() = misc.logsProxOblast
+        val logsSortDesc: String get() = misc.logsSortDesc
         val debugLogEmpty: String get() = misc.debugLogEmpty
         val debugLogClear: String get() = misc.debugLogClear
         val debugLogOpen: String get() = misc.debugLogOpen
         val debugLogDay: String get() = misc.debugLogDay
         val debugLogNight: String get() = misc.debugLogNight
-        val debugLogFired: String get() = misc.debugLogFired
+        val debugLogShown: String get() = misc.debugLogShown
         val debugLogSuppressed: String get() = misc.debugLogSuppressed
         val debugLogSoundOverride: String get() = misc.debugLogSoundOverride
         val debugLogSoundFollows: String get() = misc.debugLogSoundFollows
@@ -966,6 +990,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val neutralizedNote: String get() = guide.neutralizedNote
         val neutralizingLabel: String get() = guide.neutralizingLabel
         val neutralizingNote: String get() = guide.neutralizingNote
+        val fakeNeutralizingLabel: String get() = guide.fakeNeutralizingLabel
+        val fakeNeutralizingNote: String get() = guide.fakeNeutralizingNote
+        val resolvingThreat: String get() = guide.resolvingThreat
+        val resolvingThreatsFormat: String get() = guide.resolvingThreatsFormat
         val explainerVisualLabel: String get() = explainers.visualLabel
         val explainerScenarioLabel: String get() = explainers.scenarioLabel
         val explainerGotIt: String get() = explainers.gotIt
@@ -1086,8 +1114,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connOnline = "Онлайн",
         connOffline = "Офлайн",
         connServerLine = "З'єднання з сервером повітряних тривог NEPTUN.",
-        connUpLine = "Дані оновлюються.",
-        connDownLine = "З'єднання втрачено, дані можуть бути застарілими.",
         connStatusTitle = "Статус системи",
         connNeptunLabel = "NEPTUN",
         connActiveLabel = "Активне",
@@ -1205,23 +1231,35 @@ val iconSetTitle: String get() = misc.iconSetTitle
         vibrationSoft = "М'яка",
         vibrationMedium = "Середня",
         vibrationStrong = "Сильна",
+        hapticsTitle = "Тактильний відгук",
+        hapticsDesc = "Невеликий віброімпульс під час натискань у застосунку.",
         vibrationUrgent = "Термінова",
         logDistanceFormat = "%1\$d км",
         alertAgeSecSuffix = "сек",
         alertAgeMinSuffix = "хв",
         alertAgeHrSuffix = "год",
         logsTitle = "Журнал",
-        logsFilterAll = "Усі",
         logsFilterMine = "Мої тривоги",
         logsFilterConnections = "З'єднання",
         logsFilterDecisions = "Рішення",
         logsShowMore = "Показати ще",
+        logsEmptyMine = "Для вас ще не лунали тривоги",
+        logsEmptyConnections = "Змін з'єднання ще не було",
+        logsGroupFlat = "Список",
+        logsGroupProximity = "Відстань",
+        logsGroupType = "Тип",
+        logsGroupOutcome = "Результат",
+        logsOutcomeAll = "Усі",
+        logsOutcomeShown = "Показані",
+        logsOutcomeNotShown = "Не показані",
+        logsProxOblast = "У області",
+        logsSortDesc = "Новіші зверху / старіші зверху",
         debugLogEmpty = "Рішень ще не зафіксовано",
         debugLogClear = "Очистити",
         debugLogOpen = "Журнал",
         debugLogDay = "День",
         debugLogNight = "Ніч",
-        debugLogFired = "Сповіщення надіслано",
+        debugLogShown = "Сповіщення показано",
         debugLogSuppressed = "Без сповіщення — %1\$s",
         debugLogSoundOverride = "Сигнал завжди",
         debugLogSoundFollows = "За режимом звуку",
@@ -1414,6 +1452,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizedNote = "Більше не відстежується мережею.",
         neutralizingLabel = "Знешкодження…",
         neutralizingNote = "Більше не відстежується мережею.",
+        fakeNeutralizingLabel = "Тільки бажання…",
+        fakeNeutralizingNote = "Надсилаю сигнал у штаб…",
+        resolvingThreat = "Знешкоджуємо загрозу",
+        resolvingThreatsFormat = "Знешкоджуємо загрозу %1\$d з %2\$d",
     )
 
     private fun uaExplainers() = ExplainerStrings(
@@ -1582,8 +1624,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         connOnline = "Online",
         connOffline = "Offline",
         connServerLine = "Connection to the NEPTUN air-threat server.",
-        connUpLine = "Data is updating live.",
-        connDownLine = "Connection lost; data may be stale.",
         connStatusTitle = "System status",
         connNeptunLabel = "NEPTUN",
         connActiveLabel = "Active",
@@ -1701,23 +1741,35 @@ alertBannerFormat = "%1\$s: alert",
         vibrationSoft = "Soft",
         vibrationMedium = "Medium",
         vibrationStrong = "Strong",
+        hapticsTitle = "Haptic feedback",
+        hapticsDesc = "A small vibration tick on presses across the app.",
         vibrationUrgent = "Urgent",
         logDistanceFormat = "%1\$d km",
         alertAgeSecSuffix = "sec",
         alertAgeMinSuffix = "min",
         alertAgeHrSuffix = "hr",
         logsTitle = "Logs",
-        logsFilterAll = "All",
         logsFilterMine = "My alerts",
         logsFilterConnections = "Connections",
         logsFilterDecisions = "Decisions",
         logsShowMore = "Show more",
+        logsEmptyMine = "No notifications shown for you yet",
+        logsEmptyConnections = "No connection changes yet",
+        logsGroupFlat = "Flat",
+        logsGroupProximity = "Proximity",
+        logsGroupType = "Type",
+        logsGroupOutcome = "Outcome",
+        logsOutcomeAll = "All",
+        logsOutcomeShown = "Shown",
+        logsOutcomeNotShown = "Not shown",
+        logsProxOblast = "In oblast",
+        logsSortDesc = "Toggle newest/oldest first",
         debugLogEmpty = "No decisions logged yet",
         debugLogClear = "Clear",
         debugLogOpen = "Logs",
         debugLogDay = "Day",
         debugLogNight = "Night",
-        debugLogFired = "Notification fired",
+        debugLogShown = "Notification shown",
         debugLogSuppressed = "No notification — %1\$s",
         debugLogSoundOverride = "Siren override",
         debugLogSoundFollows = "Follows ringer",
@@ -1910,6 +1962,10 @@ alertBannerFormat = "%1\$s: alert",
         neutralizedNote = "No longer tracked by the network.",
         neutralizingLabel = "Neutralizing threat…",
         neutralizingNote = "No longer tracked by the network.",
+        fakeNeutralizingLabel = "Wishful thinking…",
+        fakeNeutralizingNote = "Sending signal to HQ…",
+        resolvingThreat = "Resolving threat",
+        resolvingThreatsFormat = "Resolving threat %1\$d of %2\$d",
     )
 
     private fun enExplainers() = ExplainerStrings(

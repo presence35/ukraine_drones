@@ -12,7 +12,12 @@ import androidx.core.content.ContextCompat
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -186,6 +191,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     // The map stays composed under the Settings overlay so its camera and tiles are never
     // destroyed — returning from Settings used to reset the world into a low-zoom grid.
+    CompositionLocalProvider(LocalHapticsEnabled provides uiState.hapticsEnabled) {
     Box(modifier = Modifier.fillMaxSize()) {
         MapScreen(
             uiState = uiState,
@@ -281,6 +287,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 sheltersEnabled = uiState.sheltersEnabled,
                 periodicGps = uiState.periodicGps,
                 calmMessagesEnabled = uiState.calmMessagesEnabled,
+                hapticsEnabled = uiState.hapticsEnabled,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
@@ -319,6 +326,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onPinnedCityChange = { viewModel.setPinnedCity(it) },
                 onPeriodicGpsChange = { viewModel.setPeriodicGps(it) },
                 onCalmMessagesChange = { viewModel.setCalmMessagesEnabled(it) },
+                onHapticsEnabledChange = { viewModel.setHapticsEnabled(it) },
                 onDisclaimerCollapse = { viewModel.setDisclaimerCollapsed(it) },
                 onDisclaimerShown = { viewModel.onDisclaimerShown() },
                 onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
@@ -344,6 +352,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 },
                 onResetTips = {
                     viewModel.resetAllTips()
+                    // Re-arm the in-memory hint counters so the gear re-spins immediately.
+                    settingsHintRemaining = 10
                     showToast(context, Strings.get(uiState.language).tipsResetToast, cardVisible = false)
                 },
                 onOpenGuide = {
@@ -389,6 +399,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 .padding(bottom = 12.dp)
         )
         ToastHost(topInset = with(LocalDensity.current) { headerHeightPx.toDp() })
+    }
     }
 
     // Auto-launch the installer once the APK is downloaded and permission is granted.
@@ -728,6 +739,7 @@ private fun WizardThreatGrid(
                                     else MaterialTheme.colorScheme.outlineVariant,
                                     shape = RoundedCornerShape(12.dp)
                                 )
+                                .pressTick()
                                 .clickable { onThreatEnabledToggle(type, !on) }
                                 .padding(vertical = 14.dp, horizontal = 6.dp)
                         ) {
@@ -962,20 +974,20 @@ private fun MapScreen(
     val s = Strings.get(uiState.language)
     val context = LocalContext.current
     val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
-    // The settings gear does one slow spin while the "open Settings" hint is still active,
-    // drawing the eye to it. Using animateFloatAsState so the value is always observed by Compose.
-    var gearSpinTarget by remember { mutableFloatStateOf(0f) }
-    val gearSpin by animateFloatAsState(
-        targetValue = gearSpinTarget,
-        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+    // The settings gear rotates gently while the "open Settings" hint is active, drawing the
+    // eye to it. Infinite transition = always animating, so the value is continuously observed;
+    // the rotation is only applied while the hint counter is still positive.
+    val gearHintActive = settingsHintRemaining > 0
+    val gearSpinTransition = rememberInfiniteTransition(label = "gearSpin")
+    val gearSpin by gearSpinTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
         label = "gearSpin"
     )
-    LaunchedEffect(settingsHintRemaining) {
-        if (settingsHintRemaining > 0) {
-            gearSpinTarget = 0f
-            gearSpinTarget = 360f
-        }
-    }
     var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
     var zoomZone by remember { mutableStateOf<ThreatZone?>(null) }
@@ -986,6 +998,7 @@ private fun MapScreen(
     var showNearbyShelters by remember { mutableStateOf(false) }
     var selectedShelter by remember { mutableStateOf<NearestShelter?>(null) }
     var deathActive by remember { mutableStateOf(false) }
+    var replayProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     // Surface shelter-mode to the ViewModel so the resolved-threat flourish/card is
     // suppressed while the shelter overlay is up.
@@ -1108,6 +1121,7 @@ private fun MapScreen(
                     Text(
                         text = alertText,
                         modifier = Modifier
+                            .pressTick()
                             .clickable(
                                 interactionSource = titleInteraction,
                                 indication = ripple(),
@@ -1135,24 +1149,14 @@ private fun MapScreen(
                     s = s,
                     modifier = Modifier.padding(end = 4.dp)
                 )
-                if (uiState.nightEnabled && uiState.nightActive) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_moon),
-                        contentDescription = s.nightModeHeaderDesc,
-                        tint = Color.Unspecified,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .padding(end = 4.dp)
-                    )
-                }
-                IconButton(onClick = openSettings, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = openSettings, modifier = Modifier.size(32.dp).pressTick()) {
                     Icon(
                         painter = painterResource(R.drawable.ic_settings_ua),
                         contentDescription = s.settingsButton,
                         tint = Color.Unspecified,
                         modifier = Modifier
                             .size(22.dp)
-                            .graphicsLayer { rotationZ = gearSpin }
+                            .graphicsLayer { rotationZ = if (gearHintActive) gearSpin else 0f }
                     )
                 }
             }
@@ -1199,6 +1203,7 @@ private fun MapScreen(
                             selectedShelter = null
                         },
                         onDeathActiveChange = { deathActive = it },
+                        onReplayProgressChange = { replayProgress = it },
                         modifier = Modifier.fillMaxSize()
                     )
                     if (uiState.showMapScale) {
@@ -1250,14 +1255,25 @@ private fun MapScreen(
                         (innerCounts[it] ?: 0) + (outerCounts[it] ?: 0)
                     }
                     if (total == 0) {
-                        Text(
-                            if (deathActive) s.neutralizingLabel else noThreatsMessage(
+                        val replay = replayProgress
+                        val footerText = when {
+                            replay != null -> {
+                                val (cur, n) = replay
+                                if (n <= 1) s.resolvingThreat
+                                else String.format(s.resolvingThreatsFormat, cur, n)
+                            }
+                            deathActive -> s.neutralizingLabel
+                            uiState.fakeNeutralize -> s.fakeNeutralizingLabel
+                            else -> noThreatsMessage(
                                 uiState.language,
                                 uiState.now / 86_400_000L,
                                 uiState.calmMessagesEnabled
-                            ),
+                            )
+                        }
+                        Text(
+                            footerText,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (deathActive) Color(0xFFF9A825) else Color(0xFF4CAF50),
+                            color = if (deathActive || replay != null) Color(0xFFF9A825) else Color(0xFF4CAF50),
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1342,6 +1358,7 @@ private fun MapScreen(
                                 cardSize = uiState.threatCardSize,
                                 alertsOff = threat.type in uiState.silencedTypes,
                                 onDismiss = onDismissPopup,
+                                fakeNeutralize = uiState.fakeNeutralize,
                                 modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
                             )
                             Row(
@@ -1390,6 +1407,7 @@ private fun MapScreen(
                                 neutralized = true,
                                 neutralizing = neutralizing,
                                 onDismiss = onDismissPopup,
+                                fakeNeutralize = uiState.fakeNeutralize,
                                 modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
                             )
                         }
@@ -1419,11 +1437,11 @@ private fun MapScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth(),
-                    color = Color(0xFF1E1E1E),
+                    color = if (editingNight) NightSectionBg else Color(0xFF1E1E1E),
                     shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     border = BorderStroke(
                         width = 1.5.dp,
-                        color = if (editingNight) Color(0xFF5C6BC0) else Color(0xFF3A3A3A)
+                        color = if (editingNight) NightSectionBorder else Color(0xFF3A3A3A)
                     )
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1434,6 +1452,7 @@ private fun MapScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .pressTick()
                                 .clickable(onClick = closeSheet)
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
@@ -1449,25 +1468,9 @@ private fun MapScreen(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 12.dp, bottom = 8.dp)
-                                    .width(48.dp)
-                                    .height(24.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(Color(0xFF555555).copy(alpha = 0.6f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(36.dp)
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .background(Color(0xFF888888))
-                                )
-                            }
+                            SheetDragHandle()
                         }
-                                                ZonesPanel(
+                        ZonesPanel(
                             slowRedKm = if (editingNight) uiState.nightSlowRedKm else uiState.slowRedKm,
                             slowYellowKm = if (editingNight) uiState.nightSlowYellowKm else uiState.slowYellowKm,
                             fastRedMin = if (editingNight) uiState.nightFastRedMin else uiState.fastRedMin,
@@ -1608,12 +1611,14 @@ private fun ShelterButton(
         shape = shape,
         color = bg.copy(alpha = if (isPressed) 0.8f else 1f),
         border = border,
-        modifier = modifier.combinedClickable(
-            interactionSource = interactionSource,
-            indication = ripple(bounded = true, color = fg.copy(alpha = 0.3f)),
-            onClick = onClick,
-            onLongClick = onLongClick
-        )
+        modifier = modifier
+            .pressTick()
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true, color = fg.copy(alpha = 0.3f)),
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1665,9 +1670,10 @@ private fun ZoneButtons(
                     .background(MaterialTheme.colorScheme.surface)
                     .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                     .semantics { semanticsContentDescription = s.editZonesLabel }
+                    .pressTick()
                     .clickable(
                         interactionSource = gearInteraction,
-                        indication = ripple(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                        indication = null,
                         onClick = onEditZones
                     ),
                 contentAlignment = Alignment.Center
@@ -1691,7 +1697,9 @@ private fun AllAlertsOffWarning(label: String, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(50),
         color = Color.Black.copy(alpha = 0.55f),
-        modifier = Modifier.clickable(
+        modifier = Modifier
+            .pressTick()
+            .clickable(
             interactionSource = interactionSource,
             indication = ripple(bounded = true),
             onClick = onClick
@@ -1786,9 +1794,10 @@ private fun ZonePill(
             .background(if (armed) zoneColor.copy(alpha = bgAlpha.value) else Color(0xFF2A2A2A))
             .border(2.dp, if (armed) zoneColor else Color(0xFF666666), CircleShape)
             .semantics { semanticsContentDescription = contentDescription }
+            .pressTick()
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(color = Color.White.copy(alpha = 0.3f)),
+                indication = null,
                 onClick = { onZoneTap(zone) }
             ),
         contentAlignment = Alignment.Center
@@ -1817,6 +1826,7 @@ private fun ThreatStatusCell(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (isPressed) 0.12f else 0.06f))
+            .pressTick()
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true),
@@ -1869,6 +1879,7 @@ private fun ThreatCardSizeControl(
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = if (isPressed) 0.95f else 0.85f))
             .semantics { semanticsContentDescription = contentDescription }
+            .pressTick()
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true),

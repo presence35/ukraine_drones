@@ -50,6 +50,7 @@ fun ShelterPopupCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
+            .pressTick()
             .clickable(onClick = onDismiss),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(

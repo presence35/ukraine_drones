@@ -8,22 +8,32 @@ import android.os.Vibrator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.TileSystem
 import org.osmdroid.views.MapView
+import kotlin.random.Random
+
+// Ukraine (incl. Crimea) plus a ~0.5° margin — mirrors the map's own pan limit, so a projectile
+// can never take off from outside the country.
+private const val UA_MIN_LAT = 43.9
+private const val UA_MAX_LAT = 52.7
+private const val UA_MIN_LON = 21.7
+private const val UA_MAX_LON = 40.6
 
 /**
  * Map-side flourish facade: owns the death-animation overlay plus everything that drives it —
- * the strike camera glide, the shot/kill haptics, the bullet take-off origin and the tally-tap
- * replay orchestration. The map view keeps only the thin policy hooks (visibility gating, input
- * handling) and delegates every flourish mechanic here, so the critical marker loop stays clean.
+ * the strike camera glide, the shot/kill haptics, the bullet take-off origin (a random point on
+ * the viewport edge, clamped to Ukraine) and the tally-tap replay orchestration. The map view
+ * keeps only the thin policy hooks (visibility gating, input handling) and delegates every
+ * flourish mechanic here, so the critical marker loop stays clean.
  */
 class DeathFxController(
     private val context: Context,
     private val mapView: () -> MapView?,
-    private val focusLocation: () -> LatLng?,
     private val iconFor: (ThreatType) -> Drawable,
     private val scope: CoroutineScope
 ) {
@@ -34,6 +44,11 @@ class DeathFxController(
     // A pending "return the camera to where the user was" job — replaced by each new strike.
     private var cameraReturnJob: Job? = null
 
+    private val _replayProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    /** During the tally-tap replay: the current bullet (1-based) within the CURRENT group and
+     *  that group's size, so the footer can read "Resolving threat X of N" per group. */
+    val replayProgress: StateFlow<Pair<Int, Int>?> = _replayProgress.asStateFlow()
+
     val active: StateFlow<Boolean> get() = overlay.active
     val isActive: Boolean get() = overlay.isActive
 
@@ -43,28 +58,45 @@ class DeathFxController(
      *  the flourish (safety outranks the playful replay). */
     fun clear() {
         cameraReturnJob?.cancel()
+        _replayProgress.value = null
         overlay.clear()
     }
 
-    /** User-initiated or server-driven strike: spawn the projectile + explosion. */
+    /** User-initiated or server-driven strike: spawn the projectile + explosion. The bullet
+     *  takes off from a random point on the viewport edge (clamped to Ukraine). */
     fun strike(
         id: String? = null,
         geo: GeoPoint,
-        origin: GeoPoint? = null,
         icon: Drawable? = null,
         rotationDeg: Float = 0f,
         alpha: Float = 1f
-    ) = overlay.spawn(id, geo, origin, icon, rotationDeg, alpha)
+    ) = overlay.spawn(id, geo, randomEdgeOrigin(), icon, rotationDeg, alpha)
 
     /** Follow-up projectile for an already-destroyed threat: no icon, never explodes. */
-    fun strikeDud(id: String?, geo: GeoPoint, origin: GeoPoint?) = overlay.spawnDud(id, geo, origin)
+    fun strikeDud(id: String?, geo: GeoPoint) {
+        randomEdgeOrigin()?.let { overlay.spawnDud(id, geo, it) }
+    }
 
-    /** Where the death-bullet takes off from: the nearest major city to the target, else the
-     *  focus point (GPS or pinned city) when no city is close enough. */
-    fun strikeOrigin(target: GeoPoint): GeoPoint? {
-        return Cities.nearestCity(target.latitude, target.longitude)?.let { GeoPoint(it.lat, it.lon) }
-            ?: focusLocation()?.let { GeoPoint(it.lat, it.lon) }
-            ?: LocationTracker.location.value?.let { GeoPoint(it.lat, it.lon) }
+    /** A random point exactly on the viewport edge (0px), converted to geo and clamped to
+     *  Ukraine — the bullet always glides in from the screen edge, and can never originate in
+     *  another country even when the whole country fills the screen. */
+    private fun randomEdgeOrigin(): GeoPoint? {
+        val mapView = mapView() ?: return null
+        if (mapView.width <= 0 || mapView.height <= 0) return null
+        val w = mapView.width.toFloat()
+        val h = mapView.height.toFloat()
+        val t = Random.nextFloat()
+        val (px, py) = when (Random.nextInt(4)) {
+            0 -> 0f to t * h      // left edge
+            1 -> w to t * h       // right edge
+            2 -> t * w to 0f      // top edge
+            else -> t * w to h    // bottom edge
+        }
+        val geo = mapView.projection.fromPixels(px.toInt(), py.toInt())
+        return GeoPoint(
+            geo.latitude.coerceIn(UA_MIN_LAT, UA_MAX_LAT),
+            geo.longitude.coerceIn(UA_MIN_LON, UA_MAX_LON)
+        )
     }
 
     /** Follow-the-bullet: with the setting on, the camera glides onto the strike, then pans
@@ -125,16 +157,18 @@ class DeathFxController(
             val box = flourishesBoundingBox(group, null)
             mapView.zoomToBoundingBox(box, true)
             delay(if (gi == 0) 300L else 400L)
-            group.forEach { rec ->
+            group.forEachIndexed { groupIndex, rec ->
                 delay(if (index == 0) 0L else FLOURISH_STAGGER_MS)
                 index++
                 val anchor = GeoPoint(rec.lat, rec.lon)
-                val origin = strikeOrigin(anchor)
                 val icon = iconFor(rec.type)
+                // Per-group progress (1-based within the current group) so the footer reads
+                // "Resolving threat X of N" — a fresh 1..N for each cluster, never a global total.
+                _replayProgress.value = (groupIndex + 1) to group.size
                 overlay.spawn(
                     id = "flourish:$index",
                     geo = anchor,
-                    origin = origin,
+                    origin = randomEdgeOrigin(),
                     icon = icon,
                     rotationDeg = 0f,
                     alpha = 1f
@@ -145,6 +179,7 @@ class DeathFxController(
             // Wait for this group's last bullet to finish before panning on.
             delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS)
         }
+        _replayProgress.value = null
         // Back home, at peace.
         mapView()?.controller?.animateTo(preCenter)
     }

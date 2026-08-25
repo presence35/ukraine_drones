@@ -106,13 +106,13 @@ object IconCatalog {
      * icon by `courseDeg - base` so the subject points along its true course.
      */
     fun photoBaseDeg(type: ThreatType): Float = when (type) {
-        ThreatType.BALLISTIC -> 45f      // _top_right
-        ThreatType.CRUISE_MISSILE -> 90f // _right
-        ThreatType.FPV_LOITERING -> 180f // _bottom_middle
-        ThreatType.KAB -> 240f           // _bottom_left
-        ThreatType.AVIATION -> 265f      // _left
-        ThreatType.RECON -> 247f         // _bottom_left
-        ThreatType.SHAHED -> 0f          // _top_middle
+        ThreatType.BALLISTIC -> 0f       // vertical (up), after the 90°-right photo rotation
+        ThreatType.CRUISE_MISSILE -> 45f  // _top_right (PNGs re-faced)
+        ThreatType.FPV_LOITERING -> 180f  // _bottom_middle
+        ThreatType.KAB -> 240f            // _bottom_left
+        ThreatType.AVIATION -> 265f       // _left
+        ThreatType.RECON -> 247f          // _bottom_left
+        ThreatType.SHAHED -> 0f           // _top_middle
         ThreatType.UNKNOWN -> 0f
     }
 

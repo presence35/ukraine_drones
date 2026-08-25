@@ -1,5 +1,6 @@
 package ua.ukrainedrones
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +27,28 @@ internal val TurtleGreen = Color(0xFF4CAF50)
 /** The red/yellow accent colors used by zone sliders everywhere (sheet + Settings). */
 internal val ZoneRedColor = RedZoneColor
 internal val ZoneYellowColor = YellowZoneColor
+
+/** Shared grab-handle pill used by the zones sheet and the connection bottom sheet. */
+@Composable
+internal fun SheetDragHandle() {
+    Box(
+        modifier = Modifier
+            .padding(top = 12.dp, bottom = 8.dp)
+            .width(48.dp)
+            .height(24.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF555555).copy(alpha = 0.6f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFF888888))
+        )
+    }
+}
 
 /**
  * Alert-zone panel shown in the bottom sheet over the map, so the sliders can be

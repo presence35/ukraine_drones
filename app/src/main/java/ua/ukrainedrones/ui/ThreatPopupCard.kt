@@ -74,7 +74,7 @@ internal fun AlertsOffChip(s: Strings.StringSet) {
     Surface(
         shape = RoundedCornerShape(50),
         color = Color(0xFF2A2A2A).copy(alpha = if (isPressed) 0.9f else 1f),
-        modifier = Modifier.clickable(
+        modifier = Modifier.pressTick().clickable(
             interactionSource = interactionSource,
             indication = ripple(bounded = true),
             onClick = {}
@@ -118,7 +118,8 @@ fun ThreatPopupCard(
     interactive: Boolean = true,
     alertsOff: Boolean = false,
     neutralized: Boolean = false,
-    neutralizing: Boolean = false
+    neutralizing: Boolean = false,
+    fakeNeutralize: Boolean = false
 ) {
     val s = Strings.get(lang)
     val typeInfo = ThreatTypeCatalog.INFO.getValue(threat.type)
@@ -186,14 +187,14 @@ fun ThreatPopupCard(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        if (neutralizing) s.neutralizingLabel else s.neutralizedLabel,
+                        if (fakeNeutralize) s.fakeNeutralizingLabel else if (neutralizing) s.neutralizingLabel else s.neutralizedLabel,
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF9E9E9E)
                     )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    if (neutralizing) s.neutralizingNote else s.neutralizedNote,
+                    if (fakeNeutralize) s.fakeNeutralizingNote else if (neutralizing) s.neutralizingNote else s.neutralizedNote,
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF9E9E9E)
                 )
@@ -207,7 +208,7 @@ fun ThreatPopupCard(
         modifier = modifier
             .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             .then(
-                if (interactive) Modifier.clickable(
+                if (interactive) Modifier.pressTick().clickable(
                     interactionSource = cardInteraction,
                     indication = ripple(bounded = true, radius = 200.dp),
                     onClick = onDismiss

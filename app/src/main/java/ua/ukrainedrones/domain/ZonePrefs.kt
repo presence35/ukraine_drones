@@ -81,6 +81,7 @@ class ZonePrefs(private val context: Context) {
     private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
     private val periodicGpsKey = booleanPreferencesKey("periodic_gps_enabled")
     private val calmMessagesEnabledKey = booleanPreferencesKey("calm_messages_enabled")
+    private val hapticsEnabledKey = booleanPreferencesKey("haptics_enabled")
     private val officialAlertCityScopeKey = booleanPreferencesKey("official_alert_city_scope")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 1–20, default 20. */
@@ -392,6 +393,14 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setCalmMessagesEnabled(enabled: Boolean) {
         context.dataStore.edit { it[calmMessagesEnabledKey] = enabled }
+    }
+
+    /** Whether press interactions play a small haptic tick — default on. */
+    fun hapticsEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[hapticsEnabledKey] ?: true }
+
+    suspend fun setHapticsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[hapticsEnabledKey] = enabled }
     }
 
     /** Official-alert scope: false = whole oblast, true = only when the focus city is covered. */

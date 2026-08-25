@@ -77,6 +77,7 @@ data class UiState(
     val selectedThreat: Threat? = null,
     val selectedThreatInfo: ThreatProximity? = null,
     val neutralizedThreat: Threat? = null,   // selected threat just resolved — fades out
+    val fakeNeutralize: Boolean = false,   // user-initiated neutralization (long-press) → show fake text
     val threatLevel: Double = 0.0,                 // experimental 0..10 gauge for the popup
     val revealRequest: RevealRequest? = null,      // notification tap: pan the camera onto a threat
     val flourish: FlourishShow? = null,            // tally tap: replay the shot-down show
@@ -100,6 +101,7 @@ data class UiState(
     val sheltersWithKids: Boolean = true,
     val periodicGps: Boolean = false,
     val calmMessagesEnabled: Boolean = true,
+    val hapticsEnabled: Boolean = true,
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
     val mapVisible: Boolean = true,          // the map screen is the visible screen (not settings/shelters/guide)
     val alertActive: Boolean = false,        // any threat or official alert live right now
@@ -161,6 +163,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether the shelter overlay is showing on the map — the resolved-threat flourish and
      *  neutralizing card are suppressed while it is (nothing should steal the user's focus). */
     private val shelterModeFlow = MutableStateFlow(false)
+    /** Whether the current neutralization is user-initiated (long-press) so we show the
+     *  "fake" text instead of the real "neutralizing" copy. Cleared on selection change. */
+    private val fakeNeutralizeFlow = MutableStateFlow(false)
     private var isChecking = false
     private val zonesFlow = combine(
         prefs.slowRedKm(), prefs.slowYellowKm(), prefs.fastRedMin(), prefs.fastYellowMin()
@@ -206,7 +211,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val sheltersEnabled: Boolean,
         val sheltersWithKids: Boolean,
         val periodicGps: Boolean,
-        val calmMessagesEnabled: Boolean
+        val calmMessagesEnabled: Boolean,
+        val hapticsEnabled: Boolean
     )
 
     /** Night-mode window prefs (raw, day values untouched). */
@@ -266,6 +272,7 @@ val fastGroupCollapsed: Boolean,
         val sheltersWithKids: Boolean,
         val periodicGps: Boolean,
         val calmMessagesEnabled: Boolean,
+        val hapticsEnabled: Boolean,
         val night: NightPrefs
     )
 
@@ -283,6 +290,7 @@ val fastGroupCollapsed: Boolean,
         val reveal: RevealRequest?,
         val flourish: FlourishShow?,
         val neutralizedId: String?,
+        val fakeNeutralize: Boolean,
         val mapVisible: Boolean,
         val shelterModeActive: Boolean
     )
@@ -322,7 +330,8 @@ val fastGroupCollapsed: Boolean,
         flourishFlow,
         neutralizedFlow,
         mapVisibleFlow,
-        shelterModeFlow
+        shelterModeFlow,
+        fakeNeutralizeFlow
     ) { values: Array<Any?> ->
         val neptun = values[0] as NeptunState
         val radii = values[1] as ZoneParams
@@ -333,12 +342,13 @@ val fastGroupCollapsed: Boolean,
         val reveal = values[6] as RevealRequest?
         val flourish = values[7] as FlourishShow?
         val neutralizedId = values[8] as String?
-        val mapVisible = values[9] as Boolean
-        val shelterModeActive = values[10] as Boolean
+        val fakeNeutralize = values[9] as Boolean
+        val mapVisible = values[10] as Boolean
+        val shelterModeActive = values[11] as Boolean
         LiveSnapshot(
             neptun,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
-            location, lastFix != null, selected, now, reveal, flourish, neutralizedId, mapVisible, shelterModeActive
+            location, lastFix != null, selected, now, reveal, flourish, neutralizedId, fakeNeutralize, mapVisible, shelterModeActive
         )
     }
 
@@ -385,7 +395,7 @@ val fastGroupCollapsed: Boolean,
                         prefs.threatCardSize(),
                         prefs.threatIconSet()
                     ) { pinned, chosen, batteryShown, card, iconSet ->
-                        PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true, false, true)
+                        PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true, false, true, true)
                     },
                     prefs.sheltersEnabled()
                 ) { quad, shelters ->
@@ -396,9 +406,10 @@ val fastGroupCollapsed: Boolean,
                 quad.copy(sheltersWithKids = kids)
             },
             prefs.periodicGps(),
-            prefs.calmMessagesEnabled()
-        ) { quad, periodic, calm ->
-            quad.copy(periodicGps = periodic, calmMessagesEnabled = calm)
+            prefs.calmMessagesEnabled(),
+            prefs.hapticsEnabled()
+        ) { quad, periodic, calm, haptics ->
+            quad.copy(periodicGps = periodic, calmMessagesEnabled = calm, hapticsEnabled = haptics)
         },
         combine(
             combine(
@@ -465,6 +476,7 @@ combine(
             sheltersWithKids = c.sheltersWithKids,
             periodicGps = c.periodicGps,
             calmMessagesEnabled = c.calmMessagesEnabled,
+            hapticsEnabled = c.hapticsEnabled,
             night = night
         )
     }
@@ -564,6 +576,7 @@ val uiState: StateFlow<UiState> = combine(
             reveal = live.reveal,
             flourish = live.flourish,
             neutralizedId = live.neutralizedId,
+            fakeNeutralize = live.fakeNeutralize,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
             mapVisible = live.mapVisible,
             shelterModeActive = live.shelterModeActive,
@@ -619,6 +632,7 @@ val uiState: StateFlow<UiState> = combine(
             sheltersWithKids = prefs.sheltersWithKids,
             periodicGps = prefs.periodicGps,
             calmMessagesEnabled = prefs.calmMessagesEnabled,
+            hapticsEnabled = prefs.hapticsEnabled,
             shelterIndex = shelterIndex
         )
     }.stateIn(
@@ -646,6 +660,7 @@ val uiState: StateFlow<UiState> = combine(
         reveal: RevealRequest?,
         flourish: FlourishShow?,
         neutralizedId: String?,
+        fakeNeutralize: Boolean,
         deathAnimationEnabled: Boolean,
         mapVisible: Boolean,
         shelterModeActive: Boolean,
@@ -762,6 +777,7 @@ val uiState: StateFlow<UiState> = combine(
             selectedThreat = if (FlourishPolicy.dropSelection(selectedGone, animOn)) null else refreshedSelected,
             selectedThreatInfo = proximity,
             neutralizedThreat = neutralizedThreat,
+            fakeNeutralize = fakeNeutralize,
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
             flourish = flourish,
@@ -948,6 +964,11 @@ val uiState: StateFlow<UiState> = combine(
         viewModelScope.launch { prefs.setCalmMessagesEnabled(enabled) }
     }
 
+    /** Haptic press-feedback toggle. */
+    fun setHapticsEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setHapticsEnabled(enabled) }
+    }
+
     /** Manual one-shot GPS calibration/refresh trigger. */
     fun forceGpsRefresh(onComplete: (() -> Unit)? = null) {
         LocationTracker.forceRefresh(onComplete)
@@ -1110,12 +1131,14 @@ val uiState: StateFlow<UiState> = combine(
 
     fun selectThreat(threat: Threat?) {
         neutralizedFlow.value = null
+        fakeNeutralizeFlow.value = false
         selectedThreatFlow.value = threat
     }
 
     /** Treat [id] as neutralized so its card self-destructs (map long-press trigger). */
     fun neutralizeThreat(id: String) {
         neutralizedFlow.value = id
+        fakeNeutralizeFlow.value = true
     }
 
     /**

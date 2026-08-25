@@ -164,19 +164,19 @@ class ThreatDeathOverlay : Overlay() {
                 canvas.restore()
             }
 
-            // Flight (0.5s-impact): a small projectile always enters from just off the screen edge,
-            // along the line from the origin (the nearest major city, else GPS position or
-            // pinned city) through the target — it glides in from the origin's side and never
-            // pops up at an on-screen city (and the camera never scrolls to the city either).
-            // Detonates on impact, which lands at p=1 exactly when the explosion below starts.
-            if (t in 0.10f..boomT && d.origin != null) {
+            // Flight (impact): a small projectile always enters from just off the screen edge,
+            // along the line from the origin (a random point on the viewport edge, clamped to
+            // Ukraine — so it can never take off from "another country") through the target —
+            // it glides in from the edge and detonates on impact, which lands at p=1 exactly
+            // when the explosion below starts.
+            if (t in 0f..boomT && d.origin != null) {
                 mapView.projection.toPixels(d.origin, reuseOrigin)
                 val ox = reuseOrigin.x.toFloat()
                 val oy = reuseOrigin.y.toFloat()
                 val dx = x - ox
                 val dy = y - oy
                 val dist = sqrt(dx * dx + dy * dy)
-                val p = ((t - 0.10f) / (boomT - 0.10f)).coerceIn(0f, 1f)
+                val p = (t / boomT).coerceIn(0f, 1f)
                 if (dist > 1f) {
                     val W = mapView.width.toFloat()
                     val H = mapView.height.toFloat()

@@ -401,6 +401,7 @@ fun NeptunMapView(
     onShelterTapped: (NearestShelter) -> Unit = {},
     onExitShelterMode: () -> Unit = {},
     onDeathActiveChange: (Boolean) -> Unit = {},
+    onReplayProgressChange: (Pair<Int, Int>?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -467,7 +468,6 @@ fun NeptunMapView(
         DeathFxController(
             context = context,
             mapView = { mapViewRef.value },
-            focusLocation = { focusLocationState },
             iconFor = { type -> threatIconFor(context, type, iconSetState) },
             scope = mapScope
         )
@@ -878,18 +878,16 @@ fun NeptunMapView(
                                 if (pressedId != null) NeptunClient.markUserShot(pressedId)
                                 if (deathAnimationEnabledState) {
                                     val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
-                                    val origin = deathFx.strikeOrigin(target)
                                     if (deathFx.isActiveFor(pressedId)) {
                                         // Already being struck — a follow-up projectile just
                                         // flies off-screen instead of exploding twice.
-                                        deathFx.strikeDud(pressedId, target, origin)
+                                        deathFx.strikeDud(pressedId, target)
                                     } else {
                                         // User-initiated strike: never move the camera — the
                                         // user is already looking at the threat they shot.
                                         deathFx.strike(
                                             id = pressedId,
                                             geo = target,
-                                            origin = origin,
                                             icon = nearest.icon,
                                             rotationDeg = nearest.rotation,
                                             alpha = nearest.alpha
@@ -964,12 +962,11 @@ fun NeptunMapView(
                     if (r.type in hiddenTypesState) return@collect
                     val marker = markerRefs.value[r.id]
                     val anchor0 = GeoPoint(r.lat, r.lon)
-                    val origin = deathFx.strikeOrigin(anchor0)
                     if (marker == null || deathFx.isActiveFor(r.id)) {
                         // Already destroyed — a prior bullet landed (the server re-sent the
                         // resolution), so don't explode where the threat used to be: a follow-up
                         // projectile just streaks across and off-screen, then is dropped.
-                        deathFx.strikeDud(r.id, anchor0, origin)
+                        deathFx.strikeDud(r.id, anchor0)
                     } else {
                         // Unhook the real marker right away — the overlay draws its own copy of the
                         // icon, so keeping the shared marker would render the same drawable twice
@@ -991,7 +988,6 @@ fun NeptunMapView(
                         deathFx.strike(
                             id = r.id,
                             geo = anchor,
-                            origin = origin,
                             icon = icon,
                             rotationDeg = rotation,
                             alpha = marker.alpha ?: 1f
@@ -1049,6 +1045,12 @@ fun NeptunMapView(
         // is flying / an explosion is on screen.
         LaunchedEffect(Unit) {
             deathFx.active.collect { active -> onDeathActiveChange(active) }
+        }
+
+        // Surface the tally-tap replay progress (current bullet + group size) so the footer can
+        // read "Resolving threat X of N" per group; null clears the copy.
+        LaunchedEffect(Unit) {
+            deathFx.replayProgress.collect { onReplayProgressChange(it) }
         }
 
         // Redraw the map at ~60fps while a death animation is playing and the map is visible,
