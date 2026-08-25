@@ -1,15 +1,12 @@
 package ua.ukrainedrones
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -31,7 +28,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -185,23 +181,13 @@ fun ThreatPopupCard(
     }
 
     // Selection-change feedback: hold the title icon small while the body slides in (~140 ms),
-    // then pop it 0.4 → 1 with a slow bouncy spring, plus a haptic tick — whenever a different
-    // threat is selected (first open included). Stream refreshes keep the threat id, so they
-    // never re-trigger. Hoisted here so card-size toggles don't reset the pop. With system
-    // animations removed there is no pop at all — just the tick.
-        val hapticsEnabled = LocalHapticsEnabled.current
-    val appContext = LocalContext.current.applicationContext
+        // then pop it 0.4 → 1 with a slow bouncy spring — whenever a different threat is selected
+    // (first open included). Stream refreshes keep the threat id, so they never re-trigger.
+    // Hoisted here so card-size toggles don't reset the pop. The tap haptic lives at the
+    // marker-click site (immediate); with system animations off there is no pop at all.
     val animsOff = animationsOff()
-    // Entrance: the card grows 0.94 -> 1 as it appears. The shared fade covers opacity; this
-    // gives the full-width card visible motion (its icon pop alone drowns at that size).
-    val entrance = remember { Animatable(if (animsOff) 1f else 0.94f) }
-    LaunchedEffect(Unit) {
-        if (!animsOff) {
-            entrance.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
-        } else {
-            entrance.snapTo(1f)
-        }
-    }
+    // Selection motion budget goes to the threat icon alone: the pop below is the ONLY card
+    // animation — the body itself must render in one frame (tap feels instant).
     val iconScale = remember { Animatable(1f) }
     var lastSelectedId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(threat.id, interactive) {
@@ -213,7 +199,7 @@ fun ThreatPopupCard(
             threat.id == lastSelectedId -> {}
             else -> {
                 lastSelectedId = threat.id
-                if (hapticsEnabled) hapticTick(appContext)
+                // Tap-site haptic (MapView) already ticked on touch; no second buzz here.
                 if (!animsOff) {
                     iconScale.snapTo(0.4f)
                     kotlinx.coroutines.delay(140)
@@ -272,21 +258,9 @@ fun ThreatPopupCard(
         return
     }
 
-        val cardInteraction = remember { MutableInteractionSource() }
+            val cardInteraction = remember { MutableInteractionSource() }
     Surface(
         modifier = modifier
-            .graphicsLayer {
-                scaleX = entrance.value
-                scaleY = entrance.value
-            }
-            // Size changes (SMALL <-> LARGE stepper, body swaps) glide instead of snapping.
-            .animateContentSize(
-                animationSpec = if (animsOff) tween(0)
-                else spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            )
             .then(if (interactive) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             .then(
                 if (interactive) Modifier.pressTick().clickable(
@@ -300,17 +274,10 @@ fun ThreatPopupCard(
         border = BorderStroke(2.dp, if (stale) Color(0xFF3A3A3A) else bandColor),
         tonalElevation = 8.dp
     ) {
-        AnimatedContent(
+                AnimatedContent(
             targetState = threat.id,
-            transitionSpec = {
-                if (animsOff) {
-                    fadeIn(tween(0)) togetherWith fadeOut(tween(0))
-                } else {
-                    val enter = fadeIn(tween(180)) +
-                        slideInHorizontally(tween(180)) { it / 6 }
-                    enter togetherWith fadeOut(tween(100))
-                }
-            },
+            // Body renders in one frame — selection motion is the icon pop alone.
+            transitionSpec = { fadeIn(tween(0)) togetherWith fadeOut(tween(0)) },
             label = "threatBodySwap"
         ) { _ ->
         when (cardSize) {

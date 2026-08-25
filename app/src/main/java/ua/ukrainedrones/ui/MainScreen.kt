@@ -1394,12 +1394,11 @@ private fun MapScreen(
                     uiState.neutralizedThreat != null -> 2
                     else -> 0
                 },
-                // Fast fade-in so the card feels like it appears on the tap; the slower fade-out
-                // keeps the dismiss / neutralized transitions smooth. With system animations
-                // removed, snap instantly instead of running transition machinery.
+                                // Card appears/disappears in one frame — tap must feel instant. Selection
+                // motion is the map's bullet + the card's icon pop; the slower fade below is
+                // reserved for the neutralized state's death-window exit.
                 transitionSpec = {
-                    if (animsOff) fadeIn(tween(0)) togetherWith fadeOut(tween(0))
-                    else fadeIn(tween(100)) togetherWith fadeOut(tween(300))
+                    fadeIn(tween(0)) togetherWith fadeOut(tween(0))
                 },
                 label = "threatCardSwap",
                 modifier = Modifier

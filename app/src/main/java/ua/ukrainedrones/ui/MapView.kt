@@ -477,7 +477,8 @@ fun NeptunMapView(
     val selectedThreatIdState by rememberUpdatedState(uiState.selectedThreat?.id)
     val focusLocationState by rememberUpdatedState(uiState.focusLocation)
     val deathAnimationEnabledState by rememberUpdatedState(uiState.deathAnimationEnabled)
-    val followBulletState by rememberUpdatedState(uiState.followBullet)
+        val followBulletState by rememberUpdatedState(uiState.followBullet)
+    val hapticsOnState by rememberUpdatedState(LocalHapticsEnabled.current)
     val mapScope = rememberCoroutineScope()
     val deathFx = remember {
         DeathFxController(
@@ -787,7 +788,9 @@ fun NeptunMapView(
                             val base = IconCatalog.baseDeg(t.type, iconSet)
                             (course - base + 360f) % 360f
                         }
-                        setOnMarkerClickListener { _, _ ->
+                                                setOnMarkerClickListener { _, _ ->
+                            // Immediate tick — the tap must feel instant; the card composes after.
+                            if (hapticsOnState) hapticTick(context)
                             onThreatTapped(t)
                             true
                         }

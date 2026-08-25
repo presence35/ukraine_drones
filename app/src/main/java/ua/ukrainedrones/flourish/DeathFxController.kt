@@ -5,6 +5,7 @@ import android.graphics.drawable.Drawable
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,8 +25,8 @@ private const val UA_MAX_LAT = 52.7
 private const val UA_MIN_LON = 21.7
 private const val UA_MAX_LON = 40.6
 
-/** Settle time after an intermediate group's last impact before panning to the next one. */
-private const val REPLAY_QUICK_TAIL_MS = 300L
+/** Beat after an intermediate group's last impact before panning to the next one. */
+private const val REPLAY_PAN_BEAT_MS = 120L
 
 /**
  * Map-side flourish facade: owns the death-animation overlay plus everything that drives it —
@@ -176,48 +177,53 @@ class DeathFxController(
             detail = showDetail(records.size, groups.size),
             now = System.currentTimeMillis()
         )
-                var index = 0
+                        var index = 0
         val lastGi = groups.lastIndex
         groups.forEachIndexed { gi, group ->
+            val finalGroup = gi == lastGi
             // Jump straight onto this group (no animated glide — bullets must never fly while
-            // the camera is still moving), give it a short beat to settle, then fire.
+            // the camera is still moving).
             val box = flourishesBoundingBox(group, null)
             runCatching { mapView.zoomToBoundingBox(box, false) }
-            delay(if (gi == 0) 350L else 450L)
-            val finalGroup = gi == lastGi
-            group.forEachIndexed { groupIndex, rec ->
-                delay(if (index == 0) 0L else FLOURISH_STAGGER_MS)
-                index++
-                val anchor = GeoPoint(rec.lat, rec.lon)
-                val icon = iconFor(rec.type)
-                // Per-group copy (1-based within the current group) for "Resolving threat X of N" — a
-                // fresh 1..N for each cluster, never a global total — plus overall position
-                // for the footer's progress bar.
-                _replayProgress.value = ReplayProgress(
-                    bulletInGroup = groupIndex + 1,
-                    groupSize = group.size,
-                    bulletOverall = index,
-                    totalRecords = records.size
-                )
+            // Pre-spawn EVERY target right now, with staggered fire times: their icons stand
+            // on-screen during the settle beat, so nothing pops up as its bullet launches.
+            val settle = if (gi == 0) 350L else 250L
+            val fireBase = SystemClock.elapsedRealtime() + settle
+            group.forEachIndexed { k, rec ->
                 overlay.spawn(
-                    id = "flourish:$index",
-                    geo = anchor,
+                    id = "flourish:${index + k + 1}",
+                    geo = GeoPoint(rec.lat, rec.lon),
                     origin = randomEdgeOrigin(),
-                    icon = icon,
+                    icon = iconFor(rec.type),
                     rotationDeg = 0f,
                     alpha = 1f,
                     // Intermediate groups only show the hits; the LAST group gets the full show.
-                    quickBoom = !finalGroup
+                    quickBoom = !finalGroup,
+                    fireAtDelayMs = settle + k * FLOURISH_STAGGER_MS
+                )
+            }
+            mapView.invalidate()
+            // Fire loop aligned to the pre-spawned schedule (drift-free vs the spawn clock):
+            // shot k launches at fireBase + k*STAGGER; haptic + footer progress advance per shot.
+            group.forEachIndexed { k, rec ->
+                val wait = fireBase + k * FLOURISH_STAGGER_MS - SystemClock.elapsedRealtime()
+                if (wait > 0) delay(wait)
+                index++
+                _replayProgress.value = ReplayProgress(
+                    bulletInGroup = k + 1,
+                    groupSize = group.size,
+                    bulletOverall = index,
+                    totalRecords = records.size
                 )
                 mapView.invalidate()
                 strikeHaptics()
             }
             if (finalGroup) {
                 // Full animation for the finale: linger through the complete explosion window.
-                delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS)
+                delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS)
             } else {
-                // Quick boom: pan on shortly after the last impact (brief flash already done).
-                delay(FLOURISH_STAGGER_MS + DEATH_EXPLOSION_START_MS + REPLAY_QUICK_TAIL_MS)
+                // Pan very shortly after the last bullet HITS — no explosion linger.
+                delay(DEATH_EXPLOSION_START_MS + REPLAY_PAN_BEAT_MS)
             }
         }
         _replayProgress.value = null

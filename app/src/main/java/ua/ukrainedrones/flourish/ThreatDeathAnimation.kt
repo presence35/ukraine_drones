@@ -37,10 +37,10 @@ const val DEATH_EXPLOSION_LEN_MS = DEATH_DURATION_MS - DEATH_EXPLOSION_START_MS
  *  after impact, then gone — the show pans on instead of lingering through every burst. */
 private const val QUICK_EXPLOSION_LEN_MS = 800L
 
-/** Concurrent-death ceiling. A full 21-record replay at [ua.ukrainedrones.FLOURISH_STAGGER_MS]
- *  spacing holds ~13 deaths alive at once (5s lifespan each), so the old hard-coded 6 was
- *  silently eating bullets mid-show. */
-private const val MAX_DEATHS = 14
+/** Concurrent-death ceiling. Pre-spawning a whole replay group (≤21 targets) while the
+ *  previous group's flashes are still fading needs real headroom — the old hard-coded 6
+ *  silently ate bullets mid-show. */
+private const val MAX_DEATHS = 32
 
 /**
  * A dying threat. [icon] is the marker's own drawable, so the icon keeps rendering here through
@@ -57,6 +57,9 @@ private class ActiveDeath(
     val id: String?,
     val geo: GeoPoint,
     val origin: GeoPoint?,
+    /** When the bullet FIRES (epochRealtime). Pre-spawned replay targets use a future start:
+     *  until then only the icon renders — the threat already stands there when the camera
+     *  lands, so nothing appears out of nowhere. */
     val start: Long,
     val icon: Drawable?,
     val rotationDeg: Float,
@@ -100,12 +103,14 @@ class ThreatDeathOverlay : Overlay() {
         icon: Drawable? = null,
         rotationDeg: Float = 0f,
         alpha: Float = 1f,
-        quickBoom: Boolean = false
+        quickBoom: Boolean = false,
+        fireAtDelayMs: Long = 0L
     ) {
         if (deaths.size >= MAX_DEATHS) return
         deaths.add(
             ActiveDeath(
-                id, geo, origin, SystemClock.elapsedRealtime(), icon, rotationDeg, alpha, dud = false,
+                id, geo, origin, SystemClock.elapsedRealtime() + fireAtDelayMs.coerceAtLeast(0L),
+                icon, rotationDeg, alpha, dud = false,
                 // Quick boom: impact + a brief flash — used for intermediate replay groups so the
                 // show pans on right after the hits instead of lingering through every explosion.
                 durationMs = if (quickBoom) DEATH_EXPLOSION_START_MS + QUICK_EXPLOSION_LEN_MS
@@ -187,16 +192,35 @@ class ThreatDeathOverlay : Overlay() {
             return
         }
 
-        for (d in deaths) {
+                for (d in deaths) {
+            // Pre-fired target (bullet not launched yet): only the icon renders, standing at
+            // the geo position — so pre-spawned replay targets are already in place when the
+            // camera lands instead of popping up as their bullet fires.
+            val rawElapsed = now - d.start
+            if (rawElapsed < 0) {
+                d.icon?.let { icon ->
+                    val w = icon.intrinsicWidth.coerceAtLeast(1) / 2f
+                    val h = icon.intrinsicHeight.coerceAtLeast(1) / 2f
+                    icon.alpha = (d.alpha * 255).toInt()
+                    mapView.projection.toPixels(d.geo, reuse)
+                    canvas.save()
+                    canvas.translate(reuse.x.toFloat(), reuse.y.toFloat())
+                    canvas.rotate(d.rotationDeg)
+                    icon.setBounds(-w.toInt(), -h.toInt(), w.toInt(), h.toInt())
+                    icon.draw(canvas)
+                    canvas.restore()
+                }
+                continue
+            }
             // Per-death timeline: quick-boom deaths compress the explosion window, so boomT
             // and the fade curve are derived from each death's own duration.
-                        val dur = d.durationMs.toFloat()
+            val dur = d.durationMs.toFloat()
             val boomT = DEATH_EXPLOSION_START_MS / dur
             val boomLenT = (d.durationMs - DEATH_EXPLOSION_START_MS) / dur
             mapView.projection.toPixels(d.geo, reuse)
             val x = reuse.x.toFloat()
             val y = reuse.y.toFloat()
-            val t = ((now - d.start).toFloat() / dur).coerceIn(0f, 1f)
+            val t = (rawElapsed.toFloat() / dur).coerceIn(0f, 1f)
 
             // The threat's own icon lingers through the bullet flight, then vanishes the instant
             // the explosion starts — no fading away, the detonation replaces it.
