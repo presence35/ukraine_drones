@@ -30,7 +30,7 @@ class NeutralizedTally(
     }
 
     private var neutralizedCount = 0
-    private var lastNeutralizedType: ThreatType? = null
+    private val perTypeCounts = mutableMapOf<ThreatType, Int>()
     // Running memory of resolved threats (position + type) so tapping the tally notification can
     // replay a shot-down show. Capped at 10; cleared when a red alert ejects the flourish.
     private data class ResolvedRecord(val lat: Double, val lon: Double, val type: ThreatType)
@@ -49,7 +49,7 @@ class NeutralizedTally(
         seenRemovalIds.addLast(removed.id)
         while (seenRemovalIds.size > 64) seenRemovalIds.removeFirst()
         neutralizedCount++
-        lastNeutralizedType = removed.type
+        perTypeCounts[removed.type] = (perTypeCounts[removed.type] ?: 0) + 1
         resolvedMemory.addLast(ResolvedRecord(removed.lat, removed.lon, removed.type))
         while (resolvedMemory.size > 21) resolvedMemory.removeFirst()
         postNeutralizedTally(lang)
@@ -65,7 +65,7 @@ class NeutralizedTally(
      *  notification itself. */
     fun reset() {
         neutralizedCount = 0
-        lastNeutralizedType = null
+        perTypeCounts.clear()
         resolvedMemory.clear()
         try {
             NotificationManagerCompat.from(context).cancel(NOTIF_NEUTRALIZED)
@@ -76,19 +76,20 @@ class NeutralizedTally(
      *  same id with an incremented count each time; swiping it away (delete intent) resets the
      *  count so it stays gone until the next resolution starts a fresh tally. */
     private fun postNeutralizedTally(lang: AppLanguage) {
-        val s = Strings.get(lang)
-        val info = lastNeutralizedType?.let { ThreatTypeCatalog.INFO[it] }
-        val lastLine = info?.let {
-            String.format(s.neutralizedLastLineFormat, if (lang == AppLanguage.UA) it.labelUa else it.labelEn)
-        }
         scope.launch {
             val allUkraine = runCatching { ZonePrefs(context).neutralizedTallyAllUkraine().first() }.getOrDefault(false)
-            val scopeText = if (allUkraine) s.neutralizedScopeAllUkraine else s.neutralizedScopeNearMe
-            val text = if (lastLine != null) "$lastLine · $scopeText" else scopeText
+            val badge = if (allUkraine) "🇺🇦" else "🏙️"
+            val breakdown = perTypeCounts.entries
+                .sortedWith(compareByDescending<Map.Entry<ThreatType, Int>> { it.value }.thenBy { it.key.ordinal })
+                .joinToString(" · ") { (type, count) ->
+                    val info = ThreatTypeCatalog.INFO[type]
+                    val label = if (info != null && lang == AppLanguage.UA) info.labelUa else info?.labelEn ?: type.name
+                    "$label $count"
+                }
             val builder = NotificationCompat.Builder(context, CHANNEL_NEUTRALIZED)
                 .setSmallIcon(R.drawable.ic_trident)
-                .setContentTitle(resolvedThreatsPhrase(neutralizedCount, lang))
-                .setContentText(text)
+                .setContentTitle("$badge ${resolvedThreatsPhrase(neutralizedCount, lang)}")
+                .setContentText(breakdown)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setContentIntent(neutralizedTapPendingIntent())
                 .setDeleteIntent(neutralizedDismissPendingIntent())

@@ -111,7 +111,6 @@ object Strings {
         val notifBodyRegion: String,
         val neutralizedNotifChannelName: String,
         val neutralizedChannelDesc: String,
-        val neutralizedLastLineFormat: String,
         val notifUpdateTitle: String,
         val notifUpdateText: String,
         val notifUpdateChannelName: String,
@@ -304,8 +303,6 @@ object Strings {
         val neutralizedTallyDesc: String,
         val neutralizedTallyAllUkraineTitle: String,
         val neutralizedTallyAllUkraineDesc: String,
-        val neutralizedScopeNearMe: String,
-        val neutralizedScopeAllUkraine: String,
         val justFunNote: String,
         val iconSetTitle: String,
         val iconSetPhotoLabel: String,
@@ -663,7 +660,6 @@ object Strings {
         val notifBodyRegion: String get() = status.notifBodyRegion
         val neutralizedNotifChannelName: String get() = status.neutralizedNotifChannelName
         val neutralizedChannelDesc: String get() = status.neutralizedChannelDesc
-        val neutralizedLastLineFormat: String get() = status.neutralizedLastLineFormat
         val notifUpdateTitle: String get() = status.notifUpdateTitle
         val notifUpdateText: String get() = status.notifUpdateText
         val notifUpdateChannelName: String get() = status.notifUpdateChannelName
@@ -848,8 +844,6 @@ object Strings {
         val justFunNote: String get() = misc.justFunNote
         val neutralizedTallyAllUkraineTitle: String get() = misc.neutralizedTallyAllUkraineTitle
         val neutralizedTallyAllUkraineDesc: String get() = misc.neutralizedTallyAllUkraineDesc
-        val neutralizedScopeNearMe: String get() = misc.neutralizedScopeNearMe
-        val neutralizedScopeAllUkraine: String get() = misc.neutralizedScopeAllUkraine
 val iconSetTitle: String get() = misc.iconSetTitle
     val iconSetPhotoLabel: String get() = misc.iconSetPhotoLabel
         val iconSetArmyLabel: String get() = misc.iconSetArmyLabel
@@ -1100,7 +1094,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         notifBodyRegion = "Одеський регіон",
         neutralizedNotifChannelName = "Завершені загрози",
         neutralizedChannelDesc = "Лічильник завершених поблизу загроз — живе, поки його не прибрати.",
-        neutralizedLastLineFormat = "Остання: %s",
         notifUpdateTitle = "Доступна нова версія",
         notifUpdateText = "Версія %s готова — торкнись, щоб оновити",
         notifUpdateChannelName = "Оновлення",
@@ -1293,8 +1286,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizedTallyDesc = "Показувати сповіщення з лічильником знешкоджених загроз у твоїй області, доки працює моніторинг. Натискання повторює розвагу на карті.",
         neutralizedTallyAllUkraineTitle = "Уся Україна",
         neutralizedTallyAllUkraineDesc = "Враховувати знешкоджені загрози по всій Україні, а не лише у твоїй області.",
-        neutralizedScopeNearMe = "поруч",
-        neutralizedScopeAllUkraine = "по всій Україні",
         justFunNote = "Це просто розвага — жодного впливу на моніторинг чи сповіщення. Під час активної тривоги повтор усе одно доступний (це ваш власний дотик), але якщо нова тривога почнеться посеред шоу — воно миттєво зникне, щоб сигнал володів екраном. У сумнівах довіряйте офіційній сирені, а не феєрверкам.",
         iconSetTitle = "Оберіть свої улюблені іконки загроз!",
         iconSetPhotoLabel = "Фото",
@@ -1608,7 +1599,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         notifBodyRegion = "Odesa region",
         neutralizedNotifChannelName = "Resolved threats",
         neutralizedChannelDesc = "Tally of threats resolved near you — kept until dismissed.",
-        neutralizedLastLineFormat = "Last: %s",
         notifUpdateTitle = "New version available",
         notifUpdateText = "Version %s is ready — tap to update",
         notifUpdateChannelName = "Updates",
@@ -1801,8 +1791,6 @@ alertBannerFormat = "%1\$s: alert",
         neutralizedTallyDesc = "Show a notification counting threats neutralized in your oblast while monitoring is running. Tapping replays the fun on the map.",
         neutralizedTallyAllUkraineTitle = "All of Ukraine",
         neutralizedTallyAllUkraineDesc = "Also count neutralized threats anywhere in Ukraine, not just your oblast.",
-        neutralizedScopeNearMe = "near you",
-        neutralizedScopeAllUkraine = "across Ukraine",
         justFunNote = "These are just for fun — they never affect monitoring or alerts. During a live air alert you can still replay a show (it's your own tap), but if a new alert starts mid-show it clears instantly so the siren owns your screen. When in doubt, trust the official siren over any fireworks.",
         iconSetTitle = "Choose your favourite threat icons!",
         iconSetPhotoLabel = "Photos",
