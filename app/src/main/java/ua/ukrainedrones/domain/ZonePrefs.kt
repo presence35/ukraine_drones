@@ -26,6 +26,7 @@ class ZonePrefs(private val context: Context) {
 
     private val languageKey = stringPreferencesKey("app_language")
     private val languageChosenKey = booleanPreferencesKey("language_chosen")
+    private val wizardCompletedKey = booleanPreferencesKey("wizard_completed")
     private val slowRedKmKey = intPreferencesKey("slow_red_km")
     private val slowYellowKmKey = intPreferencesKey("slow_yellow_km")
     private val fastRedMinKey = intPreferencesKey("fast_red_min")
@@ -220,7 +221,7 @@ class ZonePrefs(private val context: Context) {
         /** Re-arm every first-use hint: reset the toast counters and re-show the explainers. */
     suspend fun resetAllTips() {
         context.dataStore.edit { prefs ->
-            prefs[settingsHintRemainingKey] = 10
+            prefs[settingsHintRemainingKey] = 3
             prefs[threatToggleHintRemainingKey] = 3
             prefs[flourishEjectHintRemainingKey] = 3
             prefs[shelterTipRemainingKey] = 0
@@ -310,9 +311,22 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[languageChosenKey] = chosen }
     }
 
-    /** How many more launches should draw the pulsing ring around the Settings heart. */
+    /** Whether the first-launch wizard has been completed (or dismissed via "Later").
+     *  Null-safe read happens via the flow emitting only after DataStore loads — callers
+     *  treat "not yet emitted" as unknown and must not show the wizard on that basis.
+     *  Migrates legacy installs off [languageChosenKey]. */
+    fun wizardCompleted(): Flow<Boolean> =
+        context.dataStore.data.map { prefs ->
+            prefs[wizardCompletedKey] ?: (prefs[languageChosenKey] ?: false)
+        }
+
+    suspend fun setWizardCompleted(done: Boolean) {
+        context.dataStore.edit { it[wizardCompletedKey] = done }
+    }
+
+    /** How many more Settings opens should pulse the gear hint. */
     fun settingsHintRemaining(): Flow<Int> =
-        context.dataStore.data.map { prefs -> prefs[settingsHintRemainingKey] ?: 10 }
+        context.dataStore.data.map { prefs -> prefs[settingsHintRemainingKey] ?: 3 }
 
     suspend fun setSettingsHintRemaining(remaining: Int) {
         context.dataStore.edit { it[settingsHintRemainingKey] = remaining.coerceAtLeast(0) }

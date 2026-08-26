@@ -17,6 +17,12 @@ fun readKeystoreProps(): Properties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+/** CARTO basemap API key lives in app/carto.properties (git-ignored). */
+val cartoApiKey: String = Properties().apply {
+    val f = file("carto.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}.getProperty("cartoApiKey") ?: ""
+
 android {
     namespace = "ua.ukrainedrones"
     compileSdk = 34
@@ -27,6 +33,7 @@ android {
         targetSdk = 34
         versionCode = (readVersionProps().getProperty("versionCode") ?: "1").toIntOrNull() ?: 1
         versionName = readVersionProps().getProperty("versionName") ?: "0.1.0"
+        buildConfigField("String", "CARTO_API_KEY", "\"$cartoApiKey\"")
     }
 
     signingConfigs {

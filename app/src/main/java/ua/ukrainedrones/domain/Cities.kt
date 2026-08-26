@@ -610,6 +610,10 @@ object Cities {
             .groupBy({ it.first }, { it })
             .mapValues { (_, v) -> v.maxByOrNull { it.third }!!.second }
 
+    /** Display default when there is no GPS fix and no pinned city: the camera already
+     *  opens on Odesa, so the header/attribution names it too instead of showing nothing. */
+    val ODESA: City = ALL.first { it.nameUa == "Одеса" }
+
     /**
      * Nearest **major** listed city within [radiusKm] of a GPS position, used to attribute a
      * follow-me location to an oblast for official-alert matching without depending on a
@@ -653,10 +657,13 @@ fun focusAttribution(followMe: Boolean, userLocation: LatLng?, pinned: City?): F
             bannerCityEn = gps.nameEn
         )
     } else {
-        // No usable fix and no pinned city: don't fabricate a specific city (a leftover from
-        // the app's Odesa-only origin) — the callers substitute a localized "unknown location"
-        // label instead. A null token already suppresses official-alert matching.
-        FocusAttribution(null, "", "")
+        // No usable fix and no pinned city: resolve to Odesa (the app's display default —
+        // the camera already opens there), so header/banner/widget agree with the map.
+        FocusAttribution(
+            token = Cities.cityOblast[Cities.ODESA.nameUa],
+            bannerCityUa = Cities.ODESA.nameUa,
+            bannerCityEn = Cities.ODESA.nameEn
+        )
     }
 }
 

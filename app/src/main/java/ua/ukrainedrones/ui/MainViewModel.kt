@@ -94,7 +94,7 @@ data class UiState(
     val update: UpdateState = UpdateState.Idle,
     val needsInstallPermission: Boolean = false,
     val latestVersion: String? = null,
-    val languageChosen: Boolean = false,
+    val wizardCompleted: Boolean? = null,   // null = prefs not loaded yet (never gate UI on that)
     val batteryOnboardShown: Boolean = false,
     val threatCardSize: ThreatCardSize = ThreatCardSize.LARGE,
     val iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
@@ -242,7 +242,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private data class PrefsQuad(
         val pinnedCity: String?,
-        val languageChosen: Boolean,
+        val wizardCompleted: Boolean?,
         val batteryOnboardShown: Boolean,
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet,
@@ -295,7 +295,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val sirenOverride: Boolean,
         val followMe: Boolean,
         val pinnedCity: String?,
-        val languageChosen: Boolean,
+        val wizardCompleted: Boolean?,
         val batteryOnboardShown: Boolean,
         val cardSize: ThreatCardSize,
         val iconSet: ThreatIconSet,
@@ -422,12 +422,12 @@ val fastGroupCollapsed: Boolean,
                 combine(
                     combine(
                         prefs.pinnedCity(),
-                        prefs.languageChosen(),
+                        prefs.wizardCompleted(),
                         prefs.batteryOnboardShown(),
                         prefs.threatCardSize(),
                         prefs.threatIconSet()
-                    ) { pinned, chosen, batteryShown, card, iconSet ->
-                        PrefsQuad(pinned, chosen, batteryShown, card, iconSet, false, true, false, true, true)
+                    ) { pinned, wizardDone, batteryShown, card, iconSet ->
+                        PrefsQuad(pinned, wizardDone, batteryShown, card, iconSet, false, true, false, true, true)
                     },
                     prefs.sheltersEnabled()
                 ) { quad, shelters ->
@@ -493,7 +493,7 @@ combine(
             sirenOverride = b.sirenOverride,
             followMe = b.followMe,
             pinnedCity = c.pinnedCity,
-            languageChosen = c.languageChosen,
+            wizardCompleted = c.wizardCompleted,
             batteryOnboardShown = c.batteryOnboardShown,
             cardSize = c.cardSize,
             iconSet = c.iconSet,
@@ -540,7 +540,7 @@ combine(
         prefs.fastYellowZoneArmed().first()
         prefs.followMe().first()
         prefs.pinnedCity().first()
-        prefs.languageChosen().first()
+        prefs.wizardCompleted().first()
         prefs.batteryOnboardShown().first()
         prefs.nightEnabled().first()
         prefs.nightStartMin().first()
@@ -651,7 +651,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             nightFastYellowArmed = prefs.night.zones.fastYellowArmed,
             nightZoneSirenOverride = prefs.night.zones.zoneSirenOverride,
             nightOfficialSirenOverride = prefs.night.zones.officialSirenOverride,
-            languageChosen = prefs.languageChosen,
+            wizardCompleted = prefs.wizardCompleted,
             batteryOnboardShown = prefs.batteryOnboardShown,
             threatCardSize = prefs.cardSize,
             iconSet = prefs.iconSet,
@@ -1204,27 +1204,32 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         viewModelScope.launch { prefs.setLanguage(lang) }
     }
 
-    /** Dismiss the first-run language picker without changing the language. */
+    /** Wizard finished (Done or Skip): language picked, setup complete. */
     fun skipLanguageChoose() {
-        viewModelScope.launch { prefs.setLanguageChosen(true) }
+        viewModelScope.launch {
+            prefs.setLanguageChosen(true)
+            prefs.setWizardCompleted(true)
+        }
     }
 
     /** Tapped "Later" on the first-run wizard — exit all setup chrome for this session:
-     *  mark language chosen, skip the battery prompt, and defer the location/notification
+     *  mark setup complete, skip the battery prompt, and defer the location/notification
      *  permission requests until the next cold start. */
     fun laterLanguageChoose() {
         viewModelScope.launch {
             prefs.setLanguageChosen(true)
+            prefs.setWizardCompleted(true)
             prefs.setBatteryOnboardShown(true)
             prefs.setPermissionPromptDeferred(true)
         }
     }
 
     /** Re-open the first-run setup (language, icon pack, alert groups, feature tour + battery
-     *  prompt). Only flips the onboarding-completed flags — no setting is reset. */
+     *  prompt). Only flips the onboarding-completed flags — no setting is reset. Clears only
+     *  wizard_completed so a kill mid-replay doesn't resurrect the wizard on every cold start. */
     fun relaunchSetup() {
         viewModelScope.launch {
-            prefs.setLanguageChosen(false)
+            prefs.setWizardCompleted(false)
             prefs.setBatteryOnboardShown(false)
             prefs.setPermissionPromptDeferred(false)
         }

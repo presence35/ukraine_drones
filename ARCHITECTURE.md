@@ -128,7 +128,7 @@ detail that matters when editing that file.
 
 | File | Responsibility |
 | --- | --- |
-| `MainScreen.kt` | Top-level Compose UI: header, alert banner, map, threat strip, `ZonesSheet`, `UpdateDialog`, first-run wizard + battery prompt. *Note:* wizard gated on `wizardShown` (`!languageChosen`, settle deadline, alert override) and force-dismissed during an active alert; while the wizard is up `mapVisible` is false so strikes/haptics/replays are suppressed; card flip timed to `DEATH_EXPLOSION_START_MS`; popup height feeds the map as `popupCoverPx`; the tally-tap replay flourish closes every modal and forces the map screen. |
+| `MainScreen.kt` | Top-level Compose UI: header, alert banner, map, threat strip, `ZonesSheet`, `UpdateDialog`, first-run wizard + battery prompt. *Note:* wizard gated on a dedicated `wizard_completed` pref surfaced as tri-state `UiState.wizardCompleted` (`null` = DataStore not loaded yet → blank dark frame, neither map nor wizard composes; `false` → wizard-only screen, map is not even composed so no tile flash); "Replay first launch" keeps the map composed beneath (`wizardFromSettings`). While the wizard is up `mapVisible` is false so strikes/haptics/replays are suppressed; card flip timed to `DEATH_EXPLOSION_START_MS`; popup height feeds the map as `popupCoverPx`; the tally-tap replay flourish closes every modal and forces the map screen. |
 | `ConnectionStatus.kt` | Connection pill (online/offline) + system-status dialog: per-source dot, TEMP force-offline toggle, legend, attribution link, and a prominent "Logs" button (in the dialog header) opening the Logs screen. |
 | `Haptics.kt` | Global press-haptics: `LocalHapticsEnabled` CompositionLocal (provided from the `hapticsEnabled` pref at the MainScreen root) + `Modifier.pressTick(source)` — vibrates via `LaunchedEffect` when the element's own `MutableInteractionSource` reports pressed (the same signal as its press animation; pointer-event listeners proved unreliable here). The source must be **shared** with the element's clickable/toggleable. Raw `Vibrator`, short one-shot at full amplitude (`USAGE_ALARM` on API 30+ — same always-on channel as the shoot-down flourish) because Compose's haptic API is muted by system touch-feedback settings and predefined `EFFECT_TICK` is a silent no-op on many OEMs. Also hosts `animationsOff()` (zero animator scale → snap instead of animate) and the imperative `hapticTick()` for non-Compose tap sites. Applied across map controls, settings rows, and popup cards. |
 | `LogsScreen.kt` | Full-screen Logs: one card list over decisions (the audit trail) and connection episodes, switched by chips (Decisions / Connections). The Decisions tab offers group-by (Timeline / Proximity = official, red zone, yellow zone, in-oblast, left / Type), a standard sort-direction icon toggle (newest/oldest) that applies within every grouping, and a "shown only" switch (only rows where a notification was actually shown); controls stay visible even when the list is empty so the shown-only switch can be flipped back. A double-arrow reveals more rows; a leading per-threat-type icon on threat rows (red trident = official on, green check = all-clear), an "ago" + absolute timestamp, day/night + effective sound, "Notification shown" or "No notification — \<reason\>", Clear button. |
@@ -191,6 +191,15 @@ like the rest of the app). |
 
 Treat these as a contract. If you change one, update **every** place that relies on it.
 
+- **Onboarding gates on `wizard_completed`, not `language_chosen`.** The dedicated flag is what
+  shows the wizard (`UiState.wizardCompleted`, tri-state: `null` = DataStore still loading —
+  compose neither map nor wizard), what defers permission requests (`MainActivity`), and what
+  re-runs via "Replay first launch" (which clears only this flag). `language_chosen` remains only
+  as legacy migration input.
+- **No GPS fix + no pinned city = Odesa everywhere.** The camera's Odesa fallback
+  (`ODESA_FALLBACK_FOCUS`) and the header/banner/widget attribution (`focusAttribution`'s
+  final branch → `Cities.ODESA`) must stay consistent — they intentionally resolve to the same
+  city now, including official-alert matching on the Odesa oblast token.
 - **Two independent alert paths.** `MainViewModel` (UI) and `AlertService` (notifications)
   each reimplement zone tiering, focus attribution, prediction. A change to `zoneTier`,
   `ZoneParams`, `focusAttribution`, `staleAfterMs`, or `predictPosition` must be mirrored in

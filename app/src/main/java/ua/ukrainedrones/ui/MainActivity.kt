@@ -184,8 +184,8 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Permission dialogs must never beat the first-run onboarding — ask only after the language
-     * picker and (for new users) the battery prompt have resolved. Returning users who already
+     * Permission dialogs must never beat the first-run onboarding — ask only after the wizard
+     * and (for new users) the battery prompt have resolved. Returning users who already
      * finished onboarding get the request immediately.
      */
     private fun deferPermissionRequests() {
@@ -193,15 +193,15 @@ class MainActivity : ComponentActivity() {
             val prefs = ZonePrefs(applicationContext)
             // Re-arm for this session — a previous "Later" deferral only lasts one launch.
             prefs.setPermissionPromptDeferred(false)
-            val langChosen = prefs.languageChosen().first()
-            val ready = if (langChosen && prefs.batteryOnboardShown().first()) {
+            val wizardDone = prefs.wizardCompleted().first()
+            val ready = if (wizardDone && prefs.batteryOnboardShown().first()) {
                 !prefs.permissionPromptDeferred().first()
             } else {
                 combine(
-                    prefs.languageChosen(),
+                    prefs.wizardCompleted(),
                     prefs.batteryOnboardShown(),
                     prefs.permissionPromptDeferred()
-                ) { l, b, d -> l && b && !d }.first { it }
+                ) { w, b, d -> w && b && !d }.first { it }
             }
             if (ready) requestLocationAndNotifications()
         }

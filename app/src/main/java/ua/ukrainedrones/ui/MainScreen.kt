@@ -105,7 +105,6 @@ private val AlertRed = Color(0xFFD32F2F)
 fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     val now by viewModel.now.collectAsState()
-    val lastFrameAt by viewModel.lastFrameAt.collectAsState(initial = 0L)
     val context = LocalContext.current
 
     var screen by remember { mutableStateOf(Screen.MAP) }
@@ -183,13 +182,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
     var wizardFromSettings by remember { mutableStateOf(false) }
     var headerHeightPx by remember { mutableStateOf(0) }
-    var wizardSettleDeadline by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(3000); wizardSettleDeadline = true }
-    // The wizard owns the screen while it's up — the map is not the focus (flourish/haptics
-    // gates read this through mapVisible).
-    val wizardShown = !uiState.languageChosen &&
-        (lastFrameAt > 0 || wizardSettleDeadline) &&
+    // The wizard owns the screen while it's up — the map is not even composed then (no tile
+    // flash before it covers the viewport). While prefs are still loading (wizardCompleted
+    // == null) neither map nor wizard composes, so the real pref decides — never a default.
+    val prefsLoaded = uiState.wizardCompleted != null
+    val wizardShown = uiState.wizardCompleted == false &&
         (!uiState.alertActive || wizardOpenedDuringAlert)
+    val wizardOwnsScreen = wizardShown && !wizardFromSettings
     val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     var settingsCollapse by rememberSaveable(stateSaver = SettingsCollapseState.Saver) { mutableStateOf(SettingsCollapseState()) }
     // The zones sheet edits whatever the map is currently showing: night settings while the
@@ -238,6 +237,11 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     // destroyed — returning from Settings used to reset the world into a low-zoom grid.
     CompositionLocalProvider(LocalHapticsEnabled provides uiState.hapticsEnabled) {
     Box(modifier = Modifier.fillMaxSize()) {
+        if (!prefsLoaded) {
+            // DataStore hasn't emitted yet — blank dark frame instead of guessing the state.
+            Box(Modifier.fillMaxSize().background(Color.Black))
+        }
+        if (prefsLoaded && !wizardOwnsScreen) {
         MapScreen(
             uiState = uiState,
             selection = viewModel.selectionUi,
@@ -294,6 +298,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 scope.launch { prefs.setShelterTipStage(next) }
             }
         )
+        }
         if (screen == Screen.SETTINGS) {
             // Composed after MapScreen, so its handler is checked first on Back.
             BackHandler { screen = Screen.MAP }
@@ -407,8 +412,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 },
                 onResetTips = {
                     viewModel.resetAllTips()
-                    // Re-arm the in-memory hint counters so the gear re-spins immediately.
-                    settingsHintRemaining = 10
+                    // Re-arm the in-memory hint counters so the gear re-pulses immediately.
+                    settingsHintRemaining = 3
                     showToast(context, Strings.get(uiState.language).tipsResetToast, cardVisible = false)
                 },
                 onOpenGuide = {
@@ -528,12 +533,12 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     // picker, only while the OS still throttles the app. Already-exempt users are skipped
     // silently so MainActivity's deferred permission requests can proceed.
     val batteryExempt = remember { BatteryOptimization.isIgnoringBatteryOptimizations(context) }
-    LaunchedEffect(uiState.languageChosen, uiState.batteryOnboardShown, batteryExempt) {
-        if (uiState.languageChosen && !uiState.batteryOnboardShown && batteryExempt) {
+    LaunchedEffect(uiState.wizardCompleted, uiState.batteryOnboardShown, batteryExempt) {
+        if (uiState.wizardCompleted == true && !uiState.batteryOnboardShown && batteryExempt) {
             viewModel.setBatteryOnboardShown(true)
         }
     }
-    if (uiState.languageChosen && !uiState.batteryOnboardShown && !batteryExempt) {
+    if (uiState.wizardCompleted == true && !uiState.batteryOnboardShown && !batteryExempt) {
         BatteryOnboardingDialog(
             s = Strings.get(uiState.language),
             onAllow = {
@@ -591,19 +596,19 @@ private fun MapScreen(
     val context = LocalContext.current
 
     val lastPreciseFixMs by LocationTracker.lastPreciseFixAtMs.collectAsState()
-    // The settings gear rotates gently while the "open Settings" hint is active, drawing the
-    // eye to it. Infinite transition = always animating, so the value is continuously observed;
-    // the rotation is only applied while the hint counter is still positive.
+    // The settings gear pulses gently while the "open Settings" hint is active (a rotation
+    // reads as "loading"). Infinite transition = always animating, so the value is continuously
+    // observed; the pulse is only applied while the hint counter is still positive.
     val gearHintActive = settingsHintRemaining > 0
-    val gearSpinTransition = rememberInfiniteTransition(label = "gearSpin")
-    val gearSpin by gearSpinTransition.animateFloat(
+    val gearPulseTransition = rememberInfiniteTransition(label = "gearPulse")
+    val gearPulse by gearPulseTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 360f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "gearSpin"
+        label = "gearPulse"
     )
     var fitUkraineTick by remember { mutableStateOf(0) }
     var scaleMpp by remember { mutableStateOf(0.0) }
@@ -777,7 +782,14 @@ private fun MapScreen(
                         tint = Color.Unspecified,
                         modifier = Modifier
                             .size(22.dp)
-                            .graphicsLayer { rotationZ = if (gearHintActive) gearSpin else 0f }
+                            .graphicsLayer {
+                                if (gearHintActive) {
+                                    val scale = 1f + 0.12f * gearPulse
+                                    scaleX = scale
+                                    scaleY = scale
+                                    alpha = 0.55f + 0.45f * gearPulse
+                                }
+                            }
                     )
                 }
             }
@@ -836,6 +848,16 @@ private fun MapScreen(
                             onFinished = onFlybyFinished
                         )
                     }
+                    // Basemap attribution — required by the CARTO basemap free tier
+                    // (© OpenStreetMap contributors © CARTO).
+                    Text(
+                        "© OpenStreetMap contributors © CARTO",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.40f),
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 12.dp, bottom = 52.dp)
+                    )
                     if (uiState.showMapScale) {
                         ScaleIndicator(
                             metersPerPixel = scaleMpp,
@@ -1200,10 +1222,7 @@ private fun ThreatStripFooter(
     } else if (total == 0) {
         val footerText = when {
             deathActive -> s.neutralizingLabel
-            else -> noThreatsMessage(
-                language,
-                calmMessagesEnabled
-            )
+            else -> remember { noThreatsMessage(language, calmMessagesEnabled) }
         }
         Text(
             footerText,

@@ -15,3 +15,26 @@ Core work: per-region episode latching in `AlertService` (replaces the single
 `officialAnnounced*`/`officialRegionToken` state) driven by a pure, tested policy
 (`domain/OfficialWatch.kt`); mirror-side computation in `MainViewModel`. Full plan with file list
 was worked out 2026-08-26 (see session notes / this entry).
+
+## Map engine: migrate raster/osmdroid → vector/MapLibre (TL;DR)
+
+CARTO's free basemap key unblocks the current raster tiles today, but their PNG tiles are on a
+recorded retirement path, and the industry direction is vector-only. Target stack:
+
+- **Renderer**: MapLibre Native for Android. Wrapper decision deferred between
+  `org.maplibre.compose:maplibre-compose` (official Compose Multiplatform wrapper, idiomatic,
+  pre-1.0 API churn) vs raw SDK in `AndroidView` (stable API, more boilerplate).
+- **Tiles/styles**: OpenFreeMap public instance — free, no key, unlimited views; Dark style at
+  `https://tiles.openfreemap.org/styles/dark` (caveat: Dark/Fiord are unmaintained upstream
+  forks; Liberty/Bright/Positron get the upkeep — may need runtime layer tweaks).
+- **Sizing**: 38 osmdroid touchpoints across 10 files. Full rewrites: `MapView.kt`
+  (~1200 lines), `UkraineTileProvider.kt` (obsolete — Ukraine-only tile blocking becomes hard
+  camera bounds). Rework: `flourish/` death animations + `Cities.kt` label overlay draw
+  directly onto osmdroid canvases. Decouple: `GeoPoint` leaks into `domain/` (`Prediction`,
+  `ThreatEvaluator`, `Cities`) — replace with a local lat/lon value class.
+- **Gotchas**: osmdroid `TileWriter` cache disappears (MapLibre manages its own); zone circles,
+  threat markers and shelter pins become GeoJSON layers or annotation plugins; attribution
+  string changes to OpenMapTiles/OSM/OpenFreeMap.
+
+Worked out 2026-08-26. Ship behind nothing — it replaces the map wholesale; do it as its own
+focused task with device testing of every visual surface.

@@ -61,14 +61,19 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+private fun cartoTileUrls(): Array<String> {
+    val key = BuildConfig.CARTO_API_KEY
+    val suffix = if (key.isNotBlank()) "?key=$key" else ""
+    return arrayOf("a", "b", "c", "d").map { sub ->
+        "https://$sub.basemaps.cartocdn.com/dark_nolabels/$suffix"
+    }.toTypedArray()
+}
+
+/** v2: the id bump invalidates cached "API KEY REQUIRED" error tiles from the
+ *  unauthenticated period. */
 internal val DARK_TILE_SOURCE = XYTileSource(
-    "CartoDB_DarkNoLabels", 0, 17, 256, ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/dark_nolabels/",
-        "https://b.basemaps.cartocdn.com/dark_nolabels/",
-        "https://c.basemaps.cartocdn.com/dark_nolabels/",
-        "https://d.basemaps.cartocdn.com/dark_nolabels/"
-    )
+    "CartoDB_DarkNoLabels_v2", 0, 17, 256, ".png",
+    cartoTileUrls()
 )
 
 /** Odesa city centre — fallback camera target before the first GPS fix. */
