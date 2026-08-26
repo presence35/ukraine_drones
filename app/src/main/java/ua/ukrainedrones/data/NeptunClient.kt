@@ -167,9 +167,12 @@ object NeptunClient {
 
     /** Serial number for the TEMP test MiG, so every fire is a fresh id (fresh siren + flyby). */
     private var testMigSerial = 0
-    private var testMigId: String? = null
 
-    /** How long the injected MiG stays live before it "flies on" and clears itself. */
+    /** All currently-airborne test jets — several can be in the air at once. */
+    private val testMigIds: MutableSet<String> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
+
+    /** How long an injected MiG stays live before it "flies on" and clears itself. */
     private const val TEST_MIG_LINGER_MS = 20_000L
 
     /**
@@ -188,35 +191,37 @@ object NeptunClient {
      * synthetic threat lives in the shared state, so the whole pipeline runs for real — zone
      * tiering, siren/notification, debug log, widget, map marker and the flyby flourish.
      *
-     * One-shot per press: a fresh id from a random launch base (so repeats are never deduped
+     * One jet per press: a fresh id from a random launch base (so repeats are never deduped
      * as a known zone), then after [TEST_MIG_LINGER_MS] it "flies on" and silently leaves the
-     * feed — no shoot-down explosion. A press while one is already airborne is a no-op, so
-     * sirens never stack. Session-only: nothing is persisted. Invariant: only the WS
-     * `snapshot` handler replaces the threats map wholesale, so that site re-merges the test
-     * threat; upsert/remove/REST all copy from the live state and keep it naturally.
+     * feed — no shoot-down explosion. Several jets may be airborne at once — each with its own
+     * id, alert lifecycle and retire clock, like a real multi-takeoff wave. Session-only:
+     * nothing is persisted. Invariant: only the WS `snapshot` handler replaces the threats map
+     * wholesale, so that site re-merges every test threat; upsert/remove/REST all copy from
+     * the live state and keep them naturally.
      */
     fun fireTestMig() {
-        if (testMigId != null) return
         testMigSerial++
         val id = "test_mig31k_$testMigSerial"
-        testMigId = id
+        testMigIds.add(id)
         _state.update { withTestMig(it) }
         scope.launch {
             delay(TEST_MIG_LINGER_MS)
-            if (testMigId == id) {
-                testMigId = null
+            if (testMigIds.remove(id)) {
                 _state.update { s -> s.copy(threats = s.threats - id) }
             }
         }
     }
 
-    /** Re-attach the current test threat to [state] when one is airborne (no-op otherwise). */
+    /** Re-attach every airborne test threat to [state] (no-op when none are). */
     private fun withTestMig(state: NeptunState): NeptunState {
-        val id = testMigId ?: return state
-        val (lat, lon) = TEST_MIG_BASES.random()
-        return state.copy(
-            threats = state.threats + (id to buildTestMig(id, System.currentTimeMillis(), lat, lon))
-        )
+        if (testMigIds.isEmpty()) return state
+        val now = System.currentTimeMillis()
+        var threats = state.threats
+        for (id in testMigIds) {
+            val (lat, lon) = TEST_MIG_BASES.random()
+            threats = threats + (id to buildTestMig(id, now, lat, lon))
+        }
+        return state.copy(threats = threats)
     }
 
     /**

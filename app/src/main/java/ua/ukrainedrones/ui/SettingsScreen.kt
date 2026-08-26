@@ -1951,45 +1951,22 @@ private fun PinCityRow(
     onChange: (City?) -> Unit
 ) {
     val s = Strings.get(lang)
-    val cities = remember(lang) {
-        Cities.ALL.filter { it.major }
-            .sortedBy { if (lang == AppLanguage.UA) it.nameUa else it.nameEn }
-    }
-    val label: (City) -> String = { c -> if (lang == AppLanguage.UA) c.nameUa else c.nameEn }
-    val selected = pinnedCity?.let { label(it) } ?: ""
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { if (!followMe) expanded = it },
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            enabled = !followMe,
-            label = { Text(s.pinCityTitle) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            supportingText = { Text(s.pinCityDesc) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor()
+    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(
+            s.pinCityTitle,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (followMe) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.onSurface
         )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            cities.forEach { city ->
-                DropdownMenuItem(
-                    text = { Text(label(city)) },
-                    onClick = {
-                        onChange(city)
-                        expanded = false
-                    }
-                )
-            }
-        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            s.pinCityDesc,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(10.dp))
+        CityChipGrid(lang, selected = pinnedCity, enabled = !followMe, onChange = onChange)
     }
 }
 

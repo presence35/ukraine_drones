@@ -48,4 +48,38 @@ class StringsFormatTest {
         assertEquals("Точний GPS: 22 хвилини тому", preciseGpsAgePhrase(22, AppLanguage.UA))
         assertEquals("Точний GPS: 25 хвилин тому", preciseGpsAgePhrase(25, AppLanguage.UA))
     }
+
+    @Test
+    fun `calm messages toggle off returns exact plain strings`() {
+        assertEquals("No relevant threats", noThreatsMessage(AppLanguage.EN, calmMessages = false))
+        assertEquals("Немає актуальних загроз", noThreatsMessage(AppLanguage.UA, calmMessages = false))
+    }
+
+    @Test
+    fun `calm messages enabled never returns the bare fallback and stays random`() {
+        val fallbackEn = "No relevant threats"
+        val fallbackUa = "Немає актуальних загроз"
+        repeat(200) {
+            val en = noThreatsMessage(AppLanguage.EN)
+            val ua = noThreatsMessage(AppLanguage.UA)
+            assertTrue("EN was: $en", en != fallbackEn && en.isNotBlank())
+            assertTrue("UA was: $ua", ua != fallbackUa && ua.isNotBlank())
+        }
+        val distinctEn = (1..500).map { noThreatsMessage(AppLanguage.EN) }.toSet()
+        assertTrue("only ${distinctEn.size} distinct EN messages", distinctEn.size >= 12)
+        val distinctUa = (1..500).map { noThreatsMessage(AppLanguage.UA) }.toSet()
+        assertTrue("only ${distinctUa.size} distinct UA messages", distinctUa.size >= 12)
+    }
+
+    @Test
+    fun `replay footer phrase pluralizes per language`() {
+        assertEquals("Resolving 1 threat", resolvingThreatsPhrase(1, AppLanguage.EN))
+        assertEquals("Resolving 3 threats", resolvingThreatsPhrase(3, AppLanguage.EN))
+        assertEquals("Знешкоджуємо 1 загрозу", resolvingThreatsPhrase(1, AppLanguage.UA))
+        assertEquals("Знешкоджуємо 3 загрози", resolvingThreatsPhrase(3, AppLanguage.UA))
+        assertEquals("Знешкоджуємо 5 загроз", resolvingThreatsPhrase(5, AppLanguage.UA))
+        assertEquals("Знешкоджуємо 11 загроз", resolvingThreatsPhrase(11, AppLanguage.UA))
+        assertEquals("Знешкоджуємо 21 загрозу", resolvingThreatsPhrase(21, AppLanguage.UA))
+        assertEquals("Знешкоджуємо 22 загрози", resolvingThreatsPhrase(22, AppLanguage.UA))
+    }
 }

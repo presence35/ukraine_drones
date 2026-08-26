@@ -6,8 +6,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** Full edge-to-edge crossing time — slow enough that a screen-wide plane feels weighty. */
-const val AVIATION_FLYBY_DURATION_MS = 2600L
+/** Full edge-to-edge crossing time — slow enough to savor a screen-wide jet. */
+const val AVIATION_FLYBY_DURATION_MS = 4000L
 
 /**
  * One screen-space pass of the full-size AVIATION icon across the viewport, played the moment
@@ -48,6 +48,20 @@ object AviationFlyby {
     internal fun direction(courseDeg: Double): Pair<Double, Double> {
         val rad = Math.toRadians(courseDeg)
         return sin(rad) to -cos(rad)
+    }
+
+    /**
+     * Sprite transform for a pass at [courseDeg] flown by art whose true facing is
+     * [facingDeg]: `(rotationZ degrees, vertical flip)`. The flip keeps the jet upright when
+     * the pass would invert it — and because mirroring changes the art's effective facing
+     * (β → 180−β), the rotation compensates for that too, so the nose always tracks the
+     * flight path exactly.
+     */
+    fun spriteTransform(courseDeg: Float, facingDeg: Float): Pair<Float, Boolean> {
+        val diff = ((courseDeg - facingDeg) % 360f + 360f) % 360f
+        val flipped = diff >= 90f && diff <= 270f
+        val rotZ = if (flipped) courseDeg - (180f - facingDeg) else courseDeg - facingDeg
+        return rotZ to flipped
     }
 
     /**

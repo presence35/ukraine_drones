@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.osmdroid.util.GeoPoint
+import kotlin.math.roundToLong
 import kotlin.random.Random
 
 @Immutable
@@ -189,8 +190,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     @OptIn(FlowPreview::class)
     private val neptunForUi = NeptunClient.state.sample(120)
     /** Wall-clock epoch millis, updated once per second. UI components that need a live
-     *  timestamp (shelter fix age, calm message day count) collect this instead of reading
-     *  it from UiState — removing it from UiState lets StateFlow dedup no-op ticks. */
+     *  timestamp (shelter fix age) collect this instead of reading it from UiState —
+     *  removing it from UiState lets StateFlow dedup no-op ticks. */
     val now: StateFlow<Long> = MutableStateFlow(System.currentTimeMillis()).also { it ->
         viewModelScope.launch { while (isActive) { delay(1000); it.value = System.currentTimeMillis() } }
     }
@@ -681,7 +682,9 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         if (flyby != null) {
             flybyTick++
             flybyPlayedIds.add(flyby.threatId)
-            flybyFlow.value = flyby
+            val threat = NeptunClient.state.value.threats[flyby.threatId]!!
+            val durationMs = calculateFlybyDuration(threat)
+            flybyFlow.value = AviationFlybyShow(flyby.tick, flyby.threatId, flyby.courseDeg, durationMs)
         }
         uiState.copy(flyby = flybyFlow.value)
     }
@@ -1257,6 +1260,18 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         appForegroundFlow.value = foreground
     }
 
+    /** Calculates flyby duration based on distance to threat (capped 1.5–8 s). */
+    private fun calculateFlybyDuration(threat: Threat): Long {
+        val focus = uiState.value.focusLocation
+            ?: return AVIATION_FLYBY_DURATION_MS
+        val distKm = distanceMeters(
+            focus.lat, focus.lon, threat.lat, threat.lon
+        ) / 1000.0
+        // MiG-31 cruise ~900 km/h; scale for visibility (1.5x), clamp 1.5–8 s
+        val durationSec = (distKm / 900.0) * 3600.0 * 1.5
+        return (durationSec * 1000).roundToLong().coerceIn(1500, 8000)
+    }
+
     /**
      * A notification tap carrying the triggering threat's id/position: select it so the
      * popup opens, then ask the map to pan the camera onto it. Best-effort selection — on a
@@ -1275,7 +1290,9 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         if (aviation && id != null) {
             flybyPlayedIds.add(id)
             flybyTick++
-            flybyFlow.value = AviationFlybyShow(flybyTick, id, Random.nextDouble(0.0, 360.0))
+            val threat = NeptunClient.state.value.threats[id]!!
+            val durationMs = calculateFlybyDuration(threat)
+            flybyFlow.value = AviationFlybyShow(flybyTick, id, Random.nextDouble(0.0, 360.0), durationMs)
         } else if (select && id != null) {
             selectedThreatFlow.value = threat
         }

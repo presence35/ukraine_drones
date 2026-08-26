@@ -367,6 +367,17 @@ private fun buildRevealBoundingBox(threat: LatLng, focus: LatLng?): BoundingBox 
     )
 }
 
+/**
+ * True when nothing covers the map (no paused modal, map on screen, no shelter overlay) and the
+ * app is at least visible — i.e. the map owns the user's attention and death flourishes may play.
+ */
+internal fun mapIsUserFocus(
+    paused: Boolean,
+    mapVisible: Boolean,
+    sheltersUp: Boolean,
+    lifecycleState: Lifecycle.State
+): Boolean = !paused && mapVisible && !sheltersUp && lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+
 @Composable
 @OptIn(ExperimentalCoroutinesApi::class)
 fun NeptunMapView(
@@ -581,17 +592,22 @@ fun NeptunMapView(
             )
 
             // Camera follows the focus point (GPS while following, pinned city otherwise).
+            // A tally-tap replay owns the camera while queued or running: hold still (and
+            // leave the default fit pending) so the show jumps straight onto its targets
+            // instead of panning home first.
+            val replayOwnsCamera = deathFx.isReplayActive ||
+                (uiState.flourish != null && uiState.flourish.tick != lastFlourishTick.value)
             val focus = uiState.focusLocation
             if (focus != null && lastFollow.value != focus) {
                 lastFollow.value = focus
-                mapView.controller.animateTo(GeoPoint(focus.lat, focus.lon))
+                if (!replayOwnsCamera) mapView.controller.animateTo(GeoPoint(focus.lat, focus.lon))
             } else if (focus == null && lastFollow.value != null) {
                 lastFollow.value = null
             }
 
             // Default view: once we have a focus point, open zoomed to fit the whole
             // yellow zone (camera then just follows it without re-zooming).
-            if (!didDefaultFit.value && focus != null) {
+            if (!didDefaultFit.value && focus != null && !replayOwnsCamera) {
                 didDefaultFit.value = true
                 mapView.zoomToBoundingBox(
                     zoneBoundingBox(GeoPoint(focus.lat, focus.lon), uiState.activeZoneParams.slowYellowKm.toDouble()),
@@ -989,9 +1005,9 @@ fun NeptunMapView(
                     // "bullet to nowhere" duds from threats that appeared and resolved unseen.
                     // During an alert the flourish plays ONLY if the threat was already in camera —
                     // a resolution that happened off-screen must not jerk the view mid-siren.
-                    if (pausedState || !mapVisibleState || showNearbySheltersState ||
-                        lifecycle.currentState < Lifecycle.State.STARTED
-                    ) return@collect
+                    if (!mapIsUserFocus(pausedState, mapVisibleState, showNearbySheltersState, lifecycle.currentState)) {
+                        return@collect
+                    }
                     if (alertActiveState) {
                         val mapView = mapViewRef.value
                         if (mapView == null || !mapView.boundingBox.contains(r.lat, r.lon)) return@collect
@@ -1044,8 +1060,7 @@ fun NeptunMapView(
         val flourishShow = uiState.flourish
         if (flourishShow != null && flourishShow.tick != lastFlourishTick.value) {
             val playable = mapViewRef.value != null &&
-                !pausedState && mapVisibleState && !showNearbySheltersState &&
-                lifecycle.currentState >= Lifecycle.State.STARTED
+                mapIsUserFocus(pausedState, mapVisibleState, showNearbySheltersState, lifecycle.currentState)
             if (!playable) {
                 // Transient — retried on a later recomposition; nothing consumed yet.
             } else {
@@ -1088,8 +1103,8 @@ fun NeptunMapView(
             deathFx.active.collect { active -> onDeathActiveChange(active) }
         }
 
-        // Surface the tally-tap replay progress (current bullet + group size) so the footer can
-        // read "Resolving threat X of N" per group; null clears the copy.
+        // Surface the tally-tap replay progress so the footer can read "Resolving N threats"
+        // per group; null clears the copy.
         LaunchedEffect(Unit) {
             deathFx.replayProgress.collect { onReplayProgressChange(it) }
         }

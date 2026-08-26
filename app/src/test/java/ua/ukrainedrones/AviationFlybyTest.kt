@@ -1,6 +1,7 @@
 package ua.ukrainedrones
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -44,6 +45,29 @@ class AviationFlybyTest {
             val show = AviationFlyby.nextShow(listOf(mig), emptySet(), true, 1L + it)
             assertNotNull(show)
             assertTrue(show!!.courseDeg in 0.0..360.0)
+        }
+    }
+
+    @Test
+    fun `sprite transform keeps the nose on the flight path`() {
+        // Unflipped: plain course − facing.
+        assertEquals(30f, AviationFlyby.spriteTransform(30f, 0f).first, 1e-4f)
+        assertFalse(AviationFlyby.spriteTransform(30f, 0f).second)
+        // Flipped pass: the mirror shifts the art's effective facing (β → 180−β), so the
+        // rotation compensates — nose still points along the course.
+        val (rotZ, flipped) = AviationFlyby.spriteTransform(0f, 265f)
+        assertTrue(flipped)
+        assertEquals(0f - (180f - 265f), rotZ, 1e-4f)
+    }
+
+    @Test
+    fun `sprite transform flips exactly when the pass would invert the jet`() {
+        for (course in 0..359) {
+            for (facing in intArrayOf(0, 85, 90, 95, 180, 265, 270)) {
+                val (_, flipped) = AviationFlyby.spriteTransform(course.toFloat(), facing.toFloat())
+                val diff = ((course - facing) % 360f + 360f) % 360f
+                assertEquals(diff in 90f..270f, flipped)
+            }
         }
     }
 

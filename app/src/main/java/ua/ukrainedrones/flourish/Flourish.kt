@@ -18,8 +18,8 @@ data class FlourishShow(
 const val FLOURISH_STAGGER_MS = 420L
 
 /**
- * Replay playback position, emitted per bullet by the controller: [bulletInGroup]/[groupSize]
- * drives the footer's "Resolving threat X of N" copy (per group, never a global total), while
+ * Replay playback position, emitted per bullet by the controller: [groupSize] drives the
+ * footer's "Resolving N threats" copy (per group, never a global total), while
  * [bulletOverall]/[totalRecords] drives the footer's overall progress bar.
  */
 @Immutable

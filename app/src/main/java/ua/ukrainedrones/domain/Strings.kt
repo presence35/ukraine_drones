@@ -27,6 +27,7 @@ object Strings {
         val relaunchSetupTitle: String,
         val wizardCareTitle: String,
         val wizardCareSubtitle: String,
+        val wizardCareSubtitleGearSuffix: String,
         val wizardCareOn: String,
         val wizardCareOff: String,
         val wizardStartButton: String,
@@ -35,6 +36,8 @@ object Strings {
         val wizardZonesTitle: String,
         val wizardZonesSubtitle: String,
         val wizardEditZonesHint: String,
+        val zoneRedLabel: String,
+        val zoneYellowLabel: String,
         val wizardShelterTitle: String,
         val wizardShelterDesc: String,
         val settingsSearchHint: String,
@@ -464,8 +467,6 @@ object Strings {
         val neutralizingNote: String,
         val fakeNeutralizingLabel: String,
         val fakeNeutralizingNote: String,
-        val resolvingThreat: String,
-        val resolvingThreatsFormat: String,
         val flourishDisabledToastFormat: String
     )
 
@@ -515,6 +516,7 @@ object Strings {
         val relaunchSetupTitle: String get() = onboarding.relaunchSetupTitle
         val wizardCareTitle: String get() = onboarding.wizardCareTitle
         val wizardCareSubtitle: String get() = onboarding.wizardCareSubtitle
+        val wizardCareSubtitleGearSuffix: String get() = onboarding.wizardCareSubtitleGearSuffix
         val wizardCareOn: String get() = onboarding.wizardCareOn
         val wizardCareOff: String get() = onboarding.wizardCareOff
         val wizardStartButton: String get() = onboarding.wizardStartButton
@@ -522,6 +524,8 @@ object Strings {
         val wizardLocationSubtitle: String get() = onboarding.wizardLocationSubtitle
         val wizardZonesTitle: String get() = onboarding.wizardZonesTitle
         val wizardZonesSubtitle: String get() = onboarding.wizardZonesSubtitle
+        val zoneRedLabel: String get() = onboarding.zoneRedLabel
+        val zoneYellowLabel: String get() = onboarding.zoneYellowLabel
         val wizardEditZonesHint: String get() = onboarding.wizardEditZonesHint
         val wizardShelterTitle: String get() = onboarding.wizardShelterTitle
         val wizardShelterDesc: String get() = onboarding.wizardShelterDesc
@@ -999,8 +1003,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val neutralizingNote: String get() = guide.neutralizingNote
         val fakeNeutralizingLabel: String get() = guide.fakeNeutralizingLabel
         val fakeNeutralizingNote: String get() = guide.fakeNeutralizingNote
-        val resolvingThreat: String get() = guide.resolvingThreat
-        val resolvingThreatsFormat: String get() = guide.resolvingThreatsFormat
         val flourishDisabledToastFormat: String get() = guide.flourishDisabledToastFormat
         val explainerVisualLabel: String get() = explainers.visualLabel
         val explainerScenarioLabel: String get() = explainers.scenarioLabel
@@ -1015,11 +1017,11 @@ val iconSetTitle: String get() = misc.iconSetTitle
         backButton = "Назад",
         languageLabel = "Мова",
         languageChooseTitle = "Оберіть мову",
-        languageChooseLater = "Пізніше",
+        languageChooseLater = "Пропустити",
         okButton = "ОК",
         nextButton = "Далі",
         onboardingTipsTitle = "Кілька підказок",
-        onboardingTipTap = "Натисни будь-який дрон на мапі, щоб відкрити його картку.",
+        onboardingTipTap = "Натисни будь-яку загрозу на мапі, щоб відкрити її картку.",
         onboardingTipSettings = "У Налаштуваннях — путівник по функціях та інші просунуті налаштування. Зазирни туди!",
         onboardingTipSiren = "Сирена за замовчуванням слідує за режимом звуку телефона — увімкни «Сирена звучить завжди», щоб змінити.",
         onboardingTipGradual = "У застосунку багато функцій — під час користування він буде підказувати, як ними користуватися.",
@@ -1027,8 +1029,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         onboardingIntro = "Це налаштування важливе — у застосунку є просунуті функції безпеки, про які варто знати. Виділи 30 секунд і ознайомся зараз, щоб бути готовим, коли це важливо.",
         relaunchSetupTitle = "Повторити початкове налаштування",
         wizardCareTitle = "Які загрози для вас важливі?",
-        wizardCareSubtitle = "Усі загрози показано на мапі за замовчуванням, а тут ви вмикаєте лише сповіщення. Змінити можна будь-коли в ⚙ налаштуваннях.",
-        wizardCareOn = "Сповіщати",
+        wizardCareSubtitle = "Усі загрози показано на мапі за замовчуванням, а тут ви вмикаєте лише сповіщення. Змінити можна будь-коли в",
+        wizardCareSubtitleGearSuffix = "налаштуваннях.",        wizardCareOn = "Сповіщати",
         wizardCareOff = "Вимкнено",
         wizardStartButton = "Будьте в безпеці…",
         wizardLocationTitle = "Де ви перебуваєте?",
@@ -1036,6 +1038,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         wizardZonesTitle = "Зони тривог",
         wizardZonesSubtitle = "Кнопки на мапі наближають зони, а повзунки змінюють їх розмір — червона зона ближче, жовта далі. Тут усе видно одразу.",
         wizardEditZonesHint = "Повзунок повільно рухає коло на мапі — червона зона завжди всередині жовтої.",
+        zoneRedLabel = "Червона зона",
+        zoneYellowLabel = "Жовта зона",
         wizardShelterTitle = "Укриття поруч",
         wizardShelterDesc = "Кнопка «Укриття» показує найближчі укриття та час пішки — швидкий шлях до безпеки під час тривоги.",
         settingsSearchHint = "Пошук налаштувань",
@@ -1465,8 +1469,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         neutralizingNote = "Більше не відстежується мережею.",
         fakeNeutralizingLabel = "Тільки бажання…",
         fakeNeutralizingNote = "Надсилаю сигнал у штаб…",
-        resolvingThreat = "Знешкоджуємо загрозу",
-        resolvingThreatsFormat = "Знешкоджуємо загрозу %1\$d з %2\$d",
         flourishDisabledToastFormat = "Увімкніть «%1\$s» у налаштуваннях, щоб повторити шоу",
     )
 
@@ -1529,11 +1531,11 @@ val iconSetTitle: String get() = misc.iconSetTitle
         backButton = "Back",
         languageLabel = "Language",
         languageChooseTitle = "Choose language",
-        languageChooseLater = "Later",
+        languageChooseLater = "Skip",
         okButton = "OK",
         nextButton = "Next",
         onboardingTipsTitle = "A few tips",
-        onboardingTipTap = "Tap any drone on the map to open its details card.",
+        onboardingTipTap = "Tap any threat on the map to open its details card.",
         onboardingTipSettings = "Settings holds the feature guide and other advanced settings — check it out!",
         onboardingTipSiren = "Sirens follow your phone's sound mode by default — turn on \"Sirens always sound\" to change it.",
         onboardingTipGradual = "This app has many features — as you use it, it'll give you tips on how to use them.",
@@ -1541,7 +1543,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         onboardingIntro = "This setup is important — this app has advanced safety features you should know about. Take 30 seconds to get familiar now, so you're ready when it matters.",
         relaunchSetupTitle = "Replay first launch",
         wizardCareTitle = "What threats matter to you?",
-        wizardCareSubtitle = "Every threat is shown on the map by default, but you can toggle only the alerts here. Change either in ⚙ settings.",
+        wizardCareSubtitle = "Every threat is shown on the map by default, but you can toggle only the alerts here. Change either in",
+        wizardCareSubtitleGearSuffix = "settings.",
         wizardCareOn = "Alert",
         wizardCareOff = "Off",
         wizardStartButton = "Stay safe…",
@@ -1550,6 +1553,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         wizardZonesTitle = "Alert zones",
         wizardZonesSubtitle = "The buttons on the map zoom to a zone; the sliders resize them — red is close, yellow is further out. Everything is visible at once.",
         wizardEditZonesHint = "Dragging a slider moves the circle live — red always stays inside yellow.",
+        zoneRedLabel = "Red zone",
+        zoneYellowLabel = "Yellow zone",
         wizardShelterTitle = "Nearby shelters",
         wizardShelterDesc = "The \"Shelter\" button shows the nearest shelters with walking times — your quick route to safety during an alert.",
         settingsSearchHint = "Search settings",
@@ -1979,8 +1984,6 @@ alertBannerFormat = "%1\$s: alert",
         neutralizingNote = "No longer tracked by the network.",
         fakeNeutralizingLabel = "Wishful thinking…",
         fakeNeutralizingNote = "Sending signal to HQ…",
-        resolvingThreat = "Resolving threat",
-        resolvingThreatsFormat = "Resolving threat %1\$d of %2\$d",
         flourishDisabledToastFormat = "Turn on \"%1\$s\" in Settings to replay the show",
     )
 
@@ -2098,34 +2101,66 @@ fun resolvedThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
     }
 }
 
-/** Rotating light encouragements shown in the footer strip when no threats are around — one
- *  per ~3-day window, so it stays fresh without nagging. Pure selection, testable. When the
+/** Footer copy during the tally-tap replay: "Resolving N threats" for the current group.
+ *  Same UA accusative plural forms as [resolvedThreatsPhrase]. */
+fun resolvingThreatsPhrase(count: Int, lang: AppLanguage): String = when (lang) {
+    AppLanguage.EN -> if (count == 1) "Resolving 1 threat" else "Resolving $count threats"
+    AppLanguage.UA -> {
+        val n10 = count % 10
+        val n100 = count % 100
+        val form = when {
+            n10 == 1 && n100 != 11 -> "загрозу"
+            n10 in 2..4 && n100 !in 12..14 -> "загрози"
+            else -> "загроз"
+        }
+        "Знешкоджуємо $count $form"
+    }
+}
+
+/** Light encouragement shown in the footer strip when no threats are around — re-rolled at
+ *  random each time the calm state is entered (first launch / after an all-clear). When the
  *  user turns the calm messages off, the footer always reads just "No relevant threats".
  */
-fun noThreatsMessage(lang: AppLanguage, epochDay: Long, calmMessages: Boolean = true): String {
+fun noThreatsMessage(lang: AppLanguage, calmMessages: Boolean = true): String {
     if (!calmMessages) return if (lang == AppLanguage.UA) "Немає актуальних загроз" else "No relevant threats"
     val en = listOf(
-        "No relevant threats",
         "Quiet — go touch grass",
         "Breathe",
         "Say I love you today",
         "Be grateful for this calm",
         "Enjoy the silence",
         "Check in on someone you love",
-        "A good day to rest"
+        "A good day to rest",
+        "All quiet on your front",
+        "A calm sky is still a gift",
+        "Step outside for a minute",
+        "Make some tea while it's quiet",
+        "Hug someone today",
+        "Let your phone down for a while",
+        "Quiet is not emptiness",
+        "Rest now, so you're ready later",
+        "Peace looks good on you"
     )
     val ua = listOf(
-        "Немає актуальних загроз",
         "Тихо — піди погуляй",
         "Подихай",
         "Скажи сьогодні «люблю тебе»",
         "Будь вдячним за цей спокій",
         "Насолоджуйся тишею",
         "Напиши тому, кого любиш",
-        "Гарний день відпочити"
+        "Гарний день відпочити",
+        "У тебе все тихо",
+        "Спокійне небо — це теж подарунок",
+        "Вийди на хвилинку надвір",
+        "Зроби собі чаю, поки тихо",
+        "Обійми сьогодні когось",
+        "Відклади телефон на деякий час",
+        "Тиша — це не порожнеча",
+        "Відпочинь зараз, щоб потім бути готовим",
+        "Тобі личить мир"
     )
     val list = if (lang == AppLanguage.UA) ua else en
-    return list[((epochDay / 3) % list.size).toInt().coerceIn(0, list.size - 1)]
+    return list.random()
 }
 
 /**

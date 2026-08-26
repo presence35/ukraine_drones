@@ -60,6 +60,10 @@ class DeathFxController(
     val active: StateFlow<Boolean> get() = overlay.active
     val isActive: Boolean get() = overlay.isActive
 
+    /** Whether the tally-tap replay is queued or running — while true, the replay owns the map
+     *  camera (no competing follow-me pan or default fit; see MapView's camera block). */
+    val isReplayActive: Boolean get() = replayJob?.isActive == true
+
     fun isActiveFor(id: String?): Boolean = overlay.isActiveFor(id)
 
     /** Drop every active death + cancel a pending camera return or running replay instantly —
