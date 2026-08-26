@@ -105,6 +105,7 @@ private var notif3minShown = false
     private sealed class MonitorEvent {
         data class State(
             val focusOblastAlertActive: Boolean,
+            val focusOblastAlertRaw: Boolean,
             val focusToken: String?,
             val focusOblastAlertSince: String?,
             val focusBannerCity: String,
@@ -383,6 +384,12 @@ private var notif3minShown = false
                     cityUa,
                     config.officialAlertCityScope
                 )
+                val officialRaw = officialAlertActiveFor(
+                    neptun.oblastAlerts,
+                    attribution.token,
+                    cityUa,
+                    false
+                )
                 val officialSince: String? = attribution.token?.let { token ->
                     neptun.oblastAlerts
                         .firstOrNull { alert ->
@@ -401,6 +408,7 @@ private var notif3minShown = false
                 } else null to null
                 MonitorEvent.State(
                     focusOblastAlertActive = officialActive,
+                    focusOblastAlertRaw = officialRaw,
                     focusToken = attribution.token,
                     focusOblastAlertSince = officialSince,
                     focusBannerCity = (
@@ -731,6 +739,35 @@ private var notif3minShown = false
             currentReasonThreatId = state.officialReasonThreatId
             persistOfficialAnnounced(state)
         }
+        // Scope suppression: an announced alert hidden by the city-scope filter (City level
+        // switched on mid-episode, or coverage dropped while it is on) must NOT run through the
+        // all-clear machinery — the NEPTUN episode is still live and a settings flip is not a
+        // lifecycle event. Drop the notification silently instead; when coverage returns (or the
+        // scope goes back to oblast-wide), the announce branch above rings fresh.
+        if (state.officialAlertsEnabled && wasFocusAlertActive && state.focusOblastAlertRaw &&
+            !state.focusOblastAlertActive
+        ) {
+            if (alertable.isEmpty()) {
+                cancelAlert()
+            }
+            currentReasonThreatId = null
+            debugOfficialActive = false
+            wasFocusAlertActive = false
+            clearOfficialAnnounced()
+            DebugLog.recordOfficial(
+                DebugLogKind.OFFICIAL_OFF,
+                night = state.nightActive,
+                sirenOverride = state.officialSirenOverride,
+                vibrationLevel = null,
+                notified = false,
+                reason = DebugLogReason.TOGGLE_OFF,
+                threatId = null,
+                threatType = null,
+                locality = state.focusCityUa,
+                distanceKm = null,
+                now = System.currentTimeMillis()
+            )
+        }
         // All clear: the official alert that was ringing has just ended. The cheerful chime
         // fires only for the official oblast alert — zone-threat clears stay silent — and
         // never when the official-alert notifications are turned off. It fires only while we
@@ -739,7 +776,7 @@ private var notif3minShown = false
         // longer relevant) — that's handled silently below. When no zone alert is active,
         // cancel the lingering siren notification immediately instead of waiting for the 60s
         // grace path; if a zone alert is still ringing, leave it up.
-        if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertActive &&
+        if (state.officialAlertsEnabled && wasFocusAlertActive && !state.focusOblastAlertRaw &&
             state.focusToken == officialRegionToken
         ) {
             if (alertable.isEmpty()) {

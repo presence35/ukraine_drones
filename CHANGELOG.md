@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Fix: toggling "City level" mid-alert no longer clears the running air-raid notification with a false all-clear and re-rings it when switched back — settings changes never restart an ongoing alert episode / Виправлення: перемикання «Міського рівня» під час тривоги більше не скидає сповіщення з хибним відбоєм і не озвучує його заново при поверненні — зміна налаштувань ніколи не перезапускає тривогу.
+- Night mode: the official-alerts description explains it follows the City level setting / Нічний режим: опис офіційних сповіщень пояснює, що діє перемикач «Міський рівень».
 - Map: CARTO basemaps now require a (free) API key — the app sends it from a local config, clearing the "API KEY REQUIRED" watermark tiles; © OSM / © CARTO attribution added to the map / Мапа: CARTO тепер вимагає безкоштовний API-ключ — застосунок надсилає його з локального конфіга, водяний знак «API KEY REQUIRED» зник; на мапу додано атрибуцію © OSM / © CARTO.
 - Wizard: dedicated completion flag — no map flash before the wizard on first launch, and killing the app during "Replay first launch" no longer resurrects the wizard on every cold start / Майстер: окремий прапорець завершення — немає спалаху мапи перед майстром при першому запуску, а вбивство застосунку під час «Повтору першого запуску» більше не повертає майстра щоразу.
 - Settings: the gear hint now pulses instead of spinning (it looked like a loading icon) and stops after 3 opens / Налаштування: підказка на шестерні тепер пульсує замість обертання (схоже було на завантаження) і зникає після 3 відкриттів.
