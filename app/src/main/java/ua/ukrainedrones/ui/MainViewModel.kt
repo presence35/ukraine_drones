@@ -152,7 +152,6 @@ data class ThreatProximity(
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
-
     companion object {
         private const val DAILY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
         private const val SHELTERS_CACHE_FILE = "odesa_shelters.json"
@@ -162,6 +161,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = ZonePrefs(app.applicationContext)
     private val updateManager = UpdateManager(app.applicationContext)
+
+    /** Tri-state haptics pref → effective value: absent follows the system haptic setting. */
+    private fun resolveHaptics(pref: Boolean?): Boolean = when (pref) {
+        null -> android.provider.Settings.System.getInt(
+            getApplication<Application>().contentResolver,
+            android.provider.Settings.System.HAPTIC_FEEDBACK_ENABLED,
+            1
+        ) != 0
+        else -> pref
+    }
 
     private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
     // A threat id long-pressed on the map is treated as neutralized so the card
@@ -250,7 +259,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val sheltersWithKids: Boolean,
         val periodicGps: Boolean,
         val calmMessagesEnabled: Boolean,
-        val hapticsEnabled: Boolean
+        val hapticsEnabled: Boolean?
     )
 
     /** Night-mode window prefs (raw, day values untouched). */
@@ -312,7 +321,7 @@ val fastGroupCollapsed: Boolean,
         val sheltersWithKids: Boolean,
         val periodicGps: Boolean,
         val calmMessagesEnabled: Boolean,
-        val hapticsEnabled: Boolean,
+        val hapticsEnabled: Boolean?,
         val night: NightPrefs
     )
 
@@ -668,7 +677,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             sheltersWithKids = prefs.sheltersWithKids,
             periodicGps = prefs.periodicGps,
             calmMessagesEnabled = prefs.calmMessagesEnabled,
-            hapticsEnabled = prefs.hapticsEnabled,
+            hapticsEnabled = resolveHaptics(prefs.hapticsEnabled),
             shelterIndex = shelterIndex,
             shelterOverlayUp = live.shelterModeActive
         )

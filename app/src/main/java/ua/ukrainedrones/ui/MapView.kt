@@ -44,9 +44,10 @@ import org.osmdroid.api.IGeoPoint
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
-import org.osmdroid.tileprovider.tilesource.XYTileSource
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.util.TileSystem
 import org.osmdroid.util.TileSystemWebMercator
 import org.osmdroid.views.MapView
@@ -61,20 +62,32 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private fun cartoTileUrls(): Array<String> {
-    val key = BuildConfig.CARTO_API_KEY
-    val suffix = if (key.isNotBlank()) "?key=$key" else ""
-    return arrayOf("a", "b", "c", "d").map { sub ->
-        "https://$sub.basemaps.cartocdn.com/dark_nolabels/$suffix"
-    }.toTypedArray()
-}
+private val CARTO_BASE_URLS =
+    arrayOf("a", "b", "c", "d").map { sub -> "https://$sub.basemaps.cartocdn.com/dark_nolabels/" }.toTypedArray()
 
 /** v2: the id bump invalidates cached "API KEY REQUIRED" error tiles from the
- *  unauthenticated period. */
-internal val DARK_TILE_SOURCE = XYTileSource(
+ *  unauthenticated period.
+ *
+ *  The API key must be appended AFTER z/x/y.png — osmdroid builds
+ *  `baseUrl + zoom/x/y.png`, so a key on the base URL lands mid-path and every
+ *  request 404s (all-black map). */
+internal val DARK_TILE_SOURCE = object : OnlineTileSourceBase(
     "CartoDB_DarkNoLabels_v2", 0, 17, 256, ".png",
-    cartoTileUrls()
-)
+    CARTO_BASE_URLS,
+    "© OpenStreetMap contributors © CARTO"
+) {
+    private val keySuffix = BuildConfig.CARTO_API_KEY
+        .takeIf { it.isNotBlank() }
+        ?.let { "?key=$it" }
+        .orEmpty()
+
+    override fun getTileURLString(pMapTileIndex: Long): String =
+        getBaseUrl() +
+            MapTileIndex.getZoom(pMapTileIndex) + "/" +
+            MapTileIndex.getX(pMapTileIndex) + "/" +
+            MapTileIndex.getY(pMapTileIndex) +
+            ".png" + keySuffix
+}
 
 /** Odesa city centre — fallback camera target before the first GPS fix. */
 private val DEFAULT_CENTER = GeoPoint(46.4832, 30.7346)

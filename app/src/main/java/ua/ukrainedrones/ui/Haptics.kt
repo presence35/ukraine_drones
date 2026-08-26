@@ -62,6 +62,7 @@ fun Modifier.pressTick(source: InteractionSource): Modifier {
 }
 
 private fun tick(context: Context) {
+    if (BuildConfig.DEBUG) android.util.Log.d("VibTrace", "tick() source=pressTick")
     val vibrator = context.getSystemService(Vibrator::class.java) ?: return
     if (!vibrator.hasVibrator()) return
     // One-shot with full amplitude (same mechanism as the shoot-down flourish) — the

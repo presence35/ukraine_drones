@@ -146,6 +146,7 @@ class DeathFxController(
      *  detonates. USAGE_ALARM keeps both audible as vibration even when the system "touch
      *  feedback" haptics are off. */
     fun strikeHaptics() {
+        if (BuildConfig.DEBUG) android.util.Log.d("VibTrace", "strikeHaptics() source=flourish")
         val vibrator = vibrator ?: return
         scope.launch {
             vibrator.vibrate(

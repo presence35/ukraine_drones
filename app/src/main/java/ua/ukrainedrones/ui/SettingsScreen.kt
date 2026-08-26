@@ -701,12 +701,16 @@ fun SettingsScreen(
                         flash = flashId == "followMe"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    PinCityRow(
-                        lang = lang,
-                        followMe = followMe,
-                        pinnedCity = pinnedCity,
-                        onChange = onPinnedCityChange
-                    )
+                    AnimatedVisibility(visible = !followMe) {
+                        Column {
+                            PinCityRow(
+                                lang = lang,
+                                pinnedCity = pinnedCity,
+                                onChange = onPinnedCityChange
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                    }
                     AnimatedVisibility(visible = followMe) {
                         Column {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1946,7 +1950,6 @@ private fun ThreatSettingsCard(
 @Composable
 private fun PinCityRow(
     lang: AppLanguage,
-    followMe: Boolean,
     pinnedCity: City?,
     onChange: (City?) -> Unit
 ) {
@@ -1956,8 +1959,7 @@ private fun PinCityRow(
             s.pinCityTitle,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
-            color = if (followMe) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(Modifier.height(2.dp))
         Text(
@@ -1966,7 +1968,7 @@ private fun PinCityRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(10.dp))
-        CityChipGrid(lang, selected = pinnedCity, enabled = !followMe, onChange = onChange)
+        CityChipGrid(lang, selected = pinnedCity, onChange = onChange)
     }
 }
 

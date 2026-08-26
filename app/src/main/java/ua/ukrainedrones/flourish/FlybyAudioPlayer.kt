@@ -19,10 +19,10 @@ class FlybyAudioPlayer private constructor(
         mediaPlayer.start()
     }
 
-    /** Stops the sound and releases resources. */
+    /** Stops the sound; safe to call multiple times. */
     fun stop() {
-        if (mediaPlayer.isPlaying) mediaPlayer.stop()
-        mediaPlayer.release()
+        try { if (mediaPlayer.isPlaying) mediaPlayer.stop() } catch (_: Exception) {}
+        try { mediaPlayer.release() } catch (_: Exception) {}
     }
 
     /** Factory: prepares a looping [MediaPlayer] for the engine sound. */
@@ -36,10 +36,15 @@ class FlybyAudioPlayer private constructor(
                 .build()
 
             val mp = MediaPlayer.create(context, RES_ID).apply {
-                isLooping = true
                 setAudioAttributes(attrs)
+                isLooping = false
+                setVolume(1.0f, 1.0f)
             }
             return FlybyAudioPlayer(context, mp)
         }
+    }
+
+    fun release() {
+        try { mediaPlayer.release() } catch (_: Exception) {}
     }
 }

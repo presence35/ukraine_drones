@@ -54,11 +54,22 @@ internal fun FirstLaunchWizard(
     silencedTypes: Set<ThreatType>,
     followMe: Boolean,
     pinnedCity: City?,
+    slowRedKm: Int,
+    slowYellowKm: Int,
+    slowRedArmed: Boolean,
+    slowYellowArmed: Boolean,
+    fastRedArmed: Boolean,
+    fastYellowArmed: Boolean,
+    sheltersEnabled: Boolean,
     onChoose: (AppLanguage) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onThreatEnabledToggle: (ThreatType, Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
+    onSlowRedChange: (Int) -> Unit,
+    onSlowYellowChange: (Int) -> Unit,
+    onSlowRedArmedChange: (Boolean) -> Unit,
+    onSlowYellowArmedChange: (Boolean) -> Unit,
     onComplete: () -> Unit,
     onLater: () -> Unit
 ) {
@@ -156,7 +167,21 @@ internal fun FirstLaunchWizard(
                         )
                     }
                     2 -> SetupLocationStep(current, followMe, pinnedCity, onFollowMeChange, onPinnedCityChange)
-                    3 -> SetupZoneControlsStep(s)
+                    3 -> SetupZoneControlsStep(
+                        s = s,
+                        lang = current,
+                        slowRedKm = slowRedKm,
+                        slowYellowKm = slowYellowKm,
+                        slowRedArmed = slowRedArmed,
+                        slowYellowArmed = slowYellowArmed,
+                        fastRedArmed = fastRedArmed,
+                        fastYellowArmed = fastYellowArmed,
+                        sheltersEnabled = sheltersEnabled,
+                        onSlowRedChange = onSlowRedChange,
+                        onSlowYellowChange = onSlowYellowChange,
+                        onSlowRedArmedChange = onSlowRedArmedChange,
+                        onSlowYellowArmedChange = onSlowYellowArmedChange
+                    )
                     else -> SetupFeaturesStep(s)
                 }
             }
@@ -166,13 +191,23 @@ internal fun FirstLaunchWizard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val backInteraction = remember { MutableInteractionSource() }
                 if (step > 0) {
-                    OutlinedButton(onClick = { step-- }) { Text(s.backButton) }
+                    OutlinedButton(
+                        onClick = { step-- },
+                        interactionSource = backInteraction,
+                        modifier = Modifier.pressTick(backInteraction)
+                    ) { Text(s.backButton) }
                 } else {
-                    OutlinedButton(onClick = onLater) { Text(s.languageChooseLater) }
+                    OutlinedButton(
+                        onClick = onLater,
+                        interactionSource = backInteraction,
+                        modifier = Modifier.pressTick(backInteraction)
+                    ) { Text(s.languageChooseLater) }
                 }
                 val progressFrac = (step + 1) / totalSteps.toFloat()
                 val nextEnabled = step != 0 || tipsRevealed
+                val nextInteraction = remember { MutableInteractionSource() }
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -187,7 +222,10 @@ internal fun FirstLaunchWizard(
                     Button(
                         onClick = { if (step < totalSteps - 1) step++ else onComplete() },
                         enabled = nextEnabled,
-                        modifier = Modifier.fillMaxSize(),
+                        interactionSource = nextInteraction,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pressTick(nextInteraction),
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.Transparent,
@@ -433,6 +471,7 @@ private fun WizardLocationCard(
     title: String,
     desc: String
 ) {
+    val cardInteraction = remember { MutableInteractionSource() }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -448,7 +487,12 @@ private fun WizardLocationCard(
                 if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
                 else Color.Transparent
             )
-            .clickable(onClick = onClick)
+            .pressTick(cardInteraction)
+            .clickable(
+                interactionSource = cardInteraction,
+                indication = ripple(bounded = true),
+                onClick = onClick
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         icon()
@@ -471,11 +515,26 @@ private fun WizardLocationCard(
 }
 
 /**
- * Wizard page showing the zone controls as they look in-app: a live-styled slider row plus the
- * three floating map buttons (red zone, yellow zone, edit gear) with short visible captions.
+ * Wizard page with the REAL zone controls (what you set here is your actual map) plus a static
+ * replica of the map's bottom area — shelter pill, zone buttons, scale + attribution — exactly
+ * as it looks in-app, so there are no surprises later.
  */
 @Composable
-private fun SetupZoneControlsStep(s: Strings.StringSet) {
+private fun SetupZoneControlsStep(
+    s: Strings.StringSet,
+    lang: AppLanguage,
+    slowRedKm: Int,
+    slowYellowKm: Int,
+    slowRedArmed: Boolean,
+    slowYellowArmed: Boolean,
+    fastRedArmed: Boolean,
+    fastYellowArmed: Boolean,
+    sheltersEnabled: Boolean,
+    onSlowRedChange: (Int) -> Unit,
+    onSlowYellowChange: (Int) -> Unit,
+    onSlowRedArmedChange: (Boolean) -> Unit,
+    onSlowYellowArmedChange: (Boolean) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
             s.wizardZonesSubtitle,
@@ -495,87 +554,73 @@ private fun SetupZoneControlsStep(s: Strings.StringSet) {
                 leadingDesc = s.slowGroupIconDesc,
                 leadingTint = TurtleGreen
             )
-            var demoKm by remember { mutableStateOf(12f) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Notifications,
-                    contentDescription = null,
-                    tint = ZoneRedColor,
-                    modifier = Modifier.size(26.dp)
-                )
-                Switch(
-                    checked = true,
-                    onCheckedChange = {},
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = ZoneRedColor,
-                        checkedTrackColor = ZoneRedColor.copy(alpha = 0.45f),
-                        checkedBorderColor = Color.Transparent
-                    )
-                )
-                Spacer(Modifier.width(8.dp))
-                Slider(
-                    value = demoKm,
-                    onValueChange = { demoKm = it },
-                    valueRange = 1f..20f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = ZoneRedColor,
-                        activeTrackColor = ZoneRedColor
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "${demoKm.roundToInt()} ${s.kmUnit}",
-                    color = ZoneRedColor,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+            WizardZoneSliderRow(
+                color = ZoneRedColor,
+                armed = slowRedArmed,
+                km = slowRedKm,
+                onArmedChange = onSlowRedArmedChange,
+                onKmChange = onSlowRedChange,
+                kmUnit = s.kmUnit
+            )
+            Spacer(Modifier.height(10.dp))
+            WizardZoneSliderRow(
+                color = ZoneYellowColor,
+                armed = slowYellowArmed,
+                km = slowYellowKm,
+                onArmedChange = onSlowYellowArmedChange,
+                onKmChange = onSlowYellowChange,
+                kmUnit = s.kmUnit
+            )
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-            verticalAlignment = Alignment.Top
+        // Static replica of the map's bottom strip — same composables, same layout, no actions.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF101010))
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                WizardZoneButton(Color(0xFFD32F2F), s.zoneButtonRed)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    s.zoneRedLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (sheltersEnabled) {
+                ShelterButton(
+                    alertActive = false,
+                    active = false,
+                    label = s.shelterButtonLabel,
+                    onClick = {},
+                    onLongClick = {},
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 12.dp, bottom = 4.dp)
                 )
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                WizardZoneButton(Color(0xFFF9A825), s.zoneButtonYellow)
-                Spacer(Modifier.height(4.dp))
+            ZoneButtons(
+                redArmed = fastRedArmed || slowRedArmed,
+                yellowArmed = fastYellowArmed || slowYellowArmed,
+                lang = lang,
+                onZoneTap = {},
+                onEditZones = {},
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 6.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                ScaleIndicator(metersPerPixel = 60.0, lang = lang)
                 Text(
-                    s.zoneYellowLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "© OSM · © CARTO",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.40f)
                 )
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = s.editZonesLabel,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    s.editZonesLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            // Gesture shield — makes the whole preview fully static.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            )
         }
         Text(
             s.wizardEditZonesHint,
@@ -585,22 +630,51 @@ private fun SetupZoneControlsStep(s: Strings.StringSet) {
     }
 }
 
-/** A colored circular zone button as it appears on the map, for the wizard illustration. */
+/** One live zone row (bell + alert switch + radius slider + km label), styled like in-app. */
 @Composable
-private fun WizardZoneButton(color: Color, contentDescription: String) {
-    Surface(
-        shape = CircleShape,
-        color = color.copy(alpha = 0.22f),
-        border = BorderStroke(2.dp, color)
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(width = 16.dp, height = 18.dp)
-                    .clip(CircleShape)
-                    .background(color)
+private fun WizardZoneSliderRow(
+    color: Color,
+    armed: Boolean,
+    km: Int,
+    onArmedChange: (Boolean) -> Unit,
+    onKmChange: (Int) -> Unit,
+    kmUnit: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Filled.Notifications,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(26.dp)
+        )
+        Switch(
+            checked = armed,
+            onCheckedChange = onArmedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = color,
+                checkedTrackColor = color.copy(alpha = 0.45f),
+                checkedBorderColor = Color.Transparent
             )
-        }
+        )
+        Spacer(Modifier.width(8.dp))
+        Slider(
+            value = km.toFloat(),
+            onValueChange = { onKmChange(it.roundToInt()) },
+            valueRange = 1f..20f,
+            enabled = armed,
+            colors = SliderDefaults.colors(
+                thumbColor = color,
+                activeTrackColor = color
+            ),
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "$km $kmUnit",
+            color = if (armed) color else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }
 

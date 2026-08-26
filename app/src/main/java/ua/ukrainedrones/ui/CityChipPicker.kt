@@ -1,18 +1,23 @@
 package ua.ukrainedrones
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ripple
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,35 +39,40 @@ internal fun CityChipGrid(
     val label: (City) -> String = { c -> if (lang == AppLanguage.UA) c.nameUa else c.nameEn }
     FlowRow(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         cities.forEach { city ->
-            val on = selected == city
-            Text(
-                label(city),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = if (on && enabled) MaterialTheme.colorScheme.onSurface
-                else if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            val on = selected == city && enabled
+            val chipInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .height(36.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .border(
-                        width = 1.5.dp,
-                        color = when {
-                            !enabled -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            on -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.outlineVariant
-                        },
-                        shape = RoundedCornerShape(12.dp)
-                    )
                     .background(
-                        if (on && enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                        else MaterialTheme.colorScheme.surfaceContainerHigh
+                        when {
+                            on -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                        }
                     )
-                    .clickable(enabled = enabled) { onChange(city) }
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            )
+                    .pressTick(chipInteraction)
+                    .clickable(
+                        interactionSource = chipInteraction,
+                        indication = ripple(bounded = true),
+                        enabled = enabled
+                    ) { onChange(city) }
+                    .padding(horizontal = 12.dp)
+                    .then(if (enabled) Modifier else Modifier.alpha(0.5f))
+            ) {
+                Text(
+                    label(city),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (on) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

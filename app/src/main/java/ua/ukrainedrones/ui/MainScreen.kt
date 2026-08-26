@@ -460,7 +460,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         )
         ToastHost(topInset = with(LocalDensity.current) { headerHeightPx.toDp() })
     }
-    }
 
     // Auto-launch the installer once the APK is downloaded and permission is granted.
     val installLauncher = rememberLauncherForActivityResult(
@@ -507,11 +506,22 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             silencedTypes = uiState.silencedTypes,
             followMe = uiState.followMe,
             pinnedCity = uiState.pinnedCity,
+            slowRedKm = uiState.slowRedKm,
+            slowYellowKm = uiState.slowYellowKm,
+            slowRedArmed = uiState.slowRedArmed,
+            slowYellowArmed = uiState.slowYellowArmed,
+            fastRedArmed = uiState.fastRedArmed,
+            fastYellowArmed = uiState.fastYellowArmed,
+            sheltersEnabled = uiState.sheltersEnabled,
             onChoose = { viewModel.setLanguage(it) },
             onIconSetChange = { viewModel.setThreatIconSet(it) },
             onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
             onFollowMeChange = { viewModel.setFollowMe(it) },
             onPinnedCityChange = { viewModel.setPinnedCity(it) },
+            onSlowRedChange = { viewModel.setSlowRedKm(it) },
+            onSlowYellowChange = { viewModel.setSlowYellowKm(it) },
+            onSlowRedArmedChange = { viewModel.setSlowRedArmed(it) },
+            onSlowYellowArmedChange = { viewModel.setSlowYellowArmed(it) },
             onComplete = {
                 viewModel.skipLanguageChoose()
                 if (wizardFromSettings) {
@@ -547,6 +557,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             },
             onLater = { viewModel.setBatteryOnboardShown(true) }
         )
+    }
     }
 }
 
@@ -848,23 +859,24 @@ private fun MapScreen(
                             onFinished = onFlybyFinished
                         )
                     }
-                    // Basemap attribution — required by the CARTO basemap free tier
-                    // (© OpenStreetMap contributors © CARTO).
-                    Text(
-                        "© OpenStreetMap contributors © CARTO",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.40f),
+                    // Basemap attribution (required by the CARTO basemap free tier) stacked
+                    // under the scale bar so the pair matches the floating buttons' height.
+                    Column(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 12.dp, bottom = 52.dp)
-                    )
-                    if (uiState.showMapScale) {
-                        ScaleIndicator(
-                            metersPerPixel = scaleMpp,
-                            lang = uiState.language,
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = 12.dp, bottom = 12.dp)
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 12.dp, bottom = 6.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        if (uiState.showMapScale) {
+                            ScaleIndicator(
+                                metersPerPixel = scaleMpp,
+                                lang = uiState.language
+                            )
+                        }
+                        Text(
+                            "© OSM · © CARTO",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.40f)
                         )
                     }
                     val shelterFocus = uiState.focusLocation
@@ -1222,7 +1234,7 @@ private fun ThreatStripFooter(
     } else if (total == 0) {
         val footerText = when {
             deathActive -> s.neutralizingLabel
-            else -> remember { noThreatsMessage(language, calmMessagesEnabled) }
+            else -> remember(calmMessagesEnabled) { noThreatsMessage(language, calmMessagesEnabled) }
         }
         Text(
             footerText,
@@ -1305,7 +1317,7 @@ private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier, conten
 }
 
 @Composable
-private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: Modifier = Modifier) {
+internal fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: Modifier = Modifier) {
     if (metersPerPixel <= 0.0) return
     val s = Strings.get(lang)
     val density = LocalDensity.current
@@ -1360,7 +1372,7 @@ private fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier: 
  *  ghost-outlined. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ShelterButton(
+internal fun ShelterButton(
     alertActive: Boolean,
     active: Boolean,
     label: String,
@@ -1408,7 +1420,7 @@ private fun ShelterButton(
 }
 
 @Composable
-private fun ZoneButtons(
+internal fun ZoneButtons(
     redArmed: Boolean,
     yellowArmed: Boolean,
     lang: AppLanguage,

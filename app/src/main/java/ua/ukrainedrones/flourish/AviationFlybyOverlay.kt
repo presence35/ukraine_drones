@@ -55,12 +55,20 @@ fun AviationFlybyOverlay(
     var canvasPx by remember { mutableStateOf(IntSize.Zero) }
     val progress = remember(show.tick) { Animatable(0f) }
     val fadeProgress = remember { Animatable(1f) } // 1 = visible, 0 = faded
-    val audioPlayer = remember { FlybyAudioPlayer.create(context) }
+    val audioPlayer = remember(show.tick) { FlybyAudioPlayer.create(context) }
+
+    androidx.compose.runtime.DisposableEffect(audioPlayer) {
+        onDispose { audioPlayer.release() }
+    }
 
     LaunchedEffect(show.tick) {
-        audioPlayer.start()
-        progress.snapTo(0f)
-        progress.animateTo(1f, tween(show.durationMs.toInt(), easing = LinearEasing))
+        try {
+            audioPlayer.start()
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(show.durationMs.toInt(), easing = LinearEasing))
+        } finally {
+            try { audioPlayer.stop() } catch (_: Exception) {}
+        }
         onFinished(show.threatId)
         // Fade out contrail after jet exits
         fadeProgress.animateTo(0f, tween(2000, easing = LinearEasing))

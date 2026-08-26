@@ -441,8 +441,9 @@ fun threatToggleHintRemaining(): Flow<Int> =
     }
 
     /** Whether press interactions play a small haptic tick — default on. */
-    fun hapticsEnabled(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[hapticsEnabledKey] ?: true }
+    /** Tri-state: key absent = follow the system haptic-feedback setting; explicit on/off overrides. */
+    fun hapticsEnabled(): Flow<Boolean?> =
+        context.dataStore.data.map { prefs -> prefs[hapticsEnabledKey] }
 
     suspend fun setHapticsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[hapticsEnabledKey] = enabled }
