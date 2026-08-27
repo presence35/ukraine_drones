@@ -341,6 +341,7 @@ fun SettingsScreen(
     officialAlertsEnabled: Boolean,
     officialAlertCityScope: Boolean,
     sirenOverride: Boolean,
+    criticalOfflineOverride: Boolean,
     nightEnabled: Boolean,
     nightStartMin: Int,
     nightEndMin: Int,
@@ -394,6 +395,7 @@ fun SettingsScreen(
     onOfficialAlertsChange: (Boolean) -> Unit,
     onOfficialAlertCityScopeChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
+    onCriticalOfflineOverrideChange: (Boolean) -> Unit,
     onNightEnabledChange: (Boolean) -> Unit,
     onNightStartChange: (Int) -> Unit,
     onNightEndChange: (Int) -> Unit,
@@ -754,7 +756,12 @@ fun SettingsScreen(
                         flash = flashId == "officialAlerts"
                     )
                     AnimatedVisibility(visible = officialAlertsEnabled) {
-                        Column(modifier = Modifier.padding(start = 40.dp)) {
+                        Column(
+                            modifier = Modifier
+                                .padding(start = 56.dp, end = 12.dp, bottom = 6.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f))
+                        ) {
                             AlertToggleRow(
                                 title = s.officialAlertScopeTitle,
                                 description = s.officialAlertScopeDesc,
@@ -772,6 +779,15 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.ic_volume_up),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                         flash = flashId == "sirenOverride"
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.offlineCriticalOverrideTitle,
+                        description = s.offlineCriticalOverrideDesc,
+                        checked = criticalOfflineOverride,
+                        onCheckedChange = onCriticalOfflineOverrideChange,
+                        icon = painterResource(R.drawable.ic_notifications_off),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Battery Optimization

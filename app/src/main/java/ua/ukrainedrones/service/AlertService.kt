@@ -51,12 +51,16 @@ class AlertService : Service() {
         private const val CHANNEL_ALERTS_ALARM = "alerts_siren_alarm"
         private const val CHANNEL_ALERTS_OUTER_ALARM = "alerts_siren_outer_alarm"
         private const val CHANNEL_OFFLINE = "offline"
+        private const val CHANNEL_OFFLINE_CRITICAL = "offline_critical"
         private const val CHANNEL_UPDATE = "updates"
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_ALERT = 2
         private const val NOTIF_ALLCLEAR = 3
         private const val NOTIF_MILESTONE = 5
+        private const val NOTIF_OFFLINE_CRITICAL = 6
         private const val NOTIF_UPDATE = 7
+        /** Minutes offline before the (audible) critical offline notification rings. */
+        const val CRITICAL_OFFLINE_MIN = 5
         private const val CENTRE_ALERT_GRACE_MS = 20_000L
         /** How often the monitoring loop re-evaluates state (fast tick, decoupled from the
          *  all-clear grace so a threat that leaves a zone clears promptly). */
@@ -98,6 +102,7 @@ private var notif3minShown = false
     private var notif6minShown = false
     private var notif10minShown = false
     private var notif20minShown = false
+    private var notifCriticalShown = false
     private var alertEpoch = 0
     private val tally by lazy { NeutralizedTally(applicationContext, scope) }
     @Volatile private var currentToken: String? = null
@@ -126,6 +131,7 @@ private var notif3minShown = false
             val officialSirenOverride: Boolean,
             val connected: Boolean,
             val offlineElapsedSec: Long?,
+            val criticalOfflineOverride: Boolean,
             val fastVibrationLevel: Int,
             val slowVibrationLevel: Int,
             val focusLocation: LatLng?,
@@ -143,7 +149,8 @@ private var notif3minShown = false
         val officialAlertsEnabled: Boolean,
         val officialAlertCityScope: Boolean,
         val sirenOverride: Boolean,
-        val followMe: Boolean
+        val followMe: Boolean,
+        val criticalOfflineOverride: Boolean
     )
 
     /** Per-tick inputs merged with the threat-alert toggles: language, pin. */
@@ -181,7 +188,7 @@ private var notif3minShown = false
             DebugLog.attach(applicationContext)
             ConnectionLog.awaitAttached()
             DebugLog.awaitAttached()
-            NeptunClient.start()
+NeptunClient.start(applicationContext)
         }
         scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
         scope.launch {
@@ -305,10 +312,11 @@ private var notif3minShown = false
                     prefs.officialAlertsEnabled(),
                     prefs.officialAlertCityScope(),
                     prefs.sirenOverride(),
-                    prefs.followMe()
+                    prefs.followMe(),
+                    prefs.criticalOfflineOverride()
                 ) { flags: Array<Boolean> ->
                     AlertConfig(
-                        flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6], flags[7]
+                        flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6], flags[7], flags[8]
                     )
                 },
                 combine(
@@ -431,6 +439,7 @@ private var notif3minShown = false
                     officialSirenOverride = officialSirenOverride,
                     connected = neptun.connected,
                     offlineElapsedSec = neptun.offlineElapsedSec,
+                    criticalOfflineOverride = config.criticalOfflineOverride,
                     fastVibrationLevel = VIBRATION_ZONE,
                     slowVibrationLevel = VIBRATION_ZONE,
                     focusLocation = focus,
@@ -505,8 +514,10 @@ private var notif3minShown = false
             notif6minShown = false
             notif10minShown = false
             notif20minShown = false
+            notifCriticalShown = false
             try {
                 NotificationManagerCompat.from(this).cancel(NOTIF_MILESTONE)
+                NotificationManagerCompat.from(this).cancel(NOTIF_OFFLINE_CRITICAL)
             } catch (_: SecurityException) {
             }
         }
@@ -576,6 +587,22 @@ private var notif3minShown = false
                 // After 20 minutes, cancel further auto-reconnect attempts
                 NeptunClient.stopReconnect()
             }
+            // Critical offline override: ring an audible notification once the drop outlasts
+            // CRITICAL_OFFLINE_MIN minutes (on its own channel, so it can sound while the
+            // silent CHANNEL_OFFLINE milestones stay quiet).
+            if (state.criticalOfflineOverride && elapsedSinceReconnect >= CRITICAL_OFFLINE_MIN * 60_000L && !notifCriticalShown) {
+                notifCriticalShown = true
+                val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE_CRITICAL)
+                    .setSmallIcon(R.drawable.ic_trident)
+                    .setContentTitle(s.offlineStatusTitle)
+                    .setContentText(s.offlineCritical5Min)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(openAppIntent())
+                    .addAction(0, s.offlineRetryAction, retryPendingIntent())
+                    .build()
+                safeNotify(NOTIF_OFFLINE_CRITICAL, notif)
+            }
         }
 
         notifyMonitor(
@@ -584,7 +611,7 @@ private var notif3minShown = false
                 state.focusPinned -> String.format(s.notifMonitoringCityFormat, state.focusBannerCity)
                 else -> s.notifOngoingTitle
             },
-            text = "",
+            text = if (neptun.degraded && !neptun.neptunDown) s.connDegradedBody else "",
             retryLabel = if (offline != null) s.offlineRetryAction else null
         )
 
@@ -1208,6 +1235,18 @@ private var notif3minShown = false
             NotificationChannel(CHANNEL_OFFLINE, s.offlineChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
                 description = s.offlineChannelDesc
                 enableVibration(true)
+            }
+        )
+        // Critical offline: audible, but a friendly chime (not a siren) — the "we've been
+        // dark for CRITICAL_OFFLINE_MIN minutes" reminder behind the critical-offline override.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_OFFLINE_CRITICAL, s.offlineCriticalChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = s.offlineCriticalChannelDesc
+                enableVibration(true)
+                setSound(
+                    sirenUri(R.raw.critical_offline),
+                    notificationAttributes()
+                )
             }
         )
         // Neutralized tally: informational, always silent (LOW importance) — never rings.

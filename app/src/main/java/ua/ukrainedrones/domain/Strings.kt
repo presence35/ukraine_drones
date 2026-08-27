@@ -40,6 +40,8 @@ object Strings {
         val zoneYellowLabel: String,
         val wizardShelterTitle: String,
         val wizardShelterDesc: String,
+        val wizardJustFunTitle: String,
+        val wizardJustFunDesc: String,
         val settingsSearchHint: String,
         val settingsSearchClear: String,
         val settingsNoResults: String,
@@ -125,6 +127,8 @@ object Strings {
         val madeBy: String,
         val connOnline: String,
         val connOffline: String,
+        val connDegraded: String,
+        val connDegradedBody: String,
         val connServerLine: String,
         val connStatusTitle: String,
         val connNeptunLabel: String,
@@ -214,6 +218,11 @@ object Strings {
         val offlineMilestone6Min: String,
         val offlineMilestone10Min: String,
         val offlineMilestone20Min: String,
+        val offlineCriticalChannelName: String,
+        val offlineCriticalChannelDesc: String,
+        val offlineCritical5Min: String,
+        val offlineCriticalOverrideTitle: String,
+        val offlineCriticalOverrideDesc: String,
         val alertChannelName: String,
         val alertChannelDesc: String,
         val outerAlertChannelName: String,
@@ -530,6 +539,8 @@ object Strings {
         val wizardEditZonesHint: String get() = onboarding.wizardEditZonesHint
         val wizardShelterTitle: String get() = onboarding.wizardShelterTitle
         val wizardShelterDesc: String get() = onboarding.wizardShelterDesc
+        val wizardJustFunTitle: String get() = onboarding.wizardJustFunTitle
+        val wizardJustFunDesc: String get() = onboarding.wizardJustFunDesc
         val fitMapLabel: String get() = onboarding.fitMapLabel
         val dayZonesTitle: String get() = settings.dayZonesTitle
         val nightZonesTitle: String get() = settings.nightZonesTitle
@@ -685,6 +696,8 @@ object Strings {
         val madeBy: String get() = status.madeBy
         val connOnline: String get() = status.connOnline
         val connOffline: String get() = status.connOffline
+        val connDegraded: String get() = status.connDegraded
+        val connDegradedBody: String get() = status.connDegradedBody
         val connServerLine: String get() = status.connServerLine
         val connStatusTitle: String get() = status.connStatusTitle
         val connNeptunLabel: String get() = status.connNeptunLabel
@@ -768,6 +781,11 @@ object Strings {
         val offlineMilestone6Min: String get() = threat.offlineMilestone6Min
         val offlineMilestone10Min: String get() = threat.offlineMilestone10Min
         val offlineMilestone20Min: String get() = threat.offlineMilestone20Min
+        val offlineCriticalChannelName: String get() = threat.offlineCriticalChannelName
+        val offlineCriticalChannelDesc: String get() = threat.offlineCriticalChannelDesc
+        val offlineCritical5Min: String get() = threat.offlineCritical5Min
+        val offlineCriticalOverrideTitle: String get() = threat.offlineCriticalOverrideTitle
+        val offlineCriticalOverrideDesc: String get() = threat.offlineCriticalOverrideDesc
         val alertChannelName: String get() = threat.alertChannelName
         val alertChannelDesc: String get() = threat.alertChannelDesc
         val outerAlertChannelName: String get() = threat.outerAlertChannelName
@@ -1044,6 +1062,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         zoneYellowLabel = "Жовта зона",
         wizardShelterTitle = "Укриття поруч",
         wizardShelterDesc = "Кнопка «Укриття» показує найближчі укриття та час пішки — швидкий шлях до безпеки під час тривоги.",
+        wizardJustFunTitle = "Розваги",
+        wizardJustFunDesc = "Анімації знешкодження, проліт літака та лічильник — це лише для настрою. Не впливають на моніторинг і тривоги. Налаштувати детально можна в ⚙.",
         settingsSearchHint = "Пошук налаштувань",
         settingsSearchClear = "Очистити пошук",
         settingsNoResults = "Нічого не знайдено",
@@ -1127,8 +1147,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         notifUpdateChannelDesc = "Сповіщення про доступні оновлення застосунку.",
         attributionText = "Карта повітряних тривог — NEPTUN",
         madeBy = "Зроблено Presaince",
-        connOnline = "Онлайн",
+connOnline = "Онлайн",
         connOffline = "Офлайн",
+        connDegraded = "Затримка",
+        connDegradedBody = "З'єднання нестабільне — дані про загрози можуть затримуватися.",
         connServerLine = "З'єднання з сервером повітряних тривог NEPTUN.",
         connStatusTitle = "Статус системи",
         connNeptunLabel = "NEPTUN",
@@ -1218,6 +1240,11 @@ val iconSetTitle: String get() = misc.iconSetTitle
         offlineMilestone6Min = "Немає з'єднання з NEPTUN протягом 6 хвилин. Застосунок продовжує спроби підключення у фоновому режимі.",
         offlineMilestone10Min = "Немає з'єднання з NEPTUN протягом 10 хвилин. Застосунок продовжує спроби підключення у фоновому режимі зі зростаючими затримками.",
         offlineMilestone20Min = "Автоперепідключення зупинено після 20 хвилин. Будь ласка: повністю закрийте застосунок, перезавантажте телефон або перевірте інтернет-з'єднання. Підключення відновиться під час наступного відкриття застосунку.",
+        offlineCriticalChannelName = "Критичний офлайн",
+        offlineCriticalChannelDesc = "Дзвінок після 5 хвилин втрати з'єднання з сервером тривог.",
+        offlineCritical5Min = "Немає з'єднання з NEPTUN понад 5 хвилин. Зв'язок утрачено — перевірте інтернет або натисніть Повторити.",
+        offlineCriticalOverrideTitle = "Критичний офлайн-сигнал",
+        offlineCriticalOverrideDesc = "Гучно нагадувати звуком після 5 хвилин без з'єднання з сервером тривог.",
         alertChannelName = "Повітряні тривоги",
         alertChannelDesc = "Сирени повітряної тривоги та термінові зональні сповіщення",
         outerAlertChannelName = "Сповіщення регіону",
@@ -1560,6 +1587,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         zoneYellowLabel = "Yellow zone",
         wizardShelterTitle = "Nearby shelters",
         wizardShelterDesc = "The \"Shelter\" button shows the nearest shelters with walking times — your quick route to safety during an alert.",
+        wizardJustFunTitle = "Just fun",
+        wizardJustFunDesc = "Shoot-down animations, the flyby and the tally are just for fun. They never affect monitoring or alerts. Tune them in ⚙ settings.",
         settingsSearchHint = "Search settings",
         settingsSearchClear = "Clear search",
         settingsNoResults = "Nothing found",
@@ -1643,8 +1672,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         notifUpdateChannelDesc = "Notifications about available app updates.",
         attributionText = "Air threat map — NEPTUN",
         madeBy = "Made by Presaince",
-        connOnline = "Online",
+connOnline = "Online",
         connOffline = "Offline",
+        connDegraded = "Degraded",
+        connDegradedBody = "Connection is unstable — threat data may be delayed.",
         connServerLine = "Connection to the NEPTUN air-threat server.",
         connStatusTitle = "System status",
         connNeptunLabel = "NEPTUN",
@@ -1734,6 +1765,11 @@ alertBannerFormat = "%1\$s: alert",
         offlineMilestone6Min = "No NEPTUN connection for 6 minutes. The app keeps retrying in the background.",
         offlineMilestone10Min = "No NEPTUN connection for 10 minutes. The app keeps retrying in the background with increasing delays.",
         offlineMilestone20Min = "Auto-reconnect stopped after 20 minutes. Please: force-close the app, reboot your phone, or check your internet connection. The app will resume reconnecting next time you open it.",
+        offlineCriticalChannelName = "Critical offline",
+        offlineCriticalChannelDesc = "Rings after 5 minutes of lost connection to the threat server.",
+        offlineCritical5Min = "No NEPTUN connection for over 5 minutes. The live feed is down — check your internet or tap Retry.",
+        offlineCriticalOverrideTitle = "Critical offline alert",
+        offlineCriticalOverrideDesc = "Ring an audible reminder after 5 minutes without a connection to the threat server.",
         alertChannelName = "Air alerts",
         alertChannelDesc = "Air-raid sirens and urgent zone alerts",
         outerAlertChannelName = "Region alerts",

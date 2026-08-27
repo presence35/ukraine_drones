@@ -37,6 +37,7 @@ import kotlin.random.Random
 data class UiState(
     val connected: Boolean = false,
     val neptunDown: Boolean = false,                 // NEPTUN offline (real or simulated via test toggle)
+    val degraded: Boolean = false,                   // connected but stream quiet (orange pill)
     val forceOffline: Boolean = false,              // TEMP test toggle — simulate NEPTUN offline
     val threatsInner: List<Threat> = emptyList(), // reaching within the red time tier
     val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
@@ -75,6 +76,7 @@ data class UiState(
     val officialAlertsEnabled: Boolean = true,
     val officialAlertCityScope: Boolean = false,
     val sirenOverride: Boolean = false,
+    val criticalOfflineOverride: Boolean = true,
     val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
     val silencedTypes: Set<ThreatType> = emptySet(),    // alerts off (still on the map, dimmed)
     val activeZone: ThreatZone? = null,           // most specific zone with a threat
@@ -304,6 +306,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val officialAlertCityScope: Boolean,
         val sirenOverride: Boolean,
         val followMe: Boolean,
+        val criticalOfflineOverride: Boolean,
         val pinnedCity: String?,
         val wizardCompleted: Boolean?,
         val batteryOnboardShown: Boolean,
@@ -313,6 +316,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val showMediumCities: Boolean,
         val showSmallCities: Boolean,
         val deathAnimationEnabled: Boolean,
+        val flybyAnimationEnabled: Boolean,
         val followBullet: Boolean,
         val neutralizedTallyEnabled: Boolean,
         val neutralizedTallyAllUkraine: Boolean,
@@ -364,7 +368,9 @@ val fastGroupCollapsed: Boolean,
         val neutralizedTallyEnabled: Boolean,
         val neutralizedTallyAllUkraine: Boolean,
         val fastGroupCollapsed: Boolean,
-        val slowGroupCollapsed: Boolean
+        val slowGroupCollapsed: Boolean,
+        val criticalOfflineOverride: Boolean,
+        val flybyAnimationEnabled: Boolean
     )
 
     private val liveSnapshot = combine(
@@ -419,12 +425,14 @@ val fastGroupCollapsed: Boolean,
             prefs.neutralizedTallyEnabled(),
             prefs.neutralizedTallyAllUkraine(),
             prefs.fastGroupCollapsed(),
-            prefs.slowGroupCollapsed()
+            prefs.slowGroupCollapsed(),
+            prefs.criticalOfflineOverride(),
+            prefs.flybyAnimationEnabled()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4], flags[5],
                 flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12],
-                flags[13], flags[14], flags[15], flags[16]
+                flags[13], flags[14], flags[15], flags[16], flags[17], flags[18]
             )
         },
         combine(
@@ -502,6 +510,7 @@ combine(
             officialAlertCityScope = b.officialAlertCityScope,
             sirenOverride = b.sirenOverride,
             followMe = b.followMe,
+            criticalOfflineOverride = b.criticalOfflineOverride,
             pinnedCity = c.pinnedCity,
             wizardCompleted = c.wizardCompleted,
             batteryOnboardShown = c.batteryOnboardShown,
@@ -511,6 +520,7 @@ combine(
             showMediumCities = b.showMediumCities,
             showSmallCities = b.showSmallCities,
             deathAnimationEnabled = b.deathAnimationEnabled,
+            flybyAnimationEnabled = b.flybyAnimationEnabled,
             followBullet = b.followBullet,
             neutralizedTallyEnabled = b.neutralizedTallyEnabled,
             neutralizedTallyAllUkraine = b.neutralizedTallyAllUkraine,
@@ -638,6 +648,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             officialAlertsEnabled = prefs.officialAlertsEnabled,
             officialAlertCityScope = prefs.officialAlertCityScope,
             sirenOverride = prefs.sirenOverride,
+            criticalOfflineOverride = prefs.criticalOfflineOverride,
             activeZoneParams = effectiveParams,
             activeSlowRedArmed = activeArmed.slowRed,
             activeSlowYellowArmed = activeArmed.slowYellow,
@@ -852,6 +863,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         return UiState(
             connected = neptun.connected,
             neptunDown = neptunDown,
+            degraded = neptun.degraded,
             forceOffline = neptun.forceOffline,
             threatsInner = inInner,
             threatsOuter = inOuter,
@@ -938,6 +950,10 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
     fun setSirenOverride(override: Boolean) {
         viewModelScope.launch { prefs.setSirenOverride(override) }
+    }
+
+    fun setCriticalOfflineOverride(enabled: Boolean) {
+        viewModelScope.launch { prefs.setCriticalOfflineOverride(enabled) }
     }
 
     fun setBatteryOnboardShown(shown: Boolean) {
@@ -1197,6 +1213,16 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
     fun setDeathAnimationEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setDeathAnimationEnabled(enabled) }
+    }
+
+    /** Master "Just Fun" switch: flips the shoot-down animation, MiG flyby and tally together.
+     *  Purely cosmetic — never touches monitoring or alerts. */
+    fun setJustFunEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            prefs.setDeathAnimationEnabled(enabled)
+            prefs.setFlybyAnimationEnabled(enabled)
+            prefs.setNeutralizedTallyEnabled(enabled)
+        }
     }
 
     fun setFlybyAnimationEnabled(enabled: Boolean) {

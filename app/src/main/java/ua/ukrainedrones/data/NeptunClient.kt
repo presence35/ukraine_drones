@@ -1,5 +1,10 @@
 package ua.ukrainedrones
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,6 +59,17 @@ data class NeptunState(
         get() = forceOffline || !connected
 
     /**
+     * Connected but the stream has gone quiet — the socket is up yet no frame has arrived
+     * for [DEGRADED_STALE_MS]. This is the orange middle state: not a real outage (the
+     * watchdog hasn't fired), but telemetry is clearly delayed, often a flaky Wi-Fi link.
+     * Only meaningful while [neptunDown] is false.
+     */
+    val degraded: Boolean
+        get() = !neptunDown && lastFrameAt > 0 &&
+            System.currentTimeMillis() - lastFrameAt >= NeptunClient.DEGRADED_STALE_MS
+
+
+    /**
      * The official oblast-alert list the UI/notifications read. When the socket is down the
      * last-known list is HELD rather than cleared: an outage must never look like "alert
      * ended" (no fabricated all-clear, no banner flicker) — the truth arrives on reconnect.
@@ -84,6 +100,11 @@ object NeptunClient {
      */
     const val OFFLINE_GRACE_MS = 5_000L
 
+    /** How long the stream may go without a frame before it's flagged [NeptunState.degraded]
+     *  (orange pill). Below the 15s REST-refresh / 45s watchdog thresholds so a user sees the
+     *  "delayed" warning before it ever looks like a real outage. */
+    const val DEGRADED_STALE_MS = 30_000L
+
     /** How long a user-shot drone stays "remembered": a same-id respawn inside this window
      *  is the same drone coming back (no new alert); after it, a fresh appearance is a new threat. */
     const val USER_SHOT_GRACE_MS = 3_000L
@@ -104,6 +125,21 @@ object NeptunClient {
     private val connectInFlight = AtomicBoolean(false)
     private var reconnectJob: Job? = null
 
+    /**
+     * Whether the OS currently reports a validated internet connection. When there is provably
+     * no network, aggressive reconnect attempts are pure radio burn (nothing can arrive) — the
+     * backoff then widens to the [NO_NETWORK_RECONNECT_MS] ceiling and a network return
+     * ([networkAvailable]) kicks an immediate retry. Keeps fast polling on real links, stops
+     * hammering on dead ones.
+     */
+    @Volatile
+    private var networkValidated = true
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    /** Reconnect ceiling while the OS reports no usable network (vs the 15s cap online). */
+    private const val NO_NETWORK_RECONNECT_MS = 60_000L
+
     private var started = false
 
     private val _state = MutableStateFlow(NeptunState())
@@ -112,7 +148,8 @@ object NeptunClient {
     private val _removedThreats = MutableSharedFlow<ThreatRemoved>(extraBufferCapacity = 16)
     val removedThreats: SharedFlow<ThreatRemoved> = _removedThreats.asSharedFlow()
 
-    fun start() {
+    fun start(context: Context) {
+        appContext = context.applicationContext
         if (started) {
             if (ws == null && !manuallyStopped) connect()
             return
@@ -123,6 +160,7 @@ object NeptunClient {
         }
         manuallyStopped = false
         connectInFlight.set(false)
+        registerNetworkCallback()
         connect()
         startKeepAliveTasks()
         startConnectionLog()
@@ -138,8 +176,66 @@ object NeptunClient {
         // The dying socket's guarded onClosed/onFailure won't clear the flag; leave it
         // fresh so a later start() can connect.
         connectInFlight.set(false)
+        unregisterNetworkCallback()
         scope.cancel()
     }
+
+    /**
+     * Watch the OS connectivity so we only reconnect aggressively when there is provably a
+     * network to reach. On a lost/unavailable/unvalidated link the reconnect backoff widens
+     * to [NO_NETWORK_RECONNECT_MS] (retries against a dead link are pure radio burn); the
+     * moment a validated network appears, [networkAvailable] fires and retries immediately.
+     */
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        val cm = connectivityManager
+            ?: runCatching {
+                appContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            }.getOrNull()
+        connectivityManager = cm ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (networkValidated) return
+                networkValidated = true
+                if (!manuallyStopped && !_state.value.connected) retryNow()
+            }
+
+            override fun onLost(network: Network) {
+                networkValidated = false
+            }
+
+            override fun onUnavailable() {
+                networkValidated = false
+            }
+
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                if (validated && !networkValidated) {
+                    networkValidated = true
+                    if (!manuallyStopped && !_state.value.connected) retryNow()
+                } else if (!validated) {
+                    networkValidated = false
+                }
+            }
+        }
+        networkCallback = callback
+        runCatching {
+            cm.registerNetworkCallback(
+                NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build(),
+                callback
+            )
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val cb = networkCallback ?: return
+        networkCallback = null
+        runCatching { connectivityManager?.unregisterNetworkCallback(cb) }
+    }
+
+    private var appContext: Context? = null
 
     /**
      * TEMP test toggle: force the app to behave as if NEPTUN were offline. Updates the shared
@@ -410,7 +506,18 @@ object NeptunClient {
                 }
                 ws = null
                 connectInFlight.set(false)
-                _state.update { it.copy(connected = false, offlineSince = System.currentTimeMillis(), reconnectStartMillis = System.currentTimeMillis()) }
+                // Latch the outage start on the FIRST drop, not on every reconnect failure —
+                // otherwise a persistent outage (retries every 1-15s) never lets
+                // offlineElapsedSec / reconnectStartMillis accumulate past a few seconds, and
+                // the milestone notifications (3/6/10/20 min) never fire. Mirrors the
+                // setForceOffline latch pattern. Cleared on the next successful open.
+                _state.update {
+                    it.copy(
+                        connected = false,
+                        offlineSince = it.offlineSince ?: System.currentTimeMillis(),
+                        reconnectStartMillis = if (it.reconnectStartMillis == 0L) System.currentTimeMillis() else it.reconnectStartMillis
+                    )
+                }
                 scheduleReconnect()
             }
 
@@ -420,12 +527,14 @@ object NeptunClient {
                     return
                 }
                 connectInFlight.set(false)
+                // Same latch as onClosed: the outage start is the first drop, not the last
+                // failed reconnect attempt (see the onClosed comment for why this matters).
                 _state.update {
                     it.copy(
                         connected = false,
                         lastError = t.message,
-                        offlineSince = System.currentTimeMillis(),
-                        reconnectStartMillis = System.currentTimeMillis()
+                        offlineSince = it.offlineSince ?: System.currentTimeMillis(),
+                        reconnectStartMillis = if (it.reconnectStartMillis == 0L) System.currentTimeMillis() else it.reconnectStartMillis
                     )
                 }
                 scheduleReconnect()
@@ -446,7 +555,11 @@ object NeptunClient {
         reconnectAttempt++
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            delay(reconnectDelayMs(reconnectAttempt))
+            // When the OS says there's no usable network, don't hammer a dead link — wait out
+            // the long ceiling. The callback's onAvailable / onCapabilitiesChanged kicks an
+            // immediate retry the moment a validated network returns.
+            val delayMs = if (networkValidated) reconnectDelayMs(reconnectAttempt) else NO_NETWORK_RECONNECT_MS
+            delay(delayMs)
             if (!manuallyStopped) connect()
         }
     }

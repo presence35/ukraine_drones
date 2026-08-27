@@ -16,6 +16,8 @@ data class WidgetSnapshot(
     val nearestKm: Double? = null,
     val officialAlert: Boolean = false,
     val sourceOnline: Boolean = false,
+    /** Connected but the stream is quiet (orange) — mirrors the app's degraded pill. */
+    val sourceDegraded: Boolean = false,
     /** The nearest non-stale map-enabled threat (id + position), so the widget can highlight
      *  and reveal it — mirrors the footer strip's nearest-first semantics. */
     val primaryThreat: WidgetThreat? = null,
@@ -94,6 +96,7 @@ fun computeWidgetSnapshot(
         nearestKm = nearestKm,
         officialAlert = officialAlert,
         sourceOnline = !offline,
+        sourceDegraded = !offline && neptun.degraded,
         primaryThreat = primaryThreat,
         updatedAtMs = now
     )

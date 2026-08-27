@@ -44,6 +44,7 @@ class ZonePrefs(private val context: Context) {
     private val followMeKey = booleanPreferencesKey("follow_me")
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
     private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
+    private val criticalOfflineOverrideKey = booleanPreferencesKey("critical_offline_override")
     private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
     private val threatToggleHintRemainingKey = intPreferencesKey("threat_toggle_hint_remaining")
     private val flourishEjectHintRemainingKey = intPreferencesKey("flourish_eject_hint_remaining")
@@ -287,6 +288,15 @@ class ZonePrefs(private val context: Context) {
 
     suspend fun setForceOffline(force: Boolean) {
         context.dataStore.edit { it[forceOfflineKey] = force }
+    }
+
+    /** Critical offline override: after [AlertService.CRITICAL_OFFLINE_MIN] minutes offline,
+     *  ring a dedicated audible notification instead of the silent milestone only. */
+    fun criticalOfflineOverride(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[criticalOfflineOverrideKey] ?: true }
+
+    suspend fun setCriticalOfflineOverride(enabled: Boolean) {
+        context.dataStore.edit { it[criticalOfflineOverrideKey] = enabled }
     }
 
     fun language(): Flow<AppLanguage> =

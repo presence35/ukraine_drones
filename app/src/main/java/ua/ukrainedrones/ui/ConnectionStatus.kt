@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 internal fun ConnectionStatus(
     neptunDown: Boolean,
+    degraded: Boolean,
     forceOffline: Boolean,
     onForceOfflineChange: (Boolean) -> Unit,
     onSimulateMig: () -> Unit,
@@ -60,8 +61,17 @@ internal fun ConnectionStatus(
     s: Strings.StringSet,
     modifier: Modifier = Modifier
 ) {
-    val dotColor = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50)
-    val label = if (neptunDown) s.connOffline else s.connOnline
+    // Three-tier connection: red offline / orange degraded / green online.
+    val connColor = when {
+        neptunDown -> Color(0xFFE57373)
+        degraded -> Color(0xFFFB8C00)
+        else -> Color(0xFF4CAF50)
+    }
+    val label = when {
+        neptunDown -> s.connOffline
+        degraded -> s.connDegraded
+        else -> s.connOnline
+    }
     val pillInteraction = remember { MutableInteractionSource() }
         Row(
         modifier = modifier
@@ -80,13 +90,13 @@ internal fun ConnectionStatus(
             painter = painterResource(R.drawable.neptun),
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            colorFilter = ColorFilter.tint(dotColor),
+            colorFilter = ColorFilter.tint(connColor),
             modifier = Modifier.size(width = 14.dp, height = 14.dp)
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = label,
-            color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
+            color = connColor,
             style = MaterialTheme.typography.labelMedium
         )
     }
@@ -113,7 +123,7 @@ internal fun ConnectionStatus(
                         modifier = Modifier
                             .size(10.dp)
                             .clip(CircleShape)
-                            .background(dotColor)
+                            .background(connColor)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(s.connStatusTitle, modifier = Modifier.weight(1f))
@@ -163,7 +173,7 @@ internal fun ConnectionStatus(
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SourceStatusRow(
-                        color = if (neptunDown) Color(0xFFE57373) else Color(0xFF4CAF50),
+                        color = connColor,
                         name = s.connNeptunLabel,
                         active = !neptunDown,
                         activeLabel = s.connActiveLabel

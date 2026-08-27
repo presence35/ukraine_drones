@@ -361,6 +361,7 @@ class ThreatWidget : GlanceAppWidget() {
 
     private fun sourcePill(snapshot: WidgetSnapshot, strings: Strings.StringSet): Pair<String, Color> = when {
         !snapshot.sourceOnline -> strings.status.connOffline to RED
+        snapshot.sourceDegraded -> strings.status.connDegraded to ORANGE
         else -> strings.status.connOnline to GREEN
     }
 
@@ -387,6 +388,7 @@ class ThreatWidget : GlanceAppWidget() {
         private val MUTED = Color(0xFF9E9E9E)
         private val RED = Color(0xFFE53935)
         private val AMBER = Color(0xFFFDD835)
+        private val ORANGE = Color(0xFFFB8C00)
         private val GREEN = Color(0xFF43A047)
         private val BLUE = Color(0xFF1E88E5)
         private val GOLD = Color(0xFFFFD700)

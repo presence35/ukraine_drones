@@ -15,6 +15,7 @@ Only when the user says **"release it"**, perform a full release:
 
 ## While working
 
+- English only during development: never write, update, or translate the Ukrainian strings.  Leave the existing `Strings`/`Cities` UA data untouched.
 - Append user-visible changes to `CHANGELOG.md` under `## [Unreleased]` as you go, so any session can release them.
 - Changelog entries are short one-liners: `- Area: change / Область: зміна` (EN sentence, then UA after ` / `). No multi-paragraph essays.
 - The server `version.json` is generated from `app/version.properties` (versionCode/versionName) plus `app/notes_en.txt` / `app/notes_ua.txt`. FTP creds live in `app/upload.properties` (git-ignored).

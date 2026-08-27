@@ -61,11 +61,13 @@ internal fun FirstLaunchWizard(
     fastRedArmed: Boolean,
     fastYellowArmed: Boolean,
     sheltersEnabled: Boolean,
+    justFun: Boolean,
     onChoose: (AppLanguage) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onThreatEnabledToggle: (ThreatType, Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
+    onJustFunChange: (Boolean) -> Unit,
     onSlowRedChange: (Int) -> Unit,
     onSlowYellowChange: (Int) -> Unit,
     onSlowRedArmedChange: (Boolean) -> Unit,
@@ -182,7 +184,7 @@ internal fun FirstLaunchWizard(
                         onSlowRedArmedChange = onSlowRedArmedChange,
                         onSlowYellowArmedChange = onSlowYellowArmedChange
                     )
-                    else -> SetupFeaturesStep(s)
+                    else -> SetupFeaturesStep(s, justFun, onJustFunChange)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -679,7 +681,11 @@ private fun WizardZoneSliderRow(
 }
 
 @Composable
-private fun SetupFeaturesStep(s: Strings.StringSet) {
+private fun SetupFeaturesStep(
+    s: Strings.StringSet,
+    justFun: Boolean,
+    onJustFunChange: (Boolean) -> Unit
+) {
     val features = remember(s) {
         guideFeatures(s).filter { it.id in setOf("live", "zones", "night", "shelter") }
     }
@@ -711,6 +717,31 @@ private fun SetupFeaturesStep(s: Strings.StringSet) {
                     )
                 }
             }
+        }
+        Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    s.wizardJustFunTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    s.wizardJustFunDesc,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = justFun,
+                onCheckedChange = onJustFunChange
+            )
         }
     }
 }

@@ -315,6 +315,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 officialAlertsEnabled = uiState.officialAlertsEnabled,
                 officialAlertCityScope = uiState.officialAlertCityScope,
                 sirenOverride = uiState.sirenOverride,
+                criticalOfflineOverride = uiState.criticalOfflineOverride,
                 nightEnabled = uiState.nightEnabled,
                 nightStartMin = uiState.nightStartMin,
                 nightEndMin = uiState.nightEndMin,
@@ -348,7 +349,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 hapticsEnabled = uiState.hapticsEnabled,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
                 flybyAnimationEnabled = uiState.flybyAnimationEnabled,
-                onFlybyAnimationChange = { viewModel.setFlybyAnimationEnabled(it) },
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
                 neutralizedTallyAllUkraine = uiState.neutralizedTallyAllUkraine,
@@ -368,6 +368,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onOfficialAlertsChange = { viewModel.setOfficialAlertsEnabled(it) },
                 onOfficialAlertCityScopeChange = { viewModel.setOfficialAlertCityScope(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
+                onCriticalOfflineOverrideChange = { viewModel.setCriticalOfflineOverride(it) },
                 onNightEnabledChange = { viewModel.setNightEnabled(it) },
                 onNightStartChange = { viewModel.setNightStartMin(it) },
                 onNightEndChange = { viewModel.setNightEndMin(it) },
@@ -400,6 +401,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 screen = Screen.SHELTERS
             },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
+                onFlybyAnimationChange = { viewModel.setFlybyAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
                 onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
                 onNeutralizedTallyAllUkraineChange = { viewModel.setNeutralizedTallyAllUkraine(it) },
@@ -515,11 +517,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             fastRedArmed = uiState.fastRedArmed,
             fastYellowArmed = uiState.fastYellowArmed,
             sheltersEnabled = uiState.sheltersEnabled,
+            justFun = uiState.deathAnimationEnabled && uiState.flybyAnimationEnabled && uiState.neutralizedTallyEnabled,
             onChoose = { viewModel.setLanguage(it) },
             onIconSetChange = { viewModel.setThreatIconSet(it) },
             onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
             onFollowMeChange = { viewModel.setFollowMe(it) },
             onPinnedCityChange = { viewModel.setPinnedCity(it) },
+            onJustFunChange = { viewModel.setJustFunEnabled(it) },
             onSlowRedChange = { viewModel.setSlowRedKm(it) },
             onSlowYellowChange = { viewModel.setSlowYellowKm(it) },
             onSlowRedArmedChange = { viewModel.setSlowRedArmed(it) },
@@ -774,6 +778,7 @@ private fun MapScreen(
                 }
                 ConnectionStatus(
                     neptunDown = uiState.neptunDown,
+                    degraded = uiState.degraded,
                     forceOffline = uiState.forceOffline,
                     onForceOfflineChange = onForceOfflineChange,
                     onSimulateMig = onSimulateMig,
@@ -854,15 +859,13 @@ private fun MapScreen(
                         onFlourishEjected = onFlourishEjected,
                         modifier = Modifier.fillMaxSize()
                     )
-uiState.flyby?.let { show ->
-    if (uiState.flybyAnimationEnabled) {
-        AviationFlybyOverlay(
-            show = show,
-            iconSet = uiState.iconSet,
-            onFinished = onFlybyFinished
-        )
-    }
-}
+                    uiState.flyby?.let { show ->
+                        AviationFlybyOverlay(
+                            show = show,
+                            iconSet = uiState.iconSet,
+                            onFinished = onFlybyFinished
+                        )
+                    }
                     // Basemap attribution (required by the CARTO basemap free tier) stacked
                     // under the scale bar so the pair matches the floating buttons' height.
                     Column(

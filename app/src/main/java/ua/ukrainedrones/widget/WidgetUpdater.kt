@@ -40,6 +40,7 @@ object WidgetUpdater {
         val nearestKm = intPreferencesKey("nearest_km")
         val officialAlert = booleanPreferencesKey("official_alert")
         val sourceOnline = booleanPreferencesKey("source_online")
+        val sourceDegraded = booleanPreferencesKey("source_degraded")
         val primaryId = stringPreferencesKey("primary_id")
         val primaryLat = stringPreferencesKey("primary_lat")
         val primaryLon = stringPreferencesKey("primary_lon")
@@ -111,6 +112,7 @@ object WidgetUpdater {
             prefs[Keys.nearestKm] = snapshot.nearestKm?.toInt() ?: -1
             prefs[Keys.officialAlert] = snapshot.officialAlert
             prefs[Keys.sourceOnline] = snapshot.sourceOnline
+            prefs[Keys.sourceDegraded] = snapshot.sourceDegraded
             val pt = snapshot.primaryThreat
             if (pt != null) {
                 prefs[Keys.primaryId] = pt.id
@@ -148,6 +150,7 @@ object WidgetUpdater {
             nearestKm = prefs[Keys.nearestKm]?.takeIf { it >= 0 }?.toDouble(),
             officialAlert = prefs[Keys.officialAlert] ?: false,
             sourceOnline = prefs[Keys.sourceOnline] ?: false,
+            sourceDegraded = prefs[Keys.sourceDegraded] ?: false,
             primaryThreat = prefs[Keys.primaryId]?.let { id ->
                 val lat = prefs[Keys.primaryLat]?.toDoubleOrNull()
                 val lon = prefs[Keys.primaryLon]?.toDoubleOrNull()

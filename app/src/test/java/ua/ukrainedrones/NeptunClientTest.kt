@@ -54,4 +54,24 @@ class NeptunClientTest {
         assertEquals(36.75, t.lon, 1e-9)
         assertEquals(1_000_000L, t.confirmedAtMillis)
     }
+
+    @Test
+    fun `stream is degraded when connected but no frame arrived for the threshold`() {
+        val now = System.currentTimeMillis()
+        val fresh = NeptunState(connected = true, lastFrameAt = now - 5_000L)
+        assertFalse(fresh.degraded)
+
+        // Exactly at the threshold → degraded (orange middle state, not yet offline).
+        val stale = NeptunState(connected = true, lastFrameAt = now - NeptunClient.DEGRADED_STALE_MS)
+        assertTrue(stale.degraded)
+
+        // Offline always wins — never orange once the socket is actually down.
+        val down = NeptunState(connected = false, lastFrameAt = now - NeptunClient.DEGRADED_STALE_MS)
+        assertFalse(down.degraded)
+        assertTrue(down.neptunDown)
+
+        // No frames yet (lastFrameAt == 0) → not degraded, still green.
+        val never = NeptunState(connected = true, lastFrameAt = 0L)
+        assertFalse(never.degraded)
+    }
 }

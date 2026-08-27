@@ -78,7 +78,7 @@ class NeutralizedTally(
     private fun postNeutralizedTally(lang: AppLanguage) {
         scope.launch {
             val allUkraine = runCatching { ZonePrefs(context).neutralizedTallyAllUkraine().first() }.getOrDefault(false)
-            val badge = if (allUkraine) "🇺🇦" else "🏙️"
+            val badge = if (allUkraine) "🇺🇦" else ""
             val breakdown = perTypeCounts.entries
                 .sortedWith(compareByDescending<Map.Entry<ThreatType, Int>> { it.value }.thenBy { it.key.ordinal })
                 .joinToString(" · ") { (type, count) ->
