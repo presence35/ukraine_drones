@@ -1180,6 +1180,7 @@ fun SettingsScreen(
                 CollapsibleSectionCard(
                     title = s.justFunSectionTitle,
                     icon = painterResource(R.drawable.ic_explosion),
+                    emoji = "🥳",
                     expanded = collapse.flourish,
                     subtitle = s.justFunSubtitle(deathAnimationEnabled, neutralizedTallyEnabled),
                     onToggle = { onCollapseChange(collapse.copy(flourish = !collapse.flourish)) }
@@ -2481,6 +2482,7 @@ private fun CollapsibleSectionCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     subtitle: String? = null,
+    emoji: String? = null,
     cardColor: Color? = null,
     cardBorder: Color? = null,
     content: @Composable ColumnScope.() -> Unit
@@ -2516,12 +2518,20 @@ private fun CollapsibleSectionCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    painter = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
+                if (emoji != null) {
+                    Text(
+                        text = emoji,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else {
+                    Icon(
+                        painter = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         title,

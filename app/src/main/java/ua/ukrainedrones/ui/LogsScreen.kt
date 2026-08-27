@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -223,7 +224,7 @@ fun LogsScreen(
             }
             if (filter == LogsFilter.CONNECTIONS && connEvents.isNotEmpty()) {
                 item(key = "retrylog") {
-                    RetryLogCard(connEvents, connRetry, s, now)
+                    RetryLogCard(connEvents, connRetry, s, now) { NeptunClient.dismissConnLog() }
                 }
             }
             if (visible.isEmpty()) {
@@ -829,7 +830,8 @@ private fun RetryLogCard(
     events: List<ConnEvent>,
     retry: ConnRetryState?,
     s: Strings.StringSet,
-    now: Long
+    now: Long,
+    onDismiss: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -837,7 +839,8 @@ private fun RetryLogCard(
             .clip(RoundedCornerShape(12.dp))
             .background(DebugAmber.copy(alpha = 0.08f))
             .border(1.dp, DebugAmber.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
-            .padding(12.dp),
+            .padding(12.dp)
+            .clickable(onClick = onDismiss),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -853,6 +856,13 @@ private fun RetryLogCard(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = DebugAmber
+            )
+            Spacer(Modifier.weight(1f))
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = null,
+                tint = DebugAmber.copy(alpha = 0.7f),
+                modifier = Modifier.size(16.dp)
             )
         }
         events.reversed().forEach { ev ->

@@ -75,7 +75,6 @@ internal fun FirstLaunchWizard(
     neutralizedTallyAllUkraine: Boolean,
     iconSetForFun: ThreatIconSet,
     onChoose: (AppLanguage) -> Unit,
-    onIconSetChange: (ThreatIconSet) -> Unit,
     onThreatEnabledToggle: (ThreatType, Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
@@ -178,22 +177,6 @@ internal fun FirstLaunchWizard(
                     }
                     1 -> {
                         WizardThreatGrid(current, iconSet, hiddenTypes, silencedTypes, onThreatEnabledToggle)
-                        Spacer(Modifier.height(20.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            s.iconSetTitle,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        IconSetSelector(
-                            lang = current,
-                            selected = iconSet,
-                            onChange = onIconSetChange,
-                            slot = 28.dp
-                        )
                     }
                     2 -> SetupLocationStep(current, mode = locationMode, pinnedCity = pinnedCity, onModeChange = { locationMode = it }, onFollowMeChange = onFollowMeChange, onPinnedCityChange = onPinnedCityChange)
                     3 -> SetupZoneControlsStep(
@@ -294,14 +277,14 @@ internal fun FirstLaunchWizard(
                     }
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
+                            .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .height(3.dp)
                             .background(MaterialTheme.colorScheme.outlineVariant)
                     )
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
+                            .align(Alignment.TopStart)
                             .fillMaxWidth(progressFrac)
                             .height(3.dp)
                             .background(Brush.horizontalGradient(listOf(UkraineYellow, UkraineBlue)))
@@ -369,86 +352,81 @@ private fun WizardThreatGrid(
             )
         )
         Spacer(Modifier.height(14.dp))
-        fastAndSlowGroups(lang).forEachIndexed { i, (groupIcon, groupLabel, types) ->
-            if (i > 0) {
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(Modifier.height(10.dp))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    painter = painterResource(id = groupIcon),
-                    contentDescription = if (groupIcon == R.drawable.ic_lightning) s.fastGroupIconDesc else s.slowGroupIconDesc,
-                    tint = if (groupIcon == R.drawable.ic_turtle) TurtleGreen else Color.Unspecified,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    groupLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            // TODO: Dynamic column count based on available width (onGloballyPositioned) for
-            //  tablet/foldable support. Currently hardcoded to 4 columns.
-            types.toList().chunked(4).forEach { row ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    row.forEach { type ->
-                        val on = type !in hiddenTypes && type !in silencedTypes
-                        val info = ThreatTypeCatalog.INFO.getValue(type)
-                        val label = if (lang == AppLanguage.UA) {
-                            info.shortLabelUa ?: info.labelUa
-                        } else {
-                            info.shortLabelEn ?: info.labelEn
-                        }
-                        val onColor = MaterialTheme.colorScheme.onSurface
-                        val offColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        val cellInteraction = remember { MutableInteractionSource() }
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(
-                                    width = 1.5.dp,
-                                    color = if (on) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outlineVariant,
-                                    shape = RoundedCornerShape(12.dp)
+        val groups = fastAndSlowGroups(lang)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            groups.forEach { (groupIcon, groupLabel, types) ->
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(id = groupIcon),
+                            contentDescription = if (groupIcon == R.drawable.ic_lightning) s.fastGroupIconDesc else s.slowGroupIconDesc,
+                            tint = if (groupIcon == R.drawable.ic_turtle) TurtleGreen else Color.Unspecified,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            groupLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        types.forEach { type ->
+                            val on = type !in hiddenTypes && type !in silencedTypes
+                            val info = ThreatTypeCatalog.INFO.getValue(type)
+                            val label = if (lang == AppLanguage.UA) {
+                                info.shortLabelUa ?: info.labelUa
+                            } else {
+                                info.shortLabelEn ?: info.labelEn
+                            }
+                            val onColor = MaterialTheme.colorScheme.onSurface
+                            val offColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            val cellInteraction = remember { MutableInteractionSource() }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .border(
+                                        width = 1.5.dp,
+                                        color = if (on) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.outlineVariant,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .pressTick(cellInteraction)
+                                    .clickable(
+                                        interactionSource = cellInteraction,
+                                        indication = ripple(bounded = true),
+                                        onClick = { onThreatEnabledToggle(type, !on) }
+                                    )
+                                    .padding(vertical = 12.dp, horizontal = 6.dp)
+                            ) {
+                                ThreatIcon(
+                                    type = type,
+                                    set = iconSet,
+                                    size = 52.dp,
+                                    tint = if (on) Color.Unspecified else offColor,
+                                    dimmed = !on
                                 )
-                                .pressTick(cellInteraction)
-                                .clickable(
-                                    interactionSource = cellInteraction,
-                                    indication = ripple(bounded = true),
-                                    onClick = { onThreatEnabledToggle(type, !on) }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (on) onColor else offColor,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                .padding(vertical = 14.dp, horizontal = 6.dp)
-                        ) {
-                            ThreatIcon(
-                                type = type,
-                                set = iconSet,
-                                size = 40.dp,
-                                tint = if (on) Color.Unspecified else offColor,
-                                dimmed = !on
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (on) onColor else offColor,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(10.dp))
             }
         }
     }
@@ -604,6 +582,13 @@ private fun SetupZoneControlsStep(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface
         )
+        FeatureDiagram(
+            kind = GuideDiagram.ZONES,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(14.dp))
+        )
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -622,6 +607,12 @@ private fun SetupZoneControlsStep(
                     onKmChange = onSlowRedChange,
                     kmUnit = s.kmUnit
                 )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    s.wizardEditZonesHint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -637,7 +628,7 @@ private fun SetupZoneControlsStep(
                         contentAlignment = Alignment.Center
                     ) {
                         TeardropShelterIcon(
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(30.dp),
                             tint = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.primary
                         )
                     }
@@ -669,7 +660,7 @@ private fun SetupZoneControlsStep(
                         )
                     }
                     Text(
-                        s.zoneButtonRed,
+                        s.zoneRedLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)
@@ -695,7 +686,7 @@ private fun SetupZoneControlsStep(
                         }
                     }
                     Text(
-                        s.wizardEditZonesHint,
+                        s.editZonesLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)
@@ -821,10 +812,28 @@ private fun SetupFeaturesStep(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.height(2.dp))
+                val justFunGearId = "justFunGear"
                 Text(
-                    s.wizardJustFunDesc,
+                    buildAnnotatedString {
+                        append(s.wizardJustFunDesc)
+                        append(' ')
+                        appendInlineContent(justFunGearId, "[gear]")
+                        append(' ')
+                        append(s.wizardJustFunDescGearSuffix)
+                    },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    inlineContent = mapOf(
+                        justFunGearId to InlineTextContent(
+                            Placeholder(14.sp, 14.sp, PlaceholderVerticalAlign.TextCenter)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_settings_ua),
+                                contentDescription = s.settingsButton,
+                                tint = Color.Unspecified
+                            )
+                        }
+                    )
                 )
             }
             Switch(

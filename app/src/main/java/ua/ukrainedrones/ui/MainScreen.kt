@@ -512,7 +512,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             fastRedArmed = uiState.fastRedArmed,
             fastYellowArmed = uiState.fastYellowArmed,
             sheltersEnabled = uiState.sheltersEnabled,
-            justFun = uiState.deathAnimationEnabled && uiState.flybyAnimationEnabled && uiState.neutralizedTallyEnabled && uiState.calmMessagesEnabled,
+            justFun = false,
             calmMessagesEnabled = uiState.calmMessagesEnabled,
             flybyAnimationEnabled = uiState.flybyAnimationEnabled,
             deathAnimationEnabled = uiState.deathAnimationEnabled,
@@ -521,7 +521,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             neutralizedTallyAllUkraine = uiState.neutralizedTallyAllUkraine,
             iconSetForFun = uiState.iconSet,
             onChoose = { viewModel.setLanguage(it) },
-            onIconSetChange = { viewModel.setThreatIconSet(it) },
             onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
             onFollowMeChange = { viewModel.setFollowMe(it) },
             onPinnedCityChange = { viewModel.setPinnedCity(it) },
@@ -883,55 +882,64 @@ private fun MapScreen(
                     }
                     // Basemap attribution (required by the CARTO basemap free tier) stacked
                     // under the scale bar so the pair matches the floating buttons' height.
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 12.dp, bottom = 6.dp),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        if (uiState.showMapScale) {
-                            ScaleIndicator(
-                                metersPerPixel = scaleMpp,
-                                lang = uiState.language
-                            )
-                        }
-                        Text(
-                            "© CARTO",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.40f)
-                        )
-                    }
-                    val shelterFocus = uiState.focusLocation
-                    val shelterIndex = uiState.shelterIndex
-                    if (uiState.sheltersEnabled && shelterIndex != null && shelterFocus != null &&
-                        shelterIndex.withinRegion(shelterFocus.lat, shelterFocus.lon)
-                    ) {
-                        ShelterCircle(
-                            alertActive = uiState.focusOblastAlertActive,
-                            active = showNearbyShelters,
-                            contentDescription = s.shelterButtonLabel,
-                            onClick = onToggleShelters,
-                            onLongClick = onOpenShelters,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 12.dp, bottom = 4.dp)
-                        )
-                    }
-                    ZoneButtons(
-                        redArmed = uiState.activeSlowRedArmed || uiState.activeFastRedArmed,
-                        yellowArmed = uiState.activeSlowYellowArmed || uiState.activeFastYellowArmed,
-                        lang = uiState.language,
-                        onZoneTap = { zone ->
-                            showNearbyShelters = false
-                            selectedShelter = null
-                            zoomZone = zone
-                            zoomTick++
-                        },
-                        onEditZones = openZonesPanel,
+                    Row(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 4.dp)
-                    )
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        // Scale + attribution pinned to the left.
+                        Column(horizontalAlignment = Alignment.Start) {
+                            if (uiState.showMapScale) {
+                                ScaleIndicator(
+                                    metersPerPixel = scaleMpp,
+                                    lang = uiState.language
+                                )
+                            }
+                            Text(
+                                "© CARTO",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.40f)
+                            )
+                        }
+                        // Buttons cluster (shelter + zones) centred in the remaining width.
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                val shelterFocus = uiState.focusLocation
+                                val shelterIndex = uiState.shelterIndex
+                                if (uiState.sheltersEnabled && shelterIndex != null && shelterFocus != null &&
+                                    shelterIndex.withinRegion(shelterFocus.lat, shelterFocus.lon)
+                                ) {
+                                    ShelterCircle(
+                                        alertActive = uiState.focusOblastAlertActive,
+                                        active = showNearbyShelters,
+                                        contentDescription = s.shelterButtonLabel,
+                                        onClick = onToggleShelters,
+                                        onLongClick = onOpenShelters
+                                    )
+                                }
+                                ZoneButtons(
+                                    redArmed = uiState.activeSlowRedArmed || uiState.activeFastRedArmed,
+                                    yellowArmed = uiState.activeSlowYellowArmed || uiState.activeFastYellowArmed,
+                                    lang = uiState.language,
+                                    onZoneTap = { zone ->
+                                        showNearbyShelters = false
+                                        selectedShelter = null
+                                        zoomZone = zone
+                                        zoomTick++
+                                    },
+                                    onEditZones = openZonesPanel
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Surface(tonalElevation = 2.dp) {
@@ -1431,25 +1439,33 @@ internal fun ShelterCircle(
         modifier = if (border != null) baseModifier.border(border, CircleShape) else baseModifier,
         contentAlignment = Alignment.Center
     ) {
-        TeardropShelterIcon(modifier = Modifier.size(22.dp), tint = fg)
+        TeardropShelterIcon(modifier = Modifier.size(30.dp), tint = fg)
     }
 }
 
 /** The map's shelter pin as a Compose icon — stroke-only teardrop, tip anchored at the bottom,
- *  mirroring the shelter marker bitmap drawn in MapView. */
+ *  mirroring the shelter marker bitmap drawn in MapView. The path is scaled to the canvas size
+ *  (and the stroke to its width) so the pin fills the given box on any screen density. */
 @Composable
-internal fun TeardropShelterIcon(modifier: Modifier = Modifier, tint: Color, strokeWidth: Float = 2.4f) {
+internal fun TeardropShelterIcon(modifier: Modifier = Modifier, tint: Color) {
     Canvas(modifier = modifier, onDraw = {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val r = w * 0.42f
+        val tipY = h * 0.98f
+        val topY = h * 0.10f
+        val midY = tipY - h * 0.5f
         drawPath(
             path = Path().apply {
-                moveTo(12f, 23f)
-                quadraticTo(20f, 15.8f, 20f, 11f)
-                quadraticTo(20f, 3f, 12f, 3f)
-                quadraticTo(4f, 3f, 4f, 11f)
-                quadraticTo(4f, 15.8f, 12f, 23f)
+                moveTo(cx, tipY)
+                quadraticTo(cx + r, midY + r * 0.6f, cx + r, midY)
+                quadraticTo(cx + r, topY, cx, topY)
+                quadraticTo(cx - r, topY, cx - r, midY)
+                quadraticTo(cx - r, midY + r * 0.6f, cx, tipY)
             },
             color = tint,
-            style = Stroke(width = strokeWidth)
+            style = Stroke(width = w * 0.1f)
         )
     })
 }

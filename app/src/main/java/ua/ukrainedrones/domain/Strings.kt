@@ -42,6 +42,7 @@ object Strings {
         val wizardShelterDesc: String,
         val wizardJustFunTitle: String,
         val wizardJustFunDesc: String,
+        val wizardJustFunDescGearSuffix: String,
         val settingsSearchHint: String,
         val settingsSearchClear: String,
         val settingsNoResults: String,
@@ -561,6 +562,7 @@ object Strings {
         val wizardShelterDesc: String get() = onboarding.wizardShelterDesc
         val wizardJustFunTitle: String get() = onboarding.wizardJustFunTitle
         val wizardJustFunDesc: String get() = onboarding.wizardJustFunDesc
+        val wizardJustFunDescGearSuffix: String get() = onboarding.wizardJustFunDescGearSuffix
         val fitMapLabel: String get() = onboarding.fitMapLabel
         val dayZonesTitle: String get() = settings.dayZonesTitle
         val nightZonesTitle: String get() = settings.nightZonesTitle
@@ -1096,14 +1098,15 @@ val iconSetTitle: String get() = misc.iconSetTitle
         wizardLocationTitle = "Де ви перебуваєте?",
         wizardLocationSubtitle = "Оберіть, звідки брати вашу позицію — від цього залежать зони та сповіщення.",
         wizardZonesTitle = "Зони тривог",
-        wizardZonesSubtitle = "Кнопки на мапі наближають зони, а повзунки змінюють їх розмір — червона зона ближче, жовта далі. Тут усе видно одразу.",
+        wizardZonesSubtitle = "На мапі дві зони — червона (ближче) та жовта (далі). Повзунок налаштовує їх розмір під тебе. Укриття поруч — швидкий шлях до безпеки.",
         wizardEditZonesHint = "Повзунок повільно рухає коло на мапі — червона зона завжди всередині жовтої.",
         zoneRedLabel = "Червона зона",
         zoneYellowLabel = "Жовта зона",
         wizardShelterTitle = "Укриття поруч",
         wizardShelterDesc = "Кнопка «Укриття» показує найближчі укриття та час пішки — швидкий шлях до безпеки під час тривоги.",
         wizardJustFunTitle = "Розваги",
-        wizardJustFunDesc = "Додай трохи розваг — вони не впливають на сповіщення. Детальніше — в ⚙ налаштуваннях.",
+        wizardJustFunDesc = "Додай трохи розваг — анімації знешкодження, проліт МіГа та лічильник. Не впливають на сповіщення. Детальніше — в",
+        wizardJustFunDescGearSuffix = "налаштуваннях.",
         settingsSearchHint = "Пошук налаштувань",
         settingsSearchClear = "Очистити пошук",
         settingsNoResults = "Нічого не знайдено",
@@ -1641,14 +1644,15 @@ connOnline = "Онлайн",
         wizardLocationTitle = "Where are you?",
         wizardLocationSubtitle = "Choose where your position comes from — it drives your zones and alerts.",
         wizardZonesTitle = "Alert zones",
-        wizardZonesSubtitle = "The red/yellow buttons on the map zoom to tha zone; the sliders resize them — red is close, yellow is further out.",
+        wizardZonesSubtitle = "Two zones on the map — red is close, yellow is further out. The slider sizes them to your comfort; the shelter pill gets you to safety.",
         wizardEditZonesHint = "Drag the slider for your comfort zones.",
         zoneRedLabel = "Red zone",
         zoneYellowLabel = "Yellow zone",
         wizardShelterTitle = "Nearby shelters",
         wizardShelterDesc = "Shows the nearest shelters with walking times.",
         wizardJustFunTitle = "Just fun)))",
-        wizardJustFunDesc = "Add some fun elements! These will not interfere with alerts. Change them in ⚙ settings.",
+        wizardJustFunDesc = "Switch on the shoot-down fireworks, the MiG flyby and the tally — they never affect alerts. Tune them in",
+        wizardJustFunDescGearSuffix = "settings.",
         settingsSearchHint = "Search",
         settingsSearchClear = "Clear",
         settingsNoResults = "Nothing found",

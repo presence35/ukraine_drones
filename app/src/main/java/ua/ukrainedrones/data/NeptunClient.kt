@@ -209,6 +209,12 @@ object NeptunClient {
     /** Append a milestone/state line to the current offline episode's log (called by AlertService). */
     fun recordConnEvent(kind: ConnEventKind) = recordEvent(kind)
 
+    /** Manually dismiss the connection-log card (tap). In-memory only — the log is never persisted. */
+    fun dismissConnLog() {
+        _connEvents.value = emptyList()
+        _retryState.value = null
+    }
+
     /**
      * User instructed the app to give up for [minutes]: no automatic reconnect (even on a network
      * return or app reopen) until the pause expires or the user taps the Offline pill / Retry.
@@ -576,9 +582,9 @@ object NeptunClient {
                 reconnectAttempt = 0
                 openedAt = System.currentTimeMillis()
                 lastFrameAt = System.currentTimeMillis()
-                // Back online: the transient reconnect log/countdown for the old episode is done.
+                // Back online: the live retry countdown is done, but the connection-log card
+                // stays until the user taps it away (dismissConnLog) — never auto-hidden.
                 _retryState.value = null
-                _connEvents.value = emptyList()
                 _state.update {
                     it.copy(
                         connected = true, lastError = null, offlineSince = null,
