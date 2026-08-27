@@ -881,7 +881,7 @@ private fun MapScreen(
                             )
                         }
                         Text(
-                            "© CARTO",
+                            "© OSM · © CARTO",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.40f)
                         )

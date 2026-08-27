@@ -23,19 +23,54 @@ Usage:
 import argparse, hashlib, json, re, sys
 from pathlib import Path
 
+# Ensure UTF-8 output on Windows cp1252 consoles
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 ROOT = Path(__file__).resolve().parents[1]
 STRINGS = ROOT / "app/src/main/java/ua/ukrainedrones/domain/Strings.kt"
 
 def sha6(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:6]
 
+def _find_matching_paren(text: str, open_idx: int) -> int:
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(open_idx, len(text)):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == '\\':
+                esc = True
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+                if depth == 0:
+                    return i
+    return -1
+
 def extract_en() -> dict:
     text = STRINGS.read_text(encoding="utf-8")
     en_map = {}
-    for section in re.finditer(r"private fun en(\w+)\(\) = \w+\((.*?)\)", text, re.S):
-        block = section.group(2)
-        for m in re.finditer(r'(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"', block):
-            k, v = m.group(1), m.group(2)
+    for m in re.finditer(r"private fun en(\w+)\(\) = (\w+)\(", text):
+        start = m.end() - 1  # '('
+        end = _find_matching_paren(text, start)
+        if end == -1:
+            continue
+        block = text[start+1:end]
+        for km in re.finditer(r'(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"', block):
+            k, v = km.group(1), km.group(2)
             en_map[k] = v
     return en_map
 
@@ -87,6 +122,30 @@ def cmd_export(out: Path):
     print(f"Exported {len(en_map)} EN keys -> {out}")
     return 0
 
+def _kotlin_escape(s: str) -> str:
+    return '"' + s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('$', '\\$') + '"'
+
+def _extract_en_sections():
+    text = STRINGS.read_text(encoding="utf-8")
+    sections = {}
+    order = []
+    for m in re.finditer(r"private fun en(\w+)\(\) = (\w+)\(", text):
+        name = m.group(1)
+        key = name[0].lower() + name[1:]
+        if key == "explainers":
+            key = "explainers"
+        start = m.end() - 1
+        end = _find_matching_paren(text, start)
+        if end == -1:
+            continue
+        block = text[start+1:end]
+        keys = []
+        for km in re.finditer(r'(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"', block):
+            keys.append((km.group(1), km.group(2)))
+        sections[key] = keys
+        order.append(key)
+    return sections, order
+
 def cmd_import(inp: Path):
     en_map = extract_en()
     if not inp.exists():
@@ -98,9 +157,9 @@ def cmd_import(inp: Path):
         print(f"Failed to read {inp}: {e}", file=sys.stderr)
         return 1
     manual = extract_manual()
-    manual_keys = {k for k, _, _, _ in manual}
+    manual_dict = {k: (ua, en_snap, h) for k, ua, en_snap, h in manual}
     # Validate coverage
-    missing = [k for k in en_map if k not in ua_map or not ua_map[k].strip()]
+    missing = [k for k in en_map if k not in ua_map or not str(ua_map[k]).strip()]
     extra = [k for k in ua_map if k not in en_map]
     if missing:
         print(f"WARN: {len(missing)} keys missing/empty in {inp}: {missing[:10]}", file=sys.stderr)
@@ -113,18 +172,104 @@ def cmd_import(inp: Path):
         cur_hash = sha6(cur_en)
         if cur_en != en_snapshot or cur_hash != hash_stored:
             stale.append(k)
-            print(f"STALE manual: {k} EN changed — needs re-translation (ua.json value will be re-translated, not kept)")
+            print(f"STALE manual: {k} EN changed — needs re-translation (ua.json value will be used, manual hash will be updated)")
         else:
-            # ensure ua.json kept the manual value
             if ua_map.get(k) != ua_val:
-                print(f"NOTE: {inp} differs for MANUALLY KEPT {k} — expected kept value {ua_val!r}, got {ua_map.get(k)!r} (will keep manual)")
+                print(f"NOTE: {inp} differs for MANUALLY KEPT {k} — keeping code manual value {ua_val!r} over ua.json {ua_map.get(k)!r}")
+                # keep manual value
+                ua_map[k] = ua_val
     if stale:
-        print(f"\n{len(stale)} stale MANUALLY KEPT — re-translate before release.", file=sys.stderr)
-    if not missing and not stale:
-        print(f"Import OK: {inp} covers {len(ua_map)} keys, {len(manual)} manual kept verified.")
-        return 0
-    # Still allow import with warnings; return 1 if missing/stale to block release
-    return 1 if (missing or stale) else 0
+        print(f"\n{len(stale)} stale MANUALLY KEPT — will be updated from ua.json.", file=sys.stderr)
+
+    # Build new uaManualPatch with all UA values (using ua_map, preserving non-stale manual)
+    sections, order = _extract_en_sections()
+    # Need to decide per-key UA value: use ua_map if present else keep EN? For missing, fallback to EN to keep buildable
+    lines = []
+    lines.append("    private fun uaManualPatch(base: StringSet): StringSet = base.copy(")
+    # Map section key to StringSet field name
+    section_field = {
+        "onboarding": "onboarding",
+        "settings": "settings",
+        "status": "status",
+        "updates": "updates",
+        "threat": "threat",
+        "misc": "misc",
+        "widget": "widget",
+        "guide": "guide",
+        "explainers": "explainers",
+    }
+    for sec in order:
+        field = section_field.get(sec)
+        if not field or sec not in sections:
+            continue
+        keys = sections[sec]
+        if not keys:
+            continue
+        # For explainers, handle only simple keys (visualLabel etc.), items are complex and kept as base
+        if sec == "explainers":
+            # only handle visualLabel, scenarioLabel, gotIt
+            expl_keys = [k for k, _ in keys if k in ua_map]
+            if not expl_keys:
+                continue
+            lines.append(f"        {field} = base.{field}.copy(")
+            for k, _ in keys:
+                if k not in ua_map:
+                    continue
+                # check if stale manual? already handled, keep ua_map
+                v = ua_map.get(k, "")
+                # if manual and not stale, v already is manual kept (we forced)
+                # add MANUALLY KEPT comment if this key is manual
+                if k in manual_dict and k not in stale:
+                    en_snap = manual_dict[k][1]
+                    h = manual_dict[k][2]
+                    lines.append(f"            {k} = {_kotlin_escape(v)} // MANUALLY KEPT EN:{_kotlin_escape(en_snap)} hash:{h},")
+                elif k in manual_dict and k in stale:
+                    # stale manual: update snapshot/hash to current EN
+                    cur_en = en_map[k]
+                    cur_h = sha6(cur_en)
+                    lines.append(f"            {k} = {_kotlin_escape(v)} // MANUALLY KEPT EN:{_kotlin_escape(cur_en)} hash:{cur_h}")
+                else:
+                    lines.append(f"            {k} = {_kotlin_escape(v)},")
+            lines.append("        ),")
+            continue
+        lines.append(f"        {field} = base.{field}.copy(")
+        for k, _ in keys:
+            if k not in ua_map:
+                continue
+            v = ua_map[k]
+            if not isinstance(v, str):
+                v = str(v)
+            # If empty (template), skip -> will fallback to EN (base)
+            if not v.strip():
+                continue
+            if k in manual_dict and k not in stale:
+                en_snap = manual_dict[k][1]
+                h = manual_dict[k][2]
+                lines.append(f"            {k} = {_kotlin_escape(v)} // MANUALLY KEPT EN:{_kotlin_escape(en_snap)} hash:{h},")
+            elif k in manual_dict and k in stale:
+                cur_en = en_map[k]
+                cur_h = sha6(cur_en)
+                lines.append(f"            {k} = {_kotlin_escape(v)} // MANUALLY KEPT EN:{_kotlin_escape(cur_en)} hash:{cur_h},")
+            else:
+                lines.append(f"            {k} = {_kotlin_escape(v)},")
+        lines.append("        ),")
+    lines.append("    )")
+    new_patch = "\n".join(lines)
+    # Replace in Strings.kt
+    text = STRINGS.read_text(encoding="utf-8")
+    old_pat = re.compile(r"    private fun uaManualPatch\(.*?\)(.*?)\n    \)", re.S)
+    m = old_pat.search(text)
+    if not m:
+        print("Failed to find uaManualPatch in Strings.kt", file=sys.stderr)
+        return 1
+    new_text = text[:m.start()] + new_patch + text[m.end():]
+    STRINGS.write_text(new_text, encoding="utf-8")
+    print(f"Updated {STRINGS} — UA now from {inp} ({len([k for k in ua_map if k in en_map])} keys)")
+    if missing:
+        print(f"NOTE: {len(missing)} keys missing in ua.json — kept as EN fallback (translate before release)")
+    if stale:
+        print(f"Updated {len(stale)} stale manual hashes.")
+    return 0 if not missing else 1
 
 def main():
     ap = argparse.ArgumentParser(description="UA sync helper")

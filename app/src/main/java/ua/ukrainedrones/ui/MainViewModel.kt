@@ -587,13 +587,15 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         prefsSnapshot,
         updateUiFlow,
         shelterIndexFlow,
-        now
+        now,
+        flybyFlow
     ) { values ->
         val live = values[1] as LiveSnapshot
         val prefs = values[2] as PrefsSnapshot
         val updateUi = values[3] as UpdateUi
         val shelterIndex = values[4] as ShelterIndex?
         val now = values[5] as Long
+        val flyby = values[6] as AviationFlybyShow?
         val nightActive = isNightActive(
             NightConfig(prefs.night.window.enabled, prefs.night.window.startMin, prefs.night.window.endMin),
             now
@@ -697,18 +699,18 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         // A fresh INNER AVIATION (bell on) plays one full-size pass across the viewport; the
         // threat card opens when it lands (onFlybyFinished). Only while genuinely foregrounded
         // — a user away from the phone gets the flyby on notification-tap reveal instead.
-        val flyby = AviationFlyby.nextShow(
+        val autoFlyby = AviationFlyby.nextShow(
             uiState.threatsInner, flybyPlayedIds,
             live.mapVisible && appForegroundFlow.value, flybyTick + 1
         )
-        if (flyby != null) {
+        if (autoFlyby != null) {
             flybyTick++
-            flybyPlayedIds.add(flyby.threatId)
-            val threat = NeptunClient.state.value.threats[flyby.threatId]!!
+            flybyPlayedIds.add(autoFlyby.threatId)
+            val threat = NeptunClient.state.value.threats[autoFlyby.threatId]!!
             val durationMs = calculateFlybyDuration(threat)
-            flybyFlow.value = AviationFlybyShow(flyby.tick, flyby.threatId, flyby.courseDeg, durationMs)
+            flybyFlow.value = AviationFlybyShow(autoFlyby.tick, autoFlyby.threatId, autoFlyby.courseDeg, durationMs)
         }
-        uiState.copy(flyby = flybyFlow.value)
+        uiState.copy(flyby = flyby)
     }
         .flowOn(Dispatchers.Default)
         .stateIn(
