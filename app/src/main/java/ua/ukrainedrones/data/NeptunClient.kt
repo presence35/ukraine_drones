@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.Call
@@ -76,6 +77,42 @@ data class NeptunState(
      */
     val oblastAlerts: List<OblastAlert>
         get() = neptunAlerts
+}
+
+/** Live reconnect state for the current offline episode — transient, never persisted. */
+data class ConnRetryState(
+    val attempt: Int,
+    val delayMs: Long,
+    val nextAtMs: Long,
+    val networkValidated: Boolean
+)
+
+/** Kind of a line in the current offline episode's transient reconnect log. */
+enum class ConnEventKind {
+    CONNECTION_LOST, RETRY_SCHEDULED, NO_NETWORK,
+    MILESTONE_3, MILESTONE_5, MILESTONE_6, MILESTONE_10, MILESTONE_20,
+    GAVE_UP, PAUSED
+}
+
+/** One line of the current offline episode's reconnect log (the in-between only). */
+data class ConnEvent(
+    val atMillis: Long,
+    val kind: ConnEventKind,
+    val attempt: Int? = null,
+    val delayMs: Long? = null
+) {
+    fun label(s: Strings.StringSet): String = when (kind) {
+        ConnEventKind.CONNECTION_LOST -> s.connEventLost
+        ConnEventKind.RETRY_SCHEDULED -> String.format(s.connEventRetry, (delayMs ?: 0L) / 1000, attempt ?: 0)
+        ConnEventKind.NO_NETWORK -> s.connEventNoNetwork
+        ConnEventKind.MILESTONE_3 -> s.connEventMin3
+        ConnEventKind.MILESTONE_5 -> s.connEventMin5
+        ConnEventKind.MILESTONE_6 -> s.connEventMin6
+        ConnEventKind.MILESTONE_10 -> s.connEventMin10
+        ConnEventKind.MILESTONE_20 -> s.connEventMin20
+        ConnEventKind.GAVE_UP -> s.connEventGaveUp
+        ConnEventKind.PAUSED -> s.connEventPaused
+    }
 }
 
 /** A threat just disappeared from the server feed (resolved or a remove frame) — drives the map death animation. */
@@ -140,6 +177,8 @@ object NeptunClient {
     /** Reconnect ceiling while the OS reports no usable network (vs the 15s cap online). */
     private const val NO_NETWORK_RECONNECT_MS = 60_000L
 
+    private const val MAX_CONN_EVENTS = 8
+
     private var started = false
 
     private val _state = MutableStateFlow(NeptunState())
@@ -148,22 +187,76 @@ object NeptunClient {
     private val _removedThreats = MutableSharedFlow<ThreatRemoved>(extraBufferCapacity = 16)
     val removedThreats: SharedFlow<ThreatRemoved> = _removedThreats.asSharedFlow()
 
+    /** Live countdown to the next reconnect attempt, null while connected or paused. */
+    private val _retryState = MutableStateFlow<ConnRetryState?>(null)
+    val retryState: StateFlow<ConnRetryState?> = _retryState.asStateFlow()
+
+    /** Rolling reconnect log for the current offline episode — transient (in-between only). */
+    private val _connEvents = MutableStateFlow<List<ConnEvent>>(emptyList())
+    val connEvents: StateFlow<List<ConnEvent>> = _connEvents.asStateFlow()
+
+    /** Epoch millis until the user's "Ignore 30 min" pause expires (0 = none). Persisted so it
+     *  survives a service kill; only [retryNow] (the Offline pill / Retry action) clears it early. */
+    @Volatile
+    private var ignoreRetryUntilMs = 0L
+
+    val isIgnoring: Boolean get() = ignoreRetryUntilMs > System.currentTimeMillis()
+
+    private fun recordEvent(kind: ConnEventKind, attempt: Int? = null, delayMs: Long? = null) {
+        _connEvents.update { (it + ConnEvent(System.currentTimeMillis(), kind, attempt, delayMs)).takeLast(MAX_CONN_EVENTS) }
+    }
+
+    /** Append a milestone/state line to the current offline episode's log (called by AlertService). */
+    fun recordConnEvent(kind: ConnEventKind) = recordEvent(kind)
+
+    /**
+     * User instructed the app to give up for [minutes]: no automatic reconnect (even on a network
+     * return or app reopen) until the pause expires or the user taps the Offline pill / Retry.
+     */
+    fun beginIgnore(minutes: Int = 30) {
+        ignoreRetryUntilMs = System.currentTimeMillis() + minutes * 60_000L
+        appContext?.let { scope.launch { ZonePrefs(it).setIgnoreRetryUntil(ignoreRetryUntilMs) } }
+        reconnectJob?.cancel()
+        _retryState.value = null
+        recordEvent(ConnEventKind.PAUSED)
+        scheduleResumeAfterPause()
+    }
+
+    /** Wait out the pause, then resume the reconnect loop (fires when it expires). */
+    private fun scheduleResumeAfterPause() {
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            val remaining = ignoreRetryUntilMs - System.currentTimeMillis()
+            if (remaining > 0) delay(remaining)
+            if (manuallyStopped) return@launch
+            reconnectAttempt = 0
+            connect()
+        }
+    }
+
     fun start(context: Context) {
         appContext = context.applicationContext
-        if (started) {
-            if (ws == null && !manuallyStopped) connect()
-            return
+        if (!started) {
+            started = true
+            if (!scope.isActive) {
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            }
+            manuallyStopped = false
+            connectInFlight.set(false)
+            registerNetworkCallback()
+            startKeepAliveTasks()
+            startConnectionLog()
         }
-        started = true
-        if (!scope.isActive) {
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        // Restore any user pause before deciding to auto-connect: a paused app must not silently
+        // resume on a cold start — the user has to tap the Offline pill / Retry instead.
+        scope.launch {
+            ignoreRetryUntilMs = ZonePrefs(context).ignoreRetryUntil().first()
+            if (ignoreRetryUntilMs > System.currentTimeMillis()) {
+                scheduleResumeAfterPause()
+            } else if (!manuallyStopped && ws == null) {
+                connect()
+            }
         }
-        manuallyStopped = false
-        connectInFlight.set(false)
-        registerNetworkCallback()
-        connect()
-        startKeepAliveTasks()
-        startConnectionLog()
     }
 
     fun stop() {
@@ -197,7 +290,7 @@ object NeptunClient {
             override fun onAvailable(network: Network) {
                 if (networkValidated) return
                 networkValidated = true
-                if (!manuallyStopped && !_state.value.connected) retryNow()
+                if (!manuallyStopped && !_state.value.connected && !isIgnoring) retryNow()
             }
 
             override fun onLost(network: Network) {
@@ -212,7 +305,7 @@ object NeptunClient {
                 val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 if (validated && !networkValidated) {
                     networkValidated = true
-                    if (!manuallyStopped && !_state.value.connected) retryNow()
+                    if (!manuallyStopped && !_state.value.connected && !isIgnoring) retryNow()
                 } else if (!validated) {
                     networkValidated = false
                 }
@@ -332,8 +425,9 @@ object NeptunClient {
         lastFrameAt = now
         if (wsStale) refreshFromRest()
         // A 20-minute milestone may have stopped the reconnect loop while the app was closed;
-        // resuming the socket on the next open matches the notification's promise.
-        if (!manuallyStopped && !_state.value.connected) retryNow()
+        // resuming the socket on the next open matches the notification's promise. A user's
+        // "Ignore 30 min" pause is NOT auto-resumed here — they must tap the Offline pill / Retry.
+        if (!manuallyStopped && !_state.value.connected && !isIgnoring) retryNow()
     }
 
     private val restUrl = "https://neptun.in.ua/api/v1/threats"
@@ -345,6 +439,11 @@ object NeptunClient {
      */
     fun retryNow() {
         if (manuallyStopped) return
+        // An explicit retry (Offline pill / Retry action) always ends a user pause early.
+        if (isIgnoring) {
+            ignoreRetryUntilMs = 0L
+            appContext?.let { scope.launch { ZonePrefs(it).setIgnoreRetryUntil(0L) } }
+        }
         reconnectJob?.cancel()
         reconnectJob = null
         // Drop any half-open socket so a fresh one is created, then connect right away.
@@ -365,6 +464,7 @@ object NeptunClient {
     fun stopReconnect() {
         reconnectJob?.cancel()
         reconnectJob = null
+        _retryState.value = null
     }
 
     /**
@@ -476,6 +576,9 @@ object NeptunClient {
                 reconnectAttempt = 0
                 openedAt = System.currentTimeMillis()
                 lastFrameAt = System.currentTimeMillis()
+                // Back online: the transient reconnect log/countdown for the old episode is done.
+                _retryState.value = null
+                _connEvents.value = emptyList()
                 _state.update {
                     it.copy(
                         connected = true, lastError = null, offlineSince = null,
@@ -511,6 +614,7 @@ object NeptunClient {
                 // offlineElapsedSec / reconnectStartMillis accumulate past a few seconds, and
                 // the milestone notifications (3/6/10/20 min) never fire. Mirrors the
                 // setForceOffline latch pattern. Cleared on the next successful open.
+                val firstDrop = _state.value.reconnectStartMillis == 0L
                 _state.update {
                     it.copy(
                         connected = false,
@@ -518,6 +622,7 @@ object NeptunClient {
                         reconnectStartMillis = if (it.reconnectStartMillis == 0L) System.currentTimeMillis() else it.reconnectStartMillis
                     )
                 }
+                if (firstDrop) recordEvent(ConnEventKind.CONNECTION_LOST)
                 scheduleReconnect()
             }
 
@@ -529,6 +634,7 @@ object NeptunClient {
                 connectInFlight.set(false)
                 // Same latch as onClosed: the outage start is the first drop, not the last
                 // failed reconnect attempt (see the onClosed comment for why this matters).
+                val firstDrop = _state.value.reconnectStartMillis == 0L
                 _state.update {
                     it.copy(
                         connected = false,
@@ -537,6 +643,7 @@ object NeptunClient {
                         reconnectStartMillis = if (it.reconnectStartMillis == 0L) System.currentTimeMillis() else it.reconnectStartMillis
                     )
                 }
+                if (firstDrop) recordEvent(ConnEventKind.CONNECTION_LOST)
                 scheduleReconnect()
             }
         })
@@ -544,6 +651,12 @@ object NeptunClient {
 
     private fun scheduleReconnect() {
         if (manuallyStopped) return
+        // A user's "Ignore 30 min" pause: no new attempts — the resume job fires connect() when
+        // it expires (or an explicit Retry / Offline tap ends it early).
+        if (isIgnoring) {
+            scheduleResumeAfterPause()
+            return
+        }
         // Mirror the website's reconnect logic: let a long-lived connection earn a backoff
         // reset, then retry — fast on the first attempt (this is an always-on safety app, not
         // a browser tab), with exponential backoff capped at 15s on repeated failures.
@@ -559,6 +672,11 @@ object NeptunClient {
             // the long ceiling. The callback's onAvailable / onCapabilitiesChanged kicks an
             // immediate retry the moment a validated network returns.
             val delayMs = if (networkValidated) reconnectDelayMs(reconnectAttempt) else NO_NETWORK_RECONNECT_MS
+            _retryState.value = ConnRetryState(reconnectAttempt, delayMs, System.currentTimeMillis() + delayMs, networkValidated)
+            recordEvent(
+                if (networkValidated) ConnEventKind.RETRY_SCHEDULED else ConnEventKind.NO_NETWORK,
+                reconnectAttempt, delayMs
+            )
             delay(delayMs)
             if (!manuallyStopped) connect()
         }

@@ -41,6 +41,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -65,6 +66,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -179,15 +182,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var guideFromSettings by remember { mutableStateOf(false) }
     var sheltersFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
-    var wizardLaunchedDuringAlert by remember { mutableStateOf(false) }
     var wizardFromSettings by remember { mutableStateOf(false) }
     var headerHeightPx by remember { mutableStateOf(0) }
     // The wizard owns the screen while it's up — the map is not even composed then (no tile
     // flash before it covers the viewport). While prefs are still loading (wizardCompleted
     // == null) neither map nor wizard composes, so the real pref decides — never a default.
     val prefsLoaded = uiState.wizardCompleted != null
-    val wizardShown = uiState.wizardCompleted == false &&
-        (!uiState.alertActive || wizardLaunchedDuringAlert)
+    val wizardShown = uiState.wizardCompleted == false
     val wizardOwnsScreen = wizardShown && !wizardFromSettings
     val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     var settingsCollapse by rememberSaveable(stateSaver = SettingsCollapseState.Saver) { mutableStateOf(SettingsCollapseState()) }
@@ -411,7 +412,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onCheckUpdate = { viewModel.checkForUpdates() },
                 onRelaunchSetup = {
                     viewModel.relaunchSetup()
-                    wizardLaunchedDuringAlert = uiState.alertActive
                     wizardFromSettings = true
                 },
                 onResetTips = {
@@ -495,13 +495,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     )
 
     // First-install: a full-screen wizard — language (+tips), icon pack, which threats matter,
-    // then a feature preview. It force-closes without saving the moment an alert goes live
-    // (alerts outrank onboarding); the wizard returns once the alert clears. Opening it via
-    // "Replay first launch" is the user's explicit choice and works even while an alert is
-    // already active (wizardOpenedDuringAlert overrides the gate until the alert clears).
-    LaunchedEffect(uiState.alertActive) {
-        if (!uiState.alertActive) wizardLaunchedDuringAlert = false
-    }
+    // then a feature preview. Alerts are delivered as notifications/toasts while the wizard
+    // is up, but the wizard no longer ejects — the user finishes onboarding first.
     if (wizardShown) {
         FirstLaunchWizard(
             current = uiState.language,
@@ -518,12 +513,26 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             fastYellowArmed = uiState.fastYellowArmed,
             sheltersEnabled = uiState.sheltersEnabled,
             justFun = uiState.deathAnimationEnabled && uiState.flybyAnimationEnabled && uiState.neutralizedTallyEnabled && uiState.calmMessagesEnabled,
+            calmMessagesEnabled = uiState.calmMessagesEnabled,
+            flybyAnimationEnabled = uiState.flybyAnimationEnabled,
+            deathAnimationEnabled = uiState.deathAnimationEnabled,
+            followBullet = uiState.followBullet,
+            neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
+            neutralizedTallyAllUkraine = uiState.neutralizedTallyAllUkraine,
+            iconSetForFun = uiState.iconSet,
             onChoose = { viewModel.setLanguage(it) },
             onIconSetChange = { viewModel.setThreatIconSet(it) },
             onThreatEnabledToggle = { type, enabled -> viewModel.setThreatEnabled(type, enabled) },
             onFollowMeChange = { viewModel.setFollowMe(it) },
             onPinnedCityChange = { viewModel.setPinnedCity(it) },
             onJustFunChange = { viewModel.setJustFunEnabled(it) },
+            onCalmMessagesChange = { viewModel.setCalmMessagesEnabled(it) },
+            onFlybyAnimationChange = { viewModel.setFlybyAnimationEnabled(it) },
+            onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
+            onFollowBulletChange = { viewModel.setFollowBullet(it) },
+            onNeutralizedTallyChange = { viewModel.setNeutralizedTallyEnabled(it) },
+            onNeutralizedTallyAllUkraineChange = { viewModel.setNeutralizedTallyAllUkraine(it) },
+            onIconSetChangeForFun = { viewModel.setThreatIconSet(it) },
             onSlowRedChange = { viewModel.setSlowRedKm(it) },
             onSlowYellowChange = { viewModel.setSlowYellowKm(it) },
             onSlowRedArmedChange = { viewModel.setSlowRedArmed(it) },
@@ -545,16 +554,22 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         )
     }
 
-    // First-run battery prompt (also once for pre-onboarding installs): shown after the language
-    // picker, only while the OS still throttles the app. Already-exempt users are skipped
-    // silently so MainActivity's deferred permission requests can proceed.
+    // Battery prompt: kept but not immediately after first launch. Shown only after the
+    // wizard has been completed for a while, so first-run isn't a wall of system dialogs.
     val batteryExempt = remember { BatteryOptimization.isIgnoringBatteryOptimizations(context) }
+    var batteryDeferDone by remember { mutableStateOf(false) }
+    LaunchedEffect(uiState.wizardCompleted) {
+        if (uiState.wizardCompleted == true) {
+            delay(120_000)
+            batteryDeferDone = true
+        }
+    }
     LaunchedEffect(uiState.wizardCompleted, uiState.batteryOnboardShown, batteryExempt) {
         if (uiState.wizardCompleted == true && !uiState.batteryOnboardShown && batteryExempt) {
             viewModel.setBatteryOnboardShown(true)
         }
     }
-    if (uiState.wizardCompleted == true && !uiState.batteryOnboardShown && !batteryExempt) {
+    if (batteryDeferDone && uiState.wizardCompleted == true && !uiState.batteryOnboardShown && !batteryExempt) {
         BatteryOnboardingDialog(
             s = Strings.get(uiState.language),
             onAllow = {
@@ -891,10 +906,10 @@ private fun MapScreen(
                     if (uiState.sheltersEnabled && shelterIndex != null && shelterFocus != null &&
                         shelterIndex.withinRegion(shelterFocus.lat, shelterFocus.lon)
                     ) {
-                        ShelterButton(
+                        ShelterCircle(
                             alertActive = uiState.focusOblastAlertActive,
                             active = showNearbyShelters,
-                            label = s.shelterButtonLabel,
+                            contentDescription = s.shelterButtonLabel,
                             onClick = onToggleShelters,
                             onLongClick = onOpenShelters,
                             modifier = Modifier
@@ -1374,23 +1389,21 @@ internal fun ScaleIndicator(metersPerPixel: Double, lang: AppLanguage, modifier:
     }
 }
 
-/** "Shelter" pill: filled red while an official alert is active; when the shelter markers are
- *  shown on the map it carries a primary border/tint so the on/off state is obvious; otherwise
- *  ghost-outlined. */
+/** Fixed-size shelter button — a 48dp circle matching the gear button, immune to font scaling.
+ *  Shows the map's teardrop shelter-pin icon (stroke-only), contentDescription carries the label
+ *  for TalkBack. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun ShelterButton(
+internal fun ShelterCircle(
     alertActive: Boolean,
     active: Boolean,
-    label: String,
+    contentDescription: String,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(50)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val bg = if (alertActive) AlertRed else MaterialTheme.colorScheme.surface
     val fg = when {
         alertActive -> Color.White
         active -> MaterialTheme.colorScheme.primary
@@ -1401,29 +1414,44 @@ internal fun ShelterButton(
         active -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     }
-    Surface(
-        shape = shape,
-        color = bg.copy(alpha = if (isPressed) 0.8f else 1f),
-        border = border,
-        modifier = modifier
-            .pressTick(interactionSource)
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = ripple(bounded = true, color = fg.copy(alpha = 0.3f)),
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
+    val bg = if (alertActive) AlertRed else MaterialTheme.colorScheme.surface
+    val baseModifier = modifier
+        .size(48.dp)
+        .clip(CircleShape)
+        .background(bg.copy(alpha = if (isPressed) 0.8f else 1f))
+        .semantics { semanticsContentDescription = contentDescription }
+        .pressTick(interactionSource)
+        .combinedClickable(
+            interactionSource = interactionSource,
+            indication = ripple(bounded = true, color = fg.copy(alpha = 0.3f)),
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    Box(
+        modifier = if (border != null) baseModifier.border(border, CircleShape) else baseModifier,
+        contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val walkRes = remember { if (kotlin.random.Random.nextBoolean()) R.drawable.ic_walk_man else R.drawable.ic_walk_woman }
-            WalkFigureIcon(resId = walkRes, height = 20.dp, tint = fg)
-            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium), color = fg)
-        }
+        TeardropShelterIcon(modifier = Modifier.size(22.dp), tint = fg)
     }
+}
+
+/** The map's shelter pin as a Compose icon — stroke-only teardrop, tip anchored at the bottom,
+ *  mirroring the shelter marker bitmap drawn in MapView. */
+@Composable
+internal fun TeardropShelterIcon(modifier: Modifier = Modifier, tint: Color, strokeWidth: Float = 2.4f) {
+    Canvas(modifier = modifier, onDraw = {
+        drawPath(
+            path = Path().apply {
+                moveTo(12f, 23f)
+                quadraticTo(20f, 15.8f, 20f, 11f)
+                quadraticTo(20f, 3f, 12f, 3f)
+                quadraticTo(4f, 3f, 4f, 11f)
+                quadraticTo(4f, 15.8f, 12f, 23f)
+            },
+            color = tint,
+            style = Stroke(width = strokeWidth)
+        )
+    })
 }
 
 @Composable

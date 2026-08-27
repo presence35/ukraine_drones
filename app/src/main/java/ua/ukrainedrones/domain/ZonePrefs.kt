@@ -65,6 +65,7 @@ class ZonePrefs(private val context: Context) {
     private val connLogPendingSinceKey = longPreferencesKey("conn_log_pending_since")
     private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
     private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
+    private val ignoreRetryUntilKey = longPreferencesKey("ignore_retry_until")
     private val officialAnnouncedTokenKey = stringPreferencesKey("official_announced_token")
     private val officialAnnouncedSinceKey = stringPreferencesKey("official_announced_since")
     private val officialAnnouncedReasonIdKey = stringPreferencesKey("official_announced_reason_id")
@@ -562,6 +563,14 @@ fun threatToggleHintRemaining(): Flow<Int> =
 
     suspend fun setOfflinePendingSince(ts: Long) {
         context.dataStore.edit { it[offlinePendingSinceKey] = ts }
+    }
+
+    /** Epoch millis until the user's "Ignore 30 min" reconnect pause expires (0 = none). */
+    fun ignoreRetryUntil(): Flow<Long> =
+        context.dataStore.data.map { prefs -> prefs[ignoreRetryUntilKey] ?: 0L }
+
+    suspend fun setIgnoreRetryUntil(ts: Long) {
+        context.dataStore.edit { it[ignoreRetryUntilKey] = ts }
     }
 
     /** Focus token the last official alert episode was announced for (null = none), across restarts. */

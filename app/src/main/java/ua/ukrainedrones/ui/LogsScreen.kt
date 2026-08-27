@@ -3,6 +3,9 @@ package ua.ukrainedrones
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +81,9 @@ private enum class LogsFilter { DECISIONS, CONNECTIONS }
 /** How to group decision rows. */
 private enum class GroupBy { TIMELINE, PROXIMITY, TYPE }
 
+/** Sort within Proximity groups. */
+private enum class ProximitySort { DISTANCE, AGE }
+
 /** Accent for a group header. */
 private enum class GroupAccent { OFFICIAL, RED, YELLOW, OBLAST, LEFT }
 
@@ -115,8 +121,8 @@ private data class ConnectionRow(val entry: ConnLogEntry) : LogRow {
  * Logs screen: a single card list over the decision audit trail and connection episodes.
  * Regular-user defaults: rolling 24h window, only notified, flourish hidden.
  * Controls: Alerts/Connections tabs with counts, group-by (Timeline/Proximity/Type),
- * sort chip, right-edged Notified + Shoot-downs chips; per-card Details disclosure
- * for advanced (day/night · sound) audit fields.
+ * sort chips (Newest/Oldest for Timeline/Type, Distance/Age for Proximity),
+ * right-edged Notified + Shoot-downs chips; cards always show full audit row.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,11 +134,14 @@ fun LogsScreen(
 ) {
     val entries by DebugLog.entries.collectAsState()
     val connEntries by ConnectionLog.entries.collectAsState()
+    val connRetry by NeptunClient.retryState.collectAsState()
+    val connEvents by NeptunClient.connEvents.collectAsState()
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var filter by rememberSaveable { mutableStateOf(LogsFilter.DECISIONS) }
     var groupBy by rememberSaveable { mutableStateOf(GroupBy.PROXIMITY) }
     var newestFirst by rememberSaveable { mutableStateOf(true) }
+    var proximitySort by rememberSaveable { mutableStateOf(ProximitySort.DISTANCE) }
     var shownOnly by rememberSaveable { mutableStateOf(true) }
     var showFlourish by rememberSaveable { mutableStateOf(false) }
     var visibleCount by remember { mutableIntStateOf(VISIBLE_INITIAL) }
@@ -148,7 +157,7 @@ fun LogsScreen(
     val rows: List<LogRow> = buildRows(filter, window, connEntries, now, isDecisions, newestFirst, shownOnly, showFlourish)
     val visible = rows.take(visibleCount)
     val hasMore = visibleCount < rows.size
-    val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy, showFlourish) else emptyList()
+    val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy, showFlourish, proximitySort, newestFirst) else emptyList()
     val subtitle = if (isDecisions) String.format(s.logsSubtitleFormat, rows.size) else null
     Scaffold(
         topBar = {
@@ -178,6 +187,7 @@ fun LogsScreen(
                     ViewOptionsRow(
                         groupBy = groupBy,
                         newestFirst = newestFirst,
+                        proximitySort = proximitySort,
                         shownOnly = shownOnly,
                         showFlourish = showFlourish,
                         s = s,
@@ -186,6 +196,10 @@ fun LogsScreen(
                             visibleCount = VISIBLE_INITIAL
                         },
                         onSortToggle = { newestFirst = !newestFirst },
+                        onProximitySortChange = {
+                            proximitySort = it
+                            visibleCount = VISIBLE_INITIAL
+                        },
                         onShownOnlyChange = {
                             shownOnly = it
                             visibleCount = VISIBLE_INITIAL
@@ -205,6 +219,11 @@ fun LogsScreen(
                             modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
                         )
                     }
+                }
+            }
+            if (filter == LogsFilter.CONNECTIONS && connEvents.isNotEmpty()) {
+                item(key = "retrylog") {
+                    RetryLogCard(connEvents, connRetry, s, now)
                 }
             }
             if (visible.isEmpty()) {
@@ -302,24 +321,35 @@ private fun buildRows(
  * Build the ordered group specs from sorted decision rows. Canonical group order regardless of
  * sort direction: proximity = official / red / yellow / oblast / left; type = official / types /
  * left. Timeline returns a single header-less spec. Flourish group only included when [showFlourish].
+ * In Proximity, entries inside each bucket are sorted by distance (closest first) or age per [proximitySort].
  */
-private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy, showFlourish: Boolean): List<LogGroupSpec> {
+private fun buildGroups(
+    rows: List<DebugLogEntry>,
+    groupBy: GroupBy,
+    showFlourish: Boolean,
+    proximitySort: ProximitySort = ProximitySort.DISTANCE,
+    newestFirst: Boolean = true
+): List<LogGroupSpec> {
     if (rows.isEmpty()) return emptyList()
+    fun sortProximity(list: List<DebugLogEntry>): List<DebugLogEntry> = when (proximitySort) {
+        ProximitySort.DISTANCE -> list.sortedWith(compareBy<DebugLogEntry> { it.distanceKm ?: Double.MAX_VALUE }.thenByDescending { it.atMillis })
+        ProximitySort.AGE -> if (newestFirst) list.sortedByDescending { it.atMillis } else list.sortedBy { it.atMillis }
+    }
     return when (groupBy) {
         GroupBy.TIMELINE -> listOf(LogGroupSpec("timeline", null, null, null, rows, subTypes = false))
         GroupBy.PROXIMITY -> {
-            val official = rows.filter { it.kind == DebugLogKind.OFFICIAL_ON || it.kind == DebugLogKind.OFFICIAL_OFF }
-            val flourish = if (showFlourish) rows.filter { it.kind == DebugLogKind.FLOURISH } else emptyList()
+            val official = sortProximity(rows.filter { it.kind == DebugLogKind.OFFICIAL_ON || it.kind == DebugLogKind.OFFICIAL_OFF })
+            val flourish = if (showFlourish) sortProximity(rows.filter { it.kind == DebugLogKind.FLOURISH }) else emptyList()
             val threat = rows.filter {
                 it.kind == DebugLogKind.ZONE_ENTER ||
                     it.kind == DebugLogKind.ZONE_EXIT ||
                     it.kind == DebugLogKind.REGION_THREAT
             }
-            val left = threat.filter { it.kind == DebugLogKind.ZONE_EXIT || it.distanceKm == null }
+            val left = sortProximity(threat.filter { it.kind == DebugLogKind.ZONE_EXIT || it.distanceKm == null })
             val rest = threat.filter { it.kind != DebugLogKind.ZONE_EXIT && it.distanceKm != null }
-            val red = rest.filter { it.tier == ThreatZone.INNER }
-            val yellow = rest.filter { it.tier == ThreatZone.OUTER }
-            val oblast = rest.filter { it.tier == null }
+            val red = sortProximity(rest.filter { it.tier == ThreatZone.INNER })
+            val yellow = sortProximity(rest.filter { it.tier == ThreatZone.OUTER })
+            val oblast = sortProximity(rest.filter { it.tier == null })
             buildList {
                 if (official.isNotEmpty()) add(LogGroupSpec("official", "official", GroupAccent.OFFICIAL, null, official, subTypes = false))
                 if (flourish.isNotEmpty()) add(LogGroupSpec("flourish", "flourish", GroupAccent.LEFT, null, flourish, subTypes = false))
@@ -384,20 +414,25 @@ private fun FilterRow(
 private fun ViewOptionsRow(
     groupBy: GroupBy,
     newestFirst: Boolean,
+    proximitySort: ProximitySort,
     shownOnly: Boolean,
     showFlourish: Boolean,
     s: Strings.StringSet,
     onGroupBy: (GroupBy) -> Unit,
     onSortToggle: () -> Unit,
+    onProximitySortChange: (ProximitySort) -> Unit,
     onShownOnlyChange: (Boolean) -> Unit,
     onShowFlourishChange: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Spacer(Modifier.width(2.dp))
             val groupOptions = listOf(
                 GroupBy.TIMELINE to s.logsGroupTimeline,
                 GroupBy.PROXIMITY to s.logsGroupProximity,
@@ -410,23 +445,49 @@ private fun ViewOptionsRow(
                     label = { Text(label) }
                 )
             }
-            Spacer(Modifier.weight(1f))
-            val sortRotation by animateFloatAsState(
-                targetValue = if (newestFirst) 0f else 180f,
-                label = "sortRotation"
-            )
-            FilterChip(
-                selected = newestFirst,
-                onClick = onSortToggle,
-                label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Sort,
-                        contentDescription = s.logsSortDesc,
-                        modifier = Modifier.rotate(sortRotation).size(16.dp)
-                    )
-                }
-            )
+            if (groupBy == GroupBy.PROXIMITY) {
+                FilterChip(
+                    selected = proximitySort == ProximitySort.DISTANCE,
+                    onClick = { onProximitySortChange(ProximitySort.DISTANCE) },
+                    label = { Text(s.logsSortDistance) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Place,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                )
+                FilterChip(
+                    selected = proximitySort == ProximitySort.AGE,
+                    onClick = { onProximitySortChange(ProximitySort.AGE) },
+                    label = { Text(s.logsSortAge) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Sort,
+                            contentDescription = s.logsSortDesc,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                )
+            } else {
+                val sortRotation by animateFloatAsState(
+                    targetValue = if (newestFirst) 0f else 180f,
+                    label = "sortRotation"
+                )
+                FilterChip(
+                    selected = newestFirst,
+                    onClick = onSortToggle,
+                    label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Sort,
+                            contentDescription = s.logsSortDesc,
+                            modifier = Modifier.rotate(sortRotation).size(16.dp)
+                        )
+                    }
+                )
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
@@ -629,7 +690,6 @@ private fun DecisionCard(
         val info = ThreatTypeCatalog.INFO.getValue(type)
         if (lang == AppLanguage.UA) info.labelUa else info.labelEn
     }
-    var expanded by rememberSaveable(entry.atMillis, entry.threatId) { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -690,21 +750,19 @@ private fun DecisionCard(
                     )
                 }
             }
-            if (expanded) {
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (entry.night) s.debugLogNight else s.debugLogDay,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (entry.sirenOverride) s.debugLogSoundOverride else s.debugLogSoundFollows,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (entry.night) s.debugLogNight else s.debugLogDay,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (entry.sirenOverride) s.debugLogSoundOverride else s.debugLogSoundFollows,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -736,16 +794,6 @@ private fun DecisionCard(
                         color = DebugAmber
                     )
                 }
-                Spacer(Modifier.weight(1f))
-                TextButton(
-                    onClick = { expanded = !expanded },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                ) {
-                    Text(
-                        if (expanded) s.logsDetailsHide else s.logsDetailsShow,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
             }
         }
     }
@@ -774,6 +822,73 @@ private fun DecisionLeadingIcon(entry: DebugLogEntry, accent: Color, lang: AppLa
         tint = accent,
         modifier = Modifier.size(22.dp)
     )
+}
+
+@Composable
+private fun RetryLogCard(
+    events: List<ConnEvent>,
+    retry: ConnRetryState?,
+    s: Strings.StringSet,
+    now: Long
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(DebugAmber.copy(alpha = 0.08f))
+            .border(1.dp, DebugAmber.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Sort,
+                contentDescription = null,
+                tint = DebugAmber,
+                modifier = Modifier.size(16.dp).rotate(90f)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                s.connLogTitle,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = DebugAmber
+            )
+        }
+        events.reversed().forEach { ev ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    ev.label(s),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    formatAlertAge(now, ev.atMillis, s),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        retry?.let { r ->
+            Spacer(Modifier.height(2.dp))
+            val minutesOffline = ((now - (events.firstOrNull()?.atMillis ?: now)) / 60_000L).toInt().coerceAtLeast(0)
+            val countdownSec = ((r.nextAtMs - now) / 1000L).coerceAtLeast(0)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    String.format(s.offlineLiveFormat, minutesOffline, 20, r.attempt),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = DebugAmber
+                )
+                Text(
+                    " · ${countdownSec}${s.alertAgeSecSuffix}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
 }
 
 @Composable

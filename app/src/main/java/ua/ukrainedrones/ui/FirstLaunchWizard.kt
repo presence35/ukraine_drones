@@ -19,6 +19,8 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
@@ -30,6 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.semantics.contentDescription as semanticsContentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.Placeholder
@@ -62,12 +67,26 @@ internal fun FirstLaunchWizard(
     fastYellowArmed: Boolean,
     sheltersEnabled: Boolean,
     justFun: Boolean,
+    calmMessagesEnabled: Boolean,
+    flybyAnimationEnabled: Boolean,
+    deathAnimationEnabled: Boolean,
+    followBullet: Boolean,
+    neutralizedTallyEnabled: Boolean,
+    neutralizedTallyAllUkraine: Boolean,
+    iconSetForFun: ThreatIconSet,
     onChoose: (AppLanguage) -> Unit,
     onIconSetChange: (ThreatIconSet) -> Unit,
     onThreatEnabledToggle: (ThreatType, Boolean) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit,
     onJustFunChange: (Boolean) -> Unit,
+    onCalmMessagesChange: (Boolean) -> Unit,
+    onFlybyAnimationChange: (Boolean) -> Unit,
+    onDeathAnimationChange: (Boolean) -> Unit,
+    onFollowBulletChange: (Boolean) -> Unit,
+    onNeutralizedTallyChange: (Boolean) -> Unit,
+    onNeutralizedTallyAllUkraineChange: (Boolean) -> Unit,
+    onIconSetChangeForFun: (ThreatIconSet) -> Unit,
     onSlowRedChange: (Int) -> Unit,
     onSlowYellowChange: (Int) -> Unit,
     onSlowRedArmedChange: (Boolean) -> Unit,
@@ -80,6 +99,7 @@ internal fun FirstLaunchWizard(
     val totalSteps = 5
     var step by remember { mutableStateOf(0) }
     var tipsRevealed by remember { mutableStateOf(false) }
+    var locationMode by remember { mutableStateOf<String?>(null) }
     BackHandler(enabled = step > 0) { step-- }
     val stepTitle = when (step) {
         0 -> Strings.get(other).languageChooseTitle
@@ -101,6 +121,13 @@ internal fun FirstLaunchWizard(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
+                IconButton(onClick = onLater) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = s.languageChooseLater,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Spacer(Modifier.height(10.dp))
             Column(
@@ -168,7 +195,7 @@ internal fun FirstLaunchWizard(
                             slot = 28.dp
                         )
                     }
-                    2 -> SetupLocationStep(current, followMe, pinnedCity, onFollowMeChange, onPinnedCityChange)
+                    2 -> SetupLocationStep(current, mode = locationMode, pinnedCity = pinnedCity, onModeChange = { locationMode = it }, onFollowMeChange = onFollowMeChange, onPinnedCityChange = onPinnedCityChange)
                     3 -> SetupZoneControlsStep(
                         s = s,
                         lang = current,
@@ -184,7 +211,26 @@ internal fun FirstLaunchWizard(
                         onSlowRedArmedChange = onSlowRedArmedChange,
                         onSlowYellowArmedChange = onSlowYellowArmedChange
                     )
-                    else -> SetupFeaturesStep(s, justFun, onJustFunChange)
+                    else -> SetupFeaturesStep(
+                        s = s,
+                        lang = current,
+                        justFun = justFun,
+                        calmMessagesEnabled = calmMessagesEnabled,
+                        flybyAnimationEnabled = flybyAnimationEnabled,
+                        deathAnimationEnabled = deathAnimationEnabled,
+                        followBullet = followBullet,
+                        neutralizedTallyEnabled = neutralizedTallyEnabled,
+                        neutralizedTallyAllUkraine = neutralizedTallyAllUkraine,
+                        iconSet = iconSetForFun,
+                        onJustFunChange = onJustFunChange,
+                        onCalmMessagesChange = onCalmMessagesChange,
+                        onFlybyAnimationChange = onFlybyAnimationChange,
+                        onDeathAnimationChange = onDeathAnimationChange,
+                        onFollowBulletChange = onFollowBulletChange,
+                        onNeutralizedTallyChange = onNeutralizedTallyChange,
+                        onNeutralizedTallyAllUkraineChange = onNeutralizedTallyAllUkraineChange,
+                        onIconSetChange = onIconSetChangeForFun
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -195,20 +241,24 @@ internal fun FirstLaunchWizard(
             ) {
                 val backInteraction = remember { MutableInteractionSource() }
                 if (step > 0) {
-                    OutlinedButton(
+                    IconButton(
                         onClick = { step-- },
-                        interactionSource = backInteraction,
                         modifier = Modifier.pressTick(backInteraction)
-                    ) { Text(s.backButton) }
-                } else {
-                    OutlinedButton(
-                        onClick = onLater,
-                        interactionSource = backInteraction,
-                        modifier = Modifier.pressTick(backInteraction)
-                    ) { Text(s.languageChooseLater) }
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = s.backButton,
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
-                val progressFrac = (step + 1) / totalSteps.toFloat()
-                val nextEnabled = step != 0 || tipsRevealed
+                val locationReady = locationMode != null && (locationMode != "pin" || pinnedCity != null)
+                val progressFrac = if (step == 0 && !tipsRevealed) 0f else (step + 1) / totalSteps.toFloat()
+                val nextEnabled = when (step) {
+                    0 -> tipsRevealed
+                    2 -> locationReady
+                    else -> true
+                }
                 val nextInteraction = remember { MutableInteractionSource() }
                 Box(
                     modifier = Modifier
@@ -216,8 +266,8 @@ internal fun FirstLaunchWizard(
                         .height(42.dp)
                         .clip(RoundedCornerShape(50))
                         .background(
-                            if (nextEnabled) MaterialTheme.colorScheme.surfaceContainerHigh
-                            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f)
+                            if (nextEnabled) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -233,13 +283,13 @@ internal fun FirstLaunchWizard(
                             containerColor = Color.Transparent,
                             contentColor = Color.White,
                             disabledContainerColor = Color.Transparent,
-                            disabledContentColor = Color.White.copy(alpha = 0.4f)
+                            disabledContentColor = Color.White.copy(alpha = 0.35f)
                         ),
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Text(
                             if (step < totalSteps - 1) s.nextButton else s.wizardStartButton,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.Bold
                         )
                     }
                     Box(
@@ -408,8 +458,9 @@ private fun WizardThreatGrid(
 @Composable
 private fun SetupLocationStep(
     lang: AppLanguage,
-    followMe: Boolean,
+    mode: String?,
     pinnedCity: City?,
+    onModeChange: (String?) -> Unit,
     onFollowMeChange: (Boolean) -> Unit,
     onPinnedCityChange: (City?) -> Unit
 ) {
@@ -418,7 +469,6 @@ private fun SetupLocationStep(
     val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
-    var mode by remember { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
             s.wizardLocationSubtitle,
@@ -428,7 +478,7 @@ private fun SetupLocationStep(
         WizardLocationCard(
             selected = mode == "follow",
             onClick = {
-                mode = "follow"
+                onModeChange("follow")
                 onFollowMeChange(true)
                 if (!fineGranted) {
                     permLauncher.launch(
@@ -456,7 +506,7 @@ private fun SetupLocationStep(
         WizardLocationCard(
             selected = mode == "pin",
             onClick = {
-                mode = "pin"
+                onModeChange("pin")
                 onFollowMeChange(false)
             },
             icon = {
@@ -578,29 +628,18 @@ private fun SetupZoneControlsStep(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (sheltersEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceContainerHighest,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(if (sheltersEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .border(BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant), CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_shelter),
-                                contentDescription = null,
-                                tint = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                s.shelterButtonLabel,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        TeardropShelterIcon(
+                            modifier = Modifier.size(22.dp),
+                            tint = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.primary
+                        )
                     }
                     Text(
                         s.wizardShelterDesc,
@@ -718,8 +757,23 @@ private fun WizardZoneSliderRow(
 @Composable
 private fun SetupFeaturesStep(
     s: Strings.StringSet,
+    lang: AppLanguage,
     justFun: Boolean,
-    onJustFunChange: (Boolean) -> Unit
+    calmMessagesEnabled: Boolean,
+    flybyAnimationEnabled: Boolean,
+    deathAnimationEnabled: Boolean,
+    followBullet: Boolean,
+    neutralizedTallyEnabled: Boolean,
+    neutralizedTallyAllUkraine: Boolean,
+    iconSet: ThreatIconSet,
+    onJustFunChange: (Boolean) -> Unit,
+    onCalmMessagesChange: (Boolean) -> Unit,
+    onFlybyAnimationChange: (Boolean) -> Unit,
+    onDeathAnimationChange: (Boolean) -> Unit,
+    onFollowBulletChange: (Boolean) -> Unit,
+    onNeutralizedTallyChange: (Boolean) -> Unit,
+    onNeutralizedTallyAllUkraineChange: (Boolean) -> Unit,
+    onIconSetChange: (ThreatIconSet) -> Unit
 ) {
     val features = remember(s) {
         guideFeatures(s).filter { it.id in setOf("live", "zones", "night", "shelter") }
@@ -777,6 +831,86 @@ private fun SetupFeaturesStep(
                 checked = justFun,
                 onCheckedChange = onJustFunChange
             )
+        }
+        AnimatedVisibility(visible = justFun) {
+            Column {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        s.iconSetTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    IconSetSelector(
+                        lang = lang,
+                        selected = iconSet,
+                        onChange = onIconSetChange
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AlertToggleRow(
+                    title = s.calmMessagesTitle,
+                    description = s.calmMessagesDesc,
+                    checked = calmMessagesEnabled,
+                    onCheckedChange = onCalmMessagesChange,
+                    icon = painterResource(R.drawable.ic_peace),
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AlertToggleRow(
+                    title = s.flybyAnimationLabel,
+                    description = "Enable or disable the MiG-31K flyby animation and sound",
+                    checked = flybyAnimationEnabled,
+                    onCheckedChange = onFlybyAnimationChange,
+                    icon = painterResource(R.drawable.ic_airplay),
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AlertToggleRow(
+                    title = s.deathAnimationTitle,
+                    description = s.deathAnimationDesc,
+                    checked = deathAnimationEnabled,
+                    onCheckedChange = onDeathAnimationChange,
+                    icon = painterResource(R.drawable.ic_explosion),
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                AnimatedVisibility(visible = deathAnimationEnabled) {
+                    Column(modifier = Modifier.padding(start = 40.dp)) {
+                        AlertToggleRow(
+                            title = s.followBulletTitle,
+                            description = s.followBulletDesc,
+                            checked = followBullet,
+                            onCheckedChange = onFollowBulletChange,
+                            icon = painterResource(R.drawable.bullet),
+                            iconTint = null
+                        )
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AlertToggleRow(
+                    title = s.neutralizedTallyTitle,
+                    description = s.neutralizedTallyDesc,
+                    checked = neutralizedTallyEnabled,
+                    onCheckedChange = onNeutralizedTallyChange,
+                    icon = rememberVectorPainter(Icons.Default.Notifications),
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    iconBadge = "21"
+                )
+                if (neutralizedTallyEnabled) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Box(modifier = Modifier.padding(start = 40.dp)) {
+                        AlertToggleRow(
+                            title = s.neutralizedTallyAllUkraineTitle,
+                            description = s.neutralizedTallyAllUkraineDesc,
+                            checked = neutralizedTallyAllUkraine,
+                            onCheckedChange = onNeutralizedTallyAllUkraineChange,
+                            emoji = "🇺🇦"
+                        )
+                    }
+                }
+            }
         }
     }
 }

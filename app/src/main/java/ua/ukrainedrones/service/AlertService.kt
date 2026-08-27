@@ -40,6 +40,7 @@ class AlertService : Service() {
 
     companion object {
         const val ACTION_RETRY = "ua.ukrainedrones.RETRY"
+        const val ACTION_IGNORE_RETRY = "ua.ukrainedrones.IGNORE_RETRY"
         const val EXTRA_REVEAL_ID = "reveal_threat_id"
         const val EXTRA_REVEAL_LAT = "reveal_threat_lat"
         const val EXTRA_REVEAL_LON = "reveal_threat_lon"
@@ -95,6 +96,9 @@ class AlertService : Service() {
     private var lastMonitorTitle: String? = null
     private var lastMonitorText: String? = null
     private var lastMonitorRetry: String? = null
+    private var lastMonitorProgressMax: Int? = null
+    private var lastMonitorProgressNow: Int? = null
+    private var lastMonitorIgnore: String? = null
     private var wasConnected = true
     private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
@@ -208,6 +212,12 @@ NeptunClient.start(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_IGNORE_RETRY) {
+            // The user told the app to give up reconnecting for 30 minutes: no auto-retry until
+            // the pause expires or they tap the Offline pill / Retry. The next tick re-renders
+            // the monitor notification as "paused".
+            NeptunClient.beginIgnore(30)
+        }
         if (intent?.action == ACTION_RETRY) {
             // The TEMP force-offline test toggle would keep NEPTUN "down" even after a
             // successful reconnect — turn it off so Retry truly restores the stream.
@@ -477,7 +487,6 @@ NeptunClient.start(applicationContext)
         // wording with a Retry action once the drop outlasts the shared grace (short blips that
         // recover inside it never reach the offline wording). No separate one-shot alert — a
         // second notification with its own Retry button was just duplicate noise in the shade.
-        val offline = state.offlineElapsedSec?.takeIf { it * 1000 >= NeptunClient.OFFLINE_GRACE_MS }
         if (state.connected) {
             offlineAlertJob?.cancel()
             offlineAlertJob = null
@@ -536,6 +545,7 @@ NeptunClient.start(applicationContext)
             // Show notification at 3 minutes
             if (elapsedSinceReconnect >= threeMinMs && !notif3minShown) {
                 notif3minShown = true
+                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_3)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -549,6 +559,7 @@ NeptunClient.start(applicationContext)
             // Show notification at 6 minutes
             if (elapsedSinceReconnect >= sixMinMs && !notif6minShown) {
                 notif6minShown = true
+                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_6)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -562,6 +573,7 @@ NeptunClient.start(applicationContext)
             // Show notification at 10 minutes
             if (elapsedSinceReconnect >= tenMinMs && !notif10minShown) {
                 notif10minShown = true
+                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_10)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -575,6 +587,7 @@ NeptunClient.start(applicationContext)
             // Show notification at 20 minutes and stop reconnection attempts
             if (elapsedSinceReconnect >= twentyMinMs && !notif20minShown) {
                 notif20minShown = true
+                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_20)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -592,6 +605,7 @@ NeptunClient.start(applicationContext)
             // silent CHANNEL_OFFLINE milestones stay quiet).
             if (state.criticalOfflineOverride && elapsedSinceReconnect >= CRITICAL_OFFLINE_MIN * 60_000L && !notifCriticalShown) {
                 notifCriticalShown = true
+                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_5)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE_CRITICAL)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -605,14 +619,23 @@ NeptunClient.start(applicationContext)
             }
         }
 
+        val offlineMinutes = (elapsedSinceReconnect / 60_000L).toInt().coerceIn(0, 20)
+        val isOfflineNow = neptun.neptunDown
         notifyMonitor(
             title = when {
-                neptun.neptunDown -> s.offlineStatusTitle
+                isOfflineNow -> s.offlineStatusTitle
                 state.focusPinned -> String.format(s.notifMonitoringCityFormat, state.focusBannerCity)
                 else -> s.notifOngoingTitle
             },
-            text = if (neptun.degraded && !neptun.neptunDown) s.connDegradedBody else "",
-            retryLabel = if (offline != null) s.offlineRetryAction else null
+            text = when {
+                isOfflineNow -> offlineLiveBody(s, offlineMinutes)
+                neptun.degraded -> s.connDegradedBody
+                else -> ""
+            },
+            retryLabel = if (isOfflineNow) s.offlineRetryAction else null,
+            progressMax = if (isOfflineNow) 20 else null,
+            progressNow = if (isOfflineNow) offlineMinutes else null,
+            ignoreLabel = if (isOfflineNow && elapsedSinceReconnect >= twentyMinMs) s.offlineIgnoreAction else null
         )
 
         val all = NeptunClient.state.value.threats
@@ -913,7 +936,14 @@ NeptunClient.start(applicationContext)
         return distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
     }
 
-    private fun monitorNotification(title: String, text: String, retryLabel: String?) =
+    private fun monitorNotification(
+        title: String,
+        text: String,
+        retryLabel: String?,
+        progressMax: Int? = null,
+        progressNow: Int? = null,
+        ignoreLabel: String? = null
+    ) =
         NotificationCompat.Builder(this, CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_trident)
             .setContentTitle(title)
@@ -925,15 +955,42 @@ NeptunClient.start(applicationContext)
                 if (retryLabel != null) {
                     addAction(0, retryLabel, retryPendingIntent())
                 }
+                if (ignoreLabel != null) {
+                    addAction(0, ignoreLabel, ignoreRetryPendingIntent())
+                }
+                if (progressMax != null && progressNow != null) {
+                    setProgress(progressMax, progressNow, false)
+                }
             }
             .build()
 
-    private fun notifyMonitor(title: String, text: String, retryLabel: String?) {
-        if (title == lastMonitorTitle && text == lastMonitorText && retryLabel == lastMonitorRetry) return
+    private fun notifyMonitor(
+        title: String,
+        text: String,
+        retryLabel: String?,
+        progressMax: Int? = null,
+        progressNow: Int? = null,
+        ignoreLabel: String? = null
+    ) {
+        if (title == lastMonitorTitle && text == lastMonitorText && retryLabel == lastMonitorRetry &&
+            progressMax == lastMonitorProgressMax && progressNow == lastMonitorProgressNow && ignoreLabel == lastMonitorIgnore
+        ) return
         lastMonitorTitle = title
         lastMonitorText = text
         lastMonitorRetry = retryLabel
-        safeNotify(NOTIF_MONITOR, monitorNotification(title, text, retryLabel))
+        lastMonitorProgressMax = progressMax
+        lastMonitorProgressNow = progressNow
+        lastMonitorIgnore = ignoreLabel
+        safeNotify(NOTIF_MONITOR, monitorNotification(title, text, retryLabel, progressMax, progressNow, ignoreLabel))
+    }
+
+    /** Live offline body: "X/20 min · attempt N — latest log line" (or the paused wording). */
+    private fun offlineLiveBody(s: Strings.StringSet, minutes: Int): String {
+        if (NeptunClient.isIgnoring) return s.offlinePausedBody
+        val attempt = NeptunClient.retryState.value?.attempt ?: 0
+        val latest = NeptunClient.connEvents.value.lastOrNull()
+        val head = String.format(s.offlineLiveFormat, minutes, 20, attempt)
+        return if (latest != null) "$head — ${latest.label(s)}" else head
     }
 
     private fun buildAlertNotification(
@@ -1076,6 +1133,15 @@ NeptunClient.start(applicationContext)
         val intent = Intent(this, AlertService::class.java).setAction(ACTION_RETRY)
         return PendingIntent.getForegroundService(
             this, 1, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    /** "Ignore 30 min" action on the 20-min give-up notification: pause all auto-retries. */
+    private fun ignoreRetryPendingIntent(): PendingIntent {
+        val intent = Intent(this, AlertService::class.java).setAction(ACTION_IGNORE_RETRY)
+        return PendingIntent.getForegroundService(
+            this, 2, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
     }

@@ -1655,7 +1655,7 @@ private fun NightTimeField(
 }
 
 @Composable
-private fun AlertToggleRow(
+internal fun AlertToggleRow(
     title: String,
     description: String,
     checked: Boolean,

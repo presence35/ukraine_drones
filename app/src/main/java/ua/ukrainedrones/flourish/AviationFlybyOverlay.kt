@@ -61,16 +61,15 @@ fun AviationFlybyOverlay(
     }
 
     LaunchedEffect(show.tick) {
+        audioPlayer.start()
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(show.durationMs.toInt(), easing = LinearEasing))
+        // Sound lives through the smoke and dies just before the trail vanishes.
         try {
-            audioPlayer.start()
-            progress.snapTo(0f)
-            progress.animateTo(1f, tween(show.durationMs.toInt(), easing = LinearEasing))
+            fadeProgress.animateTo(0f, tween(2000, easing = LinearEasing))
         } finally {
             try { audioPlayer.stop() } catch (_: Exception) {}
         }
-        // Fade out contrail after jet exits — must run before onFinished so the
-        // overlay stays composed for the full recede (flybyFlow not an upstream of uiState).
-        fadeProgress.animateTo(0f, tween(2000, easing = LinearEasing))
         onFinished(show.threatId)
     }
     Box(modifier = Modifier.fillMaxSize().onSizeChanged { canvasPx = it }) {
@@ -78,7 +77,7 @@ fun AviationFlybyOverlay(
         val planeW = canvasPx.width * 0.6f
         val trailLen = planeW * 1.4f
         val trailStroke = (planeW * 0.02f).coerceIn(6f, 14f)
-        val trailDrop = planeW * 0.03f
+        val trailDrop = planeW * 0.06f
         val (entry, exit) = AviationFlyby.endpoints(
             show.courseDeg, canvasPx.width.toFloat(), canvasPx.height.toFloat(), planeW
         )
