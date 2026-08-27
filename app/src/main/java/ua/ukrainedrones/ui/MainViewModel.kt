@@ -102,6 +102,7 @@ data class UiState(
     val showMediumCities: Boolean = true,
     val showSmallCities: Boolean = true,
     val deathAnimationEnabled: Boolean = true,
+    val flybyAnimationEnabled: Boolean = true,
     val followBullet: Boolean = true,
     val neutralizedTallyEnabled: Boolean = true,
     val neutralizedTallyAllUkraine: Boolean = false,
@@ -668,6 +669,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             showMediumCities = prefs.showMediumCities,
             showSmallCities = prefs.showSmallCities,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
+            flybyAnimationEnabled = prefs.flybyAnimationEnabled,
             followBullet = prefs.followBullet,
             neutralizedTallyEnabled = prefs.neutralizedTallyEnabled,
             neutralizedTallyAllUkraine = prefs.neutralizedTallyAllUkraine,
@@ -1195,6 +1197,10 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
     fun setDeathAnimationEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setDeathAnimationEnabled(enabled) }
+    }
+
+    fun setFlybyAnimationEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setFlybyAnimationEnabled(enabled) }
     }
 
     fun setFollowBullet(enabled: Boolean) {

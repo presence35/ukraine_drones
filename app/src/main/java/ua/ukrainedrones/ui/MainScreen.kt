@@ -179,7 +179,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     var guideFromSettings by remember { mutableStateOf(false) }
     var sheltersFromSettings by remember { mutableStateOf(false) }
     var scrollToThreatsTick by remember { mutableStateOf(0) }
-    var wizardOpenedDuringAlert by remember { mutableStateOf(false) }
+    var wizardLaunchedDuringAlert by remember { mutableStateOf(false) }
     var wizardFromSettings by remember { mutableStateOf(false) }
     var headerHeightPx by remember { mutableStateOf(0) }
     // The wizard owns the screen while it's up — the map is not even composed then (no tile
@@ -187,7 +187,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     // == null) neither map nor wizard composes, so the real pref decides — never a default.
     val prefsLoaded = uiState.wizardCompleted != null
     val wizardShown = uiState.wizardCompleted == false &&
-        (!uiState.alertActive || wizardOpenedDuringAlert)
+        (!uiState.alertActive || wizardLaunchedDuringAlert)
     val wizardOwnsScreen = wizardShown && !wizardFromSettings
     val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     var settingsCollapse by rememberSaveable(stateSaver = SettingsCollapseState.Saver) { mutableStateOf(SettingsCollapseState()) }
@@ -347,6 +347,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 calmMessagesEnabled = uiState.calmMessagesEnabled,
                 hapticsEnabled = uiState.hapticsEnabled,
                 deathAnimationEnabled = uiState.deathAnimationEnabled,
+                flybyAnimationEnabled = uiState.flybyAnimationEnabled,
+                onFlybyAnimationChange = { viewModel.setFlybyAnimationEnabled(it) },
                 followBullet = uiState.followBullet,
                 neutralizedTallyEnabled = uiState.neutralizedTallyEnabled,
                 neutralizedTallyAllUkraine = uiState.neutralizedTallyAllUkraine,
@@ -407,7 +409,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onCheckUpdate = { viewModel.checkForUpdates() },
                 onRelaunchSetup = {
                     viewModel.relaunchSetup()
-                    wizardOpenedDuringAlert = true
+                    wizardLaunchedDuringAlert = uiState.alertActive
                     wizardFromSettings = true
                 },
                 onResetTips = {
@@ -496,7 +498,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     // "Replay first launch" is the user's explicit choice and works even while an alert is
     // already active (wizardOpenedDuringAlert overrides the gate until the alert clears).
     LaunchedEffect(uiState.alertActive) {
-        if (!uiState.alertActive) wizardOpenedDuringAlert = false
+        if (!uiState.alertActive) wizardLaunchedDuringAlert = false
     }
     if (wizardShown) {
         FirstLaunchWizard(
@@ -852,13 +854,15 @@ private fun MapScreen(
                         onFlourishEjected = onFlourishEjected,
                         modifier = Modifier.fillMaxSize()
                     )
-                    uiState.flyby?.let { show ->
-                        AviationFlybyOverlay(
-                            show = show,
-                            iconSet = uiState.iconSet,
-                            onFinished = onFlybyFinished
-                        )
-                    }
+uiState.flyby?.let { show ->
+    if (uiState.flybyAnimationEnabled) {
+        AviationFlybyOverlay(
+            show = show,
+            iconSet = uiState.iconSet,
+            onFinished = onFlybyFinished
+        )
+    }
+}
                     // Basemap attribution (required by the CARTO basemap free tier) stacked
                     // under the scale bar so the pair matches the floating buttons' height.
                     Column(

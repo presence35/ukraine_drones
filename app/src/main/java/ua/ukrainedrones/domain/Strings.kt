@@ -102,6 +102,7 @@ object Strings {
         val systemSectionTitle: String,
         val locationSectionTitle: String,
         val justFunSectionTitle: String,
+        val flybyAnimationLabel: String,
         val cardSizeSmallLabel: String,
         val cardSizeLargeLabel: String
     )
@@ -583,6 +584,7 @@ object Strings {
         val systemSectionTitle: String get() = settings.systemSectionTitle
         val locationSectionTitle: String get() = settings.locationSectionTitle
         val justFunSectionTitle: String get() = settings.justFunSectionTitle
+        val flybyAnimationLabel: String get() = settings.flybyAnimationLabel
         val cardSizeSmallLabel: String get() = settings.cardSizeSmallLabel
         val cardSizeLargeLabel: String get() = settings.cardSizeLargeLabel
 
@@ -1104,6 +1106,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         systemSectionTitle = "Система та інтерфейс",
         locationSectionTitle = "Локація та фокус",
         justFunSectionTitle = "Просто розвага",
+        flybyAnimationLabel = "Анімація польоту МіГ",
         cardSizeSmallLabel = "Компактні картки",
         cardSizeLargeLabel = "Великі картки",
     )
@@ -1619,6 +1622,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         systemSectionTitle = "System & Display",
         locationSectionTitle = "Location & Focus",
         justFunSectionTitle = "Just Fun",
+        flybyAnimationLabel = "MiG flyby animation",
         cardSizeSmallLabel = "Small cards",
         cardSizeLargeLabel = "Large cards",
     )

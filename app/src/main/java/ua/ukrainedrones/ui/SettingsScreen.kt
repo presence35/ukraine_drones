@@ -373,6 +373,8 @@ fun SettingsScreen(
     calmMessagesEnabled: Boolean,
     hapticsEnabled: Boolean,
     deathAnimationEnabled: Boolean,
+    flybyAnimationEnabled: Boolean,
+    onFlybyAnimationChange: (Boolean) -> Unit,
     followBullet: Boolean,
     neutralizedTallyEnabled: Boolean,
     neutralizedTallyAllUkraine: Boolean,
@@ -1197,6 +1199,15 @@ fun SettingsScreen(
                         checked = deathAnimationEnabled,
                         onCheckedChange = onDeathAnimationChange,
                         icon = painterResource(R.drawable.ic_explosion),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // MiG flyby animation
+                    AlertToggleRow(
+                        title = s.flybyAnimationLabel,
+                        description = "Enable or disable the MiG-31K flyby animation and sound",
+                        checked = flybyAnimationEnabled,
+                        onCheckedChange = onFlybyAnimationChange,
+                        icon = painterResource(R.drawable.ic_airplay),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     AnimatedVisibility(visible = deathAnimationEnabled) {

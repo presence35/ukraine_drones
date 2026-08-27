@@ -84,6 +84,7 @@ class ZonePrefs(private val context: Context) {
     private val nightFastYellowArmedKey = booleanPreferencesKey("night_fast_yellow_armed")
     private val nightZoneSirenOverrideKey = booleanPreferencesKey("night_zone_siren_override")
     private val nightOfficialSirenOverrideKey = booleanPreferencesKey("night_official_siren_override")
+    private val flybyAnimationEnabledKey = booleanPreferencesKey("flyby_animation_enabled")
     private val sheltersEnabledKey = booleanPreferencesKey("shelters_enabled")
     private val sheltersWithKidsEnabledKey = booleanPreferencesKey("shelters_with_kids_enabled")
     private val periodicGpsKey = booleanPreferencesKey("periodic_gps_enabled")
@@ -463,6 +464,14 @@ fun threatToggleHintRemaining(): Flow<Int> =
 
     suspend fun setDeathAnimationEnabled(enabled: Boolean) {
         context.dataStore.edit { it[deathAnimationEnabledKey] = enabled }
+    }
+
+    /** Whether the MiG flyby animation (visual + sound) is enabled — default on. */
+    fun flybyAnimationEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[flybyAnimationEnabledKey] ?: true }
+
+    suspend fun setFlybyAnimationEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[flybyAnimationEnabledKey] = enabled }
     }
 
     /** Whether the camera follows the death bullet (then returns to where the user was) — default on. */

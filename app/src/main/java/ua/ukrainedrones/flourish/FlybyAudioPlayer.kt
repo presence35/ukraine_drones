@@ -31,8 +31,8 @@ class FlybyAudioPlayer private constructor(
 
         fun create(context: Context): FlybyAudioPlayer {
             val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
             val mp = MediaPlayer.create(context, RES_ID).apply {
