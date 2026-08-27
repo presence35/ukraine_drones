@@ -1215,13 +1215,14 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         viewModelScope.launch { prefs.setDeathAnimationEnabled(enabled) }
     }
 
-    /** Master "Just Fun" switch: flips the shoot-down animation, MiG flyby and tally together.
-     *  Purely cosmetic — never touches monitoring or alerts. */
+    /** Master "Just Fun" switch: flips the shoot-down animation, MiG flyby, tally and calm
+     *  messages together. Purely cosmetic — never touches monitoring or alerts. */
     fun setJustFunEnabled(enabled: Boolean) {
         viewModelScope.launch {
             prefs.setDeathAnimationEnabled(enabled)
             prefs.setFlybyAnimationEnabled(enabled)
             prefs.setNeutralizedTallyEnabled(enabled)
+            prefs.setCalmMessagesEnabled(enabled)
         }
     }
 

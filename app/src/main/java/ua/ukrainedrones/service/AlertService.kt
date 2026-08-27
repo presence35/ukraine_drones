@@ -635,11 +635,6 @@ NeptunClient.start(applicationContext)
         val alertable = state.zoneThreats.entries
             .mapNotNull { (id, spatial) -> alertTier(id, spatial)?.let { id to it } }
             .toMap()
-        // A red alert ejects the pending tally flourish and erases its memory — safety always
-        // outranks the playful replay.
-        if (state.focusOblastAlertActive || alertable.any { it.value == ThreatZone.INNER }) {
-            tally.eject()
-        }
         var posted = false
         var postedId: String? = null
         val newEntries = alertable.entries

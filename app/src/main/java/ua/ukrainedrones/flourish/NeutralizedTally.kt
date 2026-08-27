@@ -32,7 +32,7 @@ class NeutralizedTally(
     private var neutralizedCount = 0
     private val perTypeCounts = mutableMapOf<ThreatType, Int>()
     // Running memory of resolved threats (position + type) so tapping the tally notification can
-    // replay a shot-down show. Capped at 10; cleared when a red alert ejects the flourish.
+    // replay a shot-down show. Capped at 21; flourish survives alerts and background.
     private data class ResolvedRecord(val lat: Double, val lon: Double, val type: ThreatType)
     private val resolvedMemory = ArrayDeque<ResolvedRecord>()
 
@@ -55,10 +55,7 @@ class NeutralizedTally(
         postNeutralizedTally(lang)
     }
 
-    /** A red alert ejects the pending replay memory — safety always outranks the flourish. */
-    fun eject() {
-        if (resolvedMemory.isNotEmpty()) resolvedMemory.clear()
-    }
+    fun eject() {}
 
     /** The tally notification was swiped away (or its replay consumed in the app) — reset the
      *  count and memory so any later neutralizations start a fresh tally, and drop the

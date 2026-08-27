@@ -83,6 +83,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -753,15 +758,12 @@ fun SettingsScreen(
                         onCheckedChange = { v -> showExplainer("officialAlerts"); onOfficialAlertsChange(v) },
                         icon = painterResource(R.drawable.ic_trident),
                         note = s.officialAlertsRedTridentNote,
+                        noteIcon = painterResource(R.drawable.ic_trident),
+                        noteIconTint = Color(0xFFD32F2F),
                         flash = flashId == "officialAlerts"
                     )
                     AnimatedVisibility(visible = officialAlertsEnabled) {
-                        Column(
-                            modifier = Modifier
-                                .padding(start = 56.dp, end = 12.dp, bottom = 6.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f))
-                        ) {
+                        Column(modifier = Modifier.padding(start = 40.dp)) {
                             AlertToggleRow(
                                 title = s.officialAlertScopeTitle,
                                 description = s.officialAlertScopeDesc,
@@ -1208,15 +1210,6 @@ fun SettingsScreen(
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // Death animation
-                    AlertToggleRow(
-                        title = s.deathAnimationTitle,
-                        description = s.deathAnimationDesc,
-                        checked = deathAnimationEnabled,
-                        onCheckedChange = onDeathAnimationChange,
-                        icon = painterResource(R.drawable.ic_explosion),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     // MiG flyby animation
                     AlertToggleRow(
                         title = s.flybyAnimationLabel,
@@ -1224,6 +1217,16 @@ fun SettingsScreen(
                         checked = flybyAnimationEnabled,
                         onCheckedChange = onFlybyAnimationChange,
                         icon = painterResource(R.drawable.ic_airplay),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // Death animation
+                    AlertToggleRow(
+                        title = s.deathAnimationTitle,
+                        description = s.deathAnimationDesc,
+                        checked = deathAnimationEnabled,
+                        onCheckedChange = onDeathAnimationChange,
+                        icon = painterResource(R.drawable.ic_explosion),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     AnimatedVisibility(visible = deathAnimationEnabled) {
@@ -1662,6 +1665,8 @@ private fun AlertToggleRow(
     iconBadge: String? = null,
     emoji: String? = null,
     note: String? = null,
+    noteIcon: Painter? = null,
+    noteIconTint: Color? = null,
     flash: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -1720,11 +1725,39 @@ private fun AlertToggleRow(
             )
             note?.let {
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (noteIcon != null) {
+                    val iconId = "noteIcon"
+                    Text(
+                        buildAnnotatedString {
+                            appendInlineContent(iconId, "[icon]")
+                            append(" $it")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        inlineContent = mapOf(
+                            iconId to InlineTextContent(
+                                Placeholder(
+                                    12.sp,
+                                    12.sp,
+                                    PlaceholderVerticalAlign.TextCenter
+                                )
+                            ) {
+                                Image(
+                                    painter = noteIcon,
+                                    contentDescription = null,
+                                    colorFilter = noteIconTint?.let { ColorFilter.tint(it) },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        )
+                    )
+                } else {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
         Switch(

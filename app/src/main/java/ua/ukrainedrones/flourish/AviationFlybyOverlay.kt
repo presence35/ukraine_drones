@@ -48,13 +48,12 @@ fun AviationFlybyOverlay(
     onFinished: (String) -> Unit
 ) {
     val context = LocalContext.current
-    // Measured once per icon set; null → legacy constant fallback (classic vectors etc).
     val geometry = remember(iconSet) { IconGeometryCache.aviationFor(iconSet, context) }
         ?: fallbackGeometry(iconSet)
 
     var canvasPx by remember { mutableStateOf(IntSize.Zero) }
     val progress = remember(show.tick) { Animatable(0f) }
-    val fadeProgress = remember { Animatable(1f) } // 1 = visible, 0 = faded
+    val fadeProgress = remember { Animatable(1f) }
     val audioPlayer = remember(show.tick) { FlybyAudioPlayer.create(context) }
 
     androidx.compose.runtime.DisposableEffect(audioPlayer) {
@@ -69,18 +68,17 @@ fun AviationFlybyOverlay(
         } finally {
             try { audioPlayer.stop() } catch (_: Exception) {}
         }
-        onFinished(show.threatId)
-        // Fade out contrail after jet exits
+        // Fade out contrail after jet exits — must run before onFinished so the
+        // overlay stays composed for the full recede (flybyFlow not an upstream of uiState).
         fadeProgress.animateTo(0f, tween(2000, easing = LinearEasing))
+        onFinished(show.threatId)
     }
-    // The measuring Box must always compose (the size callback lives on it) — only the
-    // contents wait for a real size.
     Box(modifier = Modifier.fillMaxSize().onSizeChanged { canvasPx = it }) {
         if (canvasPx == IntSize.Zero) return@Box
-        // A screen-wide event needs a screen-scale plane: ~60% of the viewport width.
         val planeW = canvasPx.width * 0.6f
         val trailLen = planeW * 1.4f
         val trailStroke = (planeW * 0.02f).coerceIn(6f, 14f)
+        val trailDrop = planeW * 0.03f
         val (entry, exit) = AviationFlyby.endpoints(
             show.courseDeg, canvasPx.width.toFloat(), canvasPx.height.toFloat(), planeW
         )
@@ -90,27 +88,29 @@ fun AviationFlybyOverlay(
         val (rotZ, flipped) = AviationFlyby.spriteTransform(
             show.courseDeg.toFloat(), geometry.facingDeg
         )
-        // Haptics tied to progress (called every frame via composition)
         FlybyHaptics(progress.value)
         Canvas(modifier = Modifier.matchParentSize()) {
-            // Exhaust anchor: slot-local fractions → mirror → rotate, exactly like the sprite.
             var ox = geometry.anchorXFrac * planeW
             var oy = geometry.anchorYFrac * planeW
             if (flipped) oy = -oy
             val rad = Math.toRadians(rotZ.toDouble())
             val wx = cos(rad) * ox - sin(rad) * oy
             val wy = sin(rad) * ox + cos(rad) * oy
-            val anchorX = (x + wx).toFloat()
-            val anchorY = (y + wy).toFloat()
-            val tailX = (anchorX - trailLen * dir.first).toFloat()
-            val tailY = (anchorY - trailLen * dir.second).toFloat()
-            // Contrail alpha fades out after jet exits
-            val contrailAlpha = fadeProgress.value
+            val anchorX0 = (x + wx).toFloat()
+            val anchorY0 = (y + wy).toFloat()
+            val fade = fadeProgress.value
+            val slideBy = trailLen * (1f - fade)
+            val anchorX = (anchorX0 + slideBy * dir.first).toFloat()
+            val anchorY = (anchorY0 + slideBy * dir.second + trailDrop).toFloat()
+            val effLen = trailLen * fade
+            val tailX = (anchorX - effLen * dir.first).toFloat()
+            val tailY = (anchorY - effLen * dir.second).toFloat()
+            val contrailAlpha = 0.55f * fade
             drawLine(
                 brush = Brush.linearGradient(
                     colors = listOf(
                         Color.White.copy(alpha = 0f),
-                        Color.White.copy(alpha = 0.55f * contrailAlpha)
+                        Color.White.copy(alpha = contrailAlpha)
                     ),
                     start = Offset(tailX, tailY),
                     end = Offset(anchorX, anchorY)
@@ -135,8 +135,6 @@ fun AviationFlybyOverlay(
     }
 }
 
-// Legacy fallback when no raster geometry is available: anchor behind the declared facing
-// with a small nozzle-side nudge (fractions of slot size), matching the pre-scan behavior.
 private const val FALLBACK_BACK_FRAC = 0.42f
 private const val FALLBACK_SIDE_FRAC = 0.076f
 
@@ -153,11 +151,6 @@ private fun fallbackGeometry(iconSet: ThreatIconSet): IconGeometry {
     )
 }
 
-/**
- * One copy of the aviation asset in a square slot of [sidePx], optionally a flat shadow.
- * [rotationZDeg] and [flip] come pre-computed from the pack's measured facing so the jet
- * never renders upside-down yet its nose still points along the flight path.
- */
 @Composable
 private fun PlaneSprite(
     sidePx: Float,
