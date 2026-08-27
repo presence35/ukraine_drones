@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,7 +34,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,7 +55,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -116,9 +113,10 @@ private data class ConnectionRow(val entry: ConnLogEntry) : LogRow {
 
 /**
  * Logs screen: a single card list over the decision audit trail and connection episodes.
- * The Decisions tab offers group-by (Timeline / Proximity / Type), a standard sort-direction
- * toggle (newest or oldest first) and a "shown only" switch (only rows where a notification
- * was actually shown); a double arrow at the bottom reveals more rows.
+ * Regular-user defaults: rolling 24h window, only notified, flourish hidden.
+ * Controls: Alerts/Connections tabs with counts, group-by (Timeline/Proximity/Type),
+ * sort chip, right-edged Notified + Shoot-downs chips; per-card Details disclosure
+ * for advanced (day/night · sound) audit fields.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -136,6 +134,7 @@ fun LogsScreen(
     var groupBy by rememberSaveable { mutableStateOf(GroupBy.PROXIMITY) }
     var newestFirst by rememberSaveable { mutableStateOf(true) }
     var shownOnly by rememberSaveable { mutableStateOf(true) }
+    var showFlourish by rememberSaveable { mutableStateOf(false) }
     var visibleCount by remember { mutableIntStateOf(VISIBLE_INITIAL) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -146,10 +145,11 @@ fun LogsScreen(
     // Rolling 24-hour window: decision rows older than a day drop off live.
     val window = entries.filter { now - it.atMillis < DebugLog.AUTO_CLEAR_AGE_MS }
     val isDecisions = filter == LogsFilter.DECISIONS
-    val rows: List<LogRow> = buildRows(filter, window, connEntries, now, isDecisions, newestFirst, shownOnly)
+    val rows: List<LogRow> = buildRows(filter, window, connEntries, now, isDecisions, newestFirst, shownOnly, showFlourish)
     val visible = rows.take(visibleCount)
     val hasMore = visibleCount < rows.size
-    val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy) else emptyList()
+    val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy, showFlourish) else emptyList()
+    val subtitle = if (isDecisions) String.format(s.logsSubtitleFormat, rows.size) else null
     Scaffold(
         topBar = {
             TopAppBar(
@@ -168,7 +168,7 @@ fun LogsScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             item(key = "filters") {
-                FilterRow(filter, s) {
+                FilterRow(filter, s, window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0) {
                     filter = it
                     visibleCount = VISIBLE_INITIAL
                 }
@@ -179,6 +179,7 @@ fun LogsScreen(
                         groupBy = groupBy,
                         newestFirst = newestFirst,
                         shownOnly = shownOnly,
+                        showFlourish = showFlourish,
                         s = s,
                         onGroupBy = {
                             groupBy = it
@@ -188,8 +189,22 @@ fun LogsScreen(
                         onShownOnlyChange = {
                             shownOnly = it
                             visibleCount = VISIBLE_INITIAL
+                        },
+                        onShowFlourishChange = {
+                            showFlourish = it
+                            visibleCount = VISIBLE_INITIAL
                         }
                     )
+                }
+                if (subtitle != null) {
+                    item(key = "subtitle") {
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
+                        )
+                    }
                 }
             }
             if (visible.isEmpty()) {
@@ -258,8 +273,8 @@ fun LogsScreen(
 
 /**
  * Assemble the row list for the active filter, ordered per [newestFirst]. The Decisions view
- * drops rows whose notification was not shown when [shownOnly]; connection rows include the
- * live in-progress episode.
+ * drops rows whose notification was not shown when [shownOnly] and hides shoot-down
+ * flourish entries when [showFlourish] is false; connection rows include the live in-progress episode.
  */
 private fun buildRows(
     filter: LogsFilter,
@@ -268,14 +283,17 @@ private fun buildRows(
     now: Long,
     isDecisions: Boolean,
     newestFirst: Boolean,
-    shownOnly: Boolean
+    shownOnly: Boolean,
+    showFlourish: Boolean
 ): List<LogRow> {
     if (!isDecisions) {
         val connRows = (ConnectionLog.currentEpisode(now)?.let { listOf(ConnectionRow(it)) }
             ?: emptyList()) + connEntries.map { ConnectionRow(it) }
         return if (newestFirst) connRows.sortedByDescending { it.atMillis } else connRows.sortedBy { it.atMillis }
     }
-    val filtered = if (shownOnly) decisions.filter { it.notified } else decisions
+    var filtered: List<DebugLogEntry> = decisions
+    if (!showFlourish) filtered = filtered.filter { it.kind != DebugLogKind.FLOURISH }
+    if (shownOnly) filtered = filtered.filter { it.notified }
     val rows = filtered.map { DecisionRow(it) }
     return if (newestFirst) rows.sortedByDescending { it.atMillis } else rows.sortedBy { it.atMillis }
 }
@@ -283,15 +301,15 @@ private fun buildRows(
 /**
  * Build the ordered group specs from sorted decision rows. Canonical group order regardless of
  * sort direction: proximity = official / red / yellow / oblast / left; type = official / types /
- * left. Timeline returns a single header-less spec.
+ * left. Timeline returns a single header-less spec. Flourish group only included when [showFlourish].
  */
-private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGroupSpec> {
+private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy, showFlourish: Boolean): List<LogGroupSpec> {
     if (rows.isEmpty()) return emptyList()
     return when (groupBy) {
         GroupBy.TIMELINE -> listOf(LogGroupSpec("timeline", null, null, null, rows, subTypes = false))
         GroupBy.PROXIMITY -> {
             val official = rows.filter { it.kind == DebugLogKind.OFFICIAL_ON || it.kind == DebugLogKind.OFFICIAL_OFF }
-            val flourish = rows.filter { it.kind == DebugLogKind.FLOURISH }
+            val flourish = if (showFlourish) rows.filter { it.kind == DebugLogKind.FLOURISH } else emptyList()
             val threat = rows.filter {
                 it.kind == DebugLogKind.ZONE_ENTER ||
                     it.kind == DebugLogKind.ZONE_EXIT ||
@@ -313,12 +331,12 @@ private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGr
         }
         GroupBy.TYPE -> {
             val official = rows.filter { it.kind == DebugLogKind.OFFICIAL_ON || it.kind == DebugLogKind.OFFICIAL_OFF }
-            val flourish = rows.filter { it.kind == DebugLogKind.FLOURISH }
+            val flourish = if (showFlourish) rows.filter { it.kind == DebugLogKind.FLOURISH } else emptyList()
             val exits = rows.filter {
                 it.kind == DebugLogKind.ZONE_EXIT &&
                     it.kind != DebugLogKind.OFFICIAL_ON && it.kind != DebugLogKind.OFFICIAL_OFF
             }
-            val typed = rows.filter { it !in official && it !in exits && it.threatType != null }
+            val typed = rows.filter { it !in official && it !in exits && it.threatType != null && it.kind != DebugLogKind.FLOURISH }
             buildList {
                 if (official.isNotEmpty()) add(LogGroupSpec("official", "official", GroupAccent.OFFICIAL, null, official, subTypes = false))
                 if (flourish.isNotEmpty()) add(LogGroupSpec("flourish", "flourish", GroupAccent.LEFT, null, flourish, subTypes = false))
@@ -335,10 +353,16 @@ private fun buildGroups(rows: List<DebugLogEntry>, groupBy: GroupBy): List<LogGr
 }
 
 @Composable
-private fun FilterRow(filter: LogsFilter, s: Strings.StringSet, onChange: (LogsFilter) -> Unit) {
+private fun FilterRow(
+    filter: LogsFilter,
+    s: Strings.StringSet,
+    decisionsCount: Int,
+    connectionsCount: Int,
+    onChange: (LogsFilter) -> Unit
+) {
     val options = listOf(
-        LogsFilter.DECISIONS to s.logsFilterDecisions,
-        LogsFilter.CONNECTIONS to s.logsFilterConnections
+        Triple(LogsFilter.DECISIONS, s.logsFilterDecisions, decisionsCount),
+        Triple(LogsFilter.CONNECTIONS, s.logsFilterConnections, connectionsCount)
     )
     Row(
         modifier = Modifier
@@ -346,11 +370,11 @@ private fun FilterRow(filter: LogsFilter, s: Strings.StringSet, onChange: (LogsF
             .padding(bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        options.forEach { (value, label) ->
+        options.forEach { (value, label, count) ->
             FilterChip(
                 selected = filter == value,
                 onClick = { onChange(value) },
-                label = { Text(label) }
+                label = { Text("$label · $count") }
             )
         }
     }
@@ -361,10 +385,12 @@ private fun ViewOptionsRow(
     groupBy: GroupBy,
     newestFirst: Boolean,
     shownOnly: Boolean,
+    showFlourish: Boolean,
     s: Strings.StringSet,
     onGroupBy: (GroupBy) -> Unit,
     onSortToggle: () -> Unit,
-    onShownOnlyChange: (Boolean) -> Unit
+    onShownOnlyChange: (Boolean) -> Unit,
+    onShowFlourishChange: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
         Row(
@@ -389,32 +415,34 @@ private fun ViewOptionsRow(
                 targetValue = if (newestFirst) 0f else 180f,
                 label = "sortRotation"
             )
-            IconButton(onClick = onSortToggle) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Sort,
-                    contentDescription = s.logsSortDesc,
-                    modifier = Modifier.rotate(sortRotation)
-                )
-            }
+            FilterChip(
+                selected = newestFirst,
+                onClick = onSortToggle,
+                label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Sort,
+                        contentDescription = s.logsSortDesc,
+                        modifier = Modifier.rotate(sortRotation).size(16.dp)
+                    )
+                }
+            )
         }
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .toggleable(
-                    value = shownOnly,
-                    role = Role.Switch,
-                    onValueChange = onShownOnlyChange
-                ),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Switch(
-                checked = shownOnly,
-                onCheckedChange = null
+            Spacer(Modifier.weight(1f))
+            FilterChip(
+                selected = shownOnly,
+                onClick = { onShownOnlyChange(!shownOnly) },
+                label = { Text(s.logsNotified) }
             )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                s.logsShownOnly,
-                style = MaterialTheme.typography.bodyMedium
+            FilterChip(
+                selected = showFlourish,
+                onClick = { onShowFlourishChange(!showFlourish) },
+                label = { Text(s.logsFlourishToggle) }
             )
         }
     }
@@ -601,6 +629,7 @@ private fun DecisionCard(
         val info = ThreatTypeCatalog.INFO.getValue(type)
         if (lang == AppLanguage.UA) info.labelUa else info.labelEn
     }
+    var expanded by rememberSaveable(entry.atMillis, entry.threatId) { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -642,7 +671,6 @@ private fun DecisionCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                // The region is already named in the REGION_THREAT title — don't repeat it.
                 if (entry.kind != DebugLogKind.REGION_THREAT) {
                     localityText(entry.locality, lang)?.let { locality ->
                         Spacer(Modifier.width(6.dp))
@@ -662,19 +690,21 @@ private fun DecisionCard(
                     )
                 }
             }
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (entry.night) s.debugLogNight else s.debugLogDay,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (entry.sirenOverride) s.debugLogSoundOverride else s.debugLogSoundFollows,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (expanded) {
+                Spacer(Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (entry.night) s.debugLogNight else s.debugLogDay,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (entry.sirenOverride) s.debugLogSoundOverride else s.debugLogSoundFollows,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -704,6 +734,16 @@ private fun DecisionCard(
                         String.format(s.debugLogSuppressed, entry.reason.label(s)),
                         style = MaterialTheme.typography.bodySmall,
                         color = DebugAmber
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        if (expanded) s.logsDetailsHide else s.logsDetailsShow,
+                        style = MaterialTheme.typography.labelSmall
                     )
                 }
             }

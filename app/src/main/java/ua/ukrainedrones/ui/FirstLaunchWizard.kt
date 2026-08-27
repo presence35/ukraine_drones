@@ -418,6 +418,7 @@ private fun SetupLocationStep(
     val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+    var mode by remember { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
             s.wizardLocationSubtitle,
@@ -425,8 +426,9 @@ private fun SetupLocationStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         WizardLocationCard(
-            selected = followMe,
+            selected = mode == "follow",
             onClick = {
+                mode = "follow"
                 onFollowMeChange(true)
                 if (!fineGranted) {
                     permLauncher.launch(
@@ -435,19 +437,28 @@ private fun SetupLocationStep(
                 }
             },
             icon = {
-                Icon(
-                    imageVector = Icons.Filled.LocationOn,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
-                )
+                Box(
+                    modifier = Modifier.size(28.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2196F3))
+                            .border(2.dp, Color.White, CircleShape)
+                    )
+                }
             },
             title = s.followMeTitle,
             desc = s.followMeDesc
         )
         WizardLocationCard(
-            selected = !followMe,
-            onClick = { onFollowMeChange(false) },
+            selected = mode == "pin",
+            onClick = {
+                mode = "pin"
+                onFollowMeChange(false)
+            },
             icon = {
                 Icon(
                     imageVector = Icons.Outlined.Place,
@@ -459,7 +470,7 @@ private fun SetupLocationStep(
             title = s.pinCityTitle,
             desc = s.pinCityDesc
         )
-        AnimatedVisibility(visible = !followMe) {
+        AnimatedVisibility(visible = mode == "pin") {
             CityChipGrid(lang, selected = pinnedCity, onChange = onPinnedCityChange)
         }
     }
@@ -517,9 +528,9 @@ private fun WizardLocationCard(
 }
 
 /**
- * Wizard page with the REAL zone controls (what you set here is your actual map) plus a static
- * replica of the map's bottom area — shelter pill, zone buttons, scale + attribution — exactly
- * as it looks in-app, so there are no surprises later.
+ * Wizard page with the REAL red-zone slider plus vertical list of the 4 map buttons
+ * (shelter, red zoom, gear) with short descriptions — all inside one Card.
+ * Yellow slider and turtle caption removed for consistency.
  */
 @Composable
 private fun SetupZoneControlsStep(
@@ -543,92 +554,116 @@ private fun SetupZoneControlsStep(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface
         )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-                .padding(12.dp)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
-            SectionCaption(
-                text = s.slowSectionLabel,
-                leadingIcon = R.drawable.ic_turtle,
-                leadingDesc = s.slowGroupIconDesc,
-                leadingTint = TurtleGreen
-            )
-            WizardZoneSliderRow(
-                color = ZoneRedColor,
-                armed = slowRedArmed,
-                km = slowRedKm,
-                onArmedChange = onSlowRedArmedChange,
-                onKmChange = onSlowRedChange,
-                kmUnit = s.kmUnit
-            )
-            Spacer(Modifier.height(10.dp))
-            WizardZoneSliderRow(
-                color = ZoneYellowColor,
-                armed = slowYellowArmed,
-                km = slowYellowKm,
-                onArmedChange = onSlowYellowArmedChange,
-                onKmChange = onSlowYellowChange,
-                kmUnit = s.kmUnit
-            )
-        }
-        // Static replica of the map's bottom strip — same composables, same layout, no actions.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF101010))
-        ) {
-            if (sheltersEnabled) {
-                ShelterButton(
-                    alertActive = false,
-                    active = false,
-                    label = s.shelterButtonLabel,
-                    onClick = {},
-                    onLongClick = {},
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 12.dp, bottom = 4.dp)
-                )
-            }
-            ZoneButtons(
-                redArmed = fastRedArmed || slowRedArmed,
-                yellowArmed = fastYellowArmed || slowYellowArmed,
-                lang = lang,
-                onZoneTap = {},
-                onEditZones = {},
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp)
-            )
             Column(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = 6.dp),
-                horizontalAlignment = Alignment.End
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                ScaleIndicator(metersPerPixel = 60.0, lang = lang)
-                Text(
-                    "© OSM · © CARTO",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.40f)
+                WizardZoneSliderRow(
+                    color = ZoneRedColor,
+                    armed = slowRedArmed,
+                    km = slowRedKm,
+                    onArmedChange = onSlowRedArmedChange,
+                    onKmChange = onSlowRedChange,
+                    kmUnit = s.kmUnit
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (sheltersEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_shelter),
+                                contentDescription = null,
+                                tint = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                s.shelterButtonLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Text(
+                        s.wizardShelterDesc,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFD32F2F).copy(alpha = 0.22f))
+                            .border(BorderStroke(2.dp, Color(0xFFD32F2F)), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 16.dp, height = 18.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFD32F2F))
+                        )
+                    }
+                    Text(
+                        s.zoneButtonRed,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = s.editZonesLabel,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        s.wizardEditZonesHint,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
-            // Gesture shield — makes the whole preview fully static.
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-            )
         }
-        Text(
-            s.wizardEditZonesHint,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 

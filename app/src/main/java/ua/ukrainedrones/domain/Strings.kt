@@ -269,8 +269,15 @@ object Strings {
         val logsGroupProximity: String,
         val logsGroupType: String,
         val logsShownOnly: String,
+        val logsNotified: String,
         val logsProxOblast: String,
         val logsSortDesc: String,
+        val logsSortNewest: String,
+        val logsSortOldest: String,
+        val logsFlourishToggle: String,
+        val logsDetailsShow: String,
+        val logsDetailsHide: String,
+        val logsSubtitleFormat: String,
         val debugLogEmpty: String,
         val debugLogClear: String,
         val debugLogOpen: String,
@@ -829,8 +836,15 @@ object Strings {
         val logsGroupProximity: String get() = misc.logsGroupProximity
         val logsGroupType: String get() = misc.logsGroupType
         val logsShownOnly: String get() = misc.logsShownOnly
+        val logsNotified: String get() = misc.logsNotified
         val logsProxOblast: String get() = misc.logsProxOblast
         val logsSortDesc: String get() = misc.logsSortDesc
+        val logsSortNewest: String get() = misc.logsSortNewest
+        val logsSortOldest: String get() = misc.logsSortOldest
+        val logsFlourishToggle: String get() = misc.logsFlourishToggle
+        val logsDetailsShow: String get() = misc.logsDetailsShow
+        val logsDetailsHide: String get() = misc.logsDetailsHide
+        val logsSubtitleFormat: String get() = misc.logsSubtitleFormat
         val debugLogEmpty: String get() = misc.debugLogEmpty
         val debugLogClear: String get() = misc.debugLogClear
         val debugLogOpen: String get() = misc.debugLogOpen
@@ -1291,8 +1305,15 @@ connOnline = "Онлайн",
         logsGroupProximity = "Відстань",
         logsGroupType = "Тип",
         logsShownOnly = "Лише показані",
+        logsNotified = "Сповіщені",
         logsProxOblast = "У області",
         logsSortDesc = "Новіші зверху / старіші зверху",
+        logsSortNewest = "Новіші",
+        logsSortOldest = "Старіші",
+        logsFlourishToggle = "Знешкодження",
+        logsDetailsShow = "Деталі",
+        logsDetailsHide = "Сховати",
+        logsSubtitleFormat = "Останні 24 год · %1\$d",
         debugLogEmpty = "Рішень ще не зафіксовано",
         debugLogClear = "Очистити",
         debugLogOpen = "Журнал",
@@ -1816,8 +1837,15 @@ alertBannerFormat = "%1\$s: alert",
         logsGroupProximity = "Proximity",
         logsGroupType = "Type",
         logsShownOnly = "Shown only",
+        logsNotified = "Notified",
         logsProxOblast = "In oblast",
         logsSortDesc = "Toggle newest/oldest first",
+        logsSortNewest = "Newest",
+        logsSortOldest = "Oldest",
+        logsFlourishToggle = "Shoot-downs",
+        logsDetailsShow = "Details",
+        logsDetailsHide = "Hide",
+        logsSubtitleFormat = "Last 24h · %1\$d",
         debugLogEmpty = "No decisions logged yet",
         debugLogClear = "Clear",
         debugLogOpen = "Logs",
