@@ -1,5 +1,7 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.connection.ConnectionHolder
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -950,7 +952,7 @@ fun NeptunMapView(
                                 }
                                 // Remember the shot so a same-id respawn within the grace window
                                 // doesn't re-alert (the object itself is never removed).
-                                if (pressedId != null) NeptunClient.markUserShot(pressedId)
+                                if (pressedId != null) ConnectionHolder.getClient(context).markUserShot(pressedId)
                                 if (deathAnimationEnabledState) {
                                     val target = nearest.position ?: GeoPoint(p.latitude, p.longitude)
                                     if (deathFx.isActiveFor(pressedId)) {
@@ -1019,7 +1021,7 @@ fun NeptunMapView(
             snapshotFlow { uiState.deathAnimationEnabled }
                 .distinctUntilChanged()
                 .flatMapLatest { enabled ->
-                    if (!enabled) emptyFlow() else NeptunClient.removedThreats
+                    if (!enabled) emptyFlow() else ConnectionHolder.getClient(context).removedThreats
                 }
                 .collect { r ->
                     // Skip resolutions that arrived while the map wasn't visible (Settings open,

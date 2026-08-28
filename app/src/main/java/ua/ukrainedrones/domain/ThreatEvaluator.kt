@@ -14,7 +14,7 @@ data class ThreatEvaluationResult(
 object ThreatEvaluator {
 
     fun evaluate(
-        neptun: NeptunState,
+        threats: Map<String, Threat>,
         params: ZoneParams,
         focusLocation: LatLng?,
         mapEnabledTypes: Set<ThreatType> = ThreatTypeCatalog.INFO.keys,
@@ -27,7 +27,7 @@ object ThreatEvaluator {
         val mapThreats = mutableListOf<Threat>()
         val threatScores = mutableListOf<Double>()
 
-        for (t in neptun.threats.values) {
+        for (t in threats.values) {
             if (t.status == "resolved" || t.areaOnly || t.isGhost(now)) continue
             if (t.type !in mapEnabledTypes) continue
             val stale = t.isStale(now)
@@ -80,7 +80,7 @@ object ThreatEvaluator {
     }
 
     fun zoneThreats(
-        st: NeptunState,
+        threats: Map<String, Threat>,
         params: ZoneParams,
         focus: LatLng?,
         enabled: Set<ThreatType>,
@@ -88,7 +88,7 @@ object ThreatEvaluator {
     ): Map<String, ThreatZone> {
         if (focus == null) return emptyMap()
         val map = LinkedHashMap<String, ThreatZone>()
-        for (t in st.threats.values) {
+        for (t in threats.values) {
             if (t.status == "resolved" || t.isStale(now) || t.areaOnly) continue
             if (t.type !in enabled) continue
             if (t.advisory) continue
@@ -106,7 +106,7 @@ object ThreatEvaluator {
     }
 
     fun buildOfficialReason(
-        st: NeptunState,
+        threats: Map<String, Threat>,
         token: String?,
         lang: AppLanguage,
         focus: LatLng?,
@@ -117,7 +117,7 @@ object ThreatEvaluator {
     ): Pair<String?, String?> {
         var best: Threat? = null
         var bestScore = -1.0
-        for (t in st.threats.values) {
+        for (t in threats.values) {
             if (t.status != "active" || t.advisory || t.areaOnly || t.type !in enabled ||
                 t.isStale(now) || !inFocusOblast(t, token)
             ) continue

@@ -1,5 +1,9 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.connection.ConnectionState
+import ua.ukrainedrones.connection.NeptunConnectionClient
+import ua.ukrainedrones.connection.isDegraded
+import ua.ukrainedrones.connection.isOffline
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,7 +15,7 @@ class NeptunClientTest {
     @Test
     fun `first reconnect attempt is fast`() {
         repeat(100) {
-            val ms = NeptunClient.reconnectDelayMs(1)
+            val ms = NeptunConnectionClient.calculateBackoffMs(1)
             assertTrue("first attempt must retry within 1-3s, got $ms", ms in 1000..3000)
         }
     }
@@ -25,7 +29,7 @@ class NeptunClientTest {
         )
         repeat(100) {
             for ((attempt, range) in expected) {
-                val ms = NeptunClient.reconnectDelayMs(attempt)
+                val ms = NeptunConnectionClient.calculateBackoffMs(attempt)
                 assertTrue("attempt $attempt should be ~$range, got $ms", ms in range)
             }
         }
@@ -34,7 +38,7 @@ class NeptunClientTest {
     @Test
     fun `backoff caps at 15 seconds`() {
         for (attempt in 5..30) {
-            val ms = NeptunClient.reconnectDelayMs(attempt)
+            val ms = NeptunConnectionClient.calculateBackoffMs(attempt)
             assertTrue("attempt $attempt should cap at ~15s, got $ms", ms in 15000..15400)
         }
     }
@@ -58,20 +62,21 @@ class NeptunClientTest {
     @Test
     fun `stream is degraded when connected but no frame arrived for the threshold`() {
         val now = System.currentTimeMillis()
-        val fresh = NeptunState(connected = true, lastFrameAt = now - 5_000L)
-        assertFalse(fresh.degraded)
+        val fresh = ConnectionState.Connected(generation = 1, lastFrameAtMs = now - 5_000L, openedAtMs = now)
+        assertFalse(fresh.isDegraded)
 
-        // Exactly at the threshold → degraded (orange middle state, not yet offline).
-        val stale = NeptunState(connected = true, lastFrameAt = now - NeptunClient.DEGRADED_STALE_MS)
-        assertTrue(stale.degraded)
+        // The Degraded state signals a stale link — the client transitions to it
+        // when a Connected state has been quiet for >= DEGRADED_STALE_MS.
+        val stale = ConnectionState.Degraded(generation = 1, openedAtMs = now, lastFrameAtMs = now - NeptunConnectionClient.DEGRADED_STALE_MS, quietDurationMs = NeptunConnectionClient.DEGRADED_STALE_MS)
+        assertTrue(stale.isDegraded)
 
-        // Offline always wins — never orange once the socket is actually down.
-        val down = NeptunState(connected = false, lastFrameAt = now - NeptunClient.DEGRADED_STALE_MS)
-        assertFalse(down.degraded)
-        assertTrue(down.neptunDown)
+        // Offline always wins — never degraded once the socket is actually down.
+        val down = ConnectionState.Offline(since = now - NeptunConnectionClient.DEGRADED_STALE_MS, reconnectStartMillis = 0L)
+        assertFalse(down.isDegraded)
+        assertTrue(down.isOffline)
 
         // No frames yet (lastFrameAt == 0) → not degraded, still green.
-        val never = NeptunState(connected = true, lastFrameAt = 0L)
-        assertFalse(never.degraded)
+        val never = ConnectionState.Connected(generation = 1, lastFrameAtMs = 0L, openedAtMs = 0L)
+        assertFalse(never.isDegraded)
     }
 }

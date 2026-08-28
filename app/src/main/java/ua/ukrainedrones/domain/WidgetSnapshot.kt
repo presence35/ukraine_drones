@@ -1,5 +1,9 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.connection.ConnectionState
+import ua.ukrainedrones.connection.isDegraded
+import ua.ukrainedrones.connection.isOffline
+import ua.ukrainedrones.connection.offlineSinceOrNull
 import kotlin.math.roundToInt
 
 /**
@@ -45,7 +49,9 @@ data class WidgetThreat(
  * logic lives in the widget layer.
  */
 fun computeWidgetSnapshot(
-    neptun: NeptunState,
+    cs: ConnectionState,
+    threats: Map<String, Threat>,
+    alerts: List<OblastAlert>,
     focus: LatLng?,
     token: String?,
     params: ZoneParams,
@@ -53,7 +59,7 @@ fun computeWidgetSnapshot(
     now: Long = System.currentTimeMillis()
 ): WidgetSnapshot {
     val eval = ThreatEvaluator.evaluate(
-        neptun = neptun,
+        threats = threats,
         params = params,
         focusLocation = focus,
         mapEnabledTypes = mapEnabled,
@@ -82,12 +88,12 @@ fun computeWidgetSnapshot(
     }
     nearestKm = nearestKm?.let { it.coerceAtMost(WidgetSnapshot.NEAREST_CAP_KM).roundToInt().toDouble() }
 
-    val officialAlert = token != null && neptun.oblastAlerts.any { it.inOblast(token) }
+    val officialAlert = token != null && alerts.any { it.inOblast(token) }
 
     // Online = the app-pill semantics: not down AND past the shared grace window, so short
     // socket blips (drops that recover inside OFFLINE_GRACE_MS) don't flicker the badge.
-    val offline = neptun.neptunDown && (neptun.offlineSince == null ||
-        now - neptun.offlineSince >= NeptunClient.OFFLINE_GRACE_MS)
+    val offline = cs.isOffline && (cs.offlineSinceOrNull == null ||
+        now - cs.offlineSinceOrNull!! >= NeptunClient.OFFLINE_GRACE_MS)
 
     return WidgetSnapshot(
         threatCount = count,
@@ -96,7 +102,7 @@ fun computeWidgetSnapshot(
         nearestKm = nearestKm,
         officialAlert = officialAlert,
         sourceOnline = !offline,
-        sourceDegraded = !offline && neptun.degraded,
+        sourceDegraded = !offline && cs.isDegraded,
         primaryThreat = primaryThreat,
         updatedAtMs = now
     )

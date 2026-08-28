@@ -13,6 +13,8 @@ import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import ua.ukrainedrones.connection.ConnectionHolder
+import ua.ukrainedrones.connection.ConnectionState
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -63,10 +65,14 @@ object WidgetUpdater {
             }
             combine(
                 combine(
-                    NeptunClient.state,
+                    combine(
+                        ConnectionHolder.getClient(context).connectionState,
+                        ConnectionHolder.getClient(context).threats,
+                        ConnectionHolder.getClient(context).alerts
+                    ) { cs, threats, alerts -> Triple(cs, threats, alerts) },
                     LocationTracker.location,
                     clock
-                ) { neptun, gps, now -> Triple(neptun, gps, now) },
+                ) { core, gps, now -> Triple(core, gps, now) },
                 combine(
                     prefs.slowRedKm(), prefs.slowYellowKm(),
                     prefs.fastRedMin(), prefs.fastYellowMin()
@@ -78,17 +84,22 @@ object WidgetUpdater {
                     Tail(follow, pinned, lang, iconSet, mapEnabled)
                 }
             ) { core, params, tail ->
+                val (cs, threats, alerts) = core.first as Triple<ConnectionState, Map<String, Threat>, List<OblastAlert>>
+                val gps = core.second
+                val now = core.third
                 val pinnedCity = tail.pinned?.let { name -> Cities.byUa[name] }
-                val focus = if (tail.followMe) core.second
-                    else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: core.second
-                val attribution = focusAttribution(tail.followMe, core.second, pinnedCity)
+                val focus = if (tail.followMe) gps
+                    else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: gps
+                val attribution = focusAttribution(tail.followMe, gps, pinnedCity)
                 computeWidgetSnapshot(
-                    neptun = core.first,
+                    cs = cs,
+                    threats = threats,
+                    alerts = alerts,
                     focus = focus,
                     token = attribution.token,
                     params = params,
                     mapEnabled = tail.mapEnabled,
-                    now = core.third
+                    now = now
                 ) to Pair(tail.lang, tail.iconSet)
             }.collect { (snapshot, tail) ->
                 persist(context, snapshot, tail.first, tail.second)

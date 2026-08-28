@@ -1,5 +1,6 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.connection.ConnectionState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -14,11 +15,11 @@ class WidgetSnapshotTest {
     private val focus = LatLng(46.48, 30.73) // Odesa
 
     private fun state(vararg threats: Threat) =
-        NeptunState(threats = threats.associateBy { it.id })
+        threats.associateBy { it.id }
 
     @Test
     fun `empty state yields zero threats and no zone`() {
-        val snap = computeWidgetSnapshot(state(), focus, "odesa", params, allTypes, now)
+        val snap = computeWidgetSnapshot(ConnectionState.Disconnected, state(), emptyList(), focus, "odesa", params, allTypes, now)
         assertEquals(0, snap.threatCount)
         assertNull(snap.activeZone)
         assertNull(snap.nearestKm)
@@ -28,13 +29,13 @@ class WidgetSnapshotTest {
     @Test
     fun `counts map-enabled non-stale non-resolved threats`() {
         val s = state(
-            threat(id = "a", updatedAtMillis = now),                              // active, counts
-            threat(id = "b", status = "resolved", updatedAtMillis = now),         // resolved, skipped
-            threat(id = "c", updatedAtMillis = now - 301_000L),                   // stale, skipped
-            threat(id = "d", areaOnly = true, updatedAtMillis = now),             // areaOnly, not in mapThreats
-            threat(id = "e", type = ThreatType.RECON, updatedAtMillis = now)      // counts
+            threat(id = "a", updatedAtMillis = now),
+            threat(id = "b", status = "resolved", updatedAtMillis = now),
+            threat(id = "c", updatedAtMillis = now - 301_000L),
+            threat(id = "d", areaOnly = true, updatedAtMillis = now),
+            threat(id = "e", type = ThreatType.RECON, updatedAtMillis = now)
         )
-        val snap = computeWidgetSnapshot(s, focus, "Одеськ", params, allTypes, now)
+        val snap = computeWidgetSnapshot(ConnectionState.Disconnected, s, emptyList(), focus, "Одеськ", params, allTypes, now)
         assertEquals(2, snap.threatCount)
         assertEquals(1, snap.typeCounts[ThreatType.SHAHED])
         assertEquals(1, snap.typeCounts[ThreatType.RECON])
@@ -47,7 +48,7 @@ class WidgetSnapshotTest {
             threat(id = "a2", updatedAtMillis = now),
             threat(id = "a3", type = ThreatType.CRUISE_MISSILE, updatedAtMillis = now)
         )
-        val snap = computeWidgetSnapshot(s, focus, "Одеськ", params, allTypes, now)
+        val snap = computeWidgetSnapshot(ConnectionState.Disconnected, s, emptyList(), focus, "Одеськ", params, allTypes, now)
         assertEquals(2, snap.typeCounts[ThreatType.SHAHED])
         assertEquals(1, snap.typeCounts[ThreatType.CRUISE_MISSILE])
         assertEquals(3, snap.threatCount)
@@ -56,11 +57,10 @@ class WidgetSnapshotTest {
     @Test
     fun `nearest distance is the closest live threat to the focus`() {
         val s = state(
-            threat(id = "near", lat = 46.48, lon = 30.80, updatedAtMillis = now),    // ~5.6 km
-            threat(id = "far", lat = 47.0, lon = 31.0, updatedAtMillis = now)         // ~70 km
+            threat(id = "near", lat = 46.48, lon = 30.80, updatedAtMillis = now),
+            threat(id = "far", lat = 47.0, lon = 31.0, updatedAtMillis = now)
         )
-        val snap = computeWidgetSnapshot(s, focus, "odesa", params, allTypes, now)
-        // nearest is capped+rounded to an int km
+        val snap = computeWidgetSnapshot(ConnectionState.Disconnected, s, emptyList(), focus, "odesa", params, allTypes, now)
         assertTrue(snap.nearestKm!! < 10.0)
         assertTrue(snap.nearestKm!! > 0.0)
     }
@@ -68,41 +68,40 @@ class WidgetSnapshotTest {
     @Test
     fun `inner threat yields inner zone`() {
         val s = state(threat(id = "a", lat = 46.49, lon = 30.74, updatedAtMillis = now))
-        val snap = computeWidgetSnapshot(s, focus, "odesa", params, allTypes, now)
+        val snap = computeWidgetSnapshot(ConnectionState.Disconnected, s, emptyList(), focus, "odesa", params, allTypes, now)
         assertEquals(ThreatZone.INNER, snap.activeZone)
     }
 
     @Test
     fun `official alert matches the focus oblast token`() {
         val alert = OblastAlert(key = "k", name = "Одеська область", oblast = "Одеська", since = "x")
-        val s = NeptunState(neptunAlerts = listOf(alert))
-        assertTrue(computeWidgetSnapshot(s, focus, "Одеськ", params, allTypes, now).officialAlert)
-        assertFalse(computeWidgetSnapshot(s, focus, "Київськ", params, allTypes, now).officialAlert)
+        assertTrue(computeWidgetSnapshot(ConnectionState.Disconnected, state(), listOf(alert), focus, "Одеськ", params, allTypes, now).officialAlert)
+        assertFalse(computeWidgetSnapshot(ConnectionState.Disconnected, state(), listOf(alert), focus, "Київськ", params, allTypes, now).officialAlert)
     }
 
     @Test
     fun `source flag reflects connectivity`() {
-        val online = computeWidgetSnapshot(NeptunState(connected = true), focus, null, params, allTypes, now)
+        val online = computeWidgetSnapshot(ConnectionState.Connected(generation = 1, openedAtMs = now, lastFrameAtMs = now), state(), emptyList(), focus, null, params, allTypes, now)
         assertTrue(online.sourceOnline)
 
-        val offline = computeWidgetSnapshot(NeptunState(connected = false), focus, null, params, allTypes, now)
+        val offline = computeWidgetSnapshot(ConnectionState.Disconnected, state(), emptyList(), focus, null, params, allTypes, now)
         assertFalse(offline.sourceOnline)
     }
 
     @Test
     fun `primary threat is the nearest live threat`() {
         val s = state(
-            threat(id = "near", lat = 46.48, lon = 30.80, updatedAtMillis = now),    // ~5.6 km
-            threat(id = "far", lat = 47.0, lon = 31.0, updatedAtMillis = now)         // ~70 km
+            threat(id = "near", lat = 46.48, lon = 30.80, updatedAtMillis = now),
+            threat(id = "far", lat = 47.0, lon = 31.0, updatedAtMillis = now)
         )
-        val snap = computeWidgetSnapshot(s, focus, "odesa", params, allTypes, now)
+        val snap = computeWidgetSnapshot(ConnectionState.Disconnected, s, emptyList(), focus, "odesa", params, allTypes, now)
         assertEquals("near", snap.primaryThreat?.id)
         assertEquals(ThreatType.SHAHED, snap.primaryThreat?.type)
     }
 
     @Test
     fun `primary threat is null when nothing is live`() {
-        val snap = computeWidgetSnapshot(state(), focus, "odesa", params, allTypes, now)
+        val snap = computeWidgetSnapshot(ConnectionState.Disconnected, state(), emptyList(), focus, "odesa", params, allTypes, now)
         assertNull(snap.primaryThreat)
     }
 }

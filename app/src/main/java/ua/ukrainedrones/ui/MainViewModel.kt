@@ -29,6 +29,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import ua.ukrainedrones.connection.ConnectionHolder
+import ua.ukrainedrones.connection.ConnectionState
+import ua.ukrainedrones.connection.isConnected
+import ua.ukrainedrones.connection.isDegraded
+import ua.ukrainedrones.connection.isOffline
+import ua.ukrainedrones.connection.isForceOffline
 import ua.ukrainedrones.domain.ODESA_LAT
 import ua.ukrainedrones.domain.ODESA_LON
 import org.osmdroid.util.GeoPoint
@@ -157,7 +163,7 @@ data class ThreatProximity(
     val speedKmh: Double?        // the displayed speed value (measured or nominal)
 )
 
-class MainViewModel(app: Application) : AndroidViewModel(app) {
+class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     companion object {
         private const val DAILY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
         private const val SHELTERS_CACHE_FILE = "odesa_shelters.json"
@@ -200,19 +206,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Bumped each time a Settings-open check finds an available update (remind-only or fresh). */
     private val updateReminderFlow = MutableStateFlow(0)
     val updateReminderTick: StateFlow<Int> get() = updateReminderFlow
+    private val client = ConnectionHolder.getClient(app)
+    private val connectionStateFlow = client.connectionState
+    private val threatsFlow = client.threats
+    private val alertsFlow = client.alerts
     /** Sampled NEPTUN state for UI (120ms) — bounds recomposition rate during heavy streams.
      *  AlertService still consumes the raw stream directly (mirror rule). */
     @OptIn(FlowPreview::class)
-    private val neptunForUi = NeptunClient.state.sample(120)
+    private val neptunForUi = combine(connectionStateFlow, threatsFlow, alertsFlow) { cs, t, a ->
+        Triple(cs, t, a)
+    }.sample(120)
     /** Wall-clock epoch millis, updated once per second. UI components that need a live
      *  timestamp (shelter fix age) collect this instead of reading it from UiState —
      *  removing it from UiState lets StateFlow dedup no-op ticks. */
     val now: StateFlow<Long> = MutableStateFlow(System.currentTimeMillis()).also { it ->
         viewModelScope.launch { while (isActive) { delay(1000); it.value = System.currentTimeMillis() } }
     }
-    /** Last NEPTUN frame timestamp, derived from the sampled UI stream. Collected by the
+    /** Last NEPTUN frame timestamp, derived from the connection state. Collected by the
      *  connection status sheet to show "last update Xs ago" without polluting UiState. */
-    val lastFrameAt: Flow<Long> = neptunForUi.map { it.lastFrameAt }.distinctUntilChanged()
+    val lastFrameAt: Flow<Long> = connectionStateFlow.map { cs ->
+        (cs as? ConnectionState.Connected)?.lastFrameAtMs
+            ?: (cs as? ConnectionState.Degraded)?.lastFrameAtMs ?: 0L
+    }.distinctUntilChanged()
     private val shelterIndexFlow = MutableStateFlow<ShelterIndex?>(null)
     /** Whether the map screen is the visible screen — the neutralizing animation and death
      *  flourish only run while it is, so no stale half-consumed animations play on return. */
@@ -336,7 +351,9 @@ val fastGroupCollapsed: Boolean,
 
     /** Live inputs that change every frame/second: stream, GPS, selection, time. */
     private data class LiveSnapshot(
-        val neptun: NeptunState,
+        val cs: ConnectionState,
+        val threats: Map<String, Threat>,
+        val alerts: List<OblastAlert>,
         val slowRedKm: Int,
         val slowYellowKm: Int,
         val fastRedMin: Int,
@@ -388,7 +405,7 @@ val fastGroupCollapsed: Boolean,
         mapVisibleFlow,
         shelterModeFlow
     ) { values: Array<Any?> ->
-        val neptun = values[0] as NeptunState
+        val (cs, threats, alerts) = values[0] as Triple<ConnectionState, Map<String, Threat>, List<OblastAlert>>
         val radii = values[1] as ZoneParams
         val location = values[2] as LatLng?
         val lastFix = values[3] as Long?
@@ -397,7 +414,7 @@ val fastGroupCollapsed: Boolean,
         val mapVisible = values[6] as Boolean
         val shelterModeActive = values[7] as Boolean
         LiveSnapshot(
-            neptun,
+            cs, threats, alerts,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
             location, lastFix != null, reveal, flourish, mapVisible, shelterModeActive
         )
@@ -625,7 +642,9 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             nightZones, prefs.night.window.useCustomZones, nightActive
         )
         val uiState = buildUiState(
-            neptun = live.neptun,
+            cs = live.cs,
+            threats = live.threats,
+            alerts = live.alerts,
             slowRedKm = live.slowRedKm,
             slowYellowKm = live.slowYellowKm,
             fastRedMin = live.fastRedMin,
@@ -714,7 +733,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         if (autoFlyby != null) {
             flybyTick++
             flybyPlayedIds.add(autoFlyby.threatId)
-            val threat = NeptunClient.state.value.threats[autoFlyby.threatId]!!
+            val threat = threatsFlow.value[autoFlyby.threatId]!!
             val durationMs = calculateFlybyDuration(threat)
             flybyFlow.value = AviationFlybyShow(autoFlyby.tick, autoFlyby.threatId, autoFlyby.courseDeg, durationMs)
         }
@@ -755,7 +774,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         uiState.map { ui ->
             val animOn = ui.deathAnimationEnabled
             // Keep the selected threat pointer fresh (position/status may have updated)
-            val refreshed = sel.selected?.let { s -> NeptunClient.state.value.threats[s.id] }
+            val refreshed = sel.selected?.let { s -> threatsFlow.value[s.id] }
             val nowMs = System.currentTimeMillis()
             // The selected threat is gone (removed by the server, marked resolved/area-only, a
             // ghost past the hard cap, or long-pressed) — show a brief neutralized card.
@@ -793,7 +812,9 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private fun buildUiState(
-        neptun: NeptunState,
+        cs: ConnectionState,
+        threats: Map<String, Threat>,
+        alerts: List<OblastAlert>,
         slowRedKm: Int,
         slowYellowKm: Int,
         fastRedMin: Int,
@@ -822,7 +843,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         val attribution = focusAttribution(followMe, userLocation, pinnedCity)
         val focusToken = attribution.token
         val focusOblastAlertActive = officialAlertActiveFor(
-            neptun.oblastAlerts,
+            alerts,
             focusToken,
             attribution.bannerCityUa.takeIf { it.isNotBlank() },
             officialAlertCityScope
@@ -833,7 +854,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         // Oblasts with an official alert: a city label turns red when its oblast is listed.
         val activeRegionTokens = buildSet {
             for (citiesToken in Cities.cityOblast.values) {
-                if (neptun.oblastAlerts.any { it.inOblast(citiesToken) }) add(citiesToken)
+                if (alerts.any { it.inOblast(citiesToken) }) add(citiesToken)
             }
         }
         // Cities shown red on the map/picker. Oblast scope (default): any city in an alerting
@@ -843,14 +864,14 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             for (city in Cities.ALL) {
                 val token = Cities.cityOblast[city.nameUa] ?: continue
                 val covered = if (officialAlertCityScope) {
-                    officialAlertActiveFor(neptun.oblastAlerts, token, city.nameUa, scope = true)
+                    officialAlertActiveFor(alerts, token, city.nameUa, scope = true)
                 } else token in activeRegionTokens
                 if (covered) add(city.nameUa)
             }
         }
 
         val evaluation = ThreatEvaluator.evaluate(
-            neptun = neptun,
+            threats = threats,
             params = params,
             focusLocation = focusLocation,
             mapEnabledTypes = mapEnabledTypes,
@@ -869,13 +890,13 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         // here — the pill and status text stay "online" instead of flashing on every handoff.
         // The grace is only applied in the connection log; the UI pill immediately reflects
         // drops so the header and the notification service agree (mirror rule).
-        val neptunDown = neptun.neptunDown
+        val neptunDown = cs.isOffline
 
         return UiState(
-            connected = neptun.connected,
+            connected = cs.isConnected,
             neptunDown = neptunDown,
-            degraded = neptun.degraded,
-            forceOffline = neptun.forceOffline,
+            degraded = cs.isDegraded,
+            forceOffline = cs.isForceOffline,
             threatsInner = inInner,
             threatsOuter = inOuter,
             mapThreats = mapThreats,
@@ -1098,12 +1119,12 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     fun setForceOffline(force: Boolean) {
         viewModelScope.launch {
             prefs.setForceOffline(force)
-            NeptunClient.setForceOffline(force)
+            client.testHarness.setForceOffline(force)
         }
     }
 
     /** TEMP test button: fire one synthetic MiG-31K takeoff through the real pipeline. */
-    fun simulateMig() = NeptunClient.fireTestMig()
+    fun simulateMig() = client.testHarness.fireTestMig()
 
     /** Pin the map to a city. Pinning auto-disables follow-me so the pin takes effect. */
     fun setPinnedCity(city: City?) {
@@ -1300,7 +1321,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
      *  card with the takeoff's details (no camera pan). */
     fun onFlybyFinished(threatId: String?) {
         flybyFlow.value = null
-        val t = threatId?.let { NeptunClient.state.value.threats[it] } ?: return
+        val t = threatId?.let { threatsFlow.value[it] } ?: return
         selectThreat(t)
     }
 
@@ -1337,7 +1358,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     fun revealThreat(id: String?, lat: Double, lon: Double, select: Boolean = true) {
         revealTick++
         neutralizedFlow.value = null
-        val threat = id?.let { NeptunClient.state.value.threats[it] }
+        val threat = id?.let { threatsFlow.value[it] }
         val aviation = threat?.type == ThreatType.AVIATION
         // A MiG-31K tap greets with a full flyby pass — every press, fresh random bearing —
         // and the card only opens when the jet is gone (onFlybyFinished), so selection is
@@ -1345,7 +1366,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         if (aviation && id != null) {
             flybyPlayedIds.add(id)
             flybyTick++
-            val threat = NeptunClient.state.value.threats[id]!!
+            val threat = threatsFlow.value[id]!!
             val durationMs = calculateFlybyDuration(threat)
             flybyFlow.value = AviationFlybyShow(flybyTick, id, Random.nextDouble(0.0, 360.0), durationMs)
         } else if (select && id != null) {

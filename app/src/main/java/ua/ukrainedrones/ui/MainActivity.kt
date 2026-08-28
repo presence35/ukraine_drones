@@ -1,5 +1,7 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.connection.ConnectionHolder
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -155,7 +157,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         // Mirror the website's focus handler — refresh positions and reset the stale window.
-        NeptunClient.onForeground()
+        ConnectionHolder.getClient(this).onForeground()
     }
 
     /**

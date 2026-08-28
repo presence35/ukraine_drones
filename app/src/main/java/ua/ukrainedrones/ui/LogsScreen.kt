@@ -1,5 +1,8 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.connection.ConnectionHolder
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -135,8 +138,9 @@ fun LogsScreen(
 ) {
     val entries by DebugLog.entries.collectAsState()
     val connEntries by ConnectionLog.entries.collectAsState()
-    val connRetry by NeptunClient.retryState.collectAsState()
-    val connEvents by NeptunClient.connEvents.collectAsState()
+    val context = LocalContext.current
+    val connRetry by ConnectionHolder.getClient(context).retryState.collectAsState()
+    val connEvents by ConnectionHolder.getClient(context).connEvents.collectAsState()
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var filter by rememberSaveable { mutableStateOf(LogsFilter.DECISIONS) }
@@ -224,7 +228,7 @@ fun LogsScreen(
             }
             if (filter == LogsFilter.CONNECTIONS && connEvents.isNotEmpty()) {
                 item(key = "retrylog") {
-                    RetryLogCard(connEvents, connRetry, s, now) { NeptunClient.dismissConnLog() }
+                    RetryLogCard(connEvents, connRetry, s, now) { ConnectionHolder.getClient(context).dismissConnLog() }
                 }
             }
             if (visible.isEmpty()) {

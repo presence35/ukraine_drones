@@ -29,6 +29,14 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
+import ua.ukrainedrones.connection.ConnectionHolder
+import ua.ukrainedrones.connection.ConnectionState
+import ua.ukrainedrones.connection.isConnected
+import ua.ukrainedrones.connection.isDegraded
+import ua.ukrainedrones.connection.isOffline
+import ua.ukrainedrones.connection.isPaused
+import ua.ukrainedrones.connection.offlineSinceOrNull
+import ua.ukrainedrones.connection.reconnectStartMillisOrZero
 import java.util.Calendar
 
 /**
@@ -36,6 +44,8 @@ import java.util.Calendar
  * posts notifications when the Odesa oblast alarm turns on or when a tracked threat
  * enters the INNER tier (urgent siren) or the OUTER tier (warning chime).
  */
+private data class Quint<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
+
 class AlertService : Service() {
 
     companion object {
@@ -131,8 +141,9 @@ private var notif3minShown = false
         val officialAlertsEnabled: Boolean,
         val zoneSirenOverride: Boolean,
         val officialSirenOverride: Boolean,
-        val connected: Boolean,
-        val offlineElapsedSec: Long?,
+        val connectionState: ConnectionState,
+        val threats: Map<String, Threat>,
+        val alerts: List<OblastAlert>,
         val criticalOfflineOverride: Boolean,
         val fastVibrationLevel: Int,
         val slowVibrationLevel: Int,
@@ -182,16 +193,34 @@ private var notif3minShown = false
     override fun onCreate() {
         super.onCreate()
         createChannels()
-        // Await the persisted log restore before NeptunClient.start() brings up the watchdog
+        // Await the persisted log restore before the client starts its watchdog
         // (ConnectionLog.observe) — an async restore finishing after a fresh write would clobber it.
         scope.launch {
             ConnectionLog.attach(applicationContext)
             DebugLog.attach(applicationContext)
             ConnectionLog.awaitAttached()
             DebugLog.awaitAttached()
-NeptunClient.start(applicationContext)
+            val client = ConnectionHolder.getClient(applicationContext)
+            val sup = ConnectionHolder.getSupervisor(applicationContext)
+            val recStart = ZonePrefs(applicationContext).reconnectStartMillis().first()
+            val ignoreUntil = ZonePrefs(applicationContext).ignoreRetryUntil().first()
+            client.start(savedReconnectStartMs = recStart, savedIgnoreUntilMs = ignoreUntil)
+            sup.start()
+            // Persist reconnect timestamp across process kills
+            launch {
+                client.connectionState.collect { cs ->
+                    when (cs) {
+                        is ConnectionState.Offline -> ZonePrefs(applicationContext).setReconnectStartMillis(cs.reconnectStartMillis)
+                        is ConnectionState.Connected -> ZonePrefs(applicationContext).setReconnectStartMillis(0L)
+                        else -> {}
+                    }
+                }
+            }
         }
-        scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
+        scope.launch {
+            ConnectionHolder.getClient(applicationContext)
+                .testHarness.setForceOffline(ZonePrefs(applicationContext).forceOffline().first())
+        }
         LocationTracker.start(this)
         WidgetUpdater.start(this, scope)
         startForegroundCompat()
@@ -203,14 +232,15 @@ NeptunClient.start(applicationContext)
             // The user told the app to give up reconnecting for 30 minutes: no auto-retry until
             // the pause expires or they tap the Offline pill / Retry. The next tick re-renders
             // the monitor notification as "paused".
-            NeptunClient.beginIgnore(30)
+            ConnectionHolder.getClient(applicationContext).pauseFor(30)
         }
         if (intent?.action == ACTION_RETRY) {
             // The TEMP force-offline test toggle would keep NEPTUN "down" even after a
             // successful reconnect — turn it off so Retry truly restores the stream.
             scope.launch { ZonePrefs(applicationContext).setForceOffline(false) }
-            NeptunClient.setForceOffline(false)
-            NeptunClient.retryNow()
+            val client = ConnectionHolder.getClient(applicationContext)
+            client.testHarness.setForceOffline(false)
+            client.retryNow()
         }
         if (intent?.action == NeutralizedTally.ACTION_NEUTRALIZED_DISMISS) {
             // The tally notification was swiped away (or its replay consumed in the app) —
@@ -261,7 +291,7 @@ NeptunClient.start(applicationContext)
             prefs.neutralizedTallyEnabled()
                 .distinctUntilChanged()
                 .flatMapLatest { enabled ->
-                    if (!enabled) emptyFlow() else NeptunClient.removedThreats
+                    if (!enabled) emptyFlow() else ConnectionHolder.getClient(applicationContext).removedThreats
                 }
                 .collect { removed ->
                     // Default: only count resolutions that could matter to the user — those in the
@@ -298,10 +328,12 @@ NeptunClient.start(applicationContext)
             }
             combine(
                 combine(
-                    NeptunClient.state,
+                    ConnectionHolder.getClient(applicationContext).connectionState,
+                    ConnectionHolder.getClient(applicationContext).threats,
+                    ConnectionHolder.getClient(applicationContext).alerts,
                     LocationTracker.location,
                     nowFlow
-                ) { neptun, gps, now -> Triple(neptun, gps, now) },
+                ) { cs, threats, alerts, gps, now -> Quint(cs, threats, alerts, gps, now) },
                 combine(
                     prefs.slowRedKm(), prefs.slowYellowKm(), prefs.fastRedMin(), prefs.fastYellowMin()
                 ) { slowRed, slowYellow, fastRed, fastYellow ->
@@ -364,9 +396,11 @@ NeptunClient.start(applicationContext)
                     NightSettings(window, zones, ov.first, ov.second)
                 }
             ) { core, params, config, tail, night ->
-                val neptun = core.first
-                val gps = core.second
-                val now = core.third
+                val cs = core.a as ConnectionState
+                val threats = core.b as Map<String, Threat>
+                val alerts = core.c as List<OblastAlert>
+                val gps = core.d as LatLng?
+                val now = core.e as Long
                 val followMe = config.followMe
                 val lang = tail.lang
                 val pinned = tail.pinned?.let { name -> Cities.byUa[name] }
@@ -390,19 +424,19 @@ NeptunClient.start(applicationContext)
                 val attribution = focusAttribution(followMe, gps, pinned)
                 val cityUa = attribution.bannerCityUa.takeIf { it.isNotBlank() }
                 val officialActive = officialAlertActiveFor(
-                    neptun.oblastAlerts,
+                    alerts,
                     attribution.token,
                     cityUa,
                     config.officialAlertCityScope
                 )
                 val officialRaw = officialAlertActiveFor(
-                    neptun.oblastAlerts,
+                    alerts,
                     attribution.token,
                     cityUa,
                     false
                 )
                 val officialSince: String? = attribution.token?.let { token ->
-                    neptun.oblastAlerts
+                    alerts
                         .firstOrNull { alert ->
                             alert.inOblast(token) &&
                                 (!config.officialAlertCityScope || cityUa.isNullOrBlank() || alert.coversCity(cityUa))
@@ -411,7 +445,7 @@ NeptunClient.start(applicationContext)
                 }
                 val (officialReason, officialReasonThreatId) = if (officialActive) {
                     ThreatEvaluator.buildOfficialReason(
-                        neptun, attribution.token, lang, focus,
+                        threats, attribution.token, lang, focus,
                         effectiveParams, now,
                         tail.enabled,
                         focusRegionText(lang, followMe, pinned)
@@ -430,7 +464,7 @@ NeptunClient.start(applicationContext)
                     focusPinned = !followMe && pinned != null,
                     officialReason = officialReason,
                     officialReasonThreatId = officialReasonThreatId,
-                    zoneThreats = ThreatEvaluator.zoneThreats(neptun, effectiveParams, focus, tail.enabled, now),
+                    zoneThreats = ThreatEvaluator.zoneThreats(threats, effectiveParams, focus, tail.enabled, now),
                     params = effectiveParams,
                     lang = lang,
                     slowRedArmed = armed.slowRed,
@@ -440,8 +474,9 @@ NeptunClient.start(applicationContext)
                     officialAlertsEnabled = config.officialAlertsEnabled,
                     zoneSirenOverride = zoneSirenOverride,
                     officialSirenOverride = officialSirenOverride,
-                    connected = neptun.connected,
-                    offlineElapsedSec = neptun.offlineElapsedSec,
+                    connectionState = cs,
+                    threats = threats,
+                    alerts = alerts,
                     criticalOfflineOverride = config.criticalOfflineOverride,
                     fastVibrationLevel = VIBRATION_ZONE,
                     slowVibrationLevel = VIBRATION_ZONE,
@@ -480,7 +515,7 @@ NeptunClient.start(applicationContext)
         // wording with a Retry action once the drop outlasts the shared grace (short blips that
         // recover inside it never reach the offline wording). No separate one-shot alert — a
         // second notification with its own Retry button was just duplicate noise in the shade.
-        if (state.connected) {
+        if (state.connectionState.isConnected) {
             offlineAlertJob?.cancel()
             offlineAlertJob = null
             offlineRestorePending = false
@@ -494,7 +529,7 @@ NeptunClient.start(applicationContext)
                 // Once the grace elapses (and an official alert didn't already surface), the
                 // monitor notification's Retry action carries the recovery path anyway.
                 delay(NeptunClient.OFFLINE_GRACE_MS)
-                if (NeptunClient.state.value.connected) persistOfflineSince(0L)
+                if (ConnectionHolder.getClient(applicationContext).connectionState.value.isConnected) persistOfflineSince(0L)
             }
         } else if (offlineRestorePending) {
             // An outage was already in progress when the service died and restarted; the
@@ -504,12 +539,12 @@ NeptunClient.start(applicationContext)
             offlineAlertJob?.cancel()
             offlineAlertJob = scope.launch {
                 delay(NeptunClient.OFFLINE_GRACE_MS)
-                if (NeptunClient.state.value.connected) persistOfflineSince(0L)
+                if (ConnectionHolder.getClient(applicationContext).connectionState.value.isConnected) persistOfflineSince(0L)
             }
         }
         val wasConnectedBefore = wasConnected
-        wasConnected = state.connected
-        if (state.connected && !wasConnectedBefore) {
+        wasConnected = state.connectionState.isConnected
+        if (state.connectionState.isConnected && !wasConnectedBefore) {
             // Just reconnected: reset the offline-milestone ladder and drop any lingering
             // milestone notification so it can't stay in the shade after the outage ends.
             notif3minShown = false
@@ -525,8 +560,8 @@ NeptunClient.start(applicationContext)
         }
 
         // Reconnection milestone notifications (3min, 6min, 10min, 20min)
-        val neptun = NeptunClient.state.value
-        val reconnectStart = neptun.reconnectStartMillis
+        val cs = state.connectionState
+        val reconnectStart = cs.reconnectStartMillisOrZero
         val now = System.currentTimeMillis()
         val elapsedSinceReconnect = if (reconnectStart > 0 && now > reconnectStart) now - reconnectStart else 0L
         val threeMinMs = 3 * 60 * 1000L
@@ -534,11 +569,11 @@ NeptunClient.start(applicationContext)
         val tenMinMs = 10 * 60 * 1000L
         val twentyMinMs = 20 * 60 * 1000L
 
-        if (!state.connected && elapsedSinceReconnect > 0) {
+        if (!state.connectionState.isConnected && elapsedSinceReconnect > 0) {
             // Show notification at 3 minutes
             if (elapsedSinceReconnect >= threeMinMs && !notif3minShown) {
                 notif3minShown = true
-                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_3)
+                ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_3)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -552,7 +587,7 @@ NeptunClient.start(applicationContext)
             // Show notification at 6 minutes
             if (elapsedSinceReconnect >= sixMinMs && !notif6minShown) {
                 notif6minShown = true
-                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_6)
+                ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_6)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -566,7 +601,7 @@ NeptunClient.start(applicationContext)
             // Show notification at 10 minutes
             if (elapsedSinceReconnect >= tenMinMs && !notif10minShown) {
                 notif10minShown = true
-                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_10)
+                ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_10)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -580,7 +615,7 @@ NeptunClient.start(applicationContext)
             // Show notification at 20 minutes and stop reconnection attempts
             if (elapsedSinceReconnect >= twentyMinMs && !notif20minShown) {
                 notif20minShown = true
-                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_20)
+                ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_20)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -590,15 +625,14 @@ NeptunClient.start(applicationContext)
                     .setContentIntent(openAppIntent())
                     .build()
                 safeNotify(NOTIF_MILESTONE, notif)
-                // After 20 minutes, cancel further auto-reconnect attempts
-                NeptunClient.stopReconnect()
+                // After 20 minutes, ConnectionSupervisor handles give-up internally
             }
             // Critical offline override: ring an audible notification once the drop outlasts
             // CRITICAL_OFFLINE_MIN minutes (on its own channel, so it can sound while the
             // silent CHANNEL_OFFLINE milestones stay quiet).
             if (state.criticalOfflineOverride && elapsedSinceReconnect >= CRITICAL_OFFLINE_MIN * 60_000L && !notifCriticalShown) {
                 notifCriticalShown = true
-                NeptunClient.recordConnEvent(ConnEventKind.MILESTONE_5)
+                ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_5)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE_CRITICAL)
                     .setSmallIcon(R.drawable.ic_trident)
                     .setContentTitle(s.offlineStatusTitle)
@@ -613,7 +647,7 @@ NeptunClient.start(applicationContext)
         }
 
         val offlineMinutes = (elapsedSinceReconnect / 60_000L).toInt().coerceIn(0, 20)
-        val isOfflineNow = neptun.neptunDown
+        val isOfflineNow = state.connectionState.isOffline
         notifyMonitor(
             title = when {
                 isOfflineNow -> s.offlineStatusTitle
@@ -622,7 +656,7 @@ NeptunClient.start(applicationContext)
             },
             text = when {
                 isOfflineNow -> offlineLiveBody(s, offlineMinutes)
-                neptun.degraded -> s.connDegradedBody
+                state.connectionState.isDegraded -> s.connDegradedBody
                 else -> ""
             },
             retryLabel = if (isOfflineNow) s.offlineRetryAction else null,
@@ -631,7 +665,7 @@ NeptunClient.start(applicationContext)
             ignoreLabel = if (isOfflineNow && elapsedSinceReconnect >= twentyMinMs) s.offlineIgnoreAction else null
         )
 
-        val all = NeptunClient.state.value.threats
+        val all = state.threats
 
         /** Channel tier after arming toggles are applied; null = no sound for this object. */
         fun alertTier(id: String, spatial: ThreatZone): ThreatZone? {
@@ -676,10 +710,9 @@ NeptunClient.start(applicationContext)
         // their quick same-id respawn is the same drone coming back and must not re-alert.
         // Everything else keeps its value so the not-yet-fired new entries are re-evaluated
         // on the next tick.
-        val userShotAt = NeptunClient.state.value.userShotAt
+        val client = ConnectionHolder.getClient(applicationContext)
         val droppedZoneIds = knownZones.keys.filterNot { id ->
-            id in state.zoneThreats.keys ||
-                (userShotAt[id]?.let { now - it <= NeptunClient.USER_SHOT_GRACE_MS } ?: false)
+            id in state.zoneThreats.keys || client.wasUserShotRecently(id)
         }
         knownZones = knownZones.filterKeys { it !in droppedZoneIds }
 
@@ -979,9 +1012,11 @@ NeptunClient.start(applicationContext)
 
     /** Live offline body: "X/20 min · attempt N — latest log line" (or the paused wording). */
     private fun offlineLiveBody(s: Strings.StringSet, minutes: Int): String {
-        if (NeptunClient.isIgnoring) return s.offlinePausedBody
-        val attempt = NeptunClient.retryState.value?.attempt ?: 0
-        val latest = NeptunClient.connEvents.value.lastOrNull()
+        val client = ConnectionHolder.getClient(applicationContext)
+        val cs = client.connectionState.value
+        if (cs is ConnectionState.Paused) return s.offlinePausedBody
+        val attempt = (cs as? ConnectionState.Connecting)?.attempt ?: 0
+        val latest = ConnectionHolder.getSupervisor(applicationContext).connEvents.value.lastOrNull()
         val head = String.format(s.offlineLiveFormat, minutes, 20, attempt)
         return if (latest != null) "$head — ${latest.label(s)}" else head
     }
@@ -1337,7 +1372,7 @@ NeptunClient.start(applicationContext)
 
     override fun onDestroy() {
         monitoringJob?.cancel()
-        NeptunClient.stop()
+        ConnectionHolder.clear()
         LocationTracker.stop()
         // The tally is promised to live only "while monitoring runs" — dropping it here also
         // prevents a stale tap/swipe from relaunching the app (and restarting sockets).
