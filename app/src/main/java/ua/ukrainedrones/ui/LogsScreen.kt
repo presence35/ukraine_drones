@@ -139,8 +139,8 @@ fun LogsScreen(
     val entries by DebugLog.entries.collectAsState()
     val connEntries by ConnectionLog.entries.collectAsState()
     val context = LocalContext.current
-    val connRetry by ConnectionHolder.getClient(context).retryState.collectAsState()
-    val connEvents by ConnectionHolder.getClient(context).connEvents.collectAsState()
+    val connRetry by ConnectionHolder.getSupervisor(context).retryState.collectAsState()
+    val connEvents by ConnectionHolder.getSupervisor(context).connEvents.collectAsState()
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var filter by rememberSaveable { mutableStateOf(LogsFilter.DECISIONS) }
@@ -228,7 +228,7 @@ fun LogsScreen(
             }
             if (filter == LogsFilter.CONNECTIONS && connEvents.isNotEmpty()) {
                 item(key = "retrylog") {
-                    RetryLogCard(connEvents, connRetry, s, now) { ConnectionHolder.getClient(context).dismissConnLog() }
+                    RetryLogCard(connEvents, connRetry, s, now, context) { ConnectionHolder.getSupervisor(context).dismissLogCard() }
                 }
             }
             if (visible.isEmpty()) {
@@ -647,19 +647,25 @@ private fun DebugLogKind.icon(): ImageVector = when (this) {
 }
 
 private fun DebugLogKind.label(
-    tier: ThreatZone?,
+    threatType: ThreatType?,
     locality: String?,
     lang: AppLanguage,
     s: Strings.StringSet
 ): String = when (this) {
     DebugLogKind.OFFICIAL_ON -> s.debugKindOfficialOn
     DebugLogKind.OFFICIAL_OFF -> s.debugKindOfficialOff
-    DebugLogKind.ZONE_ENTER -> when (tier) {
-        ThreatZone.INNER -> "${s.debugKindZoneEnter} · ${s.debugTierRed}"
-        ThreatZone.OUTER -> "${s.debugKindZoneEnter} · ${s.debugTierYellow}"
-        null -> s.debugKindZoneEnter
+    DebugLogKind.ZONE_ENTER -> s.debugKindZoneEnter
+    DebugLogKind.ZONE_EXIT -> {
+        val typeLabel = threatType?.let {
+            val info = ThreatTypeCatalog.INFO.getValue(it)
+            if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+        }
+        val parts = mutableListOf<String>()
+        typeLabel?.let { parts += it }
+        parts += s.debugKindZoneExit
+        localityText(locality, lang)?.let { parts += it }
+        parts.joinToString(" · ")
     }
-    DebugLogKind.ZONE_EXIT -> s.debugKindZoneExit
     DebugLogKind.REGION_THREAT -> localityText(locality, lang)?.let {
         String.format(s.debugKindRegionFormat, it)
     } ?: s.debugKindRegionThreat
@@ -691,10 +697,6 @@ private fun DecisionCard(
     iconSet: ThreatIconSet
 ) {
     val accent = entry.kind.accent(entry.tier)
-    val typeLabel = entry.threatType?.let { type ->
-        val info = ThreatTypeCatalog.INFO.getValue(type)
-        if (lang == AppLanguage.UA) info.labelUa else info.labelEn
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -708,7 +710,7 @@ private fun DecisionCard(
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    entry.kind.label(entry.tier, entry.locality, lang, s),
+                    entry.kind.label(entry.threatType, entry.locality, lang, s),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = accent,
@@ -723,37 +725,34 @@ private fun DecisionCard(
             }
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    formatDateTime(lang, entry.atMillis),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                typeLabel?.let { label ->
-                    Spacer(Modifier.width(6.dp))
+                entry.threatType?.let { type ->
+                    val info = ThreatTypeCatalog.INFO.getValue(type)
                     Text(
-                        label,
+                        if (lang == AppLanguage.UA) info.labelUa else info.labelEn,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                }
-                if (entry.kind != DebugLogKind.REGION_THREAT) {
-                    localityText(entry.locality, lang)?.let { locality ->
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            locality,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "\u00B7",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(6.dp))
                 }
                 entry.distanceKm?.let { km ->
-                    Spacer(Modifier.width(6.dp))
                     Text(
                         String.format(s.logDistanceFormat, km.roundToInt()),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    formatDateTime(lang, entry.atMillis),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Spacer(Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -768,9 +767,7 @@ private fun DecisionCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
                 if (entry.notified) {
                     Icon(
                         Icons.Filled.CheckCircle,
@@ -835,6 +832,7 @@ private fun RetryLogCard(
     retry: ConnRetryState?,
     s: Strings.StringSet,
     now: Long,
+    context: android.content.Context,
     onDismiss: () -> Unit
 ) {
     Column(
@@ -843,11 +841,13 @@ private fun RetryLogCard(
             .clip(RoundedCornerShape(12.dp))
             .background(DebugAmber.copy(alpha = 0.08f))
             .border(1.dp, DebugAmber.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
-            .padding(12.dp)
-            .clickable(onClick = onDismiss),
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable(onClick = onDismiss)
+        ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Sort,
                 contentDescription = null,
@@ -902,6 +902,93 @@ private fun RetryLogCard(
                 )
             }
         }
+        TestSimButtons(context)
+    }
+}
+
+@Composable
+private fun TestSimButtons(context: android.content.Context) {
+    val client = ConnectionHolder.getClient(context)
+    var forceOffline by remember { mutableStateOf(false) }
+    var noNetwork by remember { mutableStateOf(false) }
+    var blackHole by remember { mutableStateOf(false) }
+    var slowDrain by remember { mutableStateOf(false) }
+
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "Simulate:",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+    ) {
+        FilterChip(
+            selected = forceOffline,
+            onClick = {
+                forceOffline = !forceOffline
+                if (forceOffline) {
+                    noNetwork = false; blackHole = false; slowDrain = false
+                    client.testHarness.suppressFrames = false
+                    client.testHarness.frameDropPercent = 0
+                }
+                client.testHarness.setForceOffline(forceOffline)
+            },
+            label = { Text("Offline", style = MaterialTheme.typography.labelSmall) }
+        )
+        FilterChip(
+            selected = noNetwork,
+            onClick = {
+                noNetwork = !noNetwork
+                if (noNetwork) {
+                    forceOffline = false; blackHole = false; slowDrain = false
+                    client.testHarness.setForceOffline(false)
+                    client.testHarness.suppressFrames = false
+                    client.testHarness.frameDropPercent = 0
+                }
+                client.testHarness.setNetworkValidated(!noNetwork)
+            },
+            label = { Text("No Network", style = MaterialTheme.typography.labelSmall) }
+        )
+        FilterChip(
+            selected = blackHole,
+            onClick = {
+                blackHole = !blackHole
+                if (blackHole) {
+                    forceOffline = false; noNetwork = false; slowDrain = false
+                    client.testHarness.setForceOffline(false)
+                    client.testHarness.setNetworkValidated(true)
+                    client.testHarness.frameDropPercent = 0
+                }
+                client.testHarness.suppressFrames = blackHole
+            },
+            label = { Text("Black Hole", style = MaterialTheme.typography.labelSmall) }
+        )
+        FilterChip(
+            selected = slowDrain,
+            onClick = {
+                slowDrain = !slowDrain
+                if (slowDrain) {
+                    forceOffline = false; noNetwork = false; blackHole = false
+                    client.testHarness.setForceOffline(false)
+                    client.testHarness.setNetworkValidated(true)
+                    client.testHarness.suppressFrames = false
+                }
+                client.testHarness.frameDropPercent = if (slowDrain) 50 else 0
+            },
+            label = { Text("Slow Drain", style = MaterialTheme.typography.labelSmall) }
+        )
+        FilterChip(
+            selected = false,
+            onClick = {
+                forceOffline = false; noNetwork = false; blackHole = false; slowDrain = false
+                client.testHarness.reset()
+            },
+            label = { Text("Reset", style = MaterialTheme.typography.labelSmall) }
+        )
     }
 }
 

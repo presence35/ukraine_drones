@@ -28,9 +28,6 @@ import ua.ukrainedrones.OblastAlert
 import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatRemoved
 import ua.ukrainedrones.ThreatType
-import ua.ukrainedrones.ConnRetryState
-import ua.ukrainedrones.ConnEvent
-import ua.ukrainedrones.ConnEventKind
 import ua.ukrainedrones.buildTestMig
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -60,7 +57,6 @@ class NeptunConnectionClient(
         const val REST_KEEP_ALIVE_STALE_MS = 15_000L
         const val USER_SHOT_GRACE_MS = 3_000L
         const val NO_NETWORK_RECONNECT_MS = 60_000L
-        private const val MAX_CONN_EVENTS = 50
 
         fun calculateBackoffMs(attempt: Int): Long = when {
             attempt <= 1 -> 1000L + (0..2000).random()
@@ -95,12 +91,6 @@ class NeptunConnectionClient(
 
     private val _removedThreats = MutableSharedFlow<ThreatRemoved>(extraBufferCapacity = 16)
     val removedThreats: SharedFlow<ThreatRemoved> = _removedThreats.asSharedFlow()
-
-    private val _retryState = MutableStateFlow<ConnRetryState?>(null)
-    val retryState: StateFlow<ConnRetryState?> = _retryState.asStateFlow()
-
-    private val _connEvents = MutableStateFlow<List<ConnEvent>>(emptyList())
-    val connEvents: StateFlow<List<ConnEvent>> = _connEvents.asStateFlow()
 
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
@@ -218,15 +208,6 @@ class NeptunConnectionClient(
         return System.currentTimeMillis() - shotAt <= USER_SHOT_GRACE_MS
     }
 
-    fun dismissConnLog() {
-        _connEvents.value = emptyList()
-        _retryState.value = null
-    }
-
-    fun recordEvent(kind: ConnEventKind, attempt: Int? = null, delayMs: Long? = null) {
-        _connEvents.update { (it + ConnEvent(System.currentTimeMillis(), kind, attempt, delayMs)).takeLast(MAX_CONN_EVENTS) }
-    }
-
     private fun connect() {
         if (isManuallyStopped) return
         val gen = connectionGeneration.incrementAndGet()
@@ -268,6 +249,7 @@ class NeptunConnectionClient(
                 if (connectionGeneration.get() != gen) return
                 val now = System.currentTimeMillis()
                 lastFrameAtMs = now
+                if (testHarness.shouldDropFrame()) return
                 if (_connectionState.value is ConnectionState.Degraded) {
                     _connectionState.value = ConnectionState.Connected(
                         generation = gen,
@@ -530,6 +512,9 @@ class NeptunConnectionClient(
             51.48 to 46.20  // Engels area
         )
 
+        @Volatile var suppressFrames = false
+        @Volatile var frameDropPercent = 0
+
         fun setForceOffline(force: Boolean) {
             if (force) {
                 val now = System.currentTimeMillis()
@@ -544,6 +529,37 @@ class NeptunConnectionClient(
                     retryNow()
                 }
             }
+        }
+
+        fun setNetworkValidated(validated: Boolean) {
+            networkMonitor.setTestValidated(validated)
+        }
+
+        fun pauseFor(seconds: Int) {
+            ignoreUntilMs = System.currentTimeMillis() + seconds * 1000L
+            reconnectJob?.cancel()
+            reconnectJob = null
+            _connectionState.value = ConnectionState.Paused(
+                untilMs = ignoreUntilMs,
+                since = System.currentTimeMillis(),
+                reconnectStartMillis = persistedReconnectStartMs
+            )
+        }
+
+        fun reset() {
+            suppressFrames = false
+            frameDropPercent = 0
+            ignoreUntilMs = 0L
+            networkMonitor.setTestValidated(true)
+            if (_connectionState.value !is ConnectionState.Connected) {
+                retryNow()
+            }
+        }
+
+        fun shouldDropFrame(): Boolean {
+            if (suppressFrames) return true
+            if (frameDropPercent > 0) return (0..99).random() < frameDropPercent
+            return false
         }
 
         fun fireTestMig() {

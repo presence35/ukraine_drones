@@ -81,4 +81,10 @@ class NetworkMonitor(context: Context) {
         networkCallback = null
         runCatching { cm?.unregisterNetworkCallback(cb) }
     }
+
+    /** Test-only: force the validated state without real network callbacks. */
+    @Synchronized
+    fun setTestValidated(value: Boolean) {
+        _isValidated.value = value
+    }
 }

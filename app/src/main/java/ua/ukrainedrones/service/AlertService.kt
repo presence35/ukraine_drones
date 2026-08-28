@@ -1015,7 +1015,11 @@ private var notif3minShown = false
         val client = ConnectionHolder.getClient(applicationContext)
         val cs = client.connectionState.value
         if (cs is ConnectionState.Paused) return s.offlinePausedBody
-        val attempt = (cs as? ConnectionState.Connecting)?.attempt ?: 0
+        val attempt = when (cs) {
+            is ConnectionState.Offline -> cs.attempt
+            is ConnectionState.Connecting -> cs.attempt
+            else -> 0
+        }
         val latest = ConnectionHolder.getSupervisor(applicationContext).connEvents.value.lastOrNull()
         val head = String.format(s.offlineLiveFormat, minutes, 20, attempt)
         return if (latest != null) "$head — ${latest.label(s)}" else head

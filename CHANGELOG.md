@@ -15,3 +15,4 @@
 - Data: Neptun URLs centralized to single constants / Дані: URL Neptun зcentralізовано в одних константах
 - Data: Ukraine bounding boxes & Odesa coords merged to shared GeoConstants / Дані: межі України та координати Одеси об'єднано в GeoConstants
 - ConnectionStatus: neptun.in.ua label uses Strings.connNeptunLabel / Статус з'єднання: мітка neptun.in.ua через Strings
+- Logs: DecisionCard redesigned — title shows "Entered zone" (accent color = zone), second row has type · distance + date right-aligned, day/night + ringer on third row with notified badge right-aligned (green ✓ Notified / amber suppressed); "left zone" entries now show threat type + city. / Логи: DecisionCard перероблено — заголовок «Entered zone» (колір = зона), другий рядок: тип · відстань + дата праворуч, день/ніч + сирена в третьому з міткою сповіщення праворуч (✓ Notified / пригнічено); «left zone» тепер показує тип загрози + місто

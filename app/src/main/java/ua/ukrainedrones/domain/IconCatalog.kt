@@ -150,7 +150,7 @@ object IconCatalog {
 
     fun aviationGeometry(set: ThreatIconSet): AviationGeometry = when (set) {
         ThreatIconSet.RUSSIAN -> AviationGeometry(
-            facingDeg = baseDeg(ThreatType.AVIATION, set),
+            facingDeg = baseDeg(ThreatType.AVIATION, set) + 7f,
             exhausts = listOf(
                 Exhaust(0.197674f, -0.079281f),
                 Exhaust(0.394292f, -0.026427f)

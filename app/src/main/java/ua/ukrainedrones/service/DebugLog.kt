@@ -304,10 +304,11 @@ internal fun computeSweep(
     }
     // Threats we were tracking that left the region entirely: log an exit, drop the marker.
     nextVerdicts.keys.filterNot { it in regionIds }.toList().forEach { id ->
+        val t = ctx.threats[id]
         newEntries.add(
             DebugLogEntry(
                 ctx.now, DebugLogKind.ZONE_EXIT, ctx.night, ctx.sirenOverride, null,
-                false, DebugLogReason.LEFT, id, ctx.threats[id]?.type, null, null, null
+                false, DebugLogReason.LEFT, id, t?.type, null, null, t?.locality
             )
         )
         nextVerdicts.remove(id)

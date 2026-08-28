@@ -1205,120 +1205,106 @@ fun SettingsScreen(
 
             if (searching.not() || SettingsSection.FLOURISH in matchedSections) {
             item {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                CollapsibleSectionCard(
+                    title = s.justFunSectionTitle,
+                    icon = painterResource(R.drawable.ic_explosion),
+                    emoji = "🥳",
+                    expanded = collapse.flourish,
+                    subtitle = s.justFunSubtitle(deathAnimationEnabled, neutralizedTallyEnabled),
+                    onToggle = { onCollapseChange(collapse.copy(flourish = !collapse.flourish)) },
+                    trailing = {
+                        Switch(
+                            checked = justFunMasterEnabled,
+                            onCheckedChange = onJustFunMasterChange
+                        )
+                    }
                 ) {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        ) {
-                            Text(
-                                "🥳",
-                                style = MaterialTheme.typography.titleSmall
+                    AnimatedVisibility(visible = justFunMasterEnabled) {
+                        Column {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                Text(
+                                    s.iconSetTitle,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                IconSetSelector(
+                                    lang = lang,
+                                    selected = iconSet,
+                                    onChange = onIconSetChange
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            AlertToggleRow(
+                                title = s.calmMessagesTitle,
+                                description = s.calmMessagesDesc,
+                                checked = calmMessagesEnabled,
+                                onCheckedChange = onCalmMessagesChange,
+                                icon = painterResource(R.drawable.ic_peace),
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                s.justFunSectionTitle,
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.weight(1f)
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            AlertToggleRow(
+                                title = s.flybyAnimationLabel,
+                                description = s.flybyAnimationDesc,
+                                checked = flybyAnimationEnabled,
+                                onCheckedChange = onFlybyAnimationChange,
+                                icon = painterResource(R.drawable.ic_airplay),
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Switch(
-                                checked = justFunMasterEnabled,
-                                onCheckedChange = onJustFunMasterChange
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            AlertToggleRow(
+                                title = s.deathAnimationTitle,
+                                description = s.deathAnimationDesc,
+                                checked = deathAnimationEnabled,
+                                onCheckedChange = onDeathAnimationChange,
+                                icon = painterResource(R.drawable.ic_explosion),
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
-                        AnimatedVisibility(visible = justFunMasterEnabled) {
-                            Column {
-                                // Favourite icon set
-                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                    Text(
-                                        s.iconSetTitle,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(Modifier.height(10.dp))
-                                    IconSetSelector(
-                                        lang = lang,
-                                        selected = iconSet,
-                                        onChange = onIconSetChange
+                            AnimatedVisibility(visible = deathAnimationEnabled) {
+                                Column(modifier = Modifier.padding(start = 40.dp)) {
+                                    AlertToggleRow(
+                                        title = s.followBulletTitle,
+                                        description = s.followBulletDesc,
+                                        checked = followBullet,
+                                        onCheckedChange = onFollowBulletChange,
+                                        icon = painterResource(R.drawable.bullet),
+                                        iconTint = null
                                     )
                                 }
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            AlertToggleRow(
+                                title = s.neutralizedTallyTitle,
+                                description = s.neutralizedTallyDesc,
+                                checked = neutralizedTallyEnabled,
+                                onCheckedChange = onNeutralizedTallyChange,
+                                icon = rememberVectorPainter(Icons.Default.Notifications),
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                iconBadge = "21"
+                            )
+                            if (neutralizedTallyEnabled) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                AlertToggleRow(
-                                    title = s.calmMessagesTitle,
-                                    description = s.calmMessagesDesc,
-                                    checked = calmMessagesEnabled,
-                                    onCheckedChange = onCalmMessagesChange,
-                                    icon = painterResource(R.drawable.ic_peace),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                AlertToggleRow(
-                                    title = s.flybyAnimationLabel,
-                                    description = s.flybyAnimationDesc,
-                                    checked = flybyAnimationEnabled,
-                                    onCheckedChange = onFlybyAnimationChange,
-                                    icon = painterResource(R.drawable.ic_airplay),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                AlertToggleRow(
-                                    title = s.deathAnimationTitle,
-                                    description = s.deathAnimationDesc,
-                                    checked = deathAnimationEnabled,
-                                    onCheckedChange = onDeathAnimationChange,
-                                    icon = painterResource(R.drawable.ic_explosion),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                AnimatedVisibility(visible = deathAnimationEnabled) {
-                                    Column(modifier = Modifier.padding(start = 40.dp)) {
-                                        AlertToggleRow(
-                                            title = s.followBulletTitle,
-                                            description = s.followBulletDesc,
-                                            checked = followBullet,
-                                            onCheckedChange = onFollowBulletChange,
-                                            icon = painterResource(R.drawable.bullet),
-                                            iconTint = null
-                                        )
-                                    }
-                                }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                AlertToggleRow(
-                                    title = s.neutralizedTallyTitle,
-                                    description = s.neutralizedTallyDesc,
-                                    checked = neutralizedTallyEnabled,
-                                    onCheckedChange = onNeutralizedTallyChange,
-                                    icon = rememberVectorPainter(Icons.Default.Notifications),
-                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    iconBadge = "21"
-                                )
-                                if (neutralizedTallyEnabled) {
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                    Box(modifier = Modifier.padding(start = 40.dp)) {
-                                        AlertToggleRow(
-                                            title = s.neutralizedTallyAllUkraineTitle,
-                                            description = s.neutralizedTallyAllUkraineDesc,
-                                            checked = neutralizedTallyAllUkraine,
-                                            onCheckedChange = onNeutralizedTallyAllUkraineChange,
-                                            emoji = "🇺🇦"
-                                        )
-                                    }
+                                Box(modifier = Modifier.padding(start = 40.dp)) {
+                                    AlertToggleRow(
+                                        title = s.neutralizedTallyAllUkraineTitle,
+                                        description = s.neutralizedTallyAllUkraineDesc,
+                                        checked = neutralizedTallyAllUkraine,
+                                        onCheckedChange = onNeutralizedTallyAllUkraineChange,
+                                        emoji = "🇺🇦"
+                                    )
                                 }
                             }
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Text(
-                            s.justFunNote,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                        )
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        s.justFunNote,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
                 }
             }
 
@@ -2531,6 +2517,7 @@ private fun CollapsibleSectionCard(
     emoji: String? = null,
     cardColor: Color? = null,
     cardBorder: Color? = null,
+    trailing: @Composable (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -2595,6 +2582,7 @@ private fun CollapsibleSectionCard(
                         )
                     }
                 }
+                trailing?.invoke()
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
