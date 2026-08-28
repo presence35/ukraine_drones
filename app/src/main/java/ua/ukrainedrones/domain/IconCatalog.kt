@@ -147,6 +147,37 @@ object IconCatalog {
         ThreatIconSet.COMIC -> comicBaseDeg(type)
         ThreatIconSet.RUSSIAN -> russianBaseDeg(type)
     }
+
+    fun aviationGeometry(set: ThreatIconSet): AviationGeometry = when (set) {
+        ThreatIconSet.RUSSIAN -> AviationGeometry(
+            facingDeg = baseDeg(ThreatType.AVIATION, set),
+            exhausts = listOf(
+                Exhaust(0.197674f, -0.079281f),
+                Exhaust(0.394292f, -0.026427f)
+            )
+        )
+        ThreatIconSet.PHOTO -> AviationGeometry(
+            facingDeg = baseDeg(ThreatType.AVIATION, set),
+            exhausts = listOf(
+                Exhaust(0.299205f, -0.014911f),
+                Exhaust(0.454274f, 0.024851f)
+            )
+        )
+        ThreatIconSet.ARMY -> AviationGeometry(
+            facingDeg = baseDeg(ThreatType.AVIATION, set),
+            exhausts = listOf(
+                Exhaust(0.354871f, -0.014911f),
+                Exhaust(0.454274f, 0.024851f)
+            )
+        )
+        ThreatIconSet.COMIC -> AviationGeometry(
+            facingDeg = baseDeg(ThreatType.AVIATION, set),
+            exhausts = listOf(
+                Exhaust(0.201717f, -0.066524f),
+                Exhaust(0.379828f, 0.000000f)
+            )
+        )
+    }
 }
 
 /** Greys the photo/army/comic image itself (keeps its shape) instead of flat-tinting it. */

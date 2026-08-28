@@ -43,6 +43,7 @@ object Strings {
         val wizardJustFunTitle: String,
         val wizardJustFunDesc: String,
         val wizardJustFunDescGearSuffix: String,
+        val wizardNeptunStatus: String,
         val settingsSearchHint: String,
         val settingsSearchClear: String,
         val settingsNoResults: String,
@@ -564,6 +565,7 @@ object Strings {
         val wizardJustFunTitle: String get() = onboarding.wizardJustFunTitle
         val wizardJustFunDesc: String get() = onboarding.wizardJustFunDesc
         val wizardJustFunDescGearSuffix: String get() = onboarding.wizardJustFunDescGearSuffix
+        val wizardNeptunStatus: String get() = onboarding.wizardNeptunStatus
         val fitMapLabel: String get() = onboarding.fitMapLabel
         val dayZonesTitle: String get() = settings.dayZonesTitle
         val nightZonesTitle: String get() = settings.nightZonesTitle
@@ -1109,6 +1111,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         wizardJustFunTitle = "Розваги",
         wizardJustFunDesc = "Додай трохи розваг — анімації знешкодження, проліт МіГа та лічильник. Не впливають на сповіщення. Детальніше — в",
         wizardJustFunDescGearSuffix = "налаштуваннях.",
+        wizardNeptunStatus = "Джерело даних — Neptun. Загрози оновлюються в реальному часі.",
         settingsSearchHint = "Пошук налаштувань",
         settingsSearchClear = "Очистити пошук",
         settingsNoResults = "Нічого не знайдено",
@@ -1658,6 +1661,7 @@ connOnline = "Онлайн",
         wizardJustFunTitle = "Just fun)))",
         wizardJustFunDesc = "Switch on the shoot-down fireworks, the MiG flyby and the tally — they never affect alerts. Tune them in",
         wizardJustFunDescGearSuffix = "settings.",
+        wizardNeptunStatus = "Your threat data comes from Neptun — updated in real time.",
         settingsSearchHint = "Search",
         settingsSearchClear = "Clear",
         settingsNoResults = "Nothing found",

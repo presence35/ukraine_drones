@@ -36,10 +36,9 @@ import kotlin.math.sin
  * bearing with a contrail, then the threat card opens ([onFinished]). Pure overlay — consumes
  * no input, moves no camera.
  *
- * The jet's rotation and the contrail origin both come from the active icon pack's measured
- * silhouette ([IconGeometryCache]), run through the same mirror→rotate chain graphicsLayer
- * applies (scaleY first, then rotationZ) — so nose and exhaust stay glued to the artwork at
- * every bearing, mirrored passes included.
+ * Each icon pack has two exhausts (behind-nozzle anchors) defined explicitly in
+ * [IconCatalog.aviationGeometry]; the jet's rotation comes from the pack's baked facing via
+ * [AviationFlyby.spriteTransform]. No silhouette detection.
  */
 @Composable
 fun AviationFlybyOverlay(
@@ -48,8 +47,7 @@ fun AviationFlybyOverlay(
     onFinished: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val geometry = remember(iconSet) { IconGeometryCache.aviationFor(iconSet, context) }
-        ?: fallbackGeometry(iconSet)
+    val geometry = remember(iconSet) { IconCatalog.aviationGeometry(iconSet) }
 
     var canvasPx by remember { mutableStateOf(IntSize.Zero) }
     val progress = remember(show.tick) { Animatable(0f) }
@@ -64,7 +62,6 @@ fun AviationFlybyOverlay(
         audioPlayer.start()
         progress.snapTo(0f)
         progress.animateTo(1f, tween(show.durationMs.toInt(), easing = LinearEasing))
-        // Sound lives through the smoke and dies just before the trail vanishes.
         try {
             fadeProgress.animateTo(0f, tween(2000, easing = LinearEasing))
         } finally {
@@ -77,7 +74,6 @@ fun AviationFlybyOverlay(
         val planeW = canvasPx.width * 0.6f
         val trailLen = planeW * 1.4f
         val trailStroke = (planeW * 0.02f).coerceIn(6f, 14f)
-        val trailDrop = planeW * 0.06f
         val (entry, exit) = AviationFlyby.endpoints(
             show.courseDeg, canvasPx.width.toFloat(), canvasPx.height.toFloat(), planeW
         )
@@ -88,53 +84,44 @@ fun AviationFlybyOverlay(
         )
         FlybyHaptics(progress.value)
         Canvas(modifier = Modifier.matchParentSize()) {
-            var ox = geometry.anchorXFrac * planeW
-            // Per-pack exhaust correction from Pixel 7 screenshot (planeW≈648px, screenshot 1:1):
-            // russian 0px (perfect), comic +68px, photo +44px, army +38px — all too high.
-            // Stored as frac of planeW so it scales with device (68/648≈0.1049, etc).
-            val anchorFixY = when (iconSet) {
-                ThreatIconSet.COMIC -> planeW * 0.10494f
-                ThreatIconSet.PHOTO -> planeW * 0.06790f
-                ThreatIconSet.ARMY -> planeW * 0.05864f
-                else -> 0f
-            }
-            var oy = geometry.anchorYFrac * planeW + anchorFixY
-            if (flipped) oy = -oy
             val rad = Math.toRadians(rotZ.toDouble())
-            val wx = cos(rad) * ox - sin(rad) * oy
-            val wy = sin(rad) * ox + cos(rad) * oy
-            val anchorX0 = (x + wx).toFloat()
-            val anchorY0 = (y + wy).toFloat()
-            // Rendered body axis (mirror→rotate of the art's measured facing) so the trail
-            // is a straight continuation of the jet's exhaust — matches the sprite exactly.
-            val facingRad = Math.toRadians(geometry.facingDeg.toDouble())
-            var nx = sin(facingRad).toFloat()
-            var ny = -cos(facingRad).toFloat()
-            if (flipped) ny = -ny
-            val noseX = (cos(rad) * nx - sin(rad) * ny).toFloat()
-            val noseY = (sin(rad) * nx + cos(rad) * ny).toFloat()
             val fade = fadeProgress.value
-            val slideBy = trailLen * (1f - fade)
-            val anchorX = (anchorX0 + slideBy * noseX).toFloat()
-            val anchorY = (anchorY0 + slideBy * noseY + trailDrop).toFloat()
-            val effLen = trailLen * fade
-            val tailX = (anchorX - effLen * noseX).toFloat()
-            val tailY = (anchorY - effLen * noseY).toFloat()
             val contrailAlpha = 0.55f * fade
-            drawLine(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0f),
-                        Color.White.copy(alpha = contrailAlpha)
+            val slideBy = trailLen * (1f - fade)
+            val effLen = trailLen * fade
+            for (exhaust in geometry.exhausts) {
+                var ox = exhaust.anchorXFrac * planeW
+                var oy = exhaust.anchorYFrac * planeW
+                if (flipped) oy = -oy
+                val wx = cos(rad) * ox - sin(rad) * oy
+                val wy = sin(rad) * ox + cos(rad) * oy
+                val anchorX0 = (x + wx).toFloat()
+                val anchorY0 = (y + wy).toFloat()
+                val facingBiasRad = Math.toRadians((geometry.facingDeg + exhaust.angleBiasDeg).toDouble())
+                var nx = sin(facingBiasRad).toFloat()
+                var ny = -cos(facingBiasRad).toFloat()
+                if (flipped) ny = -ny
+                val noseX = (cos(rad) * nx - sin(rad) * ny).toFloat()
+                val noseY = (sin(rad) * nx + cos(rad) * ny).toFloat()
+                val anchorX = (anchorX0 + slideBy * noseX).toFloat()
+                val anchorY = (anchorY0 + slideBy * noseY).toFloat()
+                val tailX = (anchorX - effLen * noseX).toFloat()
+                val tailY = (anchorY - effLen * noseY).toFloat()
+                drawLine(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0f),
+                            Color.White.copy(alpha = contrailAlpha)
+                        ),
+                        start = Offset(tailX, tailY),
+                        end = Offset(anchorX, anchorY)
                     ),
                     start = Offset(tailX, tailY),
-                    end = Offset(anchorX, anchorY)
-                ),
-                start = Offset(tailX, tailY),
-                end = Offset(anchorX, anchorY),
-                strokeWidth = trailStroke,
-                cap = StrokeCap.Round
-            )
+                    end = Offset(anchorX, anchorY),
+                    strokeWidth = trailStroke,
+                    cap = StrokeCap.Round
+                )
+            }
         }
         PlaneSprite(planeW, rotZ, flipped, iconSet, alpha = 0.35f, tint = Color.Black,
             modifier = Modifier.offset {
@@ -148,22 +135,6 @@ fun AviationFlybyOverlay(
                 IntOffset((x - planeW / 2).roundToInt(), (y - planeW / 2).roundToInt())
             })
     }
-}
-
-private const val FALLBACK_BACK_FRAC = 0.42f
-private const val FALLBACK_SIDE_FRAC = 0.076f
-
-private fun fallbackGeometry(iconSet: ThreatIconSet): IconGeometry {
-    val baseRad = Math.toRadians(IconCatalog.baseDeg(ThreatType.AVIATION, iconSet).toDouble())
-    val noseX = sin(baseRad)
-    val noseY = -cos(baseRad)
-    val perpX = cos(baseRad)
-    val perpY = sin(baseRad)
-    return IconGeometry(
-        facingDeg = IconCatalog.baseDeg(ThreatType.AVIATION, iconSet),
-        anchorXFrac = (-FALLBACK_BACK_FRAC * noseX + FALLBACK_SIDE_FRAC * perpX).toFloat(),
-        anchorYFrac = (-FALLBACK_BACK_FRAC * noseY + FALLBACK_SIDE_FRAC * perpY).toFloat()
-    )
 }
 
 @Composable

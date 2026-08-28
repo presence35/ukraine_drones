@@ -66,7 +66,10 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
@@ -915,7 +918,30 @@ fun SettingsScreen(
                         description = s.shelterSettingsDesc,
                         checked = sheltersEnabled,
                         onCheckedChange = onSheltersEnabledChange,
-                        icon = painterResource(R.drawable.ic_shelter),
+                        icon = remember {
+                            object : Painter() {
+                                override val intrinsicSize = Size(24f, 24f)
+                                override fun DrawScope.onDraw() {
+                                    val cw = 16f; val ch = 18f
+                                    val scale = minOf(size.width / cw, size.height / ch)
+                                    val dx = (size.width - cw * scale) / 2f
+                                    val dy = (size.height - ch * scale) / 2f
+                                    val cx = dx + 8f * scale; val r = 8f * scale
+                                    val bottom = dy + 18f * scale; val top = bottom - 18f * scale
+                                    val bulbMidY = top + r
+                                    drawPath(
+                                        Path().apply {
+                                            moveTo(cx, bottom)
+                                            cubicTo(cx - r * 0.15f, bottom - 2f * scale, dx, bulbMidY + r * 0.5f, dx, bulbMidY)
+                                            cubicTo(dx, top, dx + cw * scale, top, dx + cw * scale, bulbMidY)
+                                            cubicTo(dx + cw * scale, bulbMidY + r * 0.5f, cx + r * 0.15f, bottom - 2f * scale, cx, bottom)
+                                            close()
+                                        },
+                                        color = Color.Black
+                                    )
+                                }
+                            }
+                        },
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1190,11 +1216,9 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_explosion),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
+                            Text(
+                                "🥳",
+                                style = MaterialTheme.typography.titleSmall
                             )
                             Spacer(Modifier.width(12.dp))
                             Text(
@@ -1202,11 +1226,6 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.titleSmall,
                                 modifier = Modifier.weight(1f)
                             )
-                            Text(
-                                "🥳",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Spacer(Modifier.width(8.dp))
                             Switch(
                                 checked = justFunMasterEnabled,
                                 onCheckedChange = onJustFunMasterChange
