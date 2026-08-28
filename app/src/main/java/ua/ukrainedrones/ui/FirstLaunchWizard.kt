@@ -101,6 +101,20 @@ internal fun FirstLaunchWizard(
     var step by remember { mutableStateOf(0) }
     var tipsRevealed by remember { mutableStateOf(false) }
     var locationMode by remember { mutableStateOf<String?>(null) }
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    val wizardContext = LocalContext.current
+    LaunchedEffect(step) {
+        if (step == 2) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(wizardContext, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     BackHandler(enabled = step > 0) { step-- }
     val stepTitle = when (step) {
         0 -> Strings.get(other).languageChooseTitle

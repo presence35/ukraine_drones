@@ -445,6 +445,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 index = uiState.shelterIndex,
                 withKids = uiState.sheltersWithKids,
                 onWithKidsChange = { viewModel.setSheltersWithKidsEnabled(it) },
+                sheltersEnabled = uiState.sheltersEnabled,
+                onSheltersEnabledChange = { viewModel.setSheltersEnabled(it) },
                 now = now,
                 onBack = { screen = if (sheltersFromSettings) Screen.SETTINGS else Screen.MAP }
             )

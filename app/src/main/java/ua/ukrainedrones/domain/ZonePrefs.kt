@@ -444,7 +444,7 @@ fun threatToggleHintRemaining(): Flow<Int> =
 
     /** Whether the app periodically snaps a one-shot GPS fix (every 15 min) to prevent cell drift. Default true. */
     fun periodicGps(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[periodicGpsKey] ?: true }
+        context.dataStore.data.map { prefs -> prefs[periodicGpsKey] ?: false }
 
     suspend fun setPeriodicGps(enabled: Boolean) {
         context.dataStore.edit { it[periodicGpsKey] = enabled }

@@ -216,7 +216,7 @@ private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
  *  dot stands in while the first fix hasn't arrived yet (the "locating you" state). */
 private fun gpsDotBitmap(context: Context, hasFix: Boolean): Bitmap {
     val density = context.resources.displayMetrics.density
-    val coreR = 7f * density
+    val coreR = 5f * density
     val glowR = coreR * 2.8f
     val size = (glowR * 2).toInt().coerceAtLeast(2)
     val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)

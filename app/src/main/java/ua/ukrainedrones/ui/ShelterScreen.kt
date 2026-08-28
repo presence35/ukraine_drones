@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +51,8 @@ fun ShelterScreen(
     index: ShelterIndex?,
     withKids: Boolean,
     onWithKidsChange: (Boolean) -> Unit,
+    sheltersEnabled: Boolean,
+    onSheltersEnabledChange: (Boolean) -> Unit,
     now: Long,
     onBack: () -> Unit
 ) {
@@ -131,6 +134,8 @@ fun ShelterScreen(
                     s = s,
                     withKids = withKids,
                     onWithKidsChange = onWithKidsChange,
+                    sheltersEnabled = sheltersEnabled,
+                    onSheltersEnabledChange = onSheltersEnabledChange,
                     onForceRefresh = forceGps,
                     showSettingsFallback = showSettingsFallback,
                     onOpenSettings = {
@@ -181,6 +186,8 @@ private fun GpsHeaderRow(
     s: Strings.StringSet,
     withKids: Boolean,
     onWithKidsChange: (Boolean) -> Unit,
+    sheltersEnabled: Boolean,
+    onSheltersEnabledChange: (Boolean) -> Unit,
     onForceRefresh: () -> Unit,
     showSettingsFallback: Boolean,
     onOpenSettings: () -> Unit
@@ -251,6 +258,29 @@ private fun GpsHeaderRow(
                 modifier = Modifier.padding(vertical = 6.dp),
                 color = MaterialTheme.colorScheme.outlineVariant
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Map,
+                    contentDescription = null,
+                    tint = if (sheltersEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    s.shelterShowOnMap,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = sheltersEnabled,
+                    onCheckedChange = onSheltersEnabledChange
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically

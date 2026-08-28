@@ -1021,7 +1021,7 @@ private var notif3minShown = false
             else -> 0
         }
         val latest = ConnectionHolder.getSupervisor(applicationContext).connEvents.value.lastOrNull()
-        val head = String.format(s.offlineLiveFormat, minutes, 20, attempt)
+        val head = String.format(s.offlineLiveFormat, minutes, 20, attempt + 1)
         return if (latest != null) "$head — ${latest.label(s)}" else head
     }
 

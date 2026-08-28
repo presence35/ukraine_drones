@@ -908,7 +908,30 @@ fun SettingsScreen(
             item {
                 CollapsibleSectionCard(
                     title = s.shelterSectionTitle,
-                    icon = painterResource(R.drawable.ic_shelter),
+                    icon = remember {
+                        object : Painter() {
+                            override val intrinsicSize = Size(24f, 24f)
+                            override fun DrawScope.onDraw() {
+                                val cw = 16f; val ch = 18f
+                                val scale = minOf(size.width / cw, size.height / ch)
+                                val dx = (size.width - cw * scale) / 2f
+                                val dy = (size.height - ch * scale) / 2f
+                                val cx = dx + 8f * scale; val r = 8f * scale
+                                val bottom = dy + 18f * scale; val top = bottom - 18f * scale
+                                val bulbMidY = top + r
+                                drawPath(
+                                    Path().apply {
+                                        moveTo(cx, bottom)
+                                        cubicTo(cx - r * 0.15f, bottom - 2f * scale, dx, bulbMidY + r * 0.5f, dx, bulbMidY)
+                                        cubicTo(dx, top, dx + cw * scale, top, dx + cw * scale, bulbMidY)
+                                        cubicTo(dx + cw * scale, bulbMidY + r * 0.5f, cx + r * 0.15f, bottom - 2f * scale, cx, bottom)
+                                        close()
+                                    },
+                                    color = Color.Black
+                                )
+                            }
+                        }
+                    },
                     expanded = collapse.shelters,
                     subtitle = s.sheltersSubtitle(sheltersEnabled),
                     onToggle = { onCollapseChange(collapse.copy(shelters = !collapse.shelters)) }
@@ -917,32 +940,7 @@ fun SettingsScreen(
                         title = s.shelterSettingsTitle,
                         description = s.shelterSettingsDesc,
                         checked = sheltersEnabled,
-                        onCheckedChange = onSheltersEnabledChange,
-                        icon = remember {
-                            object : Painter() {
-                                override val intrinsicSize = Size(24f, 24f)
-                                override fun DrawScope.onDraw() {
-                                    val cw = 16f; val ch = 18f
-                                    val scale = minOf(size.width / cw, size.height / ch)
-                                    val dx = (size.width - cw * scale) / 2f
-                                    val dy = (size.height - ch * scale) / 2f
-                                    val cx = dx + 8f * scale; val r = 8f * scale
-                                    val bottom = dy + 18f * scale; val top = bottom - 18f * scale
-                                    val bulbMidY = top + r
-                                    drawPath(
-                                        Path().apply {
-                                            moveTo(cx, bottom)
-                                            cubicTo(cx - r * 0.15f, bottom - 2f * scale, dx, bulbMidY + r * 0.5f, dx, bulbMidY)
-                                            cubicTo(dx, top, dx + cw * scale, top, dx + cw * scale, bulbMidY)
-                                            cubicTo(dx + cw * scale, bulbMidY + r * 0.5f, cx + r * 0.15f, bottom - 2f * scale, cx, bottom)
-                                            close()
-                                        },
-                                        color = Color.Black
-                                    )
-                                }
-                            }
-                        },
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                        onCheckedChange = onSheltersEnabledChange
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // The directory row is always reachable, even when the map button toggle

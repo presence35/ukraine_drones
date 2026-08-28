@@ -35,12 +35,17 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.AccessTime
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.NearMe
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -176,17 +181,28 @@ fun LogsScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            item(key = "filters") {
-                FilterRow(filter, s, window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0) {
-                    filter = it
-                    visibleCount = VISIBLE_INITIAL
+        val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS)
+        val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections)
+        val tabCounts = listOf(window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0)
+        Column(Modifier.padding(padding).fillMaxWidth()) {
+            TabRow(
+                selectedTabIndex = tabFilters.indexOf(filter),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                tabFilters.forEachIndexed { index, f ->
+                    Tab(
+                        selected = filter == f,
+                        onClick = { filter = f; visibleCount = VISIBLE_INITIAL },
+                        text = { Text("${tabLabels[index]} \u00B7 ${tabCounts[index]}") }
+                    )
                 }
             }
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
             if (isDecisions) {
                 item(key = "viewopts") {
                     ViewOptionsRow(
@@ -228,7 +244,10 @@ fun LogsScreen(
             }
             if (filter == LogsFilter.CONNECTIONS && connEvents.isNotEmpty()) {
                 item(key = "retrylog") {
-                    RetryLogCard(connEvents, connRetry, s, now, context) { ConnectionHolder.getSupervisor(context).dismissLogCard() }
+                    RetryLogCard(connEvents, connRetry, s, now) { ConnectionHolder.getSupervisor(context).dismissLogCard() }
+                }
+                item(key = "testsim") {
+                    TestSimButtons(context)
                 }
             }
             if (visible.isEmpty()) {
@@ -286,11 +305,12 @@ fun LogsScreen(
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             TextButton(onClick = { scope.launch(Dispatchers.IO) { DebugLog.clear() } }) {
                                 Text(s.debugLogClear)
-                            }
-                        }
-                    }
                 }
             }
+            }
+        }
+    }
+}
         }
     }
 }
@@ -388,34 +408,6 @@ private fun buildGroups(
 }
 
 @Composable
-private fun FilterRow(
-    filter: LogsFilter,
-    s: Strings.StringSet,
-    decisionsCount: Int,
-    connectionsCount: Int,
-    onChange: (LogsFilter) -> Unit
-) {
-    val options = listOf(
-        Triple(LogsFilter.DECISIONS, s.logsFilterDecisions, decisionsCount),
-        Triple(LogsFilter.CONNECTIONS, s.logsFilterConnections, connectionsCount)
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        options.forEach { (value, label, count) ->
-            FilterChip(
-                selected = filter == value,
-                onClick = { onChange(value) },
-                label = { Text("$label · $count") }
-            )
-        }
-    }
-}
-
-@Composable
 private fun ViewOptionsRow(
     groupBy: GroupBy,
     newestFirst: Boolean,
@@ -429,88 +421,69 @@ private fun ViewOptionsRow(
     onShownOnlyChange: (Boolean) -> Unit,
     onShowFlourishChange: (Boolean) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Spacer(Modifier.width(2.dp))
-            val groupOptions = listOf(
-                GroupBy.TIMELINE to s.logsGroupTimeline,
-                GroupBy.PROXIMITY to s.logsGroupProximity,
-                GroupBy.TYPE to s.logsGroupType
-            )
-            groupOptions.forEach { (value, label) ->
-                FilterChip(
-                    selected = groupBy == value,
-                    onClick = { onGroupBy(value) },
-                    label = { Text(label) }
-                )
-            }
-            if (groupBy == GroupBy.PROXIMITY) {
-                FilterChip(
-                    selected = proximitySort == ProximitySort.DISTANCE,
-                    onClick = { onProximitySortChange(ProximitySort.DISTANCE) },
-                    label = { Text(s.logsSortDistance) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Place,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                )
-                FilterChip(
-                    selected = proximitySort == ProximitySort.AGE,
-                    onClick = { onProximitySortChange(ProximitySort.AGE) },
-                    label = { Text(s.logsSortAge) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Sort,
-                            contentDescription = s.logsSortDesc,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                )
-            } else {
-                val sortRotation by animateFloatAsState(
-                    targetValue = if (newestFirst) 0f else 180f,
-                    label = "sortRotation"
-                )
-                FilterChip(
-                    selected = newestFirst,
-                    onClick = onSortToggle,
-                    label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Sort,
-                            contentDescription = s.logsSortDesc,
-                            modifier = Modifier.rotate(sortRotation).size(16.dp)
-                        )
-                    }
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Spacer(Modifier.weight(1f))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        val groupIcon = mapOf(
+            GroupBy.TIMELINE to Icons.Outlined.AccessTime,
+            GroupBy.PROXIMITY to Icons.Outlined.NearMe,
+            GroupBy.TYPE to Icons.Outlined.Category
+        )
+        val groupLabel = mapOf(
+            GroupBy.TIMELINE to s.logsGroupTimeline,
+            GroupBy.PROXIMITY to s.logsGroupProximity,
+            GroupBy.TYPE to s.logsGroupType
+        )
+        GroupBy.entries.forEach { value ->
             FilterChip(
-                selected = shownOnly,
-                onClick = { onShownOnlyChange(!shownOnly) },
-                label = { Text(s.logsNotified) }
-            )
-            FilterChip(
-                selected = showFlourish,
-                onClick = { onShowFlourishChange(!showFlourish) },
-                label = { Text(s.logsFlourishToggle) }
+                selected = groupBy == value,
+                onClick = { onGroupBy(value) },
+                label = { Text(groupLabel[value]!!) },
+                leadingIcon = {
+                    Icon(groupIcon[value]!!, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
             )
         }
+        if (groupBy == GroupBy.PROXIMITY) {
+            FilterChip(
+                selected = proximitySort == ProximitySort.DISTANCE,
+                onClick = { onProximitySortChange(ProximitySort.DISTANCE) },
+                label = { Text(s.logsSortDistance) },
+                leadingIcon = { Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(16.dp)) }
+            )
+            FilterChip(
+                selected = proximitySort == ProximitySort.AGE,
+                onClick = { onProximitySortChange(ProximitySort.AGE) },
+                label = { Text(s.logsSortAge) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.size(16.dp)) }
+            )
+        } else {
+            val sortRotation by animateFloatAsState(targetValue = if (newestFirst) 0f else 180f, label = "sortRotation")
+            FilterChip(
+                selected = newestFirst,
+                onClick = onSortToggle,
+                label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.rotate(sortRotation).size(16.dp)) }
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        FilterChip(
+            selected = shownOnly,
+            onClick = { onShownOnlyChange(!shownOnly) },
+            label = { Text(s.logsNotified) },
+            leadingIcon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp)) }
+        )
+        FilterChip(
+            selected = showFlourish,
+            onClick = { onShowFlourishChange(!showFlourish) },
+            label = { Text(s.logsFlourishToggle) },
+            leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(16.dp)) }
+        )
     }
 }
 
@@ -832,7 +805,6 @@ private fun RetryLogCard(
     retry: ConnRetryState?,
     s: Strings.StringSet,
     now: Long,
-    context: android.content.Context,
     onDismiss: () -> Unit
 ) {
     Column(
@@ -890,7 +862,7 @@ private fun RetryLogCard(
             val countdownSec = ((r.nextAtMs - now) / 1000L).coerceAtLeast(0)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    String.format(s.offlineLiveFormat, minutesOffline, 20, r.attempt),
+                    String.format(s.offlineLiveFormat, minutesOffline, 20, r.attempt + 1),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = DebugAmber
@@ -902,7 +874,6 @@ private fun RetryLogCard(
                 )
             }
         }
-        TestSimButtons(context)
     }
 }
 
