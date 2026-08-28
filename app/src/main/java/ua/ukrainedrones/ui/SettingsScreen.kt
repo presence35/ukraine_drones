@@ -429,6 +429,8 @@ fun SettingsScreen(
     onShowSmallCitiesChange: (Boolean) -> Unit,
     onSheltersEnabledChange: (Boolean) -> Unit,
     onOpenShelterList: () -> Unit = {},
+    onJustFunMasterChange: (Boolean) -> Unit,
+    justFunMasterEnabled: Boolean,
     onDeathAnimationChange: (Boolean) -> Unit,
     onFollowBulletChange: (Boolean) -> Unit,
     onNeutralizedTallyChange: (Boolean) -> Unit,
@@ -1177,102 +1179,127 @@ fun SettingsScreen(
 
             if (searching.not() || SettingsSection.FLOURISH in matchedSections) {
             item {
-                CollapsibleSectionCard(
-                    title = s.justFunSectionTitle,
-                    icon = painterResource(R.drawable.ic_explosion),
-                    emoji = "🥳",
-                    expanded = collapse.flourish,
-                    subtitle = s.justFunSubtitle(deathAnimationEnabled, neutralizedTallyEnabled),
-                    onToggle = { onCollapseChange(collapse.copy(flourish = !collapse.flourish)) }
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
-                    // Favourite icon set
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(
-                            s.iconSetTitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        IconSetSelector(
-                            lang = lang,
-                            selected = iconSet,
-                            onChange = onIconSetChange
-                        )
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // Calm messages
-                    AlertToggleRow(
-                        title = s.calmMessagesTitle,
-                        description = s.calmMessagesDesc,
-                        checked = calmMessagesEnabled,
-                        onCheckedChange = onCalmMessagesChange,
-                        icon = painterResource(R.drawable.ic_peace),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // MiG flyby animation
-                    AlertToggleRow(
-                        title = s.flybyAnimationLabel,
-                        description = "Enable or disable the MiG-31K flyby animation and sound",
-                        checked = flybyAnimationEnabled,
-                        onCheckedChange = onFlybyAnimationChange,
-                        icon = painterResource(R.drawable.ic_airplay),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // Death animation
-                    AlertToggleRow(
-                        title = s.deathAnimationTitle,
-                        description = s.deathAnimationDesc,
-                        checked = deathAnimationEnabled,
-                        onCheckedChange = onDeathAnimationChange,
-                        icon = painterResource(R.drawable.ic_explosion),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    AnimatedVisibility(visible = deathAnimationEnabled) {
-                        Column(modifier = Modifier.padding(start = 40.dp)) {
-                            AlertToggleRow(
-                                title = s.followBulletTitle,
-                                description = s.followBulletDesc,
-                                checked = followBullet,
-                                onCheckedChange = onFollowBulletChange,
-                                icon = painterResource(R.drawable.bullet),
-                                iconTint = null
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_explosion),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                s.justFunSectionTitle,
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "🥳",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Switch(
+                                checked = justFunMasterEnabled,
+                                onCheckedChange = onJustFunMasterChange
                             )
                         }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // Neutralized count
-                    AlertToggleRow(
-                        title = s.neutralizedTallyTitle,
-                        description = s.neutralizedTallyDesc,
-                        checked = neutralizedTallyEnabled,
-                        onCheckedChange = onNeutralizedTallyChange,
-                        icon = rememberVectorPainter(Icons.Default.Notifications),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBadge = "21"
-                    )
-                    if (neutralizedTallyEnabled) {
+                        AnimatedVisibility(visible = justFunMasterEnabled) {
+                            Column {
+                                // Favourite icon set
+                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                    Text(
+                                        s.iconSetTitle,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    IconSetSelector(
+                                        lang = lang,
+                                        selected = iconSet,
+                                        onChange = onIconSetChange
+                                    )
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                AlertToggleRow(
+                                    title = s.calmMessagesTitle,
+                                    description = s.calmMessagesDesc,
+                                    checked = calmMessagesEnabled,
+                                    onCheckedChange = onCalmMessagesChange,
+                                    icon = painterResource(R.drawable.ic_peace),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                AlertToggleRow(
+                                    title = s.flybyAnimationLabel,
+                                    description = s.flybyAnimationDesc,
+                                    checked = flybyAnimationEnabled,
+                                    onCheckedChange = onFlybyAnimationChange,
+                                    icon = painterResource(R.drawable.ic_airplay),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                AlertToggleRow(
+                                    title = s.deathAnimationTitle,
+                                    description = s.deathAnimationDesc,
+                                    checked = deathAnimationEnabled,
+                                    onCheckedChange = onDeathAnimationChange,
+                                    icon = painterResource(R.drawable.ic_explosion),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                AnimatedVisibility(visible = deathAnimationEnabled) {
+                                    Column(modifier = Modifier.padding(start = 40.dp)) {
+                                        AlertToggleRow(
+                                            title = s.followBulletTitle,
+                                            description = s.followBulletDesc,
+                                            checked = followBullet,
+                                            onCheckedChange = onFollowBulletChange,
+                                            icon = painterResource(R.drawable.bullet),
+                                            iconTint = null
+                                        )
+                                    }
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                AlertToggleRow(
+                                    title = s.neutralizedTallyTitle,
+                                    description = s.neutralizedTallyDesc,
+                                    checked = neutralizedTallyEnabled,
+                                    onCheckedChange = onNeutralizedTallyChange,
+                                    icon = rememberVectorPainter(Icons.Default.Notifications),
+                                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    iconBadge = "21"
+                                )
+                                if (neutralizedTallyEnabled) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                    Box(modifier = Modifier.padding(start = 40.dp)) {
+                                        AlertToggleRow(
+                                            title = s.neutralizedTallyAllUkraineTitle,
+                                            description = s.neutralizedTallyAllUkraineDesc,
+                                            checked = neutralizedTallyAllUkraine,
+                                            onCheckedChange = onNeutralizedTallyAllUkraineChange,
+                                            emoji = "🇺🇦"
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Box(modifier = Modifier.padding(start = 40.dp)) {
-                            AlertToggleRow(
-                                title = s.neutralizedTallyAllUkraineTitle,
-                                description = s.neutralizedTallyAllUkraineDesc,
-                                checked = neutralizedTallyAllUkraine,
-                                onCheckedChange = onNeutralizedTallyAllUkraineChange,
-                                emoji = "🇺🇦"
-                            )
-                        }
+                        Text(
+                            s.justFunNote,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // How-it-works + safety footnote for the whole flourish section.
-                    Text(
-                        s.justFunNote,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
                 }
             }
 

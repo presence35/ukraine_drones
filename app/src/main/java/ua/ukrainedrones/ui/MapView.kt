@@ -45,6 +45,12 @@ import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import ua.ukrainedrones.domain.UA_TIGHT_MIN_LAT
+import ua.ukrainedrones.domain.UA_TIGHT_MAX_LAT
+import ua.ukrainedrones.domain.UA_TIGHT_MIN_LON
+import ua.ukrainedrones.domain.UA_TIGHT_MAX_LON
+import ua.ukrainedrones.domain.ODESA_LAT
+import ua.ukrainedrones.domain.ODESA_LON
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
@@ -90,7 +96,7 @@ internal val DARK_TILE_SOURCE = object : OnlineTileSourceBase(
 }
 
 /** Odesa city centre — fallback camera target before the first GPS fix. */
-private val DEFAULT_CENTER = GeoPoint(46.4832, 30.7346)
+private val DEFAULT_CENTER = GeoPoint(ODESA_LAT, ODESA_LON)
 
 /** Max zoom outside shelter mode — the ~5 km threat-map viewport; deeper zoom is pointless
  *  for the threat map and just bloats the tile cache. */
@@ -103,7 +109,7 @@ private const val SHELTER_MAX_ZOOM = 19.0
 private const val SHELTER_AUTO_EXIT_ZOOM = 13.0
 
 /** Ukraine (incl. Crimea) plus a ~0.5° margin — the map can't pan past this. */
-private val UA_VIEW_LIMITS = BoundingBox(52.7, 40.6, 43.9, 21.7)
+private val UA_VIEW_LIMITS = BoundingBox(UA_TIGHT_MAX_LAT, UA_TIGHT_MAX_LON, UA_TIGHT_MIN_LAT, UA_TIGHT_MIN_LON)
 
 private val tileSystem = TileSystemWebMercator()
 

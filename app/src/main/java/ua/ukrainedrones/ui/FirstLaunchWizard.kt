@@ -623,13 +623,13 @@ private fun SetupZoneControlsStep(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
-                            .background(if (sheltersEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .background(MaterialTheme.colorScheme.surface)
                             .border(BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         TeardropShelterIcon(
                             modifier = Modifier.size(16.dp),
-                            tint = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                     Text(
@@ -646,17 +646,17 @@ private fun SetupZoneControlsStep(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFD32F2F).copy(alpha = 0.22f))
+                            .background(Color(0xFFD32F2F))
                             .border(BorderStroke(2.dp, Color(0xFFD32F2F)), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(width = 16.dp, height = 18.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFD32F2F))
+                        Icon(
+                            painter = painterResource(R.drawable.ic_zoom_in),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                     Text(
@@ -671,19 +671,20 @@ private fun SetupZoneControlsStep(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .border(BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant), CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = s.editZonesLabel,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = s.editZonesLabel,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                     Text(
                         s.editZonesLabel,
@@ -870,7 +871,7 @@ private fun SetupFeaturesStep(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 AlertToggleRow(
                     title = s.flybyAnimationLabel,
-                    description = "Enable or disable the MiG-31K flyby animation and sound",
+                    description = s.flybyAnimationDesc,
                     checked = flybyAnimationEnabled,
                     onCheckedChange = onFlybyAnimationChange,
                     icon = painterResource(R.drawable.ic_airplay),

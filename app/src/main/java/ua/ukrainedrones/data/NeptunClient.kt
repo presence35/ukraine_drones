@@ -146,6 +146,11 @@ object NeptunClient {
      *  is the same drone coming back (no new alert); after it, a fresh appearance is a new threat. */
     const val USER_SHOT_GRACE_MS = 3_000L
 
+    const val NEPTUN_DOMAIN = "neptun.in.ua"
+    private const val NEPTUN_REST_URL = "https://$NEPTUN_DOMAIN/api/v1/threats"
+    private const val NEPTUN_WS_URL = "wss://$NEPTUN_DOMAIN/api/v1/stream"
+    internal const val NEPTUN_SITE_URL = "https://$NEPTUN_DOMAIN/"
+
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // keep socket open indefinitely
         .pingInterval(20, TimeUnit.SECONDS)
@@ -436,7 +441,7 @@ object NeptunClient {
         if (!manuallyStopped && !_state.value.connected && !isIgnoring) retryNow()
     }
 
-    private val restUrl = "https://neptun.in.ua/api/v1/threats"
+    private val restUrl = NEPTUN_REST_URL
 
     /**
      * Force an immediate reconnect attempt, bypassing the backoff timer. Called by the
@@ -568,7 +573,7 @@ object NeptunClient {
     private fun connect() {
         if (!connectInFlight.compareAndSet(false, true)) return
         val request = Request.Builder()
-            .url("wss://neptun.in.ua/api/v1/stream")
+            .url(NEPTUN_WS_URL)
             .build()
 
         ws = client.newWebSocket(request, object : WebSocketListener() {

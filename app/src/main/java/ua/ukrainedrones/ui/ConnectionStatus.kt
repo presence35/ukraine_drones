@@ -134,7 +134,7 @@ internal fun ConnectionStatus(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "neptun.in.ua",
+                        NeptunClient.NEPTUN_DOMAIN,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
@@ -143,7 +143,7 @@ internal fun ConnectionStatus(
                             context.startActivity(
                                 Intent(
                                     Intent.ACTION_VIEW,
-                                    Uri.parse("https://neptun.in.ua/")
+                                    Uri.parse(NeptunClient.NEPTUN_SITE_URL)
                                 )
                             )
                         }

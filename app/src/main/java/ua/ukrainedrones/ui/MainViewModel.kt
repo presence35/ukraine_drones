@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import ua.ukrainedrones.domain.ODESA_LAT
+import ua.ukrainedrones.domain.ODESA_LON
 import org.osmdroid.util.GeoPoint
 import kotlin.math.roundToLong
 import kotlin.random.Random
@@ -103,6 +105,7 @@ data class UiState(
     val showMapScale: Boolean = true,
     val showMediumCities: Boolean = true,
     val showSmallCities: Boolean = true,
+    val justFunMasterEnabled: Boolean = false,
     val deathAnimationEnabled: Boolean = true,
     val flybyAnimationEnabled: Boolean = true,
     val followBullet: Boolean = true,
@@ -159,7 +162,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private const val DAILY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
         private const val SHELTERS_CACHE_FILE = "odesa_shelters.json"
         /** Odesa centre — the pre-first-fix fallback focus so the first visual is complete. */
-        private val ODESA_FALLBACK_FOCUS = LatLng(46.4832, 30.7346)
+        private val ODESA_FALLBACK_FOCUS = LatLng(ODESA_LAT, ODESA_LON)
     }
 
     private val prefs = ZonePrefs(app.applicationContext)
@@ -315,6 +318,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val showMapScale: Boolean,
         val showMediumCities: Boolean,
         val showSmallCities: Boolean,
+        val justFunMasterEnabled: Boolean,
         val deathAnimationEnabled: Boolean,
         val flybyAnimationEnabled: Boolean,
         val followBullet: Boolean,
@@ -370,7 +374,8 @@ val fastGroupCollapsed: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
         val criticalOfflineOverride: Boolean,
-        val flybyAnimationEnabled: Boolean
+        val flybyAnimationEnabled: Boolean,
+        val justFunMasterEnabled: Boolean
     )
 
     private val liveSnapshot = combine(
@@ -427,12 +432,13 @@ val fastGroupCollapsed: Boolean,
             prefs.fastGroupCollapsed(),
             prefs.slowGroupCollapsed(),
             prefs.criticalOfflineOverride(),
-            prefs.flybyAnimationEnabled()
+            prefs.flybyAnimationEnabled(),
+            prefs.justFunMasterEnabled()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4], flags[5],
                 flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12],
-                flags[13], flags[14], flags[15], flags[16], flags[17], flags[18]
+                flags[13], flags[14], flags[15], flags[16], flags[17], flags[18], flags[19]
             )
         },
         combine(
@@ -519,6 +525,7 @@ combine(
             showMapScale = b.showMapScale,
             showMediumCities = b.showMediumCities,
             showSmallCities = b.showSmallCities,
+            justFunMasterEnabled = b.justFunMasterEnabled,
             deathAnimationEnabled = b.deathAnimationEnabled,
             flybyAnimationEnabled = b.flybyAnimationEnabled,
             followBullet = b.followBullet,
@@ -681,6 +688,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             showMapScale = prefs.showMapScale,
             showMediumCities = prefs.showMediumCities,
             showSmallCities = prefs.showSmallCities,
+            justFunMasterEnabled = prefs.justFunMasterEnabled,
             deathAnimationEnabled = prefs.deathAnimationEnabled,
             flybyAnimationEnabled = prefs.flybyAnimationEnabled,
             followBullet = prefs.followBullet,
@@ -1217,14 +1225,11 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         viewModelScope.launch { prefs.setDeathAnimationEnabled(enabled) }
     }
 
-    /** Master "Just Fun" switch: flips the shoot-down animation, MiG flyby, tally and calm
-     *  messages together. Purely cosmetic — never touches monitoring or alerts. */
+    /** Master "Just Fun" switch: gates visibility of the Just Fun settings panel.
+     *  Does NOT change individual settings — only toggles the panel visibility. */
     fun setJustFunEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            prefs.setDeathAnimationEnabled(enabled)
-            prefs.setFlybyAnimationEnabled(enabled)
-            prefs.setNeutralizedTallyEnabled(enabled)
-            prefs.setCalmMessagesEnabled(enabled)
+            prefs.setJustFunMasterEnabled(enabled)
         }
     }
 

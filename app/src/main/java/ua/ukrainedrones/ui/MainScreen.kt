@@ -401,6 +401,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 sheltersFromSettings = true
                 screen = Screen.SHELTERS
             },
+                justFunMasterEnabled = uiState.justFunMasterEnabled,
+                onJustFunMasterChange = { viewModel.setJustFunEnabled(it) },
                 onDeathAnimationChange = { viewModel.setDeathAnimationEnabled(it) },
                 onFlybyAnimationChange = { viewModel.setFlybyAnimationEnabled(it) },
                 onFollowBulletChange = { viewModel.setFollowBullet(it) },
@@ -512,7 +514,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             fastRedArmed = uiState.fastRedArmed,
             fastYellowArmed = uiState.fastYellowArmed,
             sheltersEnabled = uiState.sheltersEnabled,
-            justFun = false,
+            justFun = uiState.justFunMasterEnabled,
             calmMessagesEnabled = uiState.calmMessagesEnabled,
             flybyAnimationEnabled = uiState.flybyAnimationEnabled,
             deathAnimationEnabled = uiState.deathAnimationEnabled,

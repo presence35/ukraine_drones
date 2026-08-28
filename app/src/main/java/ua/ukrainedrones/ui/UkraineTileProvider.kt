@@ -10,13 +10,17 @@ import org.osmdroid.tileprovider.modules.TileDownloader
 import org.osmdroid.tileprovider.tilesource.ITileSource
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.MapTileIndex
+import ua.ukrainedrones.domain.UA_WIDE_MIN_LAT
+import ua.ukrainedrones.domain.UA_WIDE_MAX_LAT
+import ua.ukrainedrones.domain.UA_WIDE_MIN_LON
+import ua.ukrainedrones.domain.UA_WIDE_MAX_LON
 import org.osmdroid.util.TileSystemWebMercator
 
 // Ukraine plus a ~2 degree margin so bordering areas still get a base map.
-private const val UA_MIN_LAT = 42.4
-private const val UA_MAX_LAT = 54.4
-private const val UA_MIN_LON = 20.1
-private const val UA_MAX_LON = 42.2
+private val UA_MIN_LAT = UA_WIDE_MIN_LAT
+private val UA_MAX_LAT = UA_WIDE_MAX_LAT
+private val UA_MIN_LON = UA_WIDE_MIN_LON
+private val UA_MAX_LON = UA_WIDE_MAX_LON
 
 private val tileSystem = TileSystemWebMercator()
 

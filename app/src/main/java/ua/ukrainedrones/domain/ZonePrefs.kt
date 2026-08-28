@@ -93,6 +93,7 @@ class ZonePrefs(private val context: Context) {
     private val calmMessagesEnabledKey = booleanPreferencesKey("calm_messages_enabled")
     private val hapticsEnabledKey = booleanPreferencesKey("haptics_enabled")
     private val officialAlertCityScopeKey = booleanPreferencesKey("official_alert_city_scope")
+    private val justFunMasterEnabledKey = booleanPreferencesKey("just_fun_master_enabled")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 1–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -467,6 +468,14 @@ fun threatToggleHintRemaining(): Flow<Int> =
 
     suspend fun setOfficialAlertCityScope(enabled: Boolean) {
         context.dataStore.edit { it[officialAlertCityScopeKey] = enabled }
+    }
+
+    /** Whether the Just Fun master switch is on — default off for fresh installs. */
+    fun justFunMasterEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[justFunMasterEnabledKey] ?: false }
+
+    suspend fun setJustFunMasterEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[justFunMasterEnabledKey] = enabled }
     }
 
     /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */

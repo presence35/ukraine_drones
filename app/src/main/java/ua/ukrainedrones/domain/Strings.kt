@@ -106,6 +106,7 @@ object Strings {
         val locationSectionTitle: String,
         val justFunSectionTitle: String,
         val flybyAnimationLabel: String,
+        val flybyAnimationDesc: String,
         val cardSizeSmallLabel: String,
         val cardSizeLargeLabel: String
     )
@@ -618,6 +619,7 @@ object Strings {
         val locationSectionTitle: String get() = settings.locationSectionTitle
         val justFunSectionTitle: String get() = settings.justFunSectionTitle
         val flybyAnimationLabel: String get() = settings.flybyAnimationLabel
+        val flybyAnimationDesc: String get() = settings.flybyAnimationDesc
         val cardSizeSmallLabel: String get() = settings.cardSizeSmallLabel
         val cardSizeLargeLabel: String get() = settings.cardSizeLargeLabel
 
@@ -1098,12 +1100,12 @@ val iconSetTitle: String get() = misc.iconSetTitle
         wizardLocationTitle = "Де ви перебуваєте?",
         wizardLocationSubtitle = "Оберіть, звідки брати вашу позицію — від цього залежать зони та сповіщення.",
         wizardZonesTitle = "Зони тривог",
-        wizardZonesSubtitle = "На мапі дві зони — червона (ближче) та жовта (далі). Повзунок налаштовує їх розмір під тебе. Укриття поруч — швидкий шлях до безпеки.",
+        wizardZonesSubtitle = "На мапі є червона та жовта зони, а також зона на час для швидких об'єктів. Налаштуй під себе.",
         wizardEditZonesHint = "Повзунок повільно рухає коло на мапі — червона зона завжди всередині жовтої.",
-        zoneRedLabel = "Червона зона",
+        zoneRedLabel = "Натисни, щоб наблизити",
         zoneYellowLabel = "Жовта зона",
         wizardShelterTitle = "Укриття поруч",
-        wizardShelterDesc = "Кнопка «Укриття» показує найближчі укриття та час пішки — швидкий шлях до безпеки під час тривоги.",
+        wizardShelterDesc = "Найближчі укриття з часом пішки.",
         wizardJustFunTitle = "Розваги",
         wizardJustFunDesc = "Додай трохи розваг — анімації знешкодження, проліт МіГа та лічильник. Не впливають на сповіщення. Детальніше — в",
         wizardJustFunDescGearSuffix = "налаштуваннях.",
@@ -1170,6 +1172,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         locationSectionTitle = "Локація та фокус",
         justFunSectionTitle = "Просто розвага",
         flybyAnimationLabel = "Анімація польоту МіГ",
+        flybyAnimationDesc = "Увімкнути або вимкнути анімацію та звук польоту МіГ-31К",
         cardSizeSmallLabel = "Компактні картки",
         cardSizeLargeLabel = "Великі картки",
     )
@@ -1489,7 +1492,9 @@ connOnline = "Онлайн",
         guideConnD3 = "Шкала масштабу в кутку показує реальні відстані на мапі.",
         guideZonesTitle = "Червона та жовта зони",
         guideZonesSummary = "Повільні загрози оцінюються за відстанню, швидкі — за часом до прильоту.",
+        // NOTE: 20/50 км — значення за замовчуванням, див. ZonePrefs.
         guideZonesD1 = "Повільні (дрони): червона зона — до 20 км, жовта — до 50 км.",
+        // NOTE: 5/20 хв — значення за замовчуванням, див. ZonePrefs.
         guideZonesD2 = "Швидкі (ракети, КАБ): червона зона — до 5 хв, жовта — до 20 хв до прильоту.",
         guideZonesD3 = "Кола на мапі показують відстань повільних зон і слідують за твоїм положенням.",
         guideEditZonesTitle = "Зони та оповіщення",
@@ -1644,12 +1649,12 @@ connOnline = "Онлайн",
         wizardLocationTitle = "Where are you?",
         wizardLocationSubtitle = "Choose where your position comes from — it drives your zones and alerts.",
         wizardZonesTitle = "Alert zones",
-        wizardZonesSubtitle = "Two zones on the map — red is close, yellow is further out. The slider sizes them to your comfort; the shelter pill gets you to safety.",
+        wizardZonesSubtitle = "The map has red and yellow zones, as well as a time-based zone for fast objects. Adjust them to your comfort.",
         wizardEditZonesHint = "Drag the slider for your comfort zones.",
-        zoneRedLabel = "Red zone",
+        zoneRedLabel = "Tap to zoom",
         zoneYellowLabel = "Yellow zone",
         wizardShelterTitle = "Nearby shelters",
-        wizardShelterDesc = "Shows the nearest shelters with walking times.",
+        wizardShelterDesc = "Nearest shelters with walking time.",
         wizardJustFunTitle = "Just fun)))",
         wizardJustFunDesc = "Switch on the shoot-down fireworks, the MiG flyby and the tally — they never affect alerts. Tune them in",
         wizardJustFunDescGearSuffix = "settings.",
@@ -1716,6 +1721,7 @@ connOnline = "Онлайн",
         locationSectionTitle = "Location & Focus",
         justFunSectionTitle = "Just Fun",
         flybyAnimationLabel = "MiG flyby animation",
+        flybyAnimationDesc = "Enable or disable the MiG-31K flyby animation and sound",
         cardSizeSmallLabel = "Small cards",
         cardSizeLargeLabel = "Large cards",
     )
@@ -2035,7 +2041,9 @@ alertBannerFormat = "%1\$s: alert",
         guideConnD3 = "The scale bar in the corner gives you real distances on the map.",
         guideZonesTitle = "Red & yellow zones",
         guideZonesSummary = "Slow threats are measured by distance, fast threats by time-to-arrival.",
+        // NOTE: 20/50 km are defaults — see ZonePrefs. Guide uses them as illustrative examples.
         guideZonesD1 = "Slow (drones): red zone within 20 km, yellow within 50 km.",
+        // NOTE: 5/20 min are defaults — see ZonePrefs. Guide uses them as illustrative examples.
         guideZonesD2 = "Fast (missiles, guided bombs): red zone within 5 min, yellow within 20 min to arrival.",
         guideZonesD3 = "The circles on the map show the slow zones' distance and follow your position.",
         guideEditZonesTitle = "Zones & alerts",

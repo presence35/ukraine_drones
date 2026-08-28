@@ -89,7 +89,16 @@ fun AviationFlybyOverlay(
         FlybyHaptics(progress.value)
         Canvas(modifier = Modifier.matchParentSize()) {
             var ox = geometry.anchorXFrac * planeW
-            var oy = geometry.anchorYFrac * planeW
+            // Per-pack exhaust correction from Pixel 7 screenshot (planeW≈648px, screenshot 1:1):
+            // russian 0px (perfect), comic +68px, photo +44px, army +38px — all too high.
+            // Stored as frac of planeW so it scales with device (68/648≈0.1049, etc).
+            val anchorFixY = when (iconSet) {
+                ThreatIconSet.COMIC -> planeW * 0.10494f
+                ThreatIconSet.PHOTO -> planeW * 0.06790f
+                ThreatIconSet.ARMY -> planeW * 0.05864f
+                else -> 0f
+            }
+            var oy = geometry.anchorYFrac * planeW + anchorFixY
             if (flipped) oy = -oy
             val rad = Math.toRadians(rotZ.toDouble())
             val wx = cos(rad) * ox - sin(rad) * oy

@@ -16,14 +16,16 @@ import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.TileSystem
 import org.osmdroid.views.MapView
+import ua.ukrainedrones.domain.UA_TIGHT_MIN_LAT
+import ua.ukrainedrones.domain.UA_TIGHT_MAX_LAT
+import ua.ukrainedrones.domain.UA_TIGHT_MIN_LON
+import ua.ukrainedrones.domain.UA_TIGHT_MAX_LON
 import kotlin.random.Random
 
-// Ukraine (incl. Crimea) plus a ~0.5° margin — mirrors the map's own pan limit, so a projectile
-// can never take off from outside the country.
-private const val UA_MIN_LAT = 43.9
-private const val UA_MAX_LAT = 52.7
-private const val UA_MIN_LON = 21.7
-private const val UA_MAX_LON = 40.6
+private val UA_MIN_LAT = UA_TIGHT_MIN_LAT
+private val UA_MAX_LAT = UA_TIGHT_MAX_LAT
+private val UA_MIN_LON = UA_TIGHT_MIN_LON
+private val UA_MAX_LON = UA_TIGHT_MAX_LON
 
 /** Beat after an intermediate group's last impact before panning to the next one. */
 private const val REPLAY_PAN_BEAT_MS = 120L
