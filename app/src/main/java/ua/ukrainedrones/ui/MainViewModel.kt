@@ -638,7 +638,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             gpsFixAvailable = live.gpsFixAvailable,
             followMe = prefs.followMe,
             pinnedCity = prefs.pinnedCity?.let { name ->
-                Cities.ALL.firstOrNull { it.nameUa == name }
+                Cities.byUa[name]
             },
             now = now,
             reveal = live.reveal,
@@ -867,8 +867,9 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
         // Short socket blips (drops that recover inside the shared grace window) are invisible
         // here — the pill and status text stay "online" instead of flashing on every handoff.
-        val neptunDown = neptun.neptunDown && (neptun.offlineSince == null ||
-            now - neptun.offlineSince >= NeptunClient.OFFLINE_GRACE_MS)
+        // The grace is only applied in the connection log; the UI pill immediately reflects
+        // drops so the header and the notification service agree (mirror rule).
+        val neptunDown = neptun.neptunDown
 
         return UiState(
             connected = neptun.connected,

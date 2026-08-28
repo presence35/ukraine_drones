@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /** Connection states shown in the status log — mirrors the header pill's two states. */
 enum class ConnStatus { ONLINE, OFFLINE }
@@ -53,20 +52,17 @@ object ConnectionLog {
         attached = true
         appContext = context.applicationContext
         // The DataStore reads are dispatched off the calling thread: attach() is invoked from
-        // the main thread at app/service startup, and a synchronous runBlocking there is jank.
+        // the main thread at app/service startup, and the attachScope runs on IO.
         attachScope.launch {
             val prefs = ZonePrefs(context.applicationContext)
-            val (restoredPending, restoredEntries) = runBlocking {
-                val loaded = parse(prefs.connLog().first())
-                val since = prefs.connLogPendingSince().first()
-                val name = prefs.connLogPendingStatus().first()
-                val restored = if (since > 0) {
-                    ConnLogEntry(since, ConnStatus.entries.firstOrNull { it.name == name } ?: ConnStatus.OFFLINE, null)
-                } else null
-                restored to loaded
-            }
-            pending = restoredPending
-            _entries.value = restoredEntries
+            val loaded = parse(prefs.connLog().first())
+            val since = prefs.connLogPendingSince().first()
+            val name = prefs.connLogPendingStatus().first()
+            val restored = if (since > 0) {
+                ConnLogEntry(since, ConnStatus.entries.firstOrNull { it.name == name } ?: ConnStatus.OFFLINE, null)
+            } else null
+            pending = restored
+            _entries.value = loaded
             attachDone.complete(Unit)
         }
     }
@@ -97,12 +93,12 @@ object ConnectionLog {
 
     private fun persist() {
         val context = appContext ?: return
-        runBlocking { ZonePrefs(context).setConnLog(serialize(_entries.value)) }
+        attachScope.launch { ZonePrefs(context).setConnLog(serialize(_entries.value)) }
     }
 
     private fun persistPending(since: Long, status: String) {
         val context = appContext ?: return
-        runBlocking {
+        attachScope.launch {
             ZonePrefs(context).setConnLogPendingSince(since)
             ZonePrefs(context).setConnLogPendingStatus(status)
         }

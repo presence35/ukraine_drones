@@ -52,6 +52,7 @@ object WidgetUpdater {
 
     fun start(context: Context, scope: CoroutineScope) {
         scope.launch {
+            if (!hasPlacedWidgets(context)) return@launch
             val prefs = ZonePrefs(context)
             val clock = MutableStateFlow(System.currentTimeMillis())
             launch {
@@ -77,7 +78,7 @@ object WidgetUpdater {
                     Tail(follow, pinned, lang, iconSet, mapEnabled)
                 }
             ) { core, params, tail ->
-                val pinnedCity = tail.pinned?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
+                val pinnedCity = tail.pinned?.let { name -> Cities.byUa[name] }
                 val focus = if (tail.followMe) core.second
                     else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: core.second
                 val attribution = focusAttribution(tail.followMe, core.second, pinnedCity)

@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /** Event kinds shown in the Debug log screen. */
 enum class DebugLogKind { OFFICIAL_ON, OFFICIAL_OFF, ZONE_ENTER, ZONE_EXIT, REGION_THREAT, FLOURISH }
@@ -254,13 +253,13 @@ object DebugLog {
 
     private fun persist() {
         val context = appContext ?: return
-        runBlocking { ZonePrefs(context).setDebugLog(serializeDebugLog(_entries.value)) }
+        attachScope.launch { ZonePrefs(context).setDebugLog(serializeDebugLog(_entries.value)) }
     }
 
-    private fun attachLoaded() {
+    private suspend fun attachLoaded() {
         val context = appContext ?: return
         val now = System.currentTimeMillis()
-        val loaded = runBlocking { parseDebugLog(ZonePrefs(context).debugLog().first()) }
+        val loaded = parseDebugLog(ZonePrefs(context).debugLog().first())
         val pruned = pruneDebugEntries(loaded, now, AUTO_CLEAR_AGE_MS)
         _entries.value = pruned
         if (pruned != loaded) persist()

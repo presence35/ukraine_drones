@@ -107,42 +107,39 @@ private var notif3minShown = false
     private var notif10minShown = false
     private var notif20minShown = false
     private var notifCriticalShown = false
-    private var alertEpoch = 0
     private val tally by lazy { NeutralizedTally(applicationContext, scope) }
     @Volatile private var currentToken: String? = null
 
-    private sealed class MonitorEvent {
-        data class State(
-            val focusOblastAlertActive: Boolean,
-            val focusOblastAlertRaw: Boolean,
-            val focusToken: String?,
-            val focusOblastAlertSince: String?,
-            val focusBannerCity: String,
-            val focusCityUa: String?,
-            val focusRegion: String,
-            val focusPinned: Boolean,
-            val officialReason: String?,
-            val officialReasonThreatId: String?,
-            val zoneThreats: Map<String, ThreatZone>,
-            val params: ZoneParams,
-            val lang: AppLanguage,
-            val slowRedArmed: Boolean,
-            val slowYellowArmed: Boolean,
-            val fastRedArmed: Boolean,
-            val fastYellowArmed: Boolean,
-            val officialAlertsEnabled: Boolean,
-            val zoneSirenOverride: Boolean,
-            val officialSirenOverride: Boolean,
-            val connected: Boolean,
-            val offlineElapsedSec: Long?,
-            val criticalOfflineOverride: Boolean,
-            val fastVibrationLevel: Int,
-            val slowVibrationLevel: Int,
-            val focusLocation: LatLng?,
-            val nightActive: Boolean,
-            val enabled: Set<ThreatType>
-        ) : MonitorEvent()
-    }
+    private data class MonitorState(
+        val focusOblastAlertActive: Boolean,
+        val focusOblastAlertRaw: Boolean,
+        val focusToken: String?,
+        val focusOblastAlertSince: String?,
+        val focusBannerCity: String,
+        val focusCityUa: String?,
+        val focusRegion: String,
+        val focusPinned: Boolean,
+        val officialReason: String?,
+        val officialReasonThreatId: String?,
+        val zoneThreats: Map<String, ThreatZone>,
+        val params: ZoneParams,
+        val lang: AppLanguage,
+        val slowRedArmed: Boolean,
+        val slowYellowArmed: Boolean,
+        val fastRedArmed: Boolean,
+        val fastYellowArmed: Boolean,
+        val officialAlertsEnabled: Boolean,
+        val zoneSirenOverride: Boolean,
+        val officialSirenOverride: Boolean,
+        val connected: Boolean,
+        val offlineElapsedSec: Long?,
+        val criticalOfflineOverride: Boolean,
+        val fastVibrationLevel: Int,
+        val slowVibrationLevel: Int,
+        val focusLocation: LatLng?,
+        val nightActive: Boolean,
+        val enabled: Set<ThreatType>
+    )
 
     /** Toggle + follow state used to gate zone/official alert tiering. */
     private data class AlertConfig(
@@ -195,16 +192,6 @@ private var notif3minShown = false
 NeptunClient.start(applicationContext)
         }
         scope.launch { NeptunClient.setForceOffline(ZonePrefs(applicationContext).forceOffline().first()) }
-        scope.launch {
-            val prefs = ZonePrefs(applicationContext)
-            if (prefs.offlinePendingSince().first() > 0) {
-                // The service was killed while an outage was in progress. START_STICKY restarts
-                // it with a fresh instance, so restore the pre-kill offline state and let the
-                // first handleState tick re-flag it (a drop missed entirely otherwise).
-                wasConnected = false
-                offlineRestorePending = true
-            }
-        }
         LocationTracker.start(this)
         WidgetUpdater.start(this, scope)
         startForegroundCompat()
@@ -296,6 +283,12 @@ NeptunClient.start(applicationContext)
             officialAnnouncedToken = prefs.officialAnnouncedToken().first().ifBlank { null }
             officialAnnouncedSince = prefs.officialAnnouncedSince().first().ifBlank { null }
             officialAnnouncedReasonId = prefs.officialAnnouncedReasonId().first().ifBlank { null }
+            // Restore offline-restore state before the first tick so handleState doesn't miss
+            // a pre-kill outage (wasConnected starts true; this sets it false when needed).
+            if (prefs.offlinePendingSince().first() > 0) {
+                wasConnected = false
+                offlineRestorePending = true
+            }
             val nowFlow = MutableStateFlow(System.currentTimeMillis())
             launch {
                 while (true) {
@@ -376,7 +369,7 @@ NeptunClient.start(applicationContext)
                 val now = core.third
                 val followMe = config.followMe
                 val lang = tail.lang
-                val pinned = tail.pinned?.let { name -> Cities.ALL.firstOrNull { it.nameUa == name } }
+                val pinned = tail.pinned?.let { name -> Cities.byUa[name] }
                 val focus = if (followMe) gps else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
                 val nightActive = isNightActive(
                     NightConfig(night.window.enabled, night.window.startMin, night.window.endMin),
@@ -424,7 +417,7 @@ NeptunClient.start(applicationContext)
                         focusRegionText(lang, followMe, pinned)
                     )
                 } else null to null
-                MonitorEvent.State(
+                MonitorState(
                     focusOblastAlertActive = officialActive,
                     focusOblastAlertRaw = officialRaw,
                     focusToken = attribution.token,
@@ -474,7 +467,7 @@ NeptunClient.start(applicationContext)
         return s.notifBodyRegion
     }
 
-    private suspend fun handleState(state: MonitorEvent.State) {
+    private suspend fun handleState(state: MonitorState) {
         val s = Strings.get(state.lang)
         currentToken = state.focusToken
 
@@ -930,7 +923,7 @@ NeptunClient.start(applicationContext)
     }
 
     /** Approx. distance from the focus point (GPS/pin) to a threat, km. */
-    private fun distanceFromFocusKm(t: Threat?, state: MonitorEvent.State): Double? {
+    private fun distanceFromFocusKm(t: Threat?, state: MonitorState): Double? {
         val focus = state.focusLocation ?: return null
         if (t == null) return null
         return distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
@@ -1039,7 +1032,6 @@ NeptunClient.start(applicationContext)
         silent: Boolean = false,
         vibrationLevel: Int = 3
     ) {
-        alertEpoch++
         safeNotify(
             NOTIF_ALERT,
             buildAlertNotification(zone, title, body, sirenOverride, revealThreat, silent, vibrationLevel).build()
@@ -1047,7 +1039,6 @@ NeptunClient.start(applicationContext)
     }
 
     private fun cancelAlert() {
-        alertEpoch++
         try {
             NotificationManagerCompat.from(this).cancel(NOTIF_ALERT)
         } catch (_: SecurityException) {
@@ -1068,7 +1059,7 @@ NeptunClient.start(applicationContext)
 
     /** Persist the just-announced official alert episode so a service restart mid-episode
      *  doesn't re-ring it (see the restart reconciliation in handleState). */
-    private fun persistOfficialAnnounced(state: MonitorEvent.State) {
+    private fun persistOfficialAnnounced(state: MonitorState) {
         scope.launch {
             ZonePrefs(applicationContext).setOfficialAnnounced(
                 state.focusToken, state.focusOblastAlertSince, state.officialReasonThreatId
@@ -1085,7 +1076,6 @@ NeptunClient.start(applicationContext)
     }
 
     private fun postAllClear(s: Strings.StringSet, city: String) {
-        alertEpoch++
         val notif = NotificationCompat.Builder(this, CHANNEL_ALLCLEAR)
             .setSmallIcon(R.drawable.ic_trident)
             .setContentTitle(String.format(s.allClearTitle, city))

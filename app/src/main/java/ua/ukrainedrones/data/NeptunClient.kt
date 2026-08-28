@@ -32,6 +32,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 data class NeptunState(
     val threats: Map<String, Threat> = emptyMap(),
@@ -166,6 +167,7 @@ object NeptunClient {
     private var openedAt = 0L
     private val connectInFlight = AtomicBoolean(false)
     private var reconnectJob: Job? = null
+    private val socketGeneration = AtomicInteger(0)
 
     /**
      * Whether the OS currently reports a validated internet connection. When there is provably
@@ -261,7 +263,12 @@ object NeptunClient {
         // Restore any user pause before deciding to auto-connect: a paused app must not silently
         // resume on a cold start — the user has to tap the Offline pill / Retry instead.
         scope.launch {
-            ignoreRetryUntilMs = ZonePrefs(context).ignoreRetryUntil().first()
+            val prefs = ZonePrefs(context)
+            ignoreRetryUntilMs = prefs.ignoreRetryUntil().first()
+            val savedReconnect = prefs.reconnectStartMillis().first()
+            if (savedReconnect > 0L) {
+                _state.update { it.copy(reconnectStartMillis = savedReconnect) }
+            }
             if (ignoreRetryUntilMs > System.currentTimeMillis()) {
                 scheduleResumeAfterPause()
             } else if (!manuallyStopped && ws == null) {
@@ -301,7 +308,6 @@ object NeptunClient {
             override fun onAvailable(network: Network) {
                 if (networkValidated) return
                 networkValidated = true
-                if (!manuallyStopped && !_state.value.connected && !isIgnoring) retryNow()
             }
 
             override fun onLost(network: Network) {
@@ -372,6 +378,9 @@ object NeptunClient {
     private val testMigIds: MutableSet<String> =
         java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
 
+    /** Fixed launch base per test MIG id, assigned once at creation time. */
+    private val testMigBases = mutableMapOf<String, Pair<Double, Double>>()
+
     /** How long an injected MiG stays live before it "flies on" and clears itself. */
     private const val TEST_MIG_LINGER_MS = 20_000L
 
@@ -403,10 +412,12 @@ object NeptunClient {
         testMigSerial++
         val id = "test_mig31k_$testMigSerial"
         testMigIds.add(id)
+        testMigBases[id] = TEST_MIG_BASES.random()
         _state.update { withTestMig(it) }
         scope.launch {
             delay(TEST_MIG_LINGER_MS)
             if (testMigIds.remove(id)) {
+                testMigBases.remove(id)
                 _state.update { s -> s.copy(threats = s.threats - id) }
             }
         }
@@ -418,7 +429,7 @@ object NeptunClient {
         val now = System.currentTimeMillis()
         var threats = state.threats
         for (id in testMigIds) {
-            val (lat, lon) = TEST_MIG_BASES.random()
+            val (lat, lon) = testMigBases[id] ?: TEST_MIG_BASES.random()
             threats = threats + (id to buildTestMig(id, now, lat, lon))
         }
         return state.copy(threats = threats)
@@ -572,12 +583,14 @@ object NeptunClient {
 
     private fun connect() {
         if (!connectInFlight.compareAndSet(false, true)) return
+        val gen = socketGeneration.incrementAndGet()
         val request = Request.Builder()
             .url(NEPTUN_WS_URL)
             .build()
 
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (gen != socketGeneration.get()) { webSocket.close(1000, "superseded"); return }
                 connectInFlight.set(false)
                 if (manuallyStopped) {
                     ws = null
@@ -597,10 +610,12 @@ object NeptunClient {
                         reconnectStartMillis = 0L
                     )
                 }
+                appContext?.let { scope.launch { ZonePrefs(it).setReconnectStartMillis(0L) } }
                 refreshFromRest()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (gen != socketGeneration.get()) return
                 lastFrameAt = System.currentTimeMillis()
                 _state.update { it.copy(lastFrameAt = System.currentTimeMillis()) }
                 handleFrame(text)
@@ -611,10 +626,7 @@ object NeptunClient {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (ws !== webSocket) {
-                    // Superseded by a manual retry / stop. Without a successor socket the
-                    // in-flight flag would stay stuck true forever — clear it so a future
-                    // connect() can proceed.
+                if (gen != socketGeneration.get()) {
                     if (ws == null) connectInFlight.set(false)
                     return
                 }
@@ -633,12 +645,15 @@ object NeptunClient {
                         reconnectStartMillis = if (it.reconnectStartMillis == 0L) System.currentTimeMillis() else it.reconnectStartMillis
                     )
                 }
-                if (firstDrop) recordEvent(ConnEventKind.CONNECTION_LOST)
+                if (firstDrop) {
+                    recordEvent(ConnEventKind.CONNECTION_LOST)
+                    appContext?.let { scope.launch { ZonePrefs(it).setReconnectStartMillis(_state.value.reconnectStartMillis) } }
+                }
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (ws !== webSocket) {
+                if (gen != socketGeneration.get()) {
                     if (ws == null) connectInFlight.set(false)
                     return
                 }
@@ -654,7 +669,10 @@ object NeptunClient {
                         reconnectStartMillis = if (it.reconnectStartMillis == 0L) System.currentTimeMillis() else it.reconnectStartMillis
                     )
                 }
-                if (firstDrop) recordEvent(ConnEventKind.CONNECTION_LOST)
+                if (firstDrop) {
+                    recordEvent(ConnEventKind.CONNECTION_LOST)
+                    appContext?.let { scope.launch { ZonePrefs(it).setReconnectStartMillis(_state.value.reconnectStartMillis) } }
+                }
                 scheduleReconnect()
             }
         })

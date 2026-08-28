@@ -24,6 +24,10 @@ enum class ThreatIconSet { PHOTO, ARMY, COMIC, RUSSIAN }
 
 class ZonePrefs(private val context: Context) {
 
+    private val keyCache = mutableMapOf<String, Preferences.Key<*>>()
+    private fun cachedBooleanKey(name: String): Preferences.Key<Boolean> =
+        keyCache.getOrPut(name) { booleanPreferencesKey(name) } as Preferences.Key<Boolean>
+
     private val languageKey = stringPreferencesKey("app_language")
     private val languageChosenKey = booleanPreferencesKey("language_chosen")
     private val wizardCompletedKey = booleanPreferencesKey("wizard_completed")
@@ -94,6 +98,7 @@ class ZonePrefs(private val context: Context) {
     private val hapticsEnabledKey = booleanPreferencesKey("haptics_enabled")
     private val officialAlertCityScopeKey = booleanPreferencesKey("official_alert_city_scope")
     private val justFunMasterEnabledKey = booleanPreferencesKey("just_fun_master_enabled")
+    private val reconnectStartMillisKey = longPreferencesKey("reconnect_start_millis")
 
     /** Red (inner) slow-threat distance threshold in km — slider range 1–20, default 20. */
     fun slowRedKm(): Flow<Int> =
@@ -194,32 +199,32 @@ class ZonePrefs(private val context: Context) {
 
     /** Whether a threat type is shown on the map — default on. */
     fun threatMapVisible(type: ThreatType): Flow<Boolean> {
-        val key = booleanPreferencesKey("threat_map_${type.name}")
+        val key = cachedBooleanKey("threat_map_${type.name}")
         return context.dataStore.data.map { prefs -> prefs[key] ?: true }
     }
 
     suspend fun setThreatMapVisible(type: ThreatType, visible: Boolean) {
-        context.dataStore.edit { it[booleanPreferencesKey("threat_map_${type.name}")] = visible }
+        context.dataStore.edit { it[cachedBooleanKey("threat_map_${type.name}")] = visible }
     }
 
     /** Whether a threat type fires alerts — default on. */
     fun threatAlertsEnabled(type: ThreatType): Flow<Boolean> {
-        val key = booleanPreferencesKey("threat_alert_${type.name}")
+        val key = cachedBooleanKey("threat_alert_${type.name}")
         return context.dataStore.data.map { prefs -> prefs[key] ?: true }
     }
 
     suspend fun setThreatAlertsEnabled(type: ThreatType, enabled: Boolean) {
-        context.dataStore.edit { it[booleanPreferencesKey("threat_alert_${type.name}")] = enabled }
+        context.dataStore.edit { it[cachedBooleanKey("threat_alert_${type.name}")] = enabled }
     }
 
     /** Whether the advanced-feature explainer for [id] has been shown once. */
     fun explainerSeen(id: String): Flow<Boolean> {
-        val key = booleanPreferencesKey("explainer_seen_$id")
+        val key = cachedBooleanKey("explainer_seen_$id")
         return context.dataStore.data.map { prefs -> prefs[key] ?: false }
     }
 
     suspend fun setExplainerSeen(id: String, seen: Boolean) {
-        context.dataStore.edit { it[booleanPreferencesKey("explainer_seen_$id")] = seen }
+        context.dataStore.edit { it[cachedBooleanKey("explainer_seen_$id")] = seen }
     }
 
         /** Re-arm every first-use hint: reset the toast counters and re-show the explainers. */
@@ -580,6 +585,14 @@ fun threatToggleHintRemaining(): Flow<Int> =
 
     suspend fun setIgnoreRetryUntil(ts: Long) {
         context.dataStore.edit { it[ignoreRetryUntilKey] = ts }
+    }
+
+    /** Epoch millis when the reconnect cycle started (0 = none), across service restarts. */
+    fun reconnectStartMillis(): Flow<Long> =
+        context.dataStore.data.map { prefs -> prefs[reconnectStartMillisKey] ?: 0L }
+
+    suspend fun setReconnectStartMillis(ms: Long) {
+        context.dataStore.edit { it[reconnectStartMillisKey] = ms }
     }
 
     /** Focus token the last official alert episode was announced for (null = none), across restarts. */

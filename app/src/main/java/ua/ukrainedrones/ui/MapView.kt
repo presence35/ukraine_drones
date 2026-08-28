@@ -1152,7 +1152,7 @@ fun NeptunMapView(
     // Smoothly advance markers between the (sparse) server fixes: predict each threat's
     // current position from its heading + estimated speed and move the marker in-place,
     // without clearing the whole map. Only invalidates when something actually moved.
-    LaunchedEffect(overlayKey) {
+    LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
             // The map is fully hidden behind Settings — skip the marker smoothing to save battery.
