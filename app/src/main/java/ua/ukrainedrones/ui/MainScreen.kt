@@ -882,63 +882,63 @@ private fun MapScreen(
                     }
                     // Basemap attribution (required by the CARTO basemap free tier) stacked
                     // under the scale bar so the pair matches the floating buttons' height.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .width(92.dp)
+                            .padding(start = 12.dp, bottom = 4.dp),
+                        contentAlignment = Alignment.BottomStart
+                    ) {
+                        if (uiState.showMapScale) {
+                            ScaleIndicator(
+                                metersPerPixel = scaleMpp,
+                                lang = uiState.language
+                            )
+                        }
+                    }
+                    Text(
+                        "© CARTO",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.40f),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 12.dp, bottom = 4.dp)
+                    )
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.Bottom
+                            .padding(bottom = 4.dp),
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Scale + attribution pinned to the left.
-                        Column(horizontalAlignment = Alignment.Start) {
-                            if (uiState.showMapScale) {
-                                ScaleIndicator(
-                                    metersPerPixel = scaleMpp,
-                                    lang = uiState.language
-                                )
-                            }
-                            Text(
-                                "© CARTO",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.40f)
-                            )
-                        }
-                        // Buttons cluster (shelter + zones) centred in the remaining width.
-                        Box(
-                            modifier = Modifier.weight(1f),
-                            contentAlignment = Alignment.Center
+                        val shelterFocus = uiState.focusLocation
+                        val shelterIndex = uiState.shelterIndex
+                        if (uiState.sheltersEnabled && shelterIndex != null && shelterFocus != null &&
+                            shelterIndex.withinRegion(shelterFocus.lat, shelterFocus.lon)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                val shelterFocus = uiState.focusLocation
-                                val shelterIndex = uiState.shelterIndex
-                                if (uiState.sheltersEnabled && shelterIndex != null && shelterFocus != null &&
-                                    shelterIndex.withinRegion(shelterFocus.lat, shelterFocus.lon)
-                                ) {
-                                    ShelterCircle(
-                                        alertActive = uiState.focusOblastAlertActive,
-                                        active = showNearbyShelters,
-                                        contentDescription = s.shelterButtonLabel,
-                                        onClick = onToggleShelters,
-                                        onLongClick = onOpenShelters
-                                    )
-                                }
-                                ZoneButtons(
-                                    redArmed = uiState.activeSlowRedArmed || uiState.activeFastRedArmed,
-                                    yellowArmed = uiState.activeSlowYellowArmed || uiState.activeFastYellowArmed,
-                                    lang = uiState.language,
-                                    onZoneTap = { zone ->
-                                        showNearbyShelters = false
-                                        selectedShelter = null
-                                        zoomZone = zone
-                                        zoomTick++
-                                    },
-                                    onEditZones = openZonesPanel
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(modifier = Modifier.size(width = 16.dp, height = 18.dp))
+                                ShelterCircle(
+                                    alertActive = uiState.focusOblastAlertActive,
+                                    active = showNearbyShelters,
+                                    contentDescription = s.shelterButtonLabel,
+                                    onClick = onToggleShelters,
+                                    onLongClick = onOpenShelters
                                 )
                             }
                         }
+                        ZoneButtons(
+                            redArmed = uiState.activeSlowRedArmed || uiState.activeFastRedArmed,
+                            yellowArmed = uiState.activeSlowYellowArmed || uiState.activeFastYellowArmed,
+                            lang = uiState.language,
+                            onZoneTap = { zone ->
+                                showNearbyShelters = false
+                                selectedShelter = null
+                                zoomZone = zone
+                                zoomTick++
+                            },
+                            onEditZones = openZonesPanel
+                        )
                     }
                 }
 
@@ -1439,7 +1439,7 @@ internal fun ShelterCircle(
         modifier = if (border != null) baseModifier.border(border, CircleShape) else baseModifier,
         contentAlignment = Alignment.Center
     ) {
-        TeardropShelterIcon(modifier = Modifier.size(30.dp), tint = fg)
+        TeardropShelterIcon(modifier = Modifier.size(16.dp), tint = fg)
     }
 }
 
@@ -1451,21 +1451,26 @@ internal fun TeardropShelterIcon(modifier: Modifier = Modifier, tint: Color) {
     Canvas(modifier = modifier, onDraw = {
         val w = size.width
         val h = size.height
-        val cx = w / 2f
-        val r = w * 0.42f
-        val tipY = h * 0.98f
-        val topY = h * 0.10f
-        val midY = tipY - h * 0.5f
+        val cw = 16f
+        val ch = 18f
+        val scale = minOf(w / cw, h / ch)
+        val dx = (w - cw * scale) / 2f
+        val dy = (h - ch * scale) / 2f
+        val cx = dx + 8f * scale
+        val r = 8f * scale
+        val bottom = dy + 18f * scale
+        val top = bottom - 18f * scale
+        val bulbMidY = top + r
         drawPath(
             path = Path().apply {
-                moveTo(cx, tipY)
-                quadraticTo(cx + r, midY + r * 0.6f, cx + r, midY)
-                quadraticTo(cx + r, topY, cx, topY)
-                quadraticTo(cx - r, topY, cx - r, midY)
-                quadraticTo(cx - r, midY + r * 0.6f, cx, tipY)
+                moveTo(cx, bottom)
+                quadraticTo(cx + r, bulbMidY + r * 0.6f, cx + r, bulbMidY)
+                quadraticTo(cx + r, top, cx, top)
+                quadraticTo(cx - r, top, cx - r, bulbMidY)
+                quadraticTo(cx - r, bulbMidY + r * 0.6f, cx, bottom)
             },
             color = tint,
-            style = Stroke(width = w * 0.1f)
+            style = Stroke(width = 2.6f * scale)
         )
     })
 }

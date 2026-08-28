@@ -83,7 +83,6 @@ fun AviationFlybyOverlay(
         )
         val x = lerp(entry.first, exit.first, progress.value)
         val y = lerp(entry.second, exit.second, progress.value)
-        val dir = AviationFlyby.direction(show.courseDeg)
         val (rotZ, flipped) = AviationFlyby.spriteTransform(
             show.courseDeg.toFloat(), geometry.facingDeg
         )
@@ -97,13 +96,21 @@ fun AviationFlybyOverlay(
             val wy = sin(rad) * ox + cos(rad) * oy
             val anchorX0 = (x + wx).toFloat()
             val anchorY0 = (y + wy).toFloat()
+            // Rendered body axis (mirror→rotate of the art's measured facing) so the trail
+            // is a straight continuation of the jet's exhaust — matches the sprite exactly.
+            val facingRad = Math.toRadians(geometry.facingDeg.toDouble())
+            var nx = sin(facingRad).toFloat()
+            var ny = -cos(facingRad).toFloat()
+            if (flipped) ny = -ny
+            val noseX = (cos(rad) * nx - sin(rad) * ny).toFloat()
+            val noseY = (sin(rad) * nx + cos(rad) * ny).toFloat()
             val fade = fadeProgress.value
             val slideBy = trailLen * (1f - fade)
-            val anchorX = (anchorX0 + slideBy * dir.first).toFloat()
-            val anchorY = (anchorY0 + slideBy * dir.second + trailDrop).toFloat()
+            val anchorX = (anchorX0 + slideBy * noseX).toFloat()
+            val anchorY = (anchorY0 + slideBy * noseY + trailDrop).toFloat()
             val effLen = trailLen * fade
-            val tailX = (anchorX - effLen * dir.first).toFloat()
-            val tailY = (anchorY - effLen * dir.second).toFloat()
+            val tailX = (anchorX - effLen * noseX).toFloat()
+            val tailY = (anchorY - effLen * noseY).toFloat()
             val contrailAlpha = 0.55f * fade
             drawLine(
                 brush = Brush.linearGradient(

@@ -628,7 +628,7 @@ private fun SetupZoneControlsStep(
                         contentAlignment = Alignment.Center
                     ) {
                         TeardropShelterIcon(
-                            modifier = Modifier.size(30.dp),
+                            modifier = Modifier.size(16.dp),
                             tint = if (sheltersEnabled) Color.White else MaterialTheme.colorScheme.primary
                         )
                     }
