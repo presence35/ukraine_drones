@@ -38,6 +38,7 @@ Use it to jump straight to the right file instead of re-reading the codebase.
   zone/focus/alert logic. Any change to `zoneTier`, `ZoneParams`, `reachKm`,
   `focusAttribution`, `staleAfterMs`, or `predictPosition` must be applied in
   **both** files — see `ARCHITECTURE.md#key-invariants`.
+- Backwards compatible code, or migrating old users is not a concern -- we're in beta mode still.
 
 ### Always build/verify before finishing
 

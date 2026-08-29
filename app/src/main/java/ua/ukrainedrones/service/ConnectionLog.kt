@@ -25,7 +25,7 @@ data class ConnLogEntry(
 
 /**
  * Ring buffer of the last [MAX_ENTRIES] connection statuses, persisted to DataStore so the log
- * survives app/service restarts. Fed by [NeptunClient]'s watchdog tick. The currently
+ * survives app/service restarts. Fed by [ConnectionSupervisor]'s StateFlow bridge. The currently
  * in-progress offline episode is kept separately (see [currentEpisode]) so the popup can show
  * a live running duration, and is committed to the log the moment the status changes again —
  * every drop is recorded, however brief (the shared grace is zero).
@@ -73,14 +73,14 @@ object ConnectionLog {
     suspend fun awaitAttached() = attachDone.await()
 
     /**
-     * Called every watchdog tick with the current status. Commits the completed offline
+     * Called on every connection state transition. Commits the completed offline
      * episode as soon as the status changes (no grace — every drop counts), bracketing it with
      * a recovery row when it returns online.
      */
     fun observe(status: ConnStatus, now: Long) {
         val prev = lastStatus
         lastStatus = status
-        val t = commitLogState(prev, status, now, pending, _entries.value, MAX_ENTRIES, NeptunConnectionClient.OFFLINE_GRACE_MS) ?: return
+        val t = commitLogState(prev, status, now, pending, _entries.value, MAX_ENTRIES, 0L) ?: return
         _entries.value = t.entries
         pending = t.nextPending
         if (t.persistPendingSince >= 0) {
@@ -147,7 +147,18 @@ internal fun commitLogState(
     maxEntries: Int,
     graceMs: Long
 ): LogTransition? {
-    if (prevStatus == null || status == prevStatus) return null
+    if (prevStatus == null) {
+        return if (status == ConnStatus.OFFLINE) {
+            LogTransition(
+                entries = entries,
+                nextPending = ConnLogEntry(now, status, null),
+                persistPendingSince = now,
+                persistPendingStatus = status.name,
+                persistLog = false
+            )
+        } else null
+    }
+    if (status == prevStatus) return null
     var newEntries = entries
     var dirty = false
     var clearPending = false

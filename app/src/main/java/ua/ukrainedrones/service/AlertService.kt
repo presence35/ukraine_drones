@@ -13,6 +13,7 @@ import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
@@ -52,7 +53,7 @@ import java.util.Calendar
 
 /**
  * Foreground, always-on monitoring. Owns the shared NeptunClient connection and
- * posts notifications when the Odesa oblast alarm turns on or when a tracked threat
+ * posts notifications when the oblast alarm turns on or when a tracked threat
  * enters the INNER tier (urgent siren) or the OUTER tier (warning chime).
  */
 private data class Quint<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
@@ -130,6 +131,7 @@ class AlertService : Service() {
     private var offlineRestorePending = false
     private val screenOnFlow = MutableStateFlow(true)
     private var screenReceiver: BroadcastReceiver? = null
+    private var wakeLock: PowerManager.WakeLock? = null
     private var hasActiveThreats = false
     private var isOutage = false
     private var lastSweepAtMs = 0L
@@ -229,6 +231,8 @@ private var notif3minShown = false
             val ignoreUntil = ServiceState(applicationContext).ignoreRetryUntil().first()
             client.start(savedReconnectStartMs = recStart, savedIgnoreUntilMs = ignoreUntil)
             sup.start()
+            ConnectionHolder.getClient(applicationContext)
+                .testHarness.setForceOffline(ServiceState(applicationContext).forceOffline().first())
             // Persist reconnect timestamp across process kills
             launch {
                 client.connectionState.collect { cs ->
@@ -240,13 +244,16 @@ private var notif3minShown = false
                 }
             }
         }
-        scope.launch {
-            ConnectionHolder.getClient(applicationContext)
-                .testHarness.setForceOffline(ServiceState(applicationContext).forceOffline().first())
-        }
         LocationTracker.start(this)
         WidgetUpdater.start(this, scope)
         startForegroundCompat()
+        if (wakeLock == null || wakeLock?.isHeld == false) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "UkraineDrones:AlertService").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }
         scope.launch { dailyUpdateCheckLoop() }
     }
 
@@ -306,6 +313,13 @@ private var notif3minShown = false
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun startMonitoring() {
         if (monitoringJob != null) return
+        if (wakeLock == null || wakeLock?.isHeld == false) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "UkraineDrones:AlertService").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }
         val prefs = UserPrefs(applicationContext)
         val svcState = ServiceState(applicationContext)
         // Register screen on/off receiver for adaptive tick.
@@ -1333,6 +1347,7 @@ private var notif3minShown = false
             CHANNEL_ALERTS_ALARM,
             CHANNEL_ALERTS_OUTER_ALARM,
             CHANNEL_OFFLINE,
+            CHANNEL_OFFLINE_CRITICAL,
             NeutralizedTally.CHANNEL_NEUTRALIZED,
             CHANNEL_UPDATE
         )
@@ -1405,6 +1420,7 @@ private var notif3minShown = false
             NotificationChannel(CHANNEL_OFFLINE, s.offlineChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
                 description = s.offlineChannelDesc
                 enableVibration(true)
+                setSound(sirenUri(R.raw.critical_offline), notificationAttributes())
             }
         )
         // Critical offline: audible, but a friendly chime (not a siren) — the "we've been
@@ -1458,6 +1474,8 @@ private var notif3minShown = false
         screenReceiver?.let { unregisterReceiver(it) }
         screenReceiver = null
         monitoringJob?.cancel()
+        wakeLock?.let { wl -> if (wl.isHeld) wl.release() }
+        wakeLock = null
         ConnectionHolder.clear()
         LocationTracker.stop()
         // The tally is promised to live only "while monitoring runs" — dropping it here also

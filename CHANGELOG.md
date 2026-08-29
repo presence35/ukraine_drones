@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Background: add partial WakeLock to prevent CPU deep sleep from freezing WebSocket and milestone notifications when screen is off / Фон: додано частковий WakeLock для запобігання замерзанню WebSocket та сповіщень про віхи при вимкненому екрані
+- Notifications: milestone channel (3m/6m/10m/20m) now audible with critical_offline.ogg / Сповіщення: канал віх тепер звуковий з critical_offline.ogg
+- Notifications: fix CHANNEL_OFFLINE_CRITICAL missing from channel cleanup keep set / Сповіщення: виправлено відсутність CHANNEL_OFFLINE_CRITICAL у keep set
+- Manifest: add WAKE_LOCK permission / Маніфест: додано дозвіл WAKE_LOCK
+
 - Network: removed duplicate reconnect trigger from onAvailable, added generation guard for stale socket callbacks / Мережа: прибрано дубльований reconnect з onAvailable, додано generation guard для застарілих callback-ів
 - Offline: persist reconnect start millis across process kills so 3/6/10/20-min milestones survive restarts / Офлайн: зберігається reconnect start millis між перезапусками для коректних 3/6/10/20-хвилинних віх
 - UI: header pill now immediately reflects connection drops (mirror rule enforcement) / Інтерфейс: пілл одразу відображає втрату з'єднання (узгодження mirror rule)
