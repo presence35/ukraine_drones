@@ -331,6 +331,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 officialAlertCityScope = uiState.officialAlertCityScope,
                 sirenOverride = uiState.sirenOverride,
                 criticalOfflineOverride = uiState.criticalOfflineOverride,
+                criticalOfflineBypassSilent = uiState.criticalOfflineBypassSilent,
                 nightEnabled = uiState.nightEnabled,
                 nightStartMin = uiState.nightStartMin,
                 nightEndMin = uiState.nightEndMin,
@@ -384,6 +385,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onOfficialAlertCityScopeChange = { viewModel.setOfficialAlertCityScope(it) },
                 onSirenOverrideChange = { viewModel.setSirenOverride(it) },
                 onCriticalOfflineOverrideChange = { viewModel.setCriticalOfflineOverride(it) },
+                onCriticalOfflineBypassSilentChange = { viewModel.setCriticalOfflineBypassSilent(it) },
                 onNightEnabledChange = { viewModel.setNightEnabled(it) },
                 onNightStartChange = { viewModel.setNightStartMin(it) },
                 onNightEndChange = { viewModel.setNightEndMin(it) },
@@ -1343,14 +1345,14 @@ private fun ThreatStripFooter(
 @Composable
 private fun UkraineEmblem(active: Boolean, modifier: Modifier = Modifier, contentDesc: String? = null) {
     val red = AlertRed
-    Box(modifier = modifier.size(32.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(44.dp), contentAlignment = Alignment.Center) {
         if (active) {
             // Soft red halo so the emblem reads as "glowing red" during an official alert.
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .background(
-                        Brush.radialGradient(listOf(red.copy(alpha = 0.45f), Color.Transparent)),
+                        Brush.radialGradient(listOf(red.copy(alpha = 0.55f), Color.Transparent)),
                         CircleShape
                     )
             )

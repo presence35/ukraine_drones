@@ -15,7 +15,10 @@ class ConnectionLogTest {
 
     @Test
     fun `first sighting never fabricates an episode`() {
-        assertNull(commitLogState(null, ConnStatus.OFFLINE, 1_000, null, emptyList(), maxEntries, graceMs))
+        assertNull(commitLogState(null, ConnStatus.ONLINE, 1_000, null, emptyList(), maxEntries, graceMs))
+        val t = commitLogState(null, ConnStatus.OFFLINE, 1_000, null, emptyList(), maxEntries, graceMs)!!
+        assertTrue(t.entries.isEmpty())
+        assertEquals(ConnStatus.OFFLINE, t.nextPending?.status)
     }
 
     @Test

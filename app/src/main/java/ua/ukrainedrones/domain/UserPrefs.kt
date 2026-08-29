@@ -43,6 +43,7 @@ class UserPrefs(private val context: Context) {
     private val followMeKey = booleanPreferencesKey("follow_me")
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
     private val criticalOfflineOverrideKey = booleanPreferencesKey("critical_offline_override")
+    private val criticalOfflineBypassSilentKey = booleanPreferencesKey("critical_offline_bypass_silent")
     private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
     private val threatToggleHintRemainingKey = intPreferencesKey("threat_toggle_hint_remaining")
     private val flourishEjectHintRemainingKey = intPreferencesKey("flourish_eject_hint_remaining")
@@ -244,6 +245,13 @@ class UserPrefs(private val context: Context) {
 
     suspend fun setCriticalOfflineOverride(enabled: Boolean) {
         context.dataStore.edit { it[criticalOfflineOverrideKey] = enabled }
+    }
+
+    fun criticalOfflineBypassSilent(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[criticalOfflineBypassSilentKey] ?: false }
+
+    suspend fun setCriticalOfflineBypassSilent(enabled: Boolean) {
+        context.dataStore.edit { it[criticalOfflineBypassSilentKey] = enabled }
     }
 
     fun language(): Flow<AppLanguage> =

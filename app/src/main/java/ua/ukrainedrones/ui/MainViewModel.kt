@@ -86,6 +86,7 @@ data class UiState(
     val officialAlertCityScope: Boolean = false,
     val sirenOverride: Boolean = false,
     val criticalOfflineOverride: Boolean = true,
+    val criticalOfflineBypassSilent: Boolean = false,
     val hiddenTypes: Set<ThreatType> = emptySet(),      // hidden from the map
     val silencedTypes: Set<ThreatType> = emptySet(),    // alerts off (still on the map, dimmed)
     val activeZone: ThreatZone? = null,           // most specific zone with a threat
@@ -327,6 +328,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val sirenOverride: Boolean,
         val followMe: Boolean,
         val criticalOfflineOverride: Boolean,
+        val criticalOfflineBypassSilent: Boolean,
         val pinnedCity: String?,
         val wizardCompleted: Boolean?,
         val batteryOnboardShown: Boolean,
@@ -393,6 +395,7 @@ val fastGroupCollapsed: Boolean,
         val fastGroupCollapsed: Boolean,
         val slowGroupCollapsed: Boolean,
         val criticalOfflineOverride: Boolean,
+        val criticalOfflineBypassSilent: Boolean,
         val flybyAnimationEnabled: Boolean,
         val justFunMasterEnabled: Boolean
     )
@@ -451,13 +454,15 @@ val fastGroupCollapsed: Boolean,
             prefs.fastGroupCollapsed(),
             prefs.slowGroupCollapsed(),
             prefs.criticalOfflineOverride(),
+            prefs.criticalOfflineBypassSilent(),
             prefs.flybyAnimationEnabled(),
             prefs.justFunMasterEnabled()
         ) { flags: Array<Boolean> ->
             AlertConfig(
                 flags[0], flags[1], flags[2], flags[3], flags[4], flags[5],
                 flags[6], flags[7], flags[8], flags[9], flags[10], flags[11], flags[12],
-                flags[13], flags[14], flags[15], flags[16], flags[17], flags[18], flags[19]
+                flags[13], flags[14], flags[15], flags[16], flags[17], flags[18], flags[19],
+                flags[20]
             )
         },
         combine(
@@ -536,6 +541,7 @@ combine(
             sirenOverride = b.sirenOverride,
             followMe = b.followMe,
             criticalOfflineOverride = b.criticalOfflineOverride,
+            criticalOfflineBypassSilent = b.criticalOfflineBypassSilent,
             pinnedCity = c.pinnedCity,
             wizardCompleted = c.wizardCompleted,
             batteryOnboardShown = c.batteryOnboardShown,
@@ -679,6 +685,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             officialAlertCityScope = prefs.officialAlertCityScope,
             sirenOverride = prefs.sirenOverride,
             criticalOfflineOverride = prefs.criticalOfflineOverride,
+            criticalOfflineBypassSilent = prefs.criticalOfflineBypassSilent,
             activeZoneParams = effectiveParams,
             activeSlowRedArmed = activeArmed.slowRed,
             activeSlowYellowArmed = activeArmed.slowYellow,
@@ -1002,6 +1009,10 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
     fun setCriticalOfflineOverride(enabled: Boolean) {
         viewModelScope.launch { prefs.setCriticalOfflineOverride(enabled) }
+    }
+
+    fun setCriticalOfflineBypassSilent(enabled: Boolean) {
+        viewModelScope.launch { prefs.setCriticalOfflineBypassSilent(enabled) }
     }
 
     fun setBatteryOnboardShown(shown: Boolean) {

@@ -648,7 +648,7 @@ private var notif3minShown = false
                 notif3minShown = true
                 ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_3)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_trident)
+                    .setSmallIcon(R.drawable.ic_wifi_off)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(s.offlineMilestone3Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -662,7 +662,7 @@ private var notif3minShown = false
                 notif6minShown = true
                 ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_6)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_trident)
+                    .setSmallIcon(R.drawable.ic_wifi_off)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(s.offlineMilestone6Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -676,7 +676,7 @@ private var notif3minShown = false
                 notif10minShown = true
                 ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_10)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_trident)
+                    .setSmallIcon(R.drawable.ic_wifi_off)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(s.offlineMilestone10Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -690,7 +690,7 @@ private var notif3minShown = false
                 notif20minShown = true
                 ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_20)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE)
-                    .setSmallIcon(R.drawable.ic_trident)
+                    .setSmallIcon(R.drawable.ic_wifi_off)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(s.offlineMilestone20Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -698,7 +698,7 @@ private var notif3minShown = false
                     .setContentIntent(openAppIntent())
                     .build()
                 safeNotify(NOTIF_MILESTONE, notif)
-                // After 20 minutes, ConnectionSupervisor handles give-up internally
+                ConnectionHolder.getClient(applicationContext).pauseFor(30)
             }
             // Critical offline override: ring an audible notification once the drop outlasts
             // CRITICAL_OFFLINE_MIN minutes (on its own channel, so it can sound while the
@@ -707,7 +707,7 @@ private var notif3minShown = false
                 notifCriticalShown = true
                 ConnectionHolder.getSupervisor(applicationContext).recordEvent(ConnEventKind.MILESTONE_5)
                 val notif = NotificationCompat.Builder(this, CHANNEL_OFFLINE_CRITICAL)
-                    .setSmallIcon(R.drawable.ic_trident)
+                    .setSmallIcon(R.drawable.ic_wifi_off)
                     .setContentTitle(s.offlineStatusTitle)
                     .setContentText(s.offlineCritical5Min)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -1089,7 +1089,7 @@ private var notif3minShown = false
         safeNotify(NOTIF_MONITOR, monitorNotification(title, text, retryLabel, progressMax, progressNow, ignoreLabel))
     }
 
-    /** Live offline body: "X/20 min · attempt N — latest log line" (or the paused wording). */
+    /** Live offline body: "X/20 min · attempt N" (or the paused wording). */
     private fun offlineLiveBody(s: Strings.StringSet, minutes: Int): String {
         val client = ConnectionHolder.getClient(applicationContext)
         val cs = client.connectionState.value
@@ -1099,9 +1099,7 @@ private var notif3minShown = false
             is ConnectionState.Connecting -> cs.attempt
             else -> 0
         }
-        val latest = ConnectionHolder.getSupervisor(applicationContext).connEvents.value.lastOrNull()
-        val head = String.format(s.offlineLiveFormat, minutes, 20, attempt + 1)
-        return if (latest != null) "$head — ${latest.label(s)}" else head
+        return String.format(s.offlineLiveFormat, minutes, 20, attempt + 1)
     }
 
     private fun buildAlertNotification(
@@ -1425,13 +1423,16 @@ private var notif3minShown = false
         )
         // Critical offline: audible, but a friendly chime (not a siren) — the "we've been
         // dark for CRITICAL_OFFLINE_MIN minutes" reminder behind the critical-offline override.
+        // When bypassSilent is enabled, use alarm stream to ring through silent mode.
+        val bypassSilent = kotlinx.coroutines.runBlocking { UserPrefs(applicationContext).criticalOfflineBypassSilent().first() }
+        val criticalAttrs = if (bypassSilent) alarmAttributes() else notificationAttributes()
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_OFFLINE_CRITICAL, s.offlineCriticalChannelName, NotificationManager.IMPORTANCE_HIGH).apply {
                 description = s.offlineCriticalChannelDesc
                 enableVibration(true)
                 setSound(
                     sirenUri(R.raw.critical_offline),
-                    notificationAttributes()
+                    criticalAttrs
                 )
             }
         )

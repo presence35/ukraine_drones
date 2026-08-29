@@ -350,6 +350,7 @@ fun SettingsScreen(
     officialAlertCityScope: Boolean,
     sirenOverride: Boolean,
     criticalOfflineOverride: Boolean,
+    criticalOfflineBypassSilent: Boolean,
     nightEnabled: Boolean,
     nightStartMin: Int,
     nightEndMin: Int,
@@ -404,6 +405,7 @@ fun SettingsScreen(
     onOfficialAlertCityScopeChange: (Boolean) -> Unit,
     onSirenOverrideChange: (Boolean) -> Unit,
     onCriticalOfflineOverrideChange: (Boolean) -> Unit,
+    onCriticalOfflineBypassSilentChange: (Boolean) -> Unit,
     onNightEnabledChange: (Boolean) -> Unit,
     onNightStartChange: (Int) -> Unit,
     onNightEndChange: (Int) -> Unit,
@@ -795,6 +797,16 @@ fun SettingsScreen(
                         onCheckedChange = onCriticalOfflineOverrideChange,
                         icon = painterResource(R.drawable.ic_notifications_off),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    AlertToggleRow(
+                        title = s.offlineCriticalBypassSilentTitle,
+                        description = s.offlineCriticalBypassSilentDesc,
+                        checked = criticalOfflineBypassSilent,
+                        onCheckedChange = onCriticalOfflineBypassSilentChange,
+                        icon = painterResource(R.drawable.ic_volume_up),
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        enabled = criticalOfflineOverride
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Battery Optimization
@@ -1698,18 +1710,21 @@ internal fun AlertToggleRow(
     note: String? = null,
     noteIcon: Painter? = null,
     noteIconTint: Color? = null,
-    flash: Boolean = false
+    flash: Boolean = false,
+    enabled: Boolean = true
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (!enabled) Modifier.alpha(0.5f) else Modifier)
             .explainerFlash(flash)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (isPressed) 0.06f else 0f))
             .pressTick(interactionSource)
             .toggleable(
                 value = checked,
+                enabled = enabled,
                 role = Role.Switch,
                 onValueChange = onCheckedChange,
                 interactionSource = interactionSource,

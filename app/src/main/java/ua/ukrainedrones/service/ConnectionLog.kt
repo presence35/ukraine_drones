@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import ua.ukrainedrones.connection.NeptunConnectionClient
 import ua.ukrainedrones.service.ServiceState
 
 /** Connection states shown in the status log — mirrors the header pill's two states. */

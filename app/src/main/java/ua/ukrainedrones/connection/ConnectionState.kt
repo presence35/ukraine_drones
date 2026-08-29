@@ -28,7 +28,7 @@ data class ConnEvent(
 ) {
     fun label(s: Strings.StringSet): String = when (kind) {
         ConnEventKind.CONNECTION_LOST -> s.connEventLost
-        ConnEventKind.RETRY_SCHEDULED -> String.format(s.connEventRetry, (delayMs ?: 0L) / 1000, attempt ?: 0)
+        ConnEventKind.RETRY_SCHEDULED -> String.format(s.connEventRetry, ((delayMs ?: 0L) / 1000).coerceAtLeast(1), attempt ?: 0)
         ConnEventKind.NO_NETWORK -> s.connEventNoNetwork
         ConnEventKind.MILESTONE_3 -> s.connEventMin3
         ConnEventKind.MILESTONE_5 -> s.connEventMin5

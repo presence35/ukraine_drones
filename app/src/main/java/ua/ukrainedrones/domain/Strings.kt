@@ -226,6 +226,8 @@ object Strings {
         val offlineCritical5Min: String,
         val offlineCriticalOverrideTitle: String,
         val offlineCriticalOverrideDesc: String,
+        val offlineCriticalBypassSilentTitle: String,
+        val offlineCriticalBypassSilentDesc: String,
         val offlineIgnoreAction: String,
         val offlinePausedBody: String,
         val offlineLiveFormat: String,
@@ -818,6 +820,8 @@ object Strings {
         val offlineCritical5Min: String get() = threat.offlineCritical5Min
         val offlineCriticalOverrideTitle: String get() = threat.offlineCriticalOverrideTitle
         val offlineCriticalOverrideDesc: String get() = threat.offlineCriticalOverrideDesc
+        val offlineCriticalBypassSilentTitle: String get() = threat.offlineCriticalBypassSilentTitle
+        val offlineCriticalBypassSilentDesc: String get() = threat.offlineCriticalBypassSilentDesc
         val offlineIgnoreAction: String get() = threat.offlineIgnoreAction
         val offlinePausedBody: String get() = threat.offlinePausedBody
         val offlineLiveFormat: String get() = threat.offlineLiveFormat
@@ -1306,6 +1310,8 @@ connOnline = "Онлайн",
         offlineCritical5Min = "5 хв офлайн — натисніть «Повторити».",
         offlineCriticalOverrideTitle = "Критичний офлайн-сигнал",
         offlineCriticalOverrideDesc = "Гучно нагадувати звуком після 5 хвилин без з'єднання з сервером тривог.",
+        offlineCriticalBypassSilentTitle = "Обійти тишу",
+        offlineCriticalBypassSilentDesc = "Грати звук навіть коли телефон на тиші. Не обходить режим «Не турбувати» — увімкніть відповідний параметр у налаштуваннях каналу, якщо потрібно.",
         offlineIgnoreAction = "Ігнорувати 30 хв",
         offlinePausedBody = "Повтор призупинено на 30 хв — натисніть «Офлайн», щоб відновити раніше.",
         offlineLiveFormat = "Офлайн %1\$d/%2\$d хв · спроба %3\$d",
@@ -1862,6 +1868,8 @@ alertBannerFormat = "%1\$s: alert",
         offlineCritical5Min = "5 min offline — tap Retry.",
         offlineCriticalOverrideTitle = "Critical offline alert",
         offlineCriticalOverrideDesc = "Ring an audible reminder after 5 minutes without a connection to the threat server.",
+        offlineCriticalBypassSilentTitle = "Override silent mode",
+        offlineCriticalBypassSilentDesc = "Play sound even when the phone is on silent. Does not bypass Do Not Disturb — enable the override in system channel settings if needed.",
         offlineIgnoreAction = "Ignore 30 min",
         offlinePausedBody = "Retrying paused for 30 min — tap Offline to resume early.",
         offlineLiveFormat = "Offline %1\$d/%2\$d min · attempt %3\$d",

@@ -170,7 +170,16 @@ class NeptunConnectionClient(
         activeWebSocket = null
         oldSocket?.close(1001, "manual retry")
 
-        connect()
+        reconnectAttempt = 0
+        val now = System.currentTimeMillis()
+        val gen = connectionGeneration.incrementAndGet()
+        _connectionState.value = ConnectionState.Connecting(
+            generation = gen,
+            attempt = 0,
+            nextRetryAtMs = now,
+            networkValidated = networkMonitor.isValidated.value
+        )
+        connect(gen)
     }
 
     fun pauseFor(minutes: Int) {
@@ -215,19 +224,10 @@ class NeptunConnectionClient(
         return System.currentTimeMillis() - shotAt <= USER_SHOT_GRACE_MS
     }
 
-    private fun connect() {
+    private fun connect(gen: Int = connectionGeneration.incrementAndGet()) {
         if (isManuallyStopped) return
-        val gen = connectionGeneration.incrementAndGet()
 
         val isNetValidated = networkMonitor.isValidated.value
-        val nextRetryAt = System.currentTimeMillis()
-        _connectionState.value = ConnectionState.Connecting(
-            generation = gen,
-            attempt = reconnectAttempt,
-            nextRetryAtMs = nextRetryAt,
-            networkValidated = isNetValidated
-        )
-
         val request = Request.Builder().url(WS_URL).build()
         val ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -298,6 +298,7 @@ class NeptunConnectionClient(
             else -> now
         }
         persistedReconnectStartMs = recStart
+        openedAtMs = 0L
 
         _connectionState.value = ConnectionState.Offline(
             since = offlineSince,
@@ -321,10 +322,17 @@ class NeptunConnectionClient(
         reconnectJob = scope.launch {
             val isNetValidated = networkMonitor.isValidated.value
             val delayMs = if (isNetValidated) calculateBackoffMs(reconnectAttempt) else NO_NETWORK_RECONNECT_MS
-
+            val now = System.currentTimeMillis()
+            val gen = connectionGeneration.incrementAndGet()
+            _connectionState.value = ConnectionState.Connecting(
+                generation = gen,
+                attempt = reconnectAttempt,
+                nextRetryAtMs = now + delayMs,
+                networkValidated = isNetValidated
+            )
             delay(delayMs)
             if (!isManuallyStopped && !isIgnoringPause()) {
-                connect()
+                connect(gen)
             }
         }
     }
