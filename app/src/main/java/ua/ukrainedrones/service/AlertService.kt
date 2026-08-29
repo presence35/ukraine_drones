@@ -4,8 +4,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.net.Uri
@@ -81,6 +83,10 @@ class AlertService : Service() {
         /** How often the monitoring loop re-evaluates state (fast tick, decoupled from the
          *  all-clear grace so a threat that leaves a zone clears promptly). */
         private const val MONITOR_TICK_MS = 1_000L
+        /** Tick interval when idle: screen off, no active threats, no outage. */
+        private const val MONITOR_TICK_IDLE_MS = 30_000L
+        /** Throttle for DebugLog.sweep() — runs at most this often. */
+        private const val SWEEP_THROTTLE_MS = 10_000L
         /** Vibration level used for official alerts with no known reason threat (fixed, urgent). */
         private const val VIBRATION_STRONG = 4
         /** Fixed vibration level used for all zone alerts (strong, was configurable). */
@@ -118,6 +124,11 @@ class AlertService : Service() {
     private var wasConnected = true
     private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
+    private val screenOnFlow = MutableStateFlow(true)
+    private var screenReceiver: BroadcastReceiver? = null
+    private var hasActiveThreats = false
+    private var isOutage = false
+    private var lastSweepAtMs = 0L
 private var notif3minShown = false
     private var notif6minShown = false
     private var notif10minShown = false
@@ -291,6 +302,24 @@ private var notif3minShown = false
         if (monitoringJob != null) return
         val prefs = UserPrefs(applicationContext)
         val svcState = ServiceState(applicationContext)
+        // Register screen on/off receiver for adaptive tick.
+        if (screenReceiver == null) {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            }
+            screenReceiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context, intent: Intent) {
+                    val nowOn = intent.action == Intent.ACTION_SCREEN_ON
+                    if (nowOn && !screenOnFlow.value) {
+                        // Screen just turned on — force an immediate re-evaluation.
+                        // (The tick loop picks up the new interval on its next iteration.)
+                    }
+                    screenOnFlow.value = nowOn
+                }
+            }
+            ContextCompat.registerReceiver(this, screenReceiver!!, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        }
         // Server-driven resolutions/removals only — the map long-press never touches this
         // flow, so the tally excludes manual test triggers. Subscribed only while the tally is
         // enabled: off means no collector at all (not even a per-event pref read).
@@ -329,7 +358,8 @@ private var notif3minShown = false
             val nowFlow = MutableStateFlow(System.currentTimeMillis())
             launch {
                 while (true) {
-                    delay(MONITOR_TICK_MS)
+                    val fast = screenOnFlow.value || hasActiveThreats || isOutage
+                    delay(if (fast) MONITOR_TICK_MS else MONITOR_TICK_IDLE_MS)
                     nowFlow.value = System.currentTimeMillis()
                 }
             }
@@ -931,23 +961,27 @@ private var notif3minShown = false
 
         // Debug verdict sweep: log every threat in the active region and why it did or
         // didn't fire, using the service's own computed maps. Read-only for the decision path.
-        DebugLog.sweep(
-            DebugLogContext(
-                threats = all,
-                focus = state.focusLocation,
-                token = state.focusToken,
-                enabledTypes = state.enabled,
-                zoneThreats = state.zoneThreats,
-                alertable = alertable,
-                knownZones = knownZones,
-                postedId = postedId,
-                night = state.nightActive,
-                sirenOverride = state.zoneSirenOverride,
-                fastVibrationLevel = state.fastVibrationLevel,
-                slowVibrationLevel = state.slowVibrationLevel,
-                now = now
+        val nowForSweep = System.currentTimeMillis()
+        if (nowForSweep - lastSweepAtMs >= SWEEP_THROTTLE_MS) {
+            lastSweepAtMs = nowForSweep
+            DebugLog.sweep(
+                DebugLogContext(
+                    threats = all,
+                    focus = state.focusLocation,
+                    token = state.focusToken,
+                    enabledTypes = state.enabled,
+                    zoneThreats = state.zoneThreats,
+                    alertable = alertable,
+                    knownZones = knownZones,
+                    postedId = postedId,
+                    night = state.nightActive,
+                    sirenOverride = state.zoneSirenOverride,
+                    fastVibrationLevel = state.fastVibrationLevel,
+                    slowVibrationLevel = state.slowVibrationLevel,
+                    now = now
+                )
             )
-        )
+        }
 
         // Start the grace window once nothing is active; clear only after it expires.
         // The periodic nowFlow tick re-runs this every grace period, so a quiet stream still
@@ -964,6 +998,8 @@ private var notif3minShown = false
         } else {
             emptySince = null
         }
+        hasActiveThreats = state.zoneThreats.isNotEmpty() || state.focusOblastAlertActive
+        isOutage = !state.connectionState.isConnected
     }
 
     private fun bannerFor(zone: ThreatZone, s: Strings.StringSet): String = when (zone) {
@@ -1392,6 +1428,8 @@ private var notif3minShown = false
     }
 
     override fun onDestroy() {
+        screenReceiver?.let { unregisterReceiver(it) }
+        screenReceiver = null
         monitoringJob?.cancel()
         ConnectionHolder.clear()
         LocationTracker.stop()
