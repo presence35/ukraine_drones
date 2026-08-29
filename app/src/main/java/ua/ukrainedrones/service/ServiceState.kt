@@ -29,6 +29,8 @@ class ServiceState(private val context: Context) {
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
     private val lastNotifiedUpdateCodeKey = longPreferencesKey("last_notified_update_code")
     private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
+    private val lastSdkManifestHashKey = stringPreferencesKey("last_sdk_manifest_hash")
+    private val systemLogKey = stringPreferencesKey("system_log")
 
     fun connLog(): Flow<String> =
         context.dataStore.data.map { prefs -> prefs[connLogKey] ?: "" }
@@ -115,5 +117,19 @@ class ServiceState(private val context: Context) {
 
     suspend fun setForceOffline(force: Boolean) {
         context.dataStore.edit { it[forceOfflineKey] = force }
+    }
+
+    fun lastSdkManifestHash(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[lastSdkManifestHashKey] ?: "" }
+
+    suspend fun setLastSdkManifestHash(hash: String) {
+        context.dataStore.edit { it[lastSdkManifestHashKey] = hash }
+    }
+
+    fun systemLog(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[systemLogKey] ?: "" }
+
+    suspend fun setSystemLog(serialized: String) {
+        context.dataStore.edit { it[systemLogKey] = serialized }
     }
 }

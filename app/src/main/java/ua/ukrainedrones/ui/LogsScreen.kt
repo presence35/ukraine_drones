@@ -3,6 +3,9 @@ package ua.ukrainedrones
 import ua.ukrainedrones.connection.ConnectionHolder
 import ua.ukrainedrones.connection.ConnEvent
 import ua.ukrainedrones.connection.ConnRetryState
+import ua.ukrainedrones.data.ApiMonitor
+import ua.ukrainedrones.data.SystemEntry
+import ua.ukrainedrones.data.SystemEntryKind
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -87,7 +90,7 @@ private const val VISIBLE_INITIAL = 25
 private const val VISIBLE_STEP = 50
 
 /** Which data source to show. */
-private enum class LogsFilter { DECISIONS, CONNECTIONS }
+private enum class LogsFilter { DECISIONS, CONNECTIONS, SYSTEM }
 
 /** How to group decision rows. */
 private enum class GroupBy { TIMELINE, PROXIMITY, TYPE }
@@ -128,6 +131,10 @@ private data class ConnectionRow(val entry: ConnLogEntry) : LogRow {
     override val atMillis: Long get() = entry.atMillis
 }
 
+private data class SystemRow(val entry: SystemEntry) : LogRow {
+    override val atMillis: Long get() = entry.atMillis
+}
+
 /**
  * Logs screen: a single card list over the decision audit trail and connection episodes.
  * Regular-user defaults: rolling 24h window, only notified, flourish hidden.
@@ -145,6 +152,7 @@ fun LogsScreen(
 ) {
     val entries by DebugLog.entries.collectAsState()
     val connEntries by ConnectionLog.entries.collectAsState()
+    val systemEntries by ApiMonitor.entries.collectAsState()
     val context = LocalContext.current
     val connRetry by ConnectionHolder.getSupervisor(context).retryState.collectAsState()
     val connEvents by ConnectionHolder.getSupervisor(context).connEvents.collectAsState()
@@ -166,7 +174,8 @@ fun LogsScreen(
     // Rolling 24-hour window: decision rows older than a day drop off live.
     val window = entries.filter { now - it.atMillis < DebugLog.AUTO_CLEAR_AGE_MS }
     val isDecisions = filter == LogsFilter.DECISIONS
-    val rows: List<LogRow> = buildRows(filter, window, connEntries, now, isDecisions, newestFirst, shownOnly, showFlourish)
+    val isSystem = filter == LogsFilter.SYSTEM
+    val rows: List<LogRow> = buildRows(window, connEntries, systemEntries, now, isDecisions, isSystem, newestFirst, shownOnly, showFlourish)
     val visible = rows.take(visibleCount)
     val hasMore = visibleCount < rows.size
     val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy, showFlourish, proximitySort, newestFirst) else emptyList()
@@ -183,9 +192,9 @@ fun LogsScreen(
             )
         }
     ) { padding ->
-        val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS)
-        val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections)
-        val tabCounts = listOf(window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0)
+        val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS, LogsFilter.SYSTEM)
+        val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections, s.logsFilterSystem)
+        val tabCounts = listOf(window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0, systemEntries.size)
         Column(Modifier.padding(padding).fillMaxWidth()) {
             TabRow(
                 selectedTabIndex = tabFilters.indexOf(filter),
@@ -248,6 +257,8 @@ fun LogsScreen(
                 item(key = "retrylog") {
                     RetryLogCard(connEvents, connRetry, s, now) { ConnectionHolder.getSupervisor(context).dismissLogCard() }
                 }
+            }
+            if (filter == LogsFilter.CONNECTIONS) {
                 item(key = "testsim") {
                     TestSimButtons(context)
                 }
@@ -255,7 +266,11 @@ fun LogsScreen(
             if (visible.isEmpty()) {
                 item {
                     Text(
-                        if (filter == LogsFilter.CONNECTIONS) s.logsEmptyConnections else s.debugLogEmpty,
+                        when (filter) {
+                            LogsFilter.CONNECTIONS -> s.logsEmptyConnections
+                            LogsFilter.SYSTEM -> s.apiSystemEmpty
+                            else -> s.debugLogEmpty
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -302,10 +317,10 @@ fun LogsScreen(
                         }
                     }
                 }
-                if (isDecisions) {
+                if (isDecisions || isSystem) {
                     item(key = "clear") {
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            TextButton(onClick = { scope.launch(Dispatchers.IO) { DebugLog.clear() } }) {
+                            TextButton(onClick = { scope.launch(Dispatchers.IO) { if (isSystem) ApiMonitor.clear() else DebugLog.clear() } }) {
                                 Text(s.debugLogClear)
                 }
             }
@@ -323,15 +338,20 @@ fun LogsScreen(
  * flourish entries when [showFlourish] is false; connection rows include the live in-progress episode.
  */
 private fun buildRows(
-    filter: LogsFilter,
     decisions: List<DebugLogEntry>,
     connEntries: List<ConnLogEntry>,
+    systemEntries: List<SystemEntry>,
     now: Long,
     isDecisions: Boolean,
+    isSystem: Boolean,
     newestFirst: Boolean,
     shownOnly: Boolean,
     showFlourish: Boolean
 ): List<LogRow> {
+    if (isSystem) {
+        val sysRows = systemEntries.map { SystemRow(it) }
+        return if (newestFirst) sysRows.sortedByDescending { it.atMillis } else sysRows.sortedBy { it.atMillis }
+    }
     if (!isDecisions) {
         val connRows = (ConnectionLog.currentEpisode(now)?.let { listOf(ConnectionRow(it)) }
             ?: emptyList()) + connEntries.map { ConnectionRow(it) }
@@ -597,6 +617,7 @@ private fun LogRowCard(
     when (row) {
         is DecisionRow -> DecisionCard(row.entry, s, lang, now, iconSet)
         is ConnectionRow -> ConnectionCard(row.entry, s, lang, now)
+        is SystemRow -> SystemCard(row.entry, s, lang, now)
     }
 }
 
@@ -1015,6 +1036,69 @@ private fun ConnectionCard(entry: ConnLogEntry, s: Strings.StringSet, lang: AppL
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SystemCard(entry: SystemEntry, s: Strings.StringSet, lang: AppLanguage, now: Long) {
+    val accent = when (entry.kind) {
+        SystemEntryKind.SDK_CHANGED -> DebugAmber
+        SystemEntryKind.SDK_CHECK_FAILED -> DebugRed
+    }
+    val icon = when (entry.kind) {
+        SystemEntryKind.SDK_CHANGED -> Icons.Filled.Warning
+        SystemEntryKind.SDK_CHECK_FAILED -> Icons.Filled.Close
+    }
+    val label = when (entry.kind) {
+        SystemEntryKind.SDK_CHANGED -> s.apiSdkChanged
+        SystemEntryKind.SDK_CHECK_FAILED -> s.apiSdkCheckFailed
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(accent.copy(alpha = 0.10f))
+            .padding(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accent,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    formatAlertAge(now, entry.atMillis, s),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    entry.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    formatDateTime(lang, entry.atMillis),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

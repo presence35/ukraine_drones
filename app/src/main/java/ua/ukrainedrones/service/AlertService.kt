@@ -43,6 +43,10 @@ import ua.ukrainedrones.connection.offlineSinceOrNull
 import ua.ukrainedrones.connection.reconnectStartMillisOrZero
 import ua.ukrainedrones.domain.ODESA_LAT
 import ua.ukrainedrones.domain.ODESA_LON
+import ua.ukrainedrones.data.ApiMonitor
+import ua.ukrainedrones.data.ManifestResult
+import ua.ukrainedrones.data.SystemEntry
+import ua.ukrainedrones.data.SystemEntryKind
 import ua.ukrainedrones.service.ServiceState
 import java.util.Calendar
 
@@ -215,8 +219,10 @@ private var notif3minShown = false
         scope.launch {
             ConnectionLog.attach(applicationContext)
             DebugLog.attach(applicationContext)
+            ApiMonitor.attach(applicationContext)
             ConnectionLog.awaitAttached()
             DebugLog.awaitAttached()
+            ApiMonitor.awaitAttached()
             val client = ConnectionHolder.getClient(applicationContext)
             val sup = ConnectionHolder.getSupervisor(applicationContext)
             val recStart = ServiceState(applicationContext).reconnectStartMillis().first()
@@ -318,7 +324,12 @@ private var notif3minShown = false
                     screenOnFlow.value = nowOn
                 }
             }
-            ContextCompat.registerReceiver(this, screenReceiver!!, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            try {
+                ContextCompat.registerReceiver(this, screenReceiver!!, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            } catch (_: Exception) {
+                screenReceiver = null
+                screenOnFlow.value = true
+            }
         }
         // Server-driven resolutions/removals only — the map long-press never touches this
         // flow, so the tally excludes manual test triggers. Subscribed only while the tally is
@@ -447,9 +458,11 @@ private var notif3minShown = false
                 if (gps == null && !hasShownGpsFallbackToast) {
                     hasShownGpsFallbackToast = true
                     val s = Strings.get(lang)
-                    android.widget.Toast.makeText(
-                        this@AlertService, s.gpsFallbackOdesa, android.widget.Toast.LENGTH_LONG
-                    ).show()
+                    runCatching {
+                        android.widget.Toast.makeText(
+                            this@AlertService, s.gpsFallbackOdesa, android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
                 val nightActive = isNightActive(
                     NightConfig(night.window.enabled, night.window.startMin, night.window.endMin),
@@ -1253,13 +1266,27 @@ private var notif3minShown = false
     private fun runDailyUpdateCheck() {
         scope.launch {
             val result = UpdateManager(applicationContext).check()
-            if (result !is UpdateState.Available) return@launch
-            val svcState = ServiceState(applicationContext)
-            val userPrefs = UserPrefs(applicationContext)
-            val lastNotified = svcState.lastNotifiedUpdateCode().first()
-            if (result.info.versionCode <= lastNotified) return@launch
-            svcState.setLastNotifiedUpdateCode(result.info.versionCode.toLong())
-            postUpdateNotification(result.info, userPrefs.language().first())
+            if (result is UpdateState.Available) {
+                val svcState = ServiceState(applicationContext)
+                val userPrefs = UserPrefs(applicationContext)
+                val lastNotified = svcState.lastNotifiedUpdateCode().first()
+                if (result.info.versionCode > lastNotified) {
+                    svcState.setLastNotifiedUpdateCode(result.info.versionCode.toLong())
+                    postUpdateNotification(result.info, userPrefs.language().first())
+                }
+            }
+            val manifestResult = ApiMonitor.checkManifest(applicationContext)
+            if (manifestResult is ManifestResult.Changed) {
+                ApiMonitor.record(
+                    SystemEntry(System.currentTimeMillis(), SystemEntryKind.SDK_CHANGED,
+                        "SHA256: ${manifestResult.oldHash} -> ${manifestResult.newHash}")
+                )
+            } else if (manifestResult is ManifestResult.Failed) {
+                ApiMonitor.record(
+                    SystemEntry(System.currentTimeMillis(), SystemEntryKind.SDK_CHECK_FAILED,
+                        manifestResult.message)
+                )
+            }
         }
     }
 

@@ -389,7 +389,11 @@ object Strings {
         val shelterViewListDesc: String,
         val shelterTypeBasic: String,
         val shelterTypeMobile: String,
-        val shelterTypeBunker: String
+        val shelterTypeBunker: String,
+        val logsFilterSystem: String,
+        val apiSdkChanged: String,
+        val apiSdkCheckFailed: String,
+        val apiSystemEmpty: String
     )
 
     data class Widget(
@@ -975,6 +979,10 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val shelterTypeBasic: String get() = misc.shelterTypeBasic
         val shelterTypeMobile: String get() = misc.shelterTypeMobile
         val shelterTypeBunker: String get() = misc.shelterTypeBunker
+        val logsFilterSystem: String get() = misc.logsFilterSystem
+        val apiSdkChanged: String get() = misc.apiSdkChanged
+        val apiSdkCheckFailed: String get() = misc.apiSdkCheckFailed
+        val apiSystemEmpty: String get() = misc.apiSystemEmpty
         val guideTitle: String get() = guide.guideTitle
         val guideSettingsButton: String get() = guide.guideSettingsButton
         val guideCategoryMap: String get() = guide.guideCategoryMap
@@ -1462,6 +1470,10 @@ connOnline = "Онлайн",
         shelterTypeBasic = "Найпростіше укриття",
         shelterTypeMobile = "Мобільне укриття",
         shelterTypeBunker = "Бомбосховище (ЗСЦЗ)",
+        logsFilterSystem = "Система",
+        apiSdkChanged = "SDK змінено",
+        apiSdkCheckFailed = "Перевірка SDK не вдалася",
+        apiSystemEmpty = "Змін системи не зафіксовано",
     )
 
     private fun uaWidget() = Widget(
@@ -2014,6 +2026,10 @@ alertBannerFormat = "%1\$s: alert",
         shelterTypeBasic = "Basic shelter",
         shelterTypeMobile = "Mobile shelter",
         shelterTypeBunker = "Civil defense bunker (CDPS)",
+        logsFilterSystem = "System",
+        apiSdkChanged = "SDK changed",
+        apiSdkCheckFailed = "SDK check failed",
+        apiSystemEmpty = "No system changes recorded",
     )
 
     private fun enWidget() = Widget(
