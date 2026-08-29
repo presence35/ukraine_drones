@@ -38,3 +38,16 @@ recorded retirement path, and the industry direction is vector-only. Target stac
 
 Worked out 2026-08-26. Ship behind nothing — it replaces the map wholesale; do it as its own
 focused task with device testing of every visual surface.
+
+
+### We need to track if neptun.in.ua changes their API hash
+neptun.in.ua/sdk/build-manifest.json
+
+// In UpdateManager's daily check, add:
+ApiMonitor.checkForChanges(context)
+
+Also log unkonwn threat types
+// In your Threat.fromJson() or wherever you parse type
+val typeRaw = json.optString("type", "unknown")
+val type = typeRaw.toThreatTypeOrUnknown() // falls back to UNKNOWN instead of crashing
+###

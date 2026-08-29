@@ -1,9 +1,10 @@
 package ua.ukrainedrones
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
+import android.app.Activity
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -175,7 +176,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     // The settings heart pulses gently until Settings has been opened 10 times.
     val scope = rememberCoroutineScope()
-    val prefs = remember { ZonePrefs(context.applicationContext) }
+    val prefs = remember { UserPrefs(context.applicationContext) }
     var settingsHintRemaining by remember { mutableStateOf(0) }
     var shelterTipStage by remember { mutableStateOf(0) }
     var guideFeatureId by remember { mutableStateOf<String?>(null) }
@@ -195,12 +196,25 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     // The zones sheet edits whatever the map is currently showing: night settings while the
     // night window is active and separate night zones are enabled, day settings otherwise.
     val editingNight = uiState.nightActive && uiState.nightUseCustomZones
+    val requestNotifPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* granted or denied — the user can tap again if denied */ }
+    fun armOrRequestPermission(armed: Boolean, action: (Boolean) -> Unit) {
+        if (armed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        action(armed)
+    }
     LaunchedEffect(Unit) {
         settingsHintRemaining = prefs.settingsHintRemaining().first()
         shelterTipStage = prefs.shelterTipStage().first()
     }
 
     val onExit: () -> Unit = {
+        scope.launch { prefs.setMonitoringEnabled(false) }
         AlertService.stop(context)
         val activity = context as? Activity
         if (activity != null) activity.finishAffinity()
@@ -268,10 +282,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onSlowYellowChange = { if (editingNight) viewModel.setNightSlowYellowKm(it) else viewModel.setSlowYellowKm(it) },
             onFastRedChange = { if (editingNight) viewModel.setNightFastRedMin(it) else viewModel.setFastRedMin(it) },
             onFastYellowChange = { if (editingNight) viewModel.setNightFastYellowMin(it) else viewModel.setFastYellowMin(it) },
-            onSlowRedArmedChange = { if (editingNight) viewModel.setNightSlowRedArmed(it) else viewModel.setSlowRedArmed(it) },
-            onSlowYellowArmedChange = { if (editingNight) viewModel.setNightSlowYellowArmed(it) else viewModel.setSlowYellowArmed(it) },
-            onFastRedArmedChange = { if (editingNight) viewModel.setNightFastRedArmed(it) else viewModel.setFastRedArmed(it) },
-            onFastYellowArmedChange = { if (editingNight) viewModel.setNightFastYellowArmed(it) else viewModel.setFastYellowArmed(it) },
+            onSlowRedArmedChange = { armOrRequestPermission(it) { v -> if (editingNight) viewModel.setNightSlowRedArmed(v) else viewModel.setSlowRedArmed(v) } },
+            onSlowYellowArmedChange = { armOrRequestPermission(it) { v -> if (editingNight) viewModel.setNightSlowYellowArmed(v) else viewModel.setSlowYellowArmed(v) } },
+            onFastRedArmedChange = { armOrRequestPermission(it) { v -> if (editingNight) viewModel.setNightFastRedArmed(v) else viewModel.setFastRedArmed(v) } },
+            onFastYellowArmedChange = { armOrRequestPermission(it) { v -> if (editingNight) viewModel.setNightFastYellowArmed(v) else viewModel.setFastYellowArmed(v) } },
             onThreatCardSizeChange = { viewModel.setThreatCardSize(it) },
             onForceOfflineChange = viewModel::setForceOffline,
             onSimulateMig = viewModel::simulateMig,
@@ -378,10 +392,10 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onNightSlowYellowChange = { viewModel.setNightSlowYellowKm(it) },
                 onNightFastRedChange = { viewModel.setNightFastRedMin(it) },
                 onNightFastYellowChange = { viewModel.setNightFastYellowMin(it) },
-                onNightSlowRedArmedChange = { viewModel.setNightSlowRedArmed(it) },
-                onNightSlowYellowArmedChange = { viewModel.setNightSlowYellowArmed(it) },
-                onNightFastRedArmedChange = { viewModel.setNightFastRedArmed(it) },
-                onNightFastYellowArmedChange = { viewModel.setNightFastYellowArmed(it) },
+                onNightSlowRedArmedChange = { armOrRequestPermission(it) { v -> viewModel.setNightSlowRedArmed(v) } },
+                onNightSlowYellowArmedChange = { armOrRequestPermission(it) { v -> viewModel.setNightSlowYellowArmed(v) } },
+                onNightFastRedArmedChange = { armOrRequestPermission(it) { v -> viewModel.setNightFastRedArmed(v) } },
+                onNightFastYellowArmedChange = { armOrRequestPermission(it) { v -> viewModel.setNightFastYellowArmed(v) } },
                 onNightZoneSirenOverrideChange = { viewModel.setNightZoneSirenOverride(it) },
                 onNightOfficialSirenOverrideChange = { viewModel.setNightOfficialSirenOverride(it) },
                 onFollowMeChange = { viewModel.setFollowMe(it) },
@@ -538,8 +552,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onIconSetChangeForFun = { viewModel.setThreatIconSet(it) },
             onSlowRedChange = { viewModel.setSlowRedKm(it) },
             onSlowYellowChange = { viewModel.setSlowYellowKm(it) },
-            onSlowRedArmedChange = { viewModel.setSlowRedArmed(it) },
-            onSlowYellowArmedChange = { viewModel.setSlowYellowArmed(it) },
+            onSlowRedArmedChange = { armOrRequestPermission(it) { v -> viewModel.setSlowRedArmed(v) } },
+            onSlowYellowArmedChange = { armOrRequestPermission(it) { v -> viewModel.setSlowYellowArmed(v) } },
             onComplete = {
                 viewModel.skipLanguageChoose()
                 if (wizardFromSettings) {
@@ -1109,7 +1123,7 @@ private fun ThreatCardHost(
     val sel = selection.collectAsState().value
     SideEffect {
         sel.selected?.let {
-            android.util.Log.d("PerfTrace", "card composed id=${it.id} t=${System.currentTimeMillis()}")
+            if (BuildConfig.DEBUG) android.util.Log.d("PerfTrace", "card composed id=${it.id} t=${System.currentTimeMillis()}")
         }
     }
     // Back closes the popup first, then exits — fixes "back stuck on home page".

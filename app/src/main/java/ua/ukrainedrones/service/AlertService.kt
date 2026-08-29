@@ -31,12 +31,17 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import ua.ukrainedrones.connection.ConnectionHolder
 import ua.ukrainedrones.connection.ConnectionState
+import ua.ukrainedrones.connection.ConnEventKind
+import ua.ukrainedrones.connection.NeptunConnectionClient
 import ua.ukrainedrones.connection.isConnected
 import ua.ukrainedrones.connection.isDegraded
 import ua.ukrainedrones.connection.isOffline
 import ua.ukrainedrones.connection.isPaused
 import ua.ukrainedrones.connection.offlineSinceOrNull
 import ua.ukrainedrones.connection.reconnectStartMillisOrZero
+import ua.ukrainedrones.domain.ODESA_LAT
+import ua.ukrainedrones.domain.ODESA_LON
+import ua.ukrainedrones.service.ServiceState
 import java.util.Calendar
 
 /**
@@ -109,6 +114,7 @@ class AlertService : Service() {
     private var lastMonitorProgressMax: Int? = null
     private var lastMonitorProgressNow: Int? = null
     private var lastMonitorIgnore: String? = null
+    private var hasShownGpsFallbackToast = false
     private var wasConnected = true
     private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
@@ -202,16 +208,16 @@ private var notif3minShown = false
             DebugLog.awaitAttached()
             val client = ConnectionHolder.getClient(applicationContext)
             val sup = ConnectionHolder.getSupervisor(applicationContext)
-            val recStart = ZonePrefs(applicationContext).reconnectStartMillis().first()
-            val ignoreUntil = ZonePrefs(applicationContext).ignoreRetryUntil().first()
+            val recStart = ServiceState(applicationContext).reconnectStartMillis().first()
+            val ignoreUntil = ServiceState(applicationContext).ignoreRetryUntil().first()
             client.start(savedReconnectStartMs = recStart, savedIgnoreUntilMs = ignoreUntil)
             sup.start()
             // Persist reconnect timestamp across process kills
             launch {
                 client.connectionState.collect { cs ->
                     when (cs) {
-                        is ConnectionState.Offline -> ZonePrefs(applicationContext).setReconnectStartMillis(cs.reconnectStartMillis)
-                        is ConnectionState.Connected -> ZonePrefs(applicationContext).setReconnectStartMillis(0L)
+                        is ConnectionState.Offline -> ServiceState(applicationContext).setReconnectStartMillis(cs.reconnectStartMillis)
+                        is ConnectionState.Connected -> ServiceState(applicationContext).setReconnectStartMillis(0L)
                         else -> {}
                     }
                 }
@@ -219,7 +225,7 @@ private var notif3minShown = false
         }
         scope.launch {
             ConnectionHolder.getClient(applicationContext)
-                .testHarness.setForceOffline(ZonePrefs(applicationContext).forceOffline().first())
+                .testHarness.setForceOffline(ServiceState(applicationContext).forceOffline().first())
         }
         LocationTracker.start(this)
         WidgetUpdater.start(this, scope)
@@ -237,7 +243,7 @@ private var notif3minShown = false
         if (intent?.action == ACTION_RETRY) {
             // The TEMP force-offline test toggle would keep NEPTUN "down" even after a
             // successful reconnect — turn it off so Retry truly restores the stream.
-            scope.launch { ZonePrefs(applicationContext).setForceOffline(false) }
+            scope.launch { ServiceState(applicationContext).setForceOffline(false) }
             val client = ConnectionHolder.getClient(applicationContext)
             client.testHarness.setForceOffline(false)
             client.retryNow()
@@ -283,7 +289,8 @@ private var notif3minShown = false
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun startMonitoring() {
         if (monitoringJob != null) return
-        val prefs = ZonePrefs(applicationContext)
+        val prefs = UserPrefs(applicationContext)
+        val svcState = ServiceState(applicationContext)
         // Server-driven resolutions/removals only — the map long-press never touches this
         // flow, so the tally excludes manual test triggers. Subscribed only while the tally is
         // enabled: off means no collector at all (not even a per-event pref read).
@@ -310,12 +317,12 @@ private var notif3minShown = false
             // first handleState tick could re-ring an alert that a service kill already announced.
             // handleState reconciles these against the live episode; the prefs stay until the
             // episode truly ends, so repeated kills mid-episode still won't re-ring.
-            officialAnnouncedToken = prefs.officialAnnouncedToken().first().ifBlank { null }
-            officialAnnouncedSince = prefs.officialAnnouncedSince().first().ifBlank { null }
-            officialAnnouncedReasonId = prefs.officialAnnouncedReasonId().first().ifBlank { null }
+            officialAnnouncedToken = svcState.officialAnnouncedToken().first().ifBlank { null }
+            officialAnnouncedSince = svcState.officialAnnouncedSince().first().ifBlank { null }
+            officialAnnouncedReasonId = svcState.officialAnnouncedReasonId().first().ifBlank { null }
             // Restore offline-restore state before the first tick so handleState doesn't miss
             // a pre-kill outage (wasConnected starts true; this sets it false when needed).
-            if (prefs.offlinePendingSince().first() > 0) {
+            if (svcState.offlinePendingSince().first() > 0) {
                 wasConnected = false
                 offlineRestorePending = true
             }
@@ -404,7 +411,16 @@ private var notif3minShown = false
                 val followMe = config.followMe
                 val lang = tail.lang
                 val pinned = tail.pinned?.let { name -> Cities.byUa[name] }
-                val focus = if (followMe) gps else pinned?.let { LatLng(it.lat, it.lon) } ?: gps
+                val odesaFallback = LatLng(ODESA_LAT, ODESA_LON)
+                val focus = if (followMe) gps ?: odesaFallback
+                    else pinned?.let { LatLng(it.lat, it.lon) } ?: gps ?: odesaFallback
+                if (gps == null && !hasShownGpsFallbackToast) {
+                    hasShownGpsFallbackToast = true
+                    val s = Strings.get(lang)
+                    android.widget.Toast.makeText(
+                        this@AlertService, s.gpsFallbackOdesa, android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
                 val nightActive = isNightActive(
                     NightConfig(night.window.enabled, night.window.startMin, night.window.endMin),
                     now
@@ -528,7 +544,7 @@ private var notif3minShown = false
             offlineAlertJob = scope.launch {
                 // Once the grace elapses (and an official alert didn't already surface), the
                 // monitor notification's Retry action carries the recovery path anyway.
-                delay(NeptunClient.OFFLINE_GRACE_MS)
+                delay(NeptunConnectionClient.OFFLINE_GRACE_MS)
                 if (ConnectionHolder.getClient(applicationContext).connectionState.value.isConnected) persistOfflineSince(0L)
             }
         } else if (offlineRestorePending) {
@@ -538,7 +554,7 @@ private var notif3minShown = false
             offlineRestorePending = false
             offlineAlertJob?.cancel()
             offlineAlertJob = scope.launch {
-                delay(NeptunClient.OFFLINE_GRACE_MS)
+                delay(NeptunConnectionClient.OFFLINE_GRACE_MS)
                 if (ConnectionHolder.getClient(applicationContext).connectionState.value.isConnected) persistOfflineSince(0L)
             }
         }
@@ -1093,14 +1109,14 @@ private var notif3minShown = false
 
     /** Persist the current outage start across service restarts (0 clears it). */
     private suspend fun persistOfflineSince(ts: Long) {
-        ZonePrefs(applicationContext).setOfflinePendingSince(ts)
+        ServiceState(applicationContext).setOfflinePendingSince(ts)
     }
 
     /** Persist the just-announced official alert episode so a service restart mid-episode
      *  doesn't re-ring it (see the restart reconciliation in handleState). */
     private fun persistOfficialAnnounced(state: MonitorState) {
         scope.launch {
-            ZonePrefs(applicationContext).setOfficialAnnounced(
+            ServiceState(applicationContext).setOfficialAnnounced(
                 state.focusToken, state.focusOblastAlertSince, state.officialReasonThreatId
             )
         }
@@ -1110,7 +1126,7 @@ private var notif3minShown = false
      *  switch, alert gone) so a future alert announces fresh. */
     private fun clearOfficialAnnounced() {
         scope.launch {
-            ZonePrefs(applicationContext).setOfficialAnnounced(null, null, null)
+            ServiceState(applicationContext).setOfficialAnnounced(null, null, null)
         }
     }
 
@@ -1202,11 +1218,12 @@ private var notif3minShown = false
         scope.launch {
             val result = UpdateManager(applicationContext).check()
             if (result !is UpdateState.Available) return@launch
-            val prefs = ZonePrefs(applicationContext)
-            val lastNotified = prefs.lastNotifiedUpdateCode().first()
+            val svcState = ServiceState(applicationContext)
+            val userPrefs = UserPrefs(applicationContext)
+            val lastNotified = svcState.lastNotifiedUpdateCode().first()
             if (result.info.versionCode <= lastNotified) return@launch
-            prefs.setLastNotifiedUpdateCode(result.info.versionCode.toLong())
-            postUpdateNotification(result.info, prefs.language().first())
+            svcState.setLastNotifiedUpdateCode(result.info.versionCode.toLong())
+            postUpdateNotification(result.info, userPrefs.language().first())
         }
     }
 

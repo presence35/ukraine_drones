@@ -2,6 +2,7 @@ package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionState
 import ua.ukrainedrones.connection.NeptunConnectionClient
+import ua.ukrainedrones.connection.buildTestMig
 import ua.ukrainedrones.connection.isDegraded
 import ua.ukrainedrones.connection.isOffline
 import org.junit.Assert.assertEquals

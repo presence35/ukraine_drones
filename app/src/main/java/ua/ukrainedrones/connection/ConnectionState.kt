@@ -1,5 +1,57 @@
 package ua.ukrainedrones.connection
 
+import ua.ukrainedrones.Strings
+import ua.ukrainedrones.ThreatType
+import java.time.Instant
+
+/** Live reconnect state for the current offline episode — transient, never persisted. */
+data class ConnRetryState(
+    val attempt: Int,
+    val delayMs: Long,
+    val nextAtMs: Long,
+    val networkValidated: Boolean
+)
+
+/** Kind of a line in the current offline episode's transient reconnect log. */
+enum class ConnEventKind {
+    CONNECTION_LOST, RETRY_SCHEDULED, NO_NETWORK,
+    MILESTONE_3, MILESTONE_5, MILESTONE_6, MILESTONE_10, MILESTONE_20,
+    GAVE_UP, PAUSED
+}
+
+/** One line of the current offline episode's reconnect log (the in-between only). */
+data class ConnEvent(
+    val atMillis: Long,
+    val kind: ConnEventKind,
+    val attempt: Int? = null,
+    val delayMs: Long? = null
+) {
+    fun label(s: Strings.StringSet): String = when (kind) {
+        ConnEventKind.CONNECTION_LOST -> s.connEventLost
+        ConnEventKind.RETRY_SCHEDULED -> String.format(s.connEventRetry, (delayMs ?: 0L) / 1000, attempt ?: 0)
+        ConnEventKind.NO_NETWORK -> s.connEventNoNetwork
+        ConnEventKind.MILESTONE_3 -> s.connEventMin3
+        ConnEventKind.MILESTONE_5 -> s.connEventMin5
+        ConnEventKind.MILESTONE_6 -> s.connEventMin6
+        ConnEventKind.MILESTONE_10 -> s.connEventMin10
+        ConnEventKind.MILESTONE_20 -> s.connEventMin20
+        ConnEventKind.GAVE_UP -> s.connEventGaveUp
+        ConnEventKind.PAUSED -> s.connEventPaused
+    }
+}
+
+/** A threat just disappeared from the server feed (resolved or a remove frame) — drives the map death animation. */
+data class ThreatRemoved(
+    val id: String,
+    val lat: Double,
+    val lon: Double,
+    val type: ThreatType,
+    val courseDeg: Double = 0.0,
+    val region: String? = null,
+    val district: String? = null,
+    val locality: String? = null
+)
+
 /**
  * Formal Connection State Machine for the NEPTUN WebSocket telemetry feed.
  *

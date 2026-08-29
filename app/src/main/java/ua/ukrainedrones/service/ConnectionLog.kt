@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import ua.ukrainedrones.connection.NeptunConnectionClient
+import ua.ukrainedrones.service.ServiceState
 
 /** Connection states shown in the status log — mirrors the header pill's two states. */
 enum class ConnStatus { ONLINE, OFFLINE }
@@ -54,7 +56,7 @@ object ConnectionLog {
         // The DataStore reads are dispatched off the calling thread: attach() is invoked from
         // the main thread at app/service startup, and the attachScope runs on IO.
         attachScope.launch {
-            val prefs = ZonePrefs(context.applicationContext)
+            val prefs = ServiceState(context.applicationContext)
             val loaded = parse(prefs.connLog().first())
             val since = prefs.connLogPendingSince().first()
             val name = prefs.connLogPendingStatus().first()
@@ -78,7 +80,7 @@ object ConnectionLog {
     fun observe(status: ConnStatus, now: Long) {
         val prev = lastStatus
         lastStatus = status
-        val t = commitLogState(prev, status, now, pending, _entries.value, MAX_ENTRIES, NeptunClient.OFFLINE_GRACE_MS) ?: return
+        val t = commitLogState(prev, status, now, pending, _entries.value, MAX_ENTRIES, NeptunConnectionClient.OFFLINE_GRACE_MS) ?: return
         _entries.value = t.entries
         pending = t.nextPending
         if (t.persistPendingSince >= 0) {
@@ -93,14 +95,14 @@ object ConnectionLog {
 
     private fun persist() {
         val context = appContext ?: return
-        attachScope.launch { ZonePrefs(context).setConnLog(serialize(_entries.value)) }
+        attachScope.launch { ServiceState(context).setConnLog(serialize(_entries.value)) }
     }
 
     private fun persistPending(since: Long, status: String) {
         val context = appContext ?: return
         attachScope.launch {
-            ZonePrefs(context).setConnLogPendingSince(since)
-            ZonePrefs(context).setConnLogPendingStatus(status)
+            ServiceState(context).setConnLogPendingSince(since)
+            ServiceState(context).setConnLogPendingStatus(status)
         }
     }
 

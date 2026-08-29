@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
@@ -25,11 +27,11 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 import ua.ukrainedrones.OblastAlert
+import ua.ukrainedrones.Reliability
 import ua.ukrainedrones.Threat
-import ua.ukrainedrones.ThreatRemoved
 import ua.ukrainedrones.ThreatType
-import ua.ukrainedrones.buildTestMig
 import java.io.IOException
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -57,6 +59,8 @@ class NeptunConnectionClient(
         const val REST_KEEP_ALIVE_STALE_MS = 15_000L
         const val USER_SHOT_GRACE_MS = 3_000L
         const val NO_NETWORK_RECONNECT_MS = 60_000L
+        const val NEPTUN_DOMAIN = "neptun.in.ua"
+        internal const val NEPTUN_SITE_URL = "https://$NEPTUN_DOMAIN/"
 
         fun calculateBackoffMs(attempt: Int): Long = when {
             attempt <= 1 -> 1000L + (0..2000).random()
@@ -105,6 +109,9 @@ class NeptunConnectionClient(
 
     // User-shot grace tracking
     private val userShotAt = ConcurrentHashMap<String, Long>()
+
+    // Mutex to serialize _threats.value mutations from REST and WS paths
+    private val threatsMutex = Mutex()
 
     // Outage and pause persistence
     private var persistedReconnectStartMs = 0L
@@ -257,7 +264,7 @@ class NeptunConnectionClient(
                         lastFrameAtMs = now
                     )
                 }
-                handleFrame(text)
+                scope.launch { handleFrame(text) }
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -356,27 +363,44 @@ class NeptunConnectionClient(
                         return
                     }
                     val body = it.body?.string() ?: return
-                    parseRestPayload(body)
+                    scope.launch { parseRestPayload(body) }
                 }
             }
         })
     }
 
-    private fun parseRestPayload(body: String) {
+    private suspend fun parseRestPayload(body: String) {
         try {
             val env = JSONObject(body)
             val arr = env.optJSONArray("threats") ?: return
-            val currentMap = _threats.value
-            val merged = LinkedHashMap<String, Threat>(currentMap)
-
-            for (i in 0 until arr.length()) {
-                val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
-                val existing = merged[t.id]
-                if (existing == null || (t.updatedAtMillis ?: 0L) >= (existing.updatedAtMillis ?: 0L)) {
-                    merged[t.id] = t
+            threatsMutex.withLock {
+                val snapshotMap = LinkedHashMap<String, Threat>()
+                for (i in 0 until arr.length()) {
+                    val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
+                    snapshotMap[t.id] = t
                 }
+                val now = System.currentTimeMillis()
+                val prev = _threats.value
+                // Preserve user-shot drones within grace window
+                for (id in prev.keys) {
+                    if (id in snapshotMap) continue
+                    val shotAt = userShotAt[id] ?: continue
+                    if (now - shotAt <= USER_SHOT_GRACE_MS) {
+                        snapshotMap[id] = prev.getValue(id)
+                    }
+                }
+                // Emit ThreatRemoved for IDs that disappeared from REST snapshot
+                for (id in prev.keys) {
+                    if (id in snapshotMap) continue
+                    if (userShotAt.containsKey(id)) continue
+                    val gone = prev.getValue(id)
+                    _removedThreats.tryEmit(
+                        ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
+                    )
+                }
+                userShotAt.entries.removeIf { now - it.value > USER_SHOT_GRACE_MS }
+                _threats.value = testHarness.mergeTestThreats(snapshotMap)
             }
-            _threats.value = testHarness.mergeTestThreats(merged)
             _lastError.value = null
         } catch (_: Exception) {
             _lastError.value = "Malformed REST payload"
@@ -422,55 +446,61 @@ class NeptunConnectionClient(
         }
     }
 
-    private fun handleFrame(text: String) {
+    private suspend fun handleFrame(text: String) {
         try {
             val env = JSONObject(text)
             when (env.optString("type")) {
                 "snapshot" -> {
                     val data = env.optJSONObject("data") ?: return
                     val arr = data.optJSONArray("threats") ?: return
-                    val map = LinkedHashMap<String, Threat>()
-                    for (i in 0 until arr.length()) {
-                        val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
-                        map[t.id] = t
-                    }
-                    val now = System.currentTimeMillis()
-                    val prev = _threats.value
-                    // Preserve user-shot drones within grace window
-                    for (id in prev.keys) {
-                        if (id in map) continue
-                        val shotAt = userShotAt[id] ?: continue
-                        if (now - shotAt <= USER_SHOT_GRACE_MS) {
-                            map[id] = prev.getValue(id)
+                    threatsMutex.withLock {
+                        val map = LinkedHashMap<String, Threat>()
+                        for (i in 0 until arr.length()) {
+                            val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
+                            map[t.id] = t
                         }
+                        val now = System.currentTimeMillis()
+                        val prev = _threats.value
+                        // Preserve user-shot drones within grace window
+                        for (id in prev.keys) {
+                            if (id in map) continue
+                            val shotAt = userShotAt[id] ?: continue
+                            if (now - shotAt <= USER_SHOT_GRACE_MS) {
+                                map[id] = prev.getValue(id)
+                            }
+                        }
+                        userShotAt.entries.removeIf { now - it.value > USER_SHOT_GRACE_MS }
+                        _threats.value = testHarness.mergeTestThreats(map)
                     }
-                    userShotAt.entries.removeIf { now - it.value > USER_SHOT_GRACE_MS }
-                    _threats.value = testHarness.mergeTestThreats(map)
                 }
                 "upsert" -> {
                     val data = env.optJSONObject("data") ?: return
                     val t = Threat.fromJson(data) ?: return
-                    val updated = _threats.value.toMutableMap()
-                    if (t.status == "resolved") {
-                        _removedThreats.tryEmit(
-                            ThreatRemoved(t.id, t.lat, t.lon, t.type, t.courseDeg, t.region, t.district, t.locality)
-                        )
-                        updated.remove(t.id)
-                    } else {
-                        updated[t.id] = t
+                    threatsMutex.withLock {
+                        val updated = _threats.value.toMutableMap()
+                        if (t.status == "resolved") {
+                            _removedThreats.tryEmit(
+                                ThreatRemoved(t.id, t.lat, t.lon, t.type, t.courseDeg, t.region, t.district, t.locality)
+                            )
+                            updated.remove(t.id)
+                        } else {
+                            updated[t.id] = t
+                        }
+                        _threats.value = updated
                     }
-                    _threats.value = updated
                 }
                 "remove" -> {
                     val data = env.optJSONObject("data") ?: return
                     val id = data.optString("id")
-                    val updated = _threats.value.toMutableMap()
-                    updated.remove(id)?.let { gone ->
-                        _removedThreats.tryEmit(
-                            ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
-                        )
+                    threatsMutex.withLock {
+                        val updated = _threats.value.toMutableMap()
+                        updated.remove(id)?.let { gone ->
+                            _removedThreats.tryEmit(
+                                ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
+                            )
+                        }
+                        _threats.value = updated
                     }
-                    _threats.value = updated
                 }
                 "alerts" -> {
                     val data = env.optJSONObject("data") ?: return
@@ -587,4 +617,34 @@ class NeptunConnectionClient(
             return merged
         }
     }
+}
+
+internal fun buildTestMig(id: String, now: Long, lat: Double, lon: Double): Threat {
+    val nowIso = Instant.ofEpochMilli(now).toString()
+    return Threat(
+        id = id,
+        type = ThreatType.AVIATION,
+        title = "",
+        region = null,
+        district = null,
+        locality = null,
+        lat = lat,
+        lon = lon,
+        heading = null,
+        bearingDeg = null,
+        status = "active",
+        advisory = false,
+        areaOnly = false,
+        confirmations = 2,
+        reliability = Reliability.HIGH,
+        count = 0,
+        explanationShort = null,
+        speedKmh = null,
+        uncertaintyKm = null,
+        positionQuality = "confirmed",
+        confirmedAt = nowIso,
+        confirmedAtMillis = now,
+        updatedAt = nowIso,
+        updatedAtMillis = now
+    )
 }

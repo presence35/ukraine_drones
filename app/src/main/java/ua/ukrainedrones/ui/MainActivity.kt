@@ -55,7 +55,12 @@ class MainActivity : ComponentActivity() {
         cleanLegacyOsmdroidCache()
         ConnectionLog.attach(applicationContext)
         DebugLog.attach(applicationContext)
-        AlertService.start(this)
+        lifecycleScope.launch {
+            val monitoringEnabled = UserPrefs(applicationContext).monitoringEnabled().first()
+            if (monitoringEnabled) {
+                AlertService.start(this@MainActivity)
+            }
+        }
         setContent {
             // Cap the system font scale so extreme accessibility sizes can't break the layout;
             // the popup/banner still wrap and scroll up to this ceiling.
@@ -144,7 +149,7 @@ class MainActivity : ComponentActivity() {
      */
     private fun cleanLegacyOsmdroidCache() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val prefs = ZonePrefs(applicationContext)
+            val prefs = UserPrefs(applicationContext)
             if (prefs.legacyCacheCleaned().first()) return@launch
             File(filesDir, "osmdroid").takeIf { it.exists() }?.deleteRecursively()
             getExternalFilesDir(null)?.let { base ->
@@ -192,7 +197,7 @@ class MainActivity : ComponentActivity() {
      */
     private fun deferPermissionRequests() {
         lifecycleScope.launch {
-            val prefs = ZonePrefs(applicationContext)
+            val prefs = UserPrefs(applicationContext)
             // Re-arm for this session — a previous "Later" deferral only lasts one launch.
             prefs.setPermissionPromptDeferred(false)
             val wizardDone = prefs.wizardCompleted().first()

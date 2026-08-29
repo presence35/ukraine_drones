@@ -2,6 +2,8 @@ package ua.ukrainedrones
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import ua.ukrainedrones.connection.ConnEvent
+import ua.ukrainedrones.connection.ConnEventKind
 
 class ConnEventTest {
 

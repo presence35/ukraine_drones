@@ -382,6 +382,7 @@ object Strings {
         val gpsStatusTitle: String,
         val networkLocationOnly: String,
         val updatingPreciseGpsToast: String,
+        val gpsFallbackOdesa: String,
         val shelterLongPressTip: String,
         val shelterTapTip: String,
         val shelterViewListLabel: String,
@@ -963,6 +964,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val gpsPreciseBlocked: String get() = misc.gpsPreciseBlocked
         val gpsOpenSettings: String get() = misc.gpsOpenSettings
         val gpsFixFresh: String get() = misc.gpsFixFresh
+        val gpsFallbackOdesa: String get() = misc.gpsFallbackOdesa
         val gpsStatusTitle: String get() = misc.gpsStatusTitle
         val networkLocationOnly: String get() = misc.networkLocationOnly
         val updatingPreciseGpsToast: String get() = misc.updatingPreciseGpsToast
@@ -1452,6 +1454,7 @@ connOnline = "Онлайн",
         gpsStatusTitle = "Точний GPS",
         networkLocationOnly = "Мережева локація (вежі зв'язку)",
         updatingPreciseGpsToast = "Оновлення точного GPS…",
+        gpsFallbackOdesa = "GPS недоступний — використовуємо Одесу",
         shelterLongPressTip = "Довго натисни кнопку «Укриття», щоб відкрити повний список",
         shelterTapTip = "Торкнись кнопки «Укриття», щоб побачити укриття поруч",
         shelterViewListLabel = "Список укриттів (довідник)",
@@ -1498,9 +1501,9 @@ connOnline = "Онлайн",
         guideConnD3 = "Шкала масштабу в кутку показує реальні відстані на мапі.",
         guideZonesTitle = "Червона та жовта зони",
         guideZonesSummary = "Повільні загрози оцінюються за відстанню, швидкі — за часом до прильоту.",
-        // NOTE: 20/50 км — значення за замовчуванням, див. ZonePrefs.
+        // NOTE: 20/50 км — значення за замовчуванням, див. UserPrefs.
         guideZonesD1 = "Повільні (дрони): червона зона — до 20 км, жовта — до 50 км.",
-        // NOTE: 5/20 хв — значення за замовчуванням, див. ZonePrefs.
+        // NOTE: 5/20 хв — значення за замовчуванням, див. UserPrefs.
         guideZonesD2 = "Швидкі (ракети, КАБ): червона зона — до 5 хв, жовта — до 20 хв до прильоту.",
         guideZonesD3 = "Кола на мапі показують відстань повільних зон і слідують за твоїм положенням.",
         guideEditZonesTitle = "Зони та оповіщення",
@@ -2003,6 +2006,7 @@ alertBannerFormat = "%1\$s: alert",
         gpsStatusTitle = "Precise GPS",
         networkLocationOnly = "Cell tower location only",
         updatingPreciseGpsToast = "Updating precise GPS…",
+        gpsFallbackOdesa = "GPS unavailable — using Odesa",
         shelterLongPressTip = "Long-press the shelter button to open the full list",
         shelterTapTip = "Tap the shelter button to see shelters near you",
         shelterViewListLabel = "Shelter directory (reference)",
@@ -2049,9 +2053,9 @@ alertBannerFormat = "%1\$s: alert",
         guideConnD3 = "The scale bar in the corner gives you real distances on the map.",
         guideZonesTitle = "Red & yellow zones",
         guideZonesSummary = "Slow threats are measured by distance, fast threats by time-to-arrival.",
-        // NOTE: 20/50 km are defaults — see ZonePrefs. Guide uses them as illustrative examples.
+        // NOTE: 20/50 km are defaults — see UserPrefs. Guide uses them as illustrative examples.
         guideZonesD1 = "Slow (drones): red zone within 20 km, yellow within 50 km.",
-        // NOTE: 5/20 min are defaults — see ZonePrefs. Guide uses them as illustrative examples.
+        // NOTE: 5/20 min are defaults — see UserPrefs. Guide uses them as illustrative examples.
         guideZonesD2 = "Fast (missiles, guided bombs): red zone within 5 min, yellow within 20 min to arrival.",
         guideZonesD3 = "The circles on the map show the slow zones' distance and follow your position.",
         guideEditZonesTitle = "Zones & alerts",

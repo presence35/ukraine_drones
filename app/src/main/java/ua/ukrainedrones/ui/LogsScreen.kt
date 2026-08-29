@@ -1,6 +1,8 @@
 package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionHolder
+import ua.ukrainedrones.connection.ConnEvent
+import ua.ukrainedrones.connection.ConnRetryState
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.animation.core.animateFloatAsState

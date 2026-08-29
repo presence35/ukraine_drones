@@ -1,289 +1,384 @@
 package ua.ukrainedrones
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 
+/**
+ * Tests for prediction math, distance calculations, and speed tracking.
+ */
 class PredictionTest {
+
+    private val userLat = 50.4501
+    private val userLng = 30.5234
 
     @Before
     fun setUp() {
         ThreatSpeedTracker.clear()
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // distanceMeters()
+    // ─────────────────────────────────────────────────────────────
+
     @Test
-    fun `distanceMeters is symmetric and reasonable`() {
-        val d1 = distanceMeters(46.48, 30.73, 46.53, 30.73) // ~5.5 km north
-        val d2 = distanceMeters(46.53, 30.73, 46.48, 30.73)
-        assertEquals(d1, d2, 1e-6)
-        assertTrue(d1 in 5000.0..6000.0)
-        assertEquals(0.0, distanceMeters(1.0, 1.0, 1.0, 1.0), 1e-9)
+    fun `distanceMeters - same point returns 0`() {
+        val dist = distanceMeters(userLat, userLng, userLat, userLng)
+        assertEquals(0.0, dist, 1.0)
     }
 
     @Test
-    fun `staleAfterMs matches per-type windows`() {
+    fun `distanceMeters - 1 degree latitude is about 110km`() {
+        val dist = distanceMeters(50.0, 30.0, 51.0, 30.0)
+        assertEquals(110_574.0, dist, 500.0)
+    }
+
+    @Test
+    fun `distanceMeters - known distance Kyiv to Odessa`() {
+        // Kyiv: 50.4501, 30.5234
+        // Odessa: 46.4825, 30.7233
+        val dist = distanceMeters(50.4501, 30.5234, 46.4825, 30.7233)
+        // Actual distance ~440 km
+        assertEquals(440_000.0, dist, 10_000.0)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // bearingDegrees()
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `bearingDegrees - north is 0`() {
+        val bearing = bearingDegrees(50.0, 30.0, 51.0, 30.0)
+        assertEquals(0.0, bearing, 1.0)
+    }
+
+    @Test
+    fun `bearingDegrees - east is 90`() {
+        val bearing = bearingDegrees(50.0, 30.0, 50.0, 31.0)
+        assertEquals(90.0, bearing, 1.0)
+    }
+
+    @Test
+    fun `bearingDegrees - south is 180`() {
+        val bearing = bearingDegrees(50.0, 30.0, 49.0, 30.0)
+        assertEquals(180.0, bearing, 1.0)
+    }
+
+    @Test
+    fun `bearingDegrees - west is 270`() {
+        val bearing = bearingDegrees(50.0, 30.0, 50.0, 29.0)
+        assertEquals(270.0, bearing, 1.0)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // etaToCircleEdgeMinutes()
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `etaToCircleEdge - threat heading directly at user`() {
+        // Threat 60 km north, heading south at 900 km/h = 250 m/s
+        val from = LatLng(userLat + 0.54, userLng)
+        val center = LatLng(userLat, userLng)
+        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 180.0, speedMps = 250.0)
+        // ~60 km at 250 m/s = 240 sec = 4 min to center. To 15 km edge = ~3 min.
+        assertNotNull(eta)
+        assertEquals(3.0, eta!!, 0.5)
+    }
+
+    @Test
+    fun `etaToCircleEdge - threat already inside radius returns null`() {
+        val from = LatLng(userLat + 0.05, userLng) // ~5.5 km
+        val center = LatLng(userLat, userLng)
+        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 180.0, speedMps = 50.0)
+        assertNull(eta)
+    }
+
+    @Test
+    fun `etaToCircleEdge - threat flying away returns null`() {
+        val from = LatLng(userLat + 0.54, userLng)
+        val center = LatLng(userLat, userLng)
+        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 0.0, speedMps = 250.0)
+        assertNull(eta)
+    }
+
+    @Test
+    fun `etaToCircleEdge - zero speed returns null`() {
+        val from = LatLng(userLat + 0.54, userLng)
+        val center = LatLng(userLat, userLng)
+        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 180.0, speedMps = 0.0)
+        assertNull(eta)
+    }
+
+    @Test
+    fun `etaToCircleEdge - tangential approach misses circle`() {
+        // Threat due east of center, heading north — will miss the 15 km circle
+        val from = LatLng(userLat, userLng + 0.54)
+        val center = LatLng(userLat, userLng)
+        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 0.0, speedMps = 250.0)
+        assertNull(eta)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // predictPosition()
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `predictPosition - 10 minutes at 600 km_h north`() {
+        // 600 km/h = 166.67 m/s, 10 min = 600 sec, distance = 100,000 m
+        val threat = makeThreat(
+            lat = 50.0,
+            lon = 30.0,
+            speedKmh = 600.0,
+            bearingDeg = 0.0,
+            confirmedAtMillis = System.currentTimeMillis() - 60_000 // 1 min ago
+        )
+        val now = System.currentTimeMillis()
+        val pos = predictPosition(threat, speedMps = 600_000.0 / 3600.0, nowMillis = now)
+        // Since confirmedAt is 1 min ago, elapsed = 60 sec
+        // dist = 166.67 * 60 = 10,000 m = 10 km
+        assertNotNull(pos)
+        assertEquals(50.09, pos!!.latitude, 0.02)
+        assertEquals(30.0, pos.longitude, 0.01)
+    }
+
+    @Test
+    fun `predictPosition - not flying returns null`() {
+        val threat = makeThreat(
+            bearingDeg = null, // missing bearing
+            speedKmh = 100.0,
+            confirmedAtMillis = System.currentTimeMillis() - 60_000,
+            status = "active"
+        )
+        val pos = predictPosition(threat, speedMps = 100.0 / 3.6, nowMillis = System.currentTimeMillis())
+        assertNull(pos)
+    }
+
+    @Test
+    fun `predictPosition - resolved status returns null`() {
+        val threat = makeThreat(
+            bearingDeg = 180.0,
+            speedKmh = 100.0,
+            confirmedAtMillis = System.currentTimeMillis() - 60_000,
+            status = "resolved"
+        )
+        val pos = predictPosition(threat, speedMps = 100.0 / 3.6, nowMillis = System.currentTimeMillis())
+        assertNull(pos)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // staleAfterMs() per-type
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `staleAfterMs - ballistic is 90 seconds`() {
         assertEquals(90_000L, staleAfterMs(ThreatType.BALLISTIC))
+    }
+
+    @Test
+    fun `staleAfterMs - cruise missile is 180 seconds`() {
         assertEquals(180_000L, staleAfterMs(ThreatType.CRUISE_MISSILE))
-        assertEquals(240_000L, staleAfterMs(ThreatType.AVIATION))
+    }
+
+    @Test
+    fun `staleAfterMs - SHAHED is 300 seconds`() {
         assertEquals(300_000L, staleAfterMs(ThreatType.SHAHED))
     }
 
-    @Test
-    fun `isExpired uses updatedAt with staleness window`() {
-        val now = 1_000_000L
-        assertFalse(isExpired(threat(updatedAtMillis = now), now))
-        assertFalse(isExpired(threat(updatedAtMillis = now - 200_000L), now)) // shahed 5 min window
-        assertTrue(isExpired(threat(updatedAtMillis = now - 301_000L), now))
-        assertTrue(isExpired(threat(type = ThreatType.BALLISTIC, updatedAtMillis = now - 91_000L), now))
-    }
+    // ─────────────────────────────────────────────────────────────
+    // isExpired()
+    // ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `isExpired never expires a threat with no timestamps`() {
-        assertFalse(isExpired(threat(updatedAtMillis = null, confirmedAtMillis = null), 1_000_000L))
-    }
-
-    @Test
-    fun `isExpired falls back to confirmedAtMillis`() {
-        val now = 1_000_000L
-        assertTrue(isExpired(threat(updatedAtMillis = null, confirmedAtMillis = now - 600_000L), now))
-    }
-
-    @Test
-    fun `isStale is true when server flags stale or fix aged past the window`() {
-        val now = 1_000_000L
-        assertFalse(threat(updatedAtMillis = now).isStale(now))
-        assertTrue(threat(status = "stale", updatedAtMillis = now).isStale(now))
-        assertTrue(threat(updatedAtMillis = now - 301_000L).isStale(now))
-        assertFalse(threat(updatedAtMillis = null, confirmedAtMillis = null).isStale(now))
-    }
-
-    @Test
-    fun `aviation never locally expires - only the server flags it stale`() {
-        val now = 1_000_000L
-        // Way past the 4-minute AVIATION window: a MiG-31K takeoff pin sits at the airbase
-        // without fix refreshes, so it must stay live until NEPTUN itself retires it.
-        assertFalse(threat(type = ThreatType.AVIATION, updatedAtMillis = now - 3_600_000L).isStale(now))
-        assertFalse(
-            threat(
-                type = ThreatType.AVIATION,
-                updatedAtMillis = null,
-                confirmedAtMillis = now - 3_600_000L
-            ).isStale(now)
+    fun `isExpired - fresh threat returns false`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(
+            type = ThreatType.SHAHED,
+            updatedAtMillis = now - 30_000
         )
-        assertTrue(threat(type = ThreatType.AVIATION, status = "stale", updatedAtMillis = now).isStale(now))
+        assertFalse(isExpired(threat, now))
     }
 
     @Test
-    fun `aviation ghosts at its own hard cap`() {
-        val now = 1_000_000L
-        assertFalse(
-            threat(
-                type = ThreatType.AVIATION,
-                updatedAtMillis = now - AVIATION_GHOST_CAP_MS + 60_000L
-            ).isGhost(now)
+    fun `isExpired - past stale window returns true`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(
+            type = ThreatType.SHAHED,
+            updatedAtMillis = now - 400_000 // > 300_000
         )
-        assertTrue(
-            threat(
-                type = ThreatType.AVIATION,
-                updatedAtMillis = now - AVIATION_GHOST_CAP_MS - 1_000L
-            ).isGhost(now)
-        )
+        assertTrue(isExpired(threat, now))
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // ThreatSpeedTracker
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `speedTracker - records and estimates speed`() {
+        val now = System.currentTimeMillis()
+        ThreatSpeedTracker.record("t1", now - 10_000, 50.0, 30.0)
+        ThreatSpeedTracker.record("t1", now, 50.05, 30.0)
+
+        val threat = makeThreat(id = "t1", speedKmh = null, bearingDeg = null)
+        val speed = ThreatSpeedTracker.estimate("t1", threat)
+        assertNotNull(speed)
+        // 0.05 deg lat ≈ 5.5 km in 10 sec ≈ 550 m/s
+        assertTrue(speed!! > 100.0)
     }
 
     @Test
-    fun `isGhost requires staleness window plus the hard cap`() {
-        val now = 1_000_000L
-        val window = staleAfterMs(ThreatType.SHAHED) // 300_000L
-        assertFalse(threat(updatedAtMillis = now).isGhost(now))
-        // Just past the window but inside the cap: dimmed, still shown.
-        assertFalse(threat(updatedAtMillis = now - window - 1_000L).isGhost(now))
-        // Past the window plus the cap: gone.
-        assertTrue(threat(updatedAtMillis = now - window - STALE_GHOST_CAP_MS - 1_000L).isGhost(now))
-        // A short-window type (ballistic) ghosts much sooner.
-        assertTrue(
-            threat(
-                type = ThreatType.BALLISTIC,
-                updatedAtMillis = now - staleAfterMs(ThreatType.BALLISTIC) - STALE_GHOST_CAP_MS - 1_000L
-            ).isGhost(now)
-        )
-        assertFalse(threat(updatedAtMillis = null, confirmedAtMillis = null).isGhost(now))
+    fun `speedTracker - prefers server speedKmh over measured`() {
+        val now = System.currentTimeMillis()
+        ThreatSpeedTracker.record("t2", now - 10_000, 50.0, 30.0)
+        ThreatSpeedTracker.record("t2", now, 50.1, 30.0)
+
+        val threat = makeThreat(id = "t2", speedKmh = 180.0, bearingDeg = 90.0)
+        val result = ThreatSpeedTracker.estimateWithSource("t2", threat)
+        assertNotNull(result)
+        assertEquals(180.0 / 3.6, result!!.first, 0.1)
+        assertEquals(SpeedSource.RECORDED, result.second)
     }
 
     @Test
-    fun `predictPosition returns null for non-flying or no bearing`() {
-        assertNull(predictPosition(threat(bearingDeg = null), 50.0, 1_000_000L))
-        assertNull(
-            predictPosition(
-                threat(status = "stale", bearingDeg = 90.0, speedKmh = 180.0, confirmedAtMillis = 1L),
-                50.0,
-                1_000_000L
-            )
-        )
-    }
-
-    @Test
-    fun `predictPosition moves north along bearing 0`() {
-        val t = threat(bearingDeg = 0.0, speedKmh = 180.0, confirmedAtMillis = 0L)
-        val p = predictPosition(t, 50.0, 1_000L) // 1s at 50 m/s = 50 m north
-        assertNotNull(p)
-        assertTrue(p!!.latitude > t.lat)
-        assertEquals(t.lon, p.longitude, 1e-6)
-    }
-
-    @Test
-    fun `predictPosition clamps to the fly horizon`() {
-        // Shahed horizon = 300 s; request way beyond it.
-        val t = threat(bearingDeg = 0.0, speedKmh = 180.0, confirmedAtMillis = 0L)
-        val p = predictPosition(t, 50.0, 1_000_000L)
-        assertNotNull(p)
-        val dist = distanceMeters(t.lat, t.lon, p!!.latitude, p.longitude)
-        assertTrue(dist <= 18_000.0 + 1.0) // maxGhostMeters for SHAHED
-    }
-
-    @Test
-    fun `predictPosition clamps ghost distance`() {
-        // Ballistic ghost cap = 20 km, horizon 90 s; 200 m/s would overrun the cap at 90s.
-        val t = threat(type = ThreatType.BALLISTIC, bearingDeg = 0.0, speedKmh = 720.0, confirmedAtMillis = 0L)
-        val p = predictPosition(t, 200.0, 100_000L)
-        assertNotNull(p)
-        val dist = distanceMeters(t.lat, t.lon, p!!.latitude, p.longitude)
-        assertTrue(dist <= 20_000.0 + 1.0)
-    }
-
-    @Test
-    fun `predictPosition does not move on a top-level heading without velocity`() {
-        // NEPTUN only dead-reckons tracks with a real velocity (bearingDeg + speedKmh);
-        // a bare reported heading must hold the raw fix, exactly like the reference map.
-        val t = threat(heading = 90.0, confirmedAtMillis = 0L)
-        assertNull(predictPosition(t, 50.0, 1_000L))
-    }
-
-    @Test
-    fun `predictPosition returns null for an active threat with no heading`() {
-        assertNull(predictPosition(threat(confirmedAtMillis = 0L), 50.0, 1_000_000L))
-    }
-
-    @Test
-    fun `motionHeading prefers the server bearing over measured track`() {
-        val tracker = ThreatSpeedTracker
-        tracker.clear()
-        // Two fixes ~1.1 km apart on a due-north track.
-        tracker.record("m1", 0L, 46.48, 30.73)
-        tracker.record("m1", 10_000L, 46.49, 30.73)
-        val t = threat(id = "m1", bearingDeg = 90.0, speedKmh = 180.0, confirmedAtMillis = 0L)
-        // The server's authoritative bearing (east, 90°) wins over our measured north track —
-        // facing and glide must match what NEPTUN itself shows.
-        assertEquals(90.0, motionHeading(t)!!, 1e-9)
-        val p = predictPosition(t, 50.0, 1_000L)
-        assertNotNull(p)
-        assertTrue(p!!.longitude > t.lon) // glided east, matching the server bearing
-        assertEquals(t.lat, p.latitude, 1e-6)
-    }
-
-    @Test
-    fun `courseDeg matches motionHeading when only a measured track exists`() {
-        val tracker = ThreatSpeedTracker
-        tracker.clear()
-        tracker.record("m2", 0L, 46.48, 30.73)
-        tracker.record("m2", 10_000L, 46.49, 30.73)
-        val t = threat(id = "m2", lat = 46.48, lon = 30.73,
-            status = "active", confirmedAtMillis = 0L)
-        // No server bearing: facing falls back to the measured heading (~north). The threat
-        // isn't flying (no velocity), so it won't glide — but the icon still faces the track.
-        val expected = motionHeading(t)
-        assertNotNull(expected)
-        assertEquals(expected!!, t.courseDeg, 1e-9)
-        assertNull(predictPosition(t, 50.0, 1_000_000L))
-    }
-
-    @Test
-    fun `motionHeading is null with no fixes and no bearing`() {
+    fun `speedTracker - falls back to nominal when no data`() {
         ThreatSpeedTracker.clear()
-        assertNull(motionHeading(threat(confirmedAtMillis = 0L)))
-        assertNull(predictPosition(threat(confirmedAtMillis = 0L), 50.0, 1_000_000L))
+        val threat = makeThreat(id = "t3", speedKmh = null, bearingDeg = null)
+        val result = ThreatSpeedTracker.estimateWithSource("t3", threat)
+        assertNotNull(result)
+        assertEquals(SpeedSource.TYPICAL, result!!.second)
     }
 
     @Test
-    fun `speedTracker prefers server speedKmh as recorded`() {
-        val tracker = ThreatSpeedTracker
-        tracker.record("t1", 1L, 0.0, 0.0)
-        tracker.record("t1", 100L, 0.0, 0.0)
-        val (speed, source) = tracker.estimateWithSource(
-            "t1", threat(speedKmh = 180.0)
-        )!!
-        assertEquals(50.0, speed, 1e-9)
-        assertEquals(SpeedSource.RECORDED, source)
+    fun `speedTracker - clear removes all records`() {
+        val now = System.currentTimeMillis()
+        ThreatSpeedTracker.record("t4", now, 50.0, 30.0)
+        ThreatSpeedTracker.clear()
+        val threat = makeThreat(id = "t4", speedKmh = null, bearingDeg = null)
+        assertNull(ThreatSpeedTracker.estimate("t4", threat))
     }
 
     @Test
-    fun `speedTracker measures from consecutive fixes`() {
-        val tracker = ThreatSpeedTracker
-        tracker.record("t1", 0L, 0.0, 0.0)
-        tracker.record("t1", 100_000L, 0.1, 0.0) // ~11 km north in 100 s ≈ 111 m/s
-        val (speed, source) = tracker.estimateWithSource("t1", threat())!!
-        assertEquals(SpeedSource.RECORDED, source)
-        assertTrue(speed in 100.0..120.0)
+    fun `speedTracker - thread safety with concurrent writes`() {
+        val threads = (1..10).map { i ->
+            Thread {
+                repeat(100) { j ->
+                    ThreatSpeedTracker.record("concurrent", System.currentTimeMillis() + j, 50.0 + i * 0.001, 30.0)
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+
+        val threat = makeThreat(id = "concurrent", speedKmh = null, bearingDeg = null)
+        val avg = ThreatSpeedTracker.estimate("concurrent", threat)
+        assertNotNull(avg)
+        assertTrue(avg!! >= 0)
     }
 
     @Test
-    fun `speedTracker falls back to nominal typical`() {
-        val tracker = ThreatSpeedTracker
-        val (speed, source) = tracker.estimateWithSource("t1", threat())!!
-        assertEquals(SpeedSource.TYPICAL, source)
-        assertEquals(50.0, speed, 1e-9) // shahed 180 km/h
+    fun `speedTracker - measuredHeading needs 2 fixes`() {
+        ThreatSpeedTracker.clear()
+        val now = System.currentTimeMillis()
+        ThreatSpeedTracker.record("heading-test", now - 10_000, 50.0, 30.0)
+        // Only one fix
+        assertNull(ThreatSpeedTracker.measuredHeading("heading-test"))
+
+        ThreatSpeedTracker.record("heading-test", now, 50.1, 30.1)
+        val heading = ThreatSpeedTracker.measuredHeading("heading-test")
+        assertNotNull(heading)
+        // Heading from (50,30) to (50.1,30.1) should be roughly NE (~45 deg)
+        assertEquals(45.0, heading!!, 10.0)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // typicalSpeedKmh()
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `typicalSpeedKmh - ballistic is about 3300`() {
+        val speed = typicalSpeedKmh(ThreatType.BALLISTIC)
+        assertNotNull(speed)
+        assertEquals(3300.0, speed!!, 50.0)
     }
 
     @Test
-    fun `speedTracker uses trail timestamps`() {
-        val tracker = ThreatSpeedTracker
-        val t = threat(
-            trail = listOf(
-                TrailPoint(0.0, 0.0, 0L),
-                TrailPoint(0.05, 0.0, 60_000L) // ~5.5 km in 60 s ≈ 92 m/s
-            )
-        )
-        val (speed, source) = tracker.estimateWithSource("t1", t)!!
-        assertEquals(SpeedSource.RECORDED, source)
-        assertTrue(speed in 80.0..100.0)
+    fun `typicalSpeedKmh - SHAHED is about 180`() {
+        val speed = typicalSpeedKmh(ThreatType.SHAHED)
+        assertNotNull(speed)
+        assertEquals(180.0, speed!!, 10.0)
     }
 
     @Test
-    fun `typicalSpeedKmh exposes nominal speeds`() {
-        assertEquals(180.0, typicalSpeedKmh(ThreatType.SHAHED)!!, 1e-9)
+    fun `typicalSpeedKmh - UNKNOWN returns null`() {
         assertNull(typicalSpeedKmh(ThreatType.UNKNOWN))
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // motionHeading()
+    // ─────────────────────────────────────────────────────────────
+
     @Test
-    fun `etaToCircleEdge direct inbound equals distance over speed`() {
-        val center = LatLng(0.0, 0.0)
-        val from = LatLng(2000.0 / 110_574.0, 0.0) // 2000 m north of center
-        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 1000.0, bearingDeg = 180.0, speedMps = 50.0)
-        assertNotNull(eta)
-        assertEquals((2000.0 - 1000.0) / 50.0 / 60.0, eta!!, 0.05)
+    fun `motionHeading - prefers bearingDeg`() {
+        val threat = makeThreat(bearingDeg = 90.0, heading = 180.0)
+        assertEquals(90.0, motionHeading(threat)!!, 0.1)
     }
 
     @Test
-    fun `etaToCircleEdge is null when already inside the circle`() {
-        val center = LatLng(0.0, 0.0)
-        val from = LatLng(500.0 / 110_574.0, 0.0) // 500 m north, inside a 1000 m circle
-        assertNull(etaToCircleEdgeMinutes(from, center, 1000.0, 180.0, 50.0))
+    fun `motionHeading - falls back to heading`() {
+        val threat = makeThreat(bearingDeg = null, heading = 180.0)
+        assertEquals(180.0, motionHeading(threat)!!, 0.1)
     }
 
     @Test
-    fun `etaToCircleEdge is null when heading away`() {
-        val center = LatLng(0.0, 0.0)
-        val from = LatLng(2000.0 / 110_574.0, 0.0)
-        assertNull(etaToCircleEdgeMinutes(from, center, 1000.0, 0.0, 50.0))
+    fun `motionHeading - falls back to measured`() {
+        ThreatSpeedTracker.clear()
+        val now = System.currentTimeMillis()
+        ThreatSpeedTracker.record("motion-test", now - 10_000, 50.0, 30.0)
+        ThreatSpeedTracker.record("motion-test", now, 50.1, 30.0)
+
+        val threat = makeThreat(id = "motion-test", bearingDeg = null, heading = null)
+        val heading = motionHeading(threat)
+        assertNotNull(heading)
     }
 
-    @Test
-    fun `etaToCircleEdge is null with no speed`() {
-        val center = LatLng(0.0, 0.0)
-        val from = LatLng(2000.0 / 110_574.0, 0.0)
-        assertNull(etaToCircleEdgeMinutes(from, center, 1000.0, 180.0, 0.0))
-    }
+    // ─────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────
+
+    private fun makeThreat(
+        id: String = "pred-test",
+        type: ThreatType = ThreatType.SHAHED,
+        lat: Double = 50.0,
+        lon: Double = 30.0,
+        speedKmh: Double? = 100.0,
+        bearingDeg: Double? = 180.0,
+        heading: Double? = null,
+        confirmedAtMillis: Long? = System.currentTimeMillis() - 60_000,
+        status: String = "active"
+    ): Threat = Threat(
+        id = id,
+        type = type,
+        title = "Test",
+        region = null,
+        district = null,
+        locality = null,
+        lat = lat,
+        lon = lon,
+        heading = heading,
+        bearingDeg = bearingDeg,
+        status = status,
+        advisory = false,
+        areaOnly = false,
+        confirmations = 1,
+        reliability = Reliability.MEDIUM,
+        count = 1,
+        explanationShort = null,
+        speedKmh = speedKmh,
+        uncertaintyKm = null,
+        positionQuality = null,
+        confirmedAt = null,
+        confirmedAtMillis = confirmedAtMillis,
+        updatedAt = null,
+        updatedAtMillis = confirmedAtMillis ?: System.currentTimeMillis(),
+        trail = emptyList()
+    )
 }

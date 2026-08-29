@@ -509,7 +509,7 @@ fun SettingsScreen(
     }
     var expandedType by remember { mutableStateOf<ThreatType?>(null) }
     // One-time explainers: shown when an advanced toggle is flipped for the first time.
-    val explainerPrefs = remember { ZonePrefs(appContext) }
+    val explainerPrefs = remember { UserPrefs(appContext) }
     val scope = rememberCoroutineScope()
     val explainerList = remember(s) { explainers(s) }
     var seenExplainers by remember { mutableStateOf<Set<String>>(emptySet()) }

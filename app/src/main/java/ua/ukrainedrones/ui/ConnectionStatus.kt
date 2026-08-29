@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ua.ukrainedrones.connection.NeptunConnectionClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,7 +135,7 @@ internal fun ConnectionStatus(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        NeptunClient.NEPTUN_DOMAIN,
+                        NeptunConnectionClient.NEPTUN_DOMAIN,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
@@ -143,7 +144,7 @@ internal fun ConnectionStatus(
                             context.startActivity(
                                 Intent(
                                     Intent.ACTION_VIEW,
-                                    Uri.parse(NeptunClient.NEPTUN_SITE_URL)
+                                    Uri.parse(NeptunConnectionClient.NEPTUN_SITE_URL)
                                 )
                             )
                         }

@@ -37,6 +37,7 @@ import ua.ukrainedrones.connection.isOffline
 import ua.ukrainedrones.connection.isForceOffline
 import ua.ukrainedrones.domain.ODESA_LAT
 import ua.ukrainedrones.domain.ODESA_LON
+import ua.ukrainedrones.service.ServiceState
 import org.osmdroid.util.GeoPoint
 import kotlin.math.roundToLong
 import kotlin.random.Random
@@ -171,7 +172,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         private val ODESA_FALLBACK_FOCUS = LatLng(ODESA_LAT, ODESA_LON)
     }
 
-    private val prefs = ZonePrefs(app.applicationContext)
+    private val prefs = UserPrefs(app.applicationContext)
+    private val svcState = ServiceState(app.applicationContext)
     private val updateManager = UpdateManager(app.applicationContext)
 
     /** Tri-state haptics pref → effective value: absent follows the system haptic setting. */
@@ -947,24 +949,38 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     }
 
     fun setSlowRedArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setSlowRedZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setSlowRedZoneArmed(armed)
+        }
     }
 
     fun setSlowYellowArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setSlowYellowZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setSlowYellowZoneArmed(armed)
+        }
     }
 
     fun setFastRedArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setFastRedZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setFastRedZoneArmed(armed)
+        }
     }
 
     fun setFastYellowArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setFastYellowZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setFastYellowZoneArmed(armed)
+        }
     }
 
     /** Master alarm switch: arms or silences all four zone bells together. */
     fun setAlertsArmed(armed: Boolean) {
         viewModelScope.launch {
+            prefs.setMonitoringEnabled(armed)
+            if (armed) AlertService.start(app)
             prefs.setSlowRedZoneArmed(armed)
             prefs.setSlowYellowZoneArmed(armed)
             prefs.setFastRedZoneArmed(armed)
@@ -1025,19 +1041,31 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     }
 
     fun setNightSlowRedArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setNightSlowRedZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setNightSlowRedZoneArmed(armed)
+        }
     }
 
     fun setNightSlowYellowArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setNightSlowYellowZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setNightSlowYellowZoneArmed(armed)
+        }
     }
 
     fun setNightFastRedArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setNightFastRedZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setNightFastRedZoneArmed(armed)
+        }
     }
 
     fun setNightFastYellowArmed(armed: Boolean) {
-        viewModelScope.launch { prefs.setNightFastYellowZoneArmed(armed) }
+        viewModelScope.launch {
+            if (armed) { prefs.setMonitoringEnabled(true); AlertService.start(app) }
+            prefs.setNightFastYellowZoneArmed(armed)
+        }
     }
 
     fun setNightZoneSirenOverride(override: Boolean) {
@@ -1118,7 +1146,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     /** TEMP test toggle: force the app to simulate NEPTUN being offline. */
     fun setForceOffline(force: Boolean) {
         viewModelScope.launch {
-            prefs.setForceOffline(force)
+            svcState.setForceOffline(force)
             client.testHarness.setForceOffline(force)
         }
     }
@@ -1311,7 +1339,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     }
 
     fun selectThreat(threat: Threat?) {
-        android.util.Log.d("PerfTrace", "tap selectThreat ${threat?.id} t=${System.currentTimeMillis()}")
+        if (BuildConfig.DEBUG) android.util.Log.d("PerfTrace", "tap selectThreat ${threat?.id} t=${System.currentTimeMillis()}")
         neutralizedFlow.value = null
         fakeNeutralizeFlow.value = false
         selectedThreatFlow.value = threat
@@ -1395,7 +1423,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     /** Auto-check at most once per day. [allowPopup] pops the dialog on start when no alert is active. */
     fun autoCheckForUpdates(allowPopup: Boolean) {
         viewModelScope.launch {
-            val lastCheck = prefs.lastUpdateCheck().first()
+            val lastCheck = svcState.lastUpdateCheck().first()
             if (System.currentTimeMillis() - lastCheck >= DAILY_CHECK_INTERVAL_MS) {
                 checkForUpdates(notify = false, popupAvailable = allowPopup, popupOnlyWithoutAlert = allowPopup)
             }
@@ -1432,7 +1460,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             updateStateFlow.value = UpdateState.Checking
             val result = updateManager.check()
             isChecking = false
-            prefs.setLastUpdateCheck(System.currentTimeMillis())
+            svcState.setLastUpdateCheck(System.currentTimeMillis())
             val s = Strings.get(prefs.language().first())
             when (result) {
                 is UpdateState.Available -> {

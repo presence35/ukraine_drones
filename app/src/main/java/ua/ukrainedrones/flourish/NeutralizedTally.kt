@@ -8,6 +8,7 @@ import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import ua.ukrainedrones.connection.ThreatRemoved
 
 /**
  * Service-side flourish facade: owns the shoot-down tally (count + running memory of resolved
@@ -74,7 +75,7 @@ class NeutralizedTally(
      *  count so it stays gone until the next resolution starts a fresh tally. */
     private fun postNeutralizedTally(lang: AppLanguage) {
         scope.launch {
-            val allUkraine = runCatching { ZonePrefs(context).neutralizedTallyAllUkraine().first() }.getOrDefault(false)
+            val allUkraine = runCatching { UserPrefs(context).neutralizedTallyAllUkraine().first() }.getOrDefault(false)
             val badge = if (allUkraine) "🇺🇦" else ""
             val breakdown = perTypeCounts.entries
                 .sortedWith(compareByDescending<Map.Entry<ThreatType, Int>> { it.value }.thenBy { it.key.ordinal })

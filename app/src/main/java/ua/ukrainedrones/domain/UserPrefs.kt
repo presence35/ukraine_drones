@@ -5,24 +5,21 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
-private val Context.dataStore by preferencesDataStore(name = "zone_prefs")
+private val Context.dataStore by preferencesDataStore(name = "user_prefs")
 
 enum class AppLanguage { UA, EN }
 
-/** Density of the threat detail popup. */
 enum class ThreatCardSize { SMALL, LARGE }
 
-/** Which visual style is used for threat icons everywhere (map, strip, popups, toggles). */
 enum class ThreatIconSet { PHOTO, ARMY, COMIC, RUSSIAN }
 
-class ZonePrefs(private val context: Context) {
+class UserPrefs(private val context: Context) {
 
     private val keyCache = mutableMapOf<String, Preferences.Key<*>>()
     private fun cachedBooleanKey(name: String): Preferences.Key<Boolean> =
@@ -43,11 +40,8 @@ class ZonePrefs(private val context: Context) {
     private val sirenOverrideKey = booleanPreferencesKey("siren_override")
     private val disclaimerCollapsedKey = booleanPreferencesKey("disclaimer_collapsed")
     private val disclaimerReadCountKey = intPreferencesKey("disclaimer_read_count")
-    private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
-    private val lastNotifiedUpdateCodeKey = longPreferencesKey("last_notified_update_code")
     private val followMeKey = booleanPreferencesKey("follow_me")
     private val pinnedCityKey = stringPreferencesKey("pinned_city")
-    private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
     private val criticalOfflineOverrideKey = booleanPreferencesKey("critical_offline_override")
     private val settingsHintRemainingKey = intPreferencesKey("settings_hint_remaining")
     private val threatToggleHintRemainingKey = intPreferencesKey("threat_toggle_hint_remaining")
@@ -65,17 +59,8 @@ class ZonePrefs(private val context: Context) {
     private val legacyCacheCleanedKey = booleanPreferencesKey("legacy_osmdroid_cleaned")
     private val fastGroupCollapsedKey = booleanPreferencesKey("fast_group_collapsed")
     private val slowGroupCollapsedKey = booleanPreferencesKey("slow_group_collapsed")
-    private val connLogKey = stringPreferencesKey("conn_log")
-    private val connLogPendingSinceKey = longPreferencesKey("conn_log_pending_since")
-    private val connLogPendingStatusKey = stringPreferencesKey("conn_log_pending_status")
-    private val offlinePendingSinceKey = longPreferencesKey("offline_pending_since")
-    private val ignoreRetryUntilKey = longPreferencesKey("ignore_retry_until")
-    private val officialAnnouncedTokenKey = stringPreferencesKey("official_announced_token")
-    private val officialAnnouncedSinceKey = stringPreferencesKey("official_announced_since")
-    private val officialAnnouncedReasonIdKey = stringPreferencesKey("official_announced_reason_id")
     private val batteryOnboardShownKey = booleanPreferencesKey("battery_onboard_shown")
     private val permissionPromptDeferredKey = booleanPreferencesKey("permission_prompt_deferred")
-    private val debugLogKey = stringPreferencesKey("debug_log")
     private val nightEnabledKey = booleanPreferencesKey("night_enabled")
     private val nightStartMinKey = intPreferencesKey("night_start_min")
     private val nightEndMinKey = intPreferencesKey("night_end_min")
@@ -98,23 +83,20 @@ class ZonePrefs(private val context: Context) {
     private val hapticsEnabledKey = booleanPreferencesKey("haptics_enabled")
     private val officialAlertCityScopeKey = booleanPreferencesKey("official_alert_city_scope")
     private val justFunMasterEnabledKey = booleanPreferencesKey("just_fun_master_enabled")
-    private val reconnectStartMillisKey = longPreferencesKey("reconnect_start_millis")
+    private val monitoringEnabledKey = booleanPreferencesKey("monitoring_enabled")
 
-    /** Red (inner) slow-threat distance threshold in km — slider range 1–20, default 20. */
     fun slowRedKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[slowRedKmKey] ?: 20 }
 
     suspend fun setSlowRedKm(km: Int) {
         context.dataStore.edit { prefs ->
             prefs[slowRedKmKey] = km.coerceIn(1, 20)
-            // Yellow tracks red: it can never dip below red+2, so a red raise pushes it up.
             val red = prefs[slowRedKmKey] ?: 20
             val yellow = prefs[slowYellowKmKey] ?: 50
             prefs[slowYellowKmKey] = yellow.coerceIn(red + 2, 50)
         }
     }
 
-    /** Yellow (outer) slow-threat distance threshold in km — range red+2–50, default 50. */
     fun slowYellowKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[slowYellowKmKey] ?: 50 }
 
@@ -125,7 +107,6 @@ class ZonePrefs(private val context: Context) {
         }
     }
 
-    /** Red (inner) fast-threat time-to-arrival threshold in minutes — range 1–5, default 5. */
     fun fastRedMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[fastRedMinKey] ?: 5 }
 
@@ -138,7 +119,6 @@ class ZonePrefs(private val context: Context) {
         }
     }
 
-    /** Yellow (outer) fast-threat time-to-arrival threshold in minutes — range red+2–20, default 20. */
     fun fastYellowMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[fastYellowMinKey] ?: 20 }
 
@@ -149,7 +129,6 @@ class ZonePrefs(private val context: Context) {
         }
     }
 
-    /** Whether the slow red zone can fire urgent siren alerts. */
     fun slowRedZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[slowRedArmedKey] ?: true }
 
@@ -157,7 +136,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[slowRedArmedKey] = armed }
     }
 
-    /** Whether the slow yellow zone can fire warning alerts. */
     fun slowYellowZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[slowYellowArmedKey] ?: true }
 
@@ -165,7 +143,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[slowYellowArmedKey] = armed }
     }
 
-    /** Whether the fast red zone can fire urgent siren alerts. */
     fun fastRedZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[fastRedArmedKey] ?: true }
 
@@ -173,7 +150,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[fastRedArmedKey] = armed }
     }
 
-    /** Whether the fast yellow zone can fire warning alerts. */
     fun fastYellowZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[fastYellowArmedKey] ?: true }
 
@@ -181,7 +157,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[fastYellowArmedKey] = armed }
     }
 
-    /** Whether the app notifies on the official oblast air-raid alert. Zone alerts are unaffected. */
     fun officialAlertsEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[officialAlertsKey] ?: true }
 
@@ -189,7 +164,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[officialAlertsKey] = enabled }
     }
 
-    /** Whether siren alerts ring even when the phone is on vibrate/silent. Default off. */
     fun sirenOverride(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[sirenOverrideKey] ?: false }
 
@@ -197,7 +171,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[sirenOverrideKey] = override }
     }
 
-    /** Whether a threat type is shown on the map — default on. */
     fun threatMapVisible(type: ThreatType): Flow<Boolean> {
         val key = cachedBooleanKey("threat_map_${type.name}")
         return context.dataStore.data.map { prefs -> prefs[key] ?: true }
@@ -207,7 +180,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[cachedBooleanKey("threat_map_${type.name}")] = visible }
     }
 
-    /** Whether a threat type fires alerts — default on. */
     fun threatAlertsEnabled(type: ThreatType): Flow<Boolean> {
         val key = cachedBooleanKey("threat_alert_${type.name}")
         return context.dataStore.data.map { prefs -> prefs[key] ?: true }
@@ -217,7 +189,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[cachedBooleanKey("threat_alert_${type.name}")] = enabled }
     }
 
-    /** Whether the advanced-feature explainer for [id] has been shown once. */
     fun explainerSeen(id: String): Flow<Boolean> {
         val key = cachedBooleanKey("explainer_seen_$id")
         return context.dataStore.data.map { prefs -> prefs[key] ?: false }
@@ -227,7 +198,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[cachedBooleanKey("explainer_seen_$id")] = seen }
     }
 
-        /** Re-arm every first-use hint: reset the toast counters and re-show the explainers. */
     suspend fun resetAllTips() {
         context.dataStore.edit { prefs ->
             prefs[settingsHintRemainingKey] = 3
@@ -239,7 +209,6 @@ class ZonePrefs(private val context: Context) {
         }
     }
 
-    /** Whether the "follow official guidelines" disclaimer card is collapsed. */
     fun disclaimerCollapsed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[disclaimerCollapsedKey] ?: false }
 
@@ -247,7 +216,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[disclaimerCollapsedKey] = collapsed }
     }
 
-    /** How many times the disclaimers card has been shown on Settings open (auto-expands until 3). */
     fun disclaimerReadCount(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[disclaimerReadCountKey] ?: 0 }
 
@@ -255,23 +223,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[disclaimerReadCountKey] = count }
     }
 
-    /** Epoch millis of the last completed update check (auto or manual). */
-    fun lastUpdateCheck(): Flow<Long> =
-        context.dataStore.data.map { prefs -> prefs[lastUpdateCheckKey] ?: 0L }
-
-    suspend fun setLastUpdateCheck(ts: Long) {
-        context.dataStore.edit { it[lastUpdateCheckKey] = ts }
-    }
-
-    /** Server versionCode last advertised by the daily update notification (0 = never). */
-    fun lastNotifiedUpdateCode(): Flow<Long> =
-        context.dataStore.data.map { prefs -> prefs[lastNotifiedUpdateCodeKey] ?: 0L }
-
-    suspend fun setLastNotifiedUpdateCode(code: Long) {
-        context.dataStore.edit { it[lastNotifiedUpdateCodeKey] = code }
-    }
-
-    /** Whether the map/zones follow the GPS position (false = pinned to a city). */
     fun followMe(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[followMeKey] ?: true }
 
@@ -279,7 +230,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[followMeKey] = follow }
     }
 
-    /** Pinned city by nameUa, or null when not pinned. */
     fun pinnedCity(): Flow<String?> =
         context.dataStore.data.map { prefs -> prefs[pinnedCityKey] }
 
@@ -289,16 +239,6 @@ class ZonePrefs(private val context: Context) {
         }
     }
 
-    /** TEMP testing toggle: force the app to behave as if NEPTUN is offline. */
-    fun forceOffline(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[forceOfflineKey] ?: false }
-
-    suspend fun setForceOffline(force: Boolean) {
-        context.dataStore.edit { it[forceOfflineKey] = force }
-    }
-
-    /** Critical offline override: after [AlertService.CRITICAL_OFFLINE_MIN] minutes offline,
-     *  ring a dedicated audible notification instead of the silent milestone only. */
     fun criticalOfflineOverride(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[criticalOfflineOverrideKey] ?: true }
 
@@ -321,7 +261,6 @@ class ZonePrefs(private val context: Context) {
         }
     }
 
-    /** Whether the user has ever picked a language (via the first-run popup or Settings). */
     fun languageChosen(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[languageChosenKey] ?: false }
 
@@ -329,10 +268,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[languageChosenKey] = chosen }
     }
 
-    /** Whether the first-launch wizard has been completed (or dismissed via "Later").
-     *  Null-safe read happens via the flow emitting only after DataStore loads — callers
-     *  treat "not yet emitted" as unknown and must not show the wizard on that basis.
-     *  Migrates legacy installs off [languageChosenKey]. */
     fun wizardCompleted(): Flow<Boolean> =
         context.dataStore.data.map { prefs ->
             prefs[wizardCompletedKey] ?: (prefs[languageChosenKey] ?: false)
@@ -342,7 +277,6 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[wizardCompletedKey] = done }
     }
 
-    /** How many more Settings opens should pulse the gear hint. */
     fun settingsHintRemaining(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[settingsHintRemainingKey] ?: 3 }
 
@@ -350,15 +284,13 @@ class ZonePrefs(private val context: Context) {
         context.dataStore.edit { it[settingsHintRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
-    /** How many more Map/Alerts toggles should show the one-time "how it works" hint toast. */
-fun threatToggleHintRemaining(): Flow<Int> =
-    context.dataStore.data.map { prefs -> prefs[threatToggleHintRemainingKey] ?: 3 }
+    fun threatToggleHintRemaining(): Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[threatToggleHintRemainingKey] ?: 3 }
 
     suspend fun setThreatToggleHintRemaining(remaining: Int) {
         context.dataStore.edit { it[threatToggleHintRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
-    /** How many more times the "show waits off-map" hint may appear (first 3 ejections). */
     fun flourishEjectHintRemaining(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[flourishEjectHintRemainingKey] ?: 3 }
 
@@ -366,11 +298,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[flourishEjectHintRemainingKey] = remaining.coerceAtLeast(0) }
     }
 
-    /**
-     * Shelter-button onboarding stage (0–6): 0–1 show the "tap" tip, 2–3 show nothing (a
-     * break), 4–5 show the "long press" tip, 6+ show nothing ever. Stored as a count that only
-     * advances (capped at 6) so the tip sequence plays once.
-     */
     fun shelterTipStage(): Flow<Int> =
         context.dataStore.data.map { prefs -> (prefs[shelterTipRemainingKey] ?: 0).coerceIn(0, 6) }
 
@@ -378,7 +305,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[shelterTipRemainingKey] = stage.coerceIn(0, 6) }
     }
 
-    /** Density of the threat detail popup. */
     fun threatCardSize(): Flow<ThreatCardSize> =
         context.dataStore.data.map { prefs ->
             prefs[threatCardSizeKey]?.let { stored ->
@@ -390,7 +316,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[threatCardSizeKey] = size.name }
     }
 
-    /** Icon style used for threats everywhere — classic vector set or photo set. */
     fun threatIconSet(): Flow<ThreatIconSet> =
         context.dataStore.data.map { prefs ->
             prefs[threatIconSetKey]?.let { stored ->
@@ -402,7 +327,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[threatIconSetKey] = set.name }
     }
 
-    /** Whether the map's bottom-right scale bar is shown — default on. */
     fun showMapScale(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[showMapScaleKey] ?: true }
 
@@ -410,7 +334,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[showMapScaleKey] = show }
     }
 
-    /** Whether medium-tier city labels are drawn on the map — default on. */
     fun showMediumCities(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[showMediumCitiesKey] ?: true }
 
@@ -418,7 +341,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[showMediumCitiesKey] = show }
     }
 
-    /** Whether small-city labels are drawn on the map — default on. */
     fun showSmallCities(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[showSmallCitiesKey] ?: true }
 
@@ -426,7 +348,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[showSmallCitiesKey] = show }
     }
 
-    /** Whether the "Go to shelter" button shows on the map — default on. */
     fun sheltersEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[sheltersEnabledKey] ?: true }
 
@@ -434,7 +355,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[sheltersEnabledKey] = enabled }
     }
 
-    /** Whether walk times account for kids (slower pace) — default on. */
     fun sheltersWithKidsEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[sheltersWithKidsEnabledKey] ?: true }
 
@@ -442,7 +362,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[sheltersWithKidsEnabledKey] = enabled }
     }
 
-    /** Whether the app periodically snaps a one-shot GPS fix (every 15 min) to prevent cell drift. Default true. */
     fun periodicGps(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[periodicGpsKey] ?: false }
 
@@ -450,7 +369,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[periodicGpsKey] = enabled }
     }
 
-    /** Whether the footer shows rotating calm messages when no threats are around — default on. */
     fun calmMessagesEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[calmMessagesEnabledKey] ?: true }
 
@@ -458,8 +376,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[calmMessagesEnabledKey] = enabled }
     }
 
-    /** Whether press interactions play a small haptic tick — default on. */
-    /** Tri-state: key absent = follow the system haptic-feedback setting; explicit on/off overrides. */
     fun hapticsEnabled(): Flow<Boolean?> =
         context.dataStore.data.map { prefs -> prefs[hapticsEnabledKey] }
 
@@ -467,7 +383,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[hapticsEnabledKey] = enabled }
     }
 
-    /** Official-alert scope: false = whole oblast, true = only when the focus city is covered. */
     fun officialAlertCityScope(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[officialAlertCityScopeKey] ?: false }
 
@@ -475,7 +390,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[officialAlertCityScopeKey] = enabled }
     }
 
-    /** Whether the Just Fun master switch is on — default off for fresh installs. */
     fun justFunMasterEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[justFunMasterEnabledKey] ?: false }
 
@@ -483,7 +397,14 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[justFunMasterEnabledKey] = enabled }
     }
 
-    /** Whether the projectile-and-explosion "neutralized" flourish plays — default on. */
+    /** Whether monitoring is enabled — set false by "Stop Monitoring & Exit", checked by BootReceiver. */
+    fun monitoringEnabled(): Flow<Boolean> =
+        context.dataStore.data.map { prefs -> prefs[monitoringEnabledKey] ?: true }
+
+    suspend fun setMonitoringEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[monitoringEnabledKey] = enabled }
+    }
+
     fun deathAnimationEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[deathAnimationEnabledKey] ?: true }
 
@@ -491,7 +412,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[deathAnimationEnabledKey] = enabled }
     }
 
-    /** Whether the MiG flyby animation (visual + sound) is enabled — default on. */
     fun flybyAnimationEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[flybyAnimationEnabledKey] ?: true }
 
@@ -499,7 +419,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[flybyAnimationEnabledKey] = enabled }
     }
 
-    /** Whether the camera follows the death bullet (then returns to where the user was) — default on. */
     fun followBullet(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[followBulletKey] ?: true }
 
@@ -507,7 +426,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[followBulletKey] = enabled }
     }
 
-    /** Whether the "resolved threats" tally notification counts/show — default on. */
     fun neutralizedTallyEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[neutralizedTallyEnabledKey] ?: true }
 
@@ -515,7 +433,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[neutralizedTallyEnabledKey] = enabled }
     }
 
-    /** Whether the resolved-threats tally also counts threats anywhere in Ukraine (default: focus oblast only). */
     fun neutralizedTallyAllUkraine(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[neutralizedTallyAllUkraineKey] ?: false }
 
@@ -523,7 +440,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[neutralizedTallyAllUkraineKey] = enabled }
     }
 
-    /** Whether the pre-migration osmdroid tile caches have already been deleted. */
     fun legacyCacheCleaned(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[legacyCacheCleanedKey] ?: false }
 
@@ -531,7 +447,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[legacyCacheCleanedKey] = cleaned }
     }
 
-    /** Whether the Fast threat group in Settings is collapsed — default expanded. */
     fun fastGroupCollapsed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[fastGroupCollapsedKey] ?: false }
 
@@ -539,7 +454,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[fastGroupCollapsedKey] = collapsed }
     }
 
-    /** Whether the Slow threat group in Settings is collapsed — default expanded. */
     fun slowGroupCollapsed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[slowGroupCollapsedKey] ?: false }
 
@@ -547,76 +461,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[slowGroupCollapsedKey] = collapsed }
     }
 
-    /** Serialized connection-status log ("at|status|dur" lines), for the System-status popup. */
-    fun connLog(): Flow<String> =
-        context.dataStore.data.map { prefs -> prefs[connLogKey] ?: "" }
-
-    suspend fun setConnLog(serialized: String) {
-        context.dataStore.edit { it[connLogKey] = serialized }
-    }
-
-    /** Epoch millis when the current offline episode started (0 = none), across restarts. */
-    fun connLogPendingSince(): Flow<Long> =
-        context.dataStore.data.map { prefs -> prefs[connLogPendingSinceKey] ?: 0L }
-
-    suspend fun setConnLogPendingSince(ts: Long) {
-        context.dataStore.edit { it[connLogPendingSinceKey] = ts }
-    }
-
-    /** Name of the status currently in progress ("OFFLINE"), or empty when none. */
-    fun connLogPendingStatus(): Flow<String> =
-        context.dataStore.data.map { prefs -> prefs[connLogPendingStatusKey] ?: "" }
-
-    suspend fun setConnLogPendingStatus(status: String) {
-        context.dataStore.edit { it[connLogPendingStatusKey] = status }
-    }
-
-    /** Epoch millis when the current NEPTUN outage started (0 = none), across service restarts. */
-    fun offlinePendingSince(): Flow<Long> =
-        context.dataStore.data.map { prefs -> prefs[offlinePendingSinceKey] ?: 0L }
-
-    suspend fun setOfflinePendingSince(ts: Long) {
-        context.dataStore.edit { it[offlinePendingSinceKey] = ts }
-    }
-
-    /** Epoch millis until the user's "Ignore 30 min" reconnect pause expires (0 = none). */
-    fun ignoreRetryUntil(): Flow<Long> =
-        context.dataStore.data.map { prefs -> prefs[ignoreRetryUntilKey] ?: 0L }
-
-    suspend fun setIgnoreRetryUntil(ts: Long) {
-        context.dataStore.edit { it[ignoreRetryUntilKey] = ts }
-    }
-
-    /** Epoch millis when the reconnect cycle started (0 = none), across service restarts. */
-    fun reconnectStartMillis(): Flow<Long> =
-        context.dataStore.data.map { prefs -> prefs[reconnectStartMillisKey] ?: 0L }
-
-    suspend fun setReconnectStartMillis(ms: Long) {
-        context.dataStore.edit { it[reconnectStartMillisKey] = ms }
-    }
-
-    /** Focus token the last official alert episode was announced for (null = none), across restarts. */
-    fun officialAnnouncedToken(): Flow<String> =
-        context.dataStore.data.map { prefs -> prefs[officialAnnouncedTokenKey] ?: "" }
-
-    /** The alert `since` value of the last announced official episode ("" = none / unknown). */
-    fun officialAnnouncedSince(): Flow<String> =
-        context.dataStore.data.map { prefs -> prefs[officialAnnouncedSinceKey] ?: "" }
-
-    /** Reason-threat id attached to the last announced official episode ("" = none). */
-    fun officialAnnouncedReasonId(): Flow<String> =
-        context.dataStore.data.map { prefs -> prefs[officialAnnouncedReasonIdKey] ?: "" }
-
-    /** Persist (or clear, with nulls) the currently-announced official alert episode identity. */
-    suspend fun setOfficialAnnounced(token: String?, since: String?, reasonId: String?) {
-        context.dataStore.edit {
-            it[officialAnnouncedTokenKey] = token ?: ""
-            it[officialAnnouncedSinceKey] = since ?: ""
-            it[officialAnnouncedReasonIdKey] = reasonId ?: ""
-        }
-    }
-
-    /** Whether the first-run battery-exemption prompt has been shown once (dismissed or allowed). */
     fun batteryOnboardShown(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[batteryOnboardShownKey] ?: false }
 
@@ -624,8 +468,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[batteryOnboardShownKey] = shown }
     }
 
-    /** Whether the current launch skipped the location/notification prompts (tapped "Later").
-     *  Reset on each cold start so the request re-arms for the next session. */
     fun permissionPromptDeferred(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[permissionPromptDeferredKey] ?: false }
 
@@ -633,15 +475,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[permissionPromptDeferredKey] = deferred }
     }
 
-    /** Serialized debug decision log ("at|kind|reason|..." lines), for the Debug log screen. */
-    fun debugLog(): Flow<String> =
-        context.dataStore.data.map { prefs -> prefs[debugLogKey] ?: "" }
-
-    suspend fun setDebugLog(serialized: String) {
-        context.dataStore.edit { it[debugLogKey] = serialized }
-    }
-
-    /** Whether the night-mode window is enabled. */
     fun nightEnabled(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightEnabledKey] ?: true }
 
@@ -649,7 +482,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightEnabledKey] = enabled }
     }
 
-    /** Night window start, minute since midnight (default 22:00 = 1320). */
     fun nightStartMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightStartMinKey] ?: 22 * 60 }
 
@@ -657,7 +489,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightStartMinKey] = min.coerceIn(0, 1439) }
     }
 
-    /** Night window end, minute since midnight (default 07:00 = 420). */
     fun nightEndMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightEndMinKey] ?: 7 * 60 }
 
@@ -665,7 +496,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightEndMinKey] = min.coerceIn(0, 1439) }
     }
 
-    /** Whether the night window uses its own zone thresholds/armed bells (false = day values). */
     fun nightUseCustomZones(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightUseCustomZonesKey] ?: false }
 
@@ -673,7 +503,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightUseCustomZonesKey] = use }
     }
 
-    /** Night red (inner) slow-threat distance threshold in km — range 1–20, default 20. */
     fun nightSlowRedKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightSlowRedKmKey] ?: 20 }
 
@@ -686,7 +515,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         }
     }
 
-    /** Night yellow (outer) slow-threat distance threshold in km — range red+2–50, default 50. */
     fun nightSlowYellowKm(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightSlowYellowKmKey] ?: 50 }
 
@@ -697,7 +525,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         }
     }
 
-    /** Night red (inner) fast-threat ETA threshold in minutes — range 1–5, default 5. */
     fun nightFastRedMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightFastRedMinKey] ?: 5 }
 
@@ -710,7 +537,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         }
     }
 
-    /** Night yellow (outer) fast-threat ETA threshold in minutes — range red+2–20, default 20. */
     fun nightFastYellowMin(): Flow<Int> =
         context.dataStore.data.map { prefs -> prefs[nightFastYellowMinKey] ?: 20 }
 
@@ -721,7 +547,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         }
     }
 
-    /** Whether the slow red zone can fire urgent siren alerts during the night window. */
     fun nightSlowRedZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightSlowRedArmedKey] ?: true }
 
@@ -729,7 +554,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightSlowRedArmedKey] = armed }
     }
 
-    /** Whether the slow yellow zone can fire warning alerts during the night window. */
     fun nightSlowYellowZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightSlowYellowArmedKey] ?: true }
 
@@ -737,7 +561,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightSlowYellowArmedKey] = armed }
     }
 
-    /** Whether the fast red zone can fire urgent siren alerts during the night window. */
     fun nightFastRedZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightFastRedArmedKey] ?: true }
 
@@ -745,7 +568,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightFastRedArmedKey] = armed }
     }
 
-    /** Whether the fast yellow zone can fire warning alerts during the night window. */
     fun nightFastYellowZoneArmed(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightFastYellowArmedKey] ?: true }
 
@@ -753,7 +575,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightFastYellowArmedKey] = armed }
     }
 
-    /** Whether zone sirens ring on the alarm stream (even on vibrate/silent) at night. Default off. */
     fun nightZoneSirenOverride(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightZoneSirenOverrideKey] ?: false }
 
@@ -761,7 +582,6 @@ fun threatToggleHintRemaining(): Flow<Int> =
         context.dataStore.edit { it[nightZoneSirenOverrideKey] = override }
     }
 
-    /** Whether official oblast alerts ring on the alarm stream (even on vibrate/silent) at night. */
     fun nightOfficialSirenOverride(): Flow<Boolean> =
         context.dataStore.data.map { prefs -> prefs[nightOfficialSirenOverrideKey] ?: false }
 
@@ -770,15 +590,13 @@ fun threatToggleHintRemaining(): Flow<Int> =
     }
 }
 
-/** The set of threat types shown on the map — flows once per any map-visibility change. */
-fun threatMapFlow(prefs: ZonePrefs): Flow<Set<ThreatType>> {
+fun threatMapFlow(prefs: UserPrefs): Flow<Set<ThreatType>> {
     return combine(ThreatType.values().map { prefs.threatMapVisible(it) }) { visible ->
         ThreatType.values().filterIndexed { i, _ -> visible[i] }.toSet()
     }
 }
 
-/** The set of threat types that fire alerts — flows once per any alert-toggle change. */
-fun threatAlertFlow(prefs: ZonePrefs): Flow<Set<ThreatType>> {
+fun threatAlertFlow(prefs: UserPrefs): Flow<Set<ThreatType>> {
     return combine(ThreatType.values().map { prefs.threatAlertsEnabled(it) }) { enabled ->
         ThreatType.values().filterIndexed { i, _ -> enabled[i] }.toSet()
     }

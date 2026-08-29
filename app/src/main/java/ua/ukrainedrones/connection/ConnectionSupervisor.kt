@@ -13,9 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import ua.ukrainedrones.ConnEvent
-import ua.ukrainedrones.ConnEventKind
-import ua.ukrainedrones.ConnRetryState
 import ua.ukrainedrones.ConnStatus
 import ua.ukrainedrones.ConnectionLog
 

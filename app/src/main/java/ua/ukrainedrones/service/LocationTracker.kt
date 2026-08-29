@@ -90,7 +90,7 @@ object LocationTracker {
 
     private fun startPeriodicGpsLoop(app: Context) {
         periodicJob?.cancel()
-        val prefs = ZonePrefs(app)
+        val prefs = UserPrefs(app)
         periodicJob = scope.launch {
             prefs.periodicGps().collectLatest { enabled ->
                 if (enabled) {

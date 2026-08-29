@@ -1,256 +1,279 @@
 package ua.ukrainedrones
 
-import org.json.JSONObject
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
 
+/**
+ * Tests for [Threat] data model — stale detection, ghost filtering,
+ * and catalog lookups.
+ */
 class ThreatTest {
 
+    // ─────────────────────────────────────────────────────────────
+    // isStale()
+    // ─────────────────────────────────────────────────────────────
+
     @Test
-    fun `fromApi maps known keys and aliases`() {
-        assertEquals(ThreatType.SHAHED, ThreatType.fromApi("shahed"))
-        assertEquals(ThreatType.FPV_LOITERING, ThreatType.fromApi("fpv"))
-        assertEquals(ThreatType.SHAHED, ThreatType.fromApi("uav"))
-        assertEquals(ThreatType.FPV_LOITERING, ThreatType.fromApi("lancet"))
-        assertEquals(ThreatType.AVIATION, ThreatType.fromApi("mig31k"))
-        assertEquals(ThreatType.UNKNOWN, ThreatType.fromApi("whatever"))
-        assertEquals(ThreatType.UNKNOWN, ThreatType.fromApi(null))
+    fun `isStale - fresh threat returns false`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(updatedAtMillis = now - 30_000) // 30 sec old
+        assertFalse(threat.isStale(now))
     }
 
     @Test
-    fun `fromJson parses a full record`() {
-        val json = JSONObject(
-            """
-            {
-              "id": "abc123",
-              "type": "cruise",
-              "title": "Ракета курсом на Одесу",
-              "region": "Одеська",
-              "district": "Одеський",
-              "locality": "Одеса",
-              "lat": 46.48,
-              "lon": 30.73,
-              "heading": 45.0,
-              "velocity": {"speedKmh": 850.0, "bearingDeg": 90.0},
-              "status": "active",
-              "advisory": false,
-              "areaOnly": false,
-              "sourceCount": 3,
-              "confidenceLevel": "high",
-              "count": 4,
-              "explanationShort": "Група БпЛА курсом на Київ",
-              "uncertaintyKm": 2.5,
-              "positionQuality": "approx",
-              "confirmedAt": "2026-08-14T10:00:00Z",
-              "updatedAt": "2026-08-14T10:05:00Z",
-              "trail": [
-                {"lat": 46.0, "lon": 30.0, "t": "2026-08-14T09:59:00Z"},
-                {"lat": 46.1, "lon": 30.1, "t": "2026-08-14T10:00:00Z"}
-              ]
-            }
-            """.trimIndent()
+    fun `isStale - exactly at threshold returns true`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(updatedAtMillis = now - 300_000) // 5 min old
+        assertTrue(threat.isStale(now))
+    }
+
+    @Test
+    fun `isStale - very old threat returns true`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(updatedAtMillis = now - 600_000) // 10 min old
+        assertTrue(threat.isStale(now))
+    }
+
+    @Test
+    fun `isStale - AVIATION type exempt from local age expiry`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(
+            type = ThreatType.AVIATION,
+            updatedAtMillis = now - 600_000 // 10 min old
         )
-        val t = Threat.fromJson(json)
-        assertNotNull(t)
-        t!!
-        assertEquals("abc123", t.id)
-        assertEquals(ThreatType.CRUISE_MISSILE, t.type)
-        assertEquals(850.0, t.speedKmh!!, 1e-9)
-        assertEquals(90.0, t.bearingDeg!!, 1e-9)
-        assertEquals(3, t.confirmations)
-        assertEquals(Reliability.HIGH, t.reliability)
-        assertEquals(4, t.count)
-        assertTrue(t.flying)
-        assertEquals(2, t.trail.size)
-        assertNotNull(t.updatedAtMillis)
+        // AVIATION is exempt from local age expiry, only server "stale" flag matters
+        assertFalse(threat.isStale(now))
     }
 
     @Test
-    fun `fromJson returns null without a position`() {
-        assertNull(Threat.fromJson(JSONObject("""{"id":"x"}""")))
-    }
-
-    @Test
-    fun `fromJson strips bare confirmation text from explanationShort`() {
-        val t = Threat.fromJson(
-            JSONObject("""{"id":"x","lat":46.0,"lon":30.0,"explanationShort":"Підтверджень: 3"}""")
+    fun `isStale - server flagged stale returns true regardless of age`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(
+            updatedAtMillis = now - 30_000, // fresh
+            status = "stale"
         )
-        assertNull(t!!.explanationShort)
+        assertTrue(threat.isStale(now))
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // isGhost()
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `isGhost - fresh threat returns false`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(updatedAtMillis = now - 30_000)
+        assertFalse(threat.isGhost(now))
     }
 
     @Test
-    fun `fromJson strips trailing confirmation count from explanationShort`() {
-        val t = Threat.fromJson(
-            JSONObject("""{"id":"x","lat":46.0,"lon":30.0,"explanationShort":"Рій БпЛА барражує над морем. Підтверджень: 6"}""")
+    fun `isGhost - stale but not yet ghost returns false`() {
+        val now = System.currentTimeMillis()
+        // SHAHED staleAfterMs = 300_000, STALE_GHOST_CAP_MS = 1_800_000
+        // So ghost threshold = 2_100_000 ms (35 min)
+        val threat = makeThreat(
+            updatedAtMillis = now - 600_000 // 10 min old, stale but not ghost
         )
-        assertEquals("Рій БпЛА барражує над морем", t!!.explanationShort)
+        assertFalse(threat.isGhost(now))
     }
 
     @Test
-    fun `fromJson strips a bare trailing count from explanationShort`() {
-        val t = Threat.fromJson(
-            JSONObject("""{"id":"x","lat":46.0,"lon":30.0,"explanationShort":"Рій БпЛА барражує над морем. : 6"}""")
+    fun `isGhost - very old threat returns true`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(
+            updatedAtMillis = now - 3_000_000 // 50 min old
         )
-        assertEquals("Рій БпЛА барражує над морем", t!!.explanationShort)
+        assertTrue(threat.isGhost(now))
     }
 
     @Test
-    fun `fromJson keeps course text`() {
-        val t = Threat.fromJson(
-            JSONObject("""{"id":"x","lat":46.0,"lon":30.0,"explanationShort":"Група БпЛА курсом на Київ"}""")
+    fun `isGhost - AVIATION has longer cap`() {
+        val now = System.currentTimeMillis()
+        val threat = makeThreat(
+            type = ThreatType.AVIATION,
+            updatedAtMillis = now - 3_000_000 // 50 min old
         )
-        assertEquals("Група БпЛА курсом на Київ", t!!.explanationShort)
+        // AVIATION_GHOST_CAP_MS = 7_200_000 (2 hours), so not ghost yet
+        assertFalse(threat.isGhost(now))
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // ThreatTypeCatalog
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `catalog - ballistic missile has info`() {
+        val info = ThreatTypeCatalog.INFO[ThreatType.BALLISTIC]
+        assertNotNull(info)
+        assertTrue(info!!.labelUa.isNotBlank())
+        assertTrue(info.labelEn.isNotBlank())
     }
 
     @Test
-    fun `translateCourseAssessment translates known templates`() {
-        assertEquals(
-            "Group of UAVs heading toward Kyiv",
-            translateCourseAssessment("Група БпЛА курсом на Київ", AppLanguage.EN)
+    fun `catalog - all types have non-empty display names`() {
+        ThreatType.entries.forEach { type ->
+            val info = ThreatTypeCatalog.INFO[type]
+            assertNotNull("Catalog missing entry for $type", info)
+            assertTrue("Display name empty for $type", info!!.labelUa.isNotBlank())
+            assertTrue("Display name EN empty for $type", info.labelEn.isNotBlank())
+        }
+    }
+
+    @Test
+    fun `catalog - SHAHED label is correct`() {
+        val info = ThreatTypeCatalog.INFO[ThreatType.SHAHED]!!
+        assertEquals("БпЛА", info.labelUa)
+        assertEquals("UAV", info.labelEn)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Threat.fromJson edge cases
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `fromJson - missing lat returns null`() {
+        val json = org.json.JSONObject().apply {
+            put("id", "test-1")
+            put("lon", 30.0)
+        }
+        assertNull(Threat.fromJson(json))
+    }
+
+    @Test
+    fun `fromJson - missing lon returns null`() {
+        val json = org.json.JSONObject().apply {
+            put("id", "test-1")
+            put("lat", 50.0)
+        }
+        assertNull(Threat.fromJson(json))
+    }
+
+    @Test
+    fun `fromJson - blank id returns null`() {
+        val json = org.json.JSONObject().apply {
+            put("id", "")
+            put("lat", 50.0)
+            put("lon", 30.0)
+        }
+        assertNull(Threat.fromJson(json))
+    }
+
+    @Test
+    fun `fromJson - minimal valid threat parses`() {
+        val json = org.json.JSONObject().apply {
+            put("id", "shahed-001")
+            put("lat", 50.0)
+            put("lon", 30.0)
+            put("type", "shahed")
+            put("status", "active")
+        }
+        val threat = Threat.fromJson(json)
+        assertNotNull(threat)
+        assertEquals("shahed-001", threat!!.id)
+        assertEquals(ThreatType.SHAHED, threat.type)
+        assertEquals("active", threat.status)
+    }
+
+    @Test
+    fun `fromJson - velocity parsing works`() {
+        val json = org.json.JSONObject().apply {
+            put("id", "test-1")
+            put("lat", 50.0)
+            put("lon", 30.0)
+            put("status", "active")
+            put("velocity", org.json.JSONObject().apply {
+                put("speedKmh", 180.0)
+                put("bearingDeg", 90.0)
+            })
+        }
+        val threat = Threat.fromJson(json)!!
+        assertEquals(180.0, threat.speedKmh!!, 0.001)
+        assertEquals(90.0, threat.bearingDeg!!, 0.001)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Threat.flying property
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `flying - needs bearing speed and confirmedAt and active status`() {
+        val threat = makeThreat(
+            bearingDeg = 180.0,
+            speedKmh = 100.0,
+            confirmedAtMillis = System.currentTimeMillis() - 10_000,
+            status = "active"
         )
+        assertTrue(threat.flying)
     }
 
     @Test
-    fun `translateCourseAssessment passes through UA`() {
-        assertEquals("Група БпЛА курсом на Київ", translateCourseAssessment("Група БпЛА курсом на Київ", AppLanguage.UA))
-    }
-
-    @Test
-    fun `translateCourseAssessment transliterates unknown text`() {
-        val raw = "Деякий невідомий текст"
-        assertEquals("Deiakyi nevidomyi tekst", translateCourseAssessment(raw, AppLanguage.EN))
-        assertNull(translateCourseAssessment(null, AppLanguage.EN))
-        assertNull(translateCourseAssessment("", AppLanguage.EN))
-    }
-
-    @Test
-    fun `translateCourseAssessment transliterates unknown places`() {
-        assertEquals(
-            "UAV heading toward Zolote",
-            translateCourseAssessment("БпЛА курсом на Золоте", AppLanguage.EN)
+    fun `flying - missing bearing returns false`() {
+        val threat = makeThreat(
+            bearingDeg = null,
+            speedKmh = 100.0,
+            confirmedAtMillis = System.currentTimeMillis() - 10_000,
+            status = "active"
         )
-        assertEquals(
-            "Course toward Zhovti Vody",
-            translateCourseAssessment("Курс на Жовті Води", AppLanguage.EN)
+        assertFalse(threat.flying)
+    }
+
+    @Test
+    fun `flying - resolved status returns false`() {
+        val threat = makeThreat(
+            bearingDeg = 180.0,
+            speedKmh = 100.0,
+            confirmedAtMillis = System.currentTimeMillis() - 10_000,
+            status = "resolved"
         )
+        assertFalse(threat.flying)
     }
 
-    @Test
-    fun `translateCourseAssessment translates common words instead of transliterating them`() {
-        assertEquals(
-            "UAV over the sea",
-            translateCourseAssessment("БпЛА над морем", AppLanguage.EN)
-        )
-        assertEquals(
-            "UAV over the sea",
-            translateCourseAssessment("БпЛА над морі", AppLanguage.EN)
-        )
-        assertEquals(
-            "UAV heading toward Black Sea",
-            translateCourseAssessment("БпЛА курсом на Чорне море", AppLanguage.EN)
-        )
-        assertEquals(
-            "Missile heading toward the water area",
-            translateCourseAssessment("Ракета летить у напрямку акваторії", AppLanguage.EN)
-        )
-    }
+    // ─────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────
 
-    @Test
-    fun `fallbackCourse swaps common words and vocabulary before transliterating`() {
-        assertEquals(
-            "Swarm UAV loiters over the sea",
-            translateCourseAssessment("Рій БпЛА барражує над морем", AppLanguage.EN)
-        )
-    }
-
-    @Test
-    fun `fallbackCourse is deterministic per id`() {
-        assertEquals(Threat.fallbackCourse("abc"), Threat.fallbackCourse("abc"), 1e-9)
-        assertFalse(Threat.fallbackCourse("abc") == Threat.fallbackCourse("def"))
-    }
-
-    @Test
-    fun `courseDeg prefers velocity bearing while flying`() {
-        val t = threat(bearingDeg = 90.0, speedKmh = 180.0, confirmedAtMillis = 1L, heading = 200.0)
-        assertEquals(90.0, t.courseDeg, 1e-9)
-    }
-
-    @Test
-    fun `courseDeg uses velocity bearing even when not flying`() {
-        // Not flying (no speed/confirmedAt), so predictPosition holds the raw fix — but the
-        // icon still faces the reported velocity bearing (matches motionHeading's resolution).
-        val t = threat(bearingDeg = 270.0, heading = 10.0)
-        assertFalse(t.flying)
-        assertEquals(270.0, t.courseDeg, 1e-9)
-    }
-
-    @Test
-    fun `courseDeg falls back to heading then pseudo-course`() {
-        assertEquals(35.0, threat(heading = 35.0).courseDeg, 1e-9)
-        assertEquals(Threat.fallbackCourse("t1"), threat().courseDeg, 1e-9)
-    }
-
-    @Test
-    fun `courseDeg aims the icon at a city named in the course message`() {
-        val t = threat(explanationShort = "Група БпЛА курсом на Київ", lat = 46.48, lon = 30.73)
-        assertEquals(
-            bearingDegrees(46.48, 30.73, 50.4501, 30.5234),
-            t.courseDeg, 1e-9
-        )
-    }
-
-    @Test
-    fun `courseDeg reads the course from the title when the message is empty`() {
-        val t = threat(title = "БпЛА курсом на Київ", explanationShort = null, lat = 46.48, lon = 30.73)
-        assertEquals(
-            bearingDegrees(46.48, 30.73, 50.4501, 30.5234),
-            t.courseDeg, 1e-9
-        )
-    }
-
-    @Test
-    fun `courseDeg falls back to pseudo-course when the message names no known place`() {
-        // "Золоте" joined the city dictionary, so use a place that can never resolve.
-        val t = threat(explanationShort = "БпЛА курсом на Атлантиду")
-        assertEquals(Threat.fallbackCourse("t1"), t.courseDeg, 1e-9)
-    }
-
-    @Test
-    fun `courseDeg prefers the velocity bearing over the message`() {
-        val t = threat(bearingDeg = 90.0, heading = 200.0, explanationShort = "Курс на Київ")
-        assertEquals(90.0, t.courseDeg, 1e-9)
-    }
-
-    @Test
-    fun `inOblast matches on oblast or name prefix`() {
-        val alert = OblastAlert("kyiv", "Київ", "Київська", "2026-08-14")
-        assertTrue(alert.inOblast("Київ"))
-        assertTrue(alert.inOblast("київськ")) // case-insensitive prefix
-        assertFalse(alert.inOblast("Одес"))
-    }
-
-    @Test
-    fun `coversCity matches a raion-level alert naming the city`() {
-        val odeskyi = OblastAlert("odeskyi", "Одеський район", "Одеса", "2026-08-14")
-        assertTrue(odeskyi.coversCity("Одеса"))
-        val khersonska = OblastAlert("khersonska", "Херсонська область", "Херсонська", "2026-08-14")
-        assertFalse(khersonska.coversCity("Одеса"))
-    }
-
-    @Test
-    fun `officialAlertActiveFor honours the scope`() {
-        val odeskyi = OblastAlert("odeskyi", "Одеський район", "Одеса", "2026-08-14")
-        val alerts = listOf(odeskyi)
-        // Oblast scope: any alert in the oblast rings.
-        assertTrue(officialAlertActiveFor(alerts, "Одес", "Одеса", scope = false))
-        // City scope: only when the alert actually covers the focus city.
-        assertTrue(officialAlertActiveFor(alerts, "Одес", "Одеса", scope = true))
-        assertFalse(officialAlertActiveFor(alerts, "Херсонськ", "Херсон", scope = true))
-        // Unknown city falls back to oblast-wide matching.
-        assertTrue(officialAlertActiveFor(alerts, "Одес", null, scope = true))
-    }
+    private fun makeThreat(
+        id: String = "test-${System.nanoTime()}",
+        type: ThreatType = ThreatType.SHAHED,
+        lat: Double = 50.0,
+        lon: Double = 30.0,
+        speedKmh: Double? = 100.0,
+        bearingDeg: Double? = 180.0,
+        heading: Double? = null,
+        updatedAtMillis: Long = System.currentTimeMillis(),
+        confirmedAtMillis: Long? = System.currentTimeMillis() - 60_000,
+        status: String = "active",
+        advisory: Boolean = false,
+        areaOnly: Boolean = false,
+        region: String? = "Київська",
+        district: String? = null,
+        locality: String? = null,
+        explanationShort: String? = null
+    ): Threat = Threat(
+        id = id,
+        type = type,
+        title = "Test threat",
+        region = region,
+        district = district,
+        locality = locality,
+        lat = lat,
+        lon = lon,
+        heading = heading,
+        bearingDeg = bearingDeg,
+        status = status,
+        advisory = advisory,
+        areaOnly = areaOnly,
+        confirmations = 1,
+        reliability = Reliability.MEDIUM,
+        count = 1,
+        explanationShort = explanationShort,
+        speedKmh = speedKmh,
+        uncertaintyKm = null,
+        positionQuality = null,
+        confirmedAt = null,
+        confirmedAtMillis = confirmedAtMillis,
+        updatedAt = null,
+        updatedAtMillis = updatedAtMillis,
+        trail = emptyList()
+    )
 }

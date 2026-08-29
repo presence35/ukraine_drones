@@ -1,6 +1,7 @@
 package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionState
+import ua.ukrainedrones.connection.NeptunConnectionClient
 import ua.ukrainedrones.connection.isDegraded
 import ua.ukrainedrones.connection.isOffline
 import ua.ukrainedrones.connection.offlineSinceOrNull
@@ -93,7 +94,7 @@ fun computeWidgetSnapshot(
     // Online = the app-pill semantics: not down AND past the shared grace window, so short
     // socket blips (drops that recover inside OFFLINE_GRACE_MS) don't flicker the badge.
     val offline = cs.isOffline && (cs.offlineSinceOrNull == null ||
-        now - cs.offlineSinceOrNull!! >= NeptunClient.OFFLINE_GRACE_MS)
+        now - cs.offlineSinceOrNull!! >= NeptunConnectionClient.OFFLINE_GRACE_MS)
 
     return WidgetSnapshot(
         threatCount = count,
