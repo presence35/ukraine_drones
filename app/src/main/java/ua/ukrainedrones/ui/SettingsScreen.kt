@@ -58,18 +58,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
@@ -2487,7 +2489,17 @@ private fun Modifier.explainerFlash(active: Boolean): Modifier {
         }
     }
     return if (active) then(
-        border(2.dp, UkraineBlue.copy(alpha = alpha.value), RoundedCornerShape(12.dp))
+        Modifier.drawWithContent {
+            drawContent()
+            val sw = 2.dp.toPx()
+            drawRoundRect(
+                color = UkraineBlue.copy(alpha = alpha.value),
+                topLeft = Offset(sw / 2, sw / 2),
+                size = Size(size.width - sw, size.height - sw),
+                cornerRadius = CornerRadius(12.dp.toPx()),
+                style = Stroke(width = sw)
+            )
+        }
     ) else this
 }
 

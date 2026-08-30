@@ -84,6 +84,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -534,7 +535,7 @@ private fun ViewOptionsRow(
                     selected = newestFirst,
                     onClick = onSortToggle,
                     label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = if (newestFirst) s.logsSortNewest else s.logsSortOldest, modifier = Modifier.rotate(sortRotation).size(16.dp)) }
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = if (newestFirst) s.logsSortNewest else s.logsSortOldest, modifier = Modifier.graphicsLayer { rotationZ = sortRotation }.size(16.dp)) }
                 )
             }
             FilterChip(

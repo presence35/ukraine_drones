@@ -1,13 +1,8 @@
 package ua.ukrainedrones
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,7 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -274,12 +269,6 @@ fun ThreatPopupCard(
         border = BorderStroke(2.dp, if (stale) Color(0xFF3A3A3A) else bandColor),
         tonalElevation = 8.dp
     ) {
-                AnimatedContent(
-            targetState = threat.id,
-            // Body renders in one frame — selection motion is the icon pop alone.
-            transitionSpec = { fadeIn(tween(0)) togetherWith fadeOut(tween(0)) },
-            label = "threatBodySwap"
-        ) { _ ->
         when (cardSize) {
             // Narrow, top-left card: icon + type on the title row, the ETA + distance pills
             // in one row, horizontal reliability and threat-level bars underneath, and
@@ -308,7 +297,7 @@ fun ThreatPopupCard(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(verticalAlignment = Alignment.Top) {
-                                Box(modifier = Modifier.scale(iconScale.value)) {
+                                Box(modifier = Modifier.graphicsLayer { val s = iconScale.value; scaleX = s; scaleY = s }) {
                                     ThreatIcon(
                                         type = threat.type,
                                         set = iconSet,
@@ -368,7 +357,7 @@ fun ThreatPopupCard(
                 } else {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.Top) {
-                            Box(modifier = Modifier.scale(iconScale.value)) {
+                            Box(modifier = Modifier.graphicsLayer { val s = iconScale.value; scaleX = s; scaleY = s }) {
                                 ThreatIcon(
                                     type = threat.type,
                                     set = iconSet,
@@ -411,7 +400,7 @@ fun ThreatPopupCard(
                     Column(modifier = Modifier.weight(1f)) {
                         // Header: icon, type + region/course, close.
                         Row(verticalAlignment = Alignment.Top) {
-                            Box(modifier = Modifier.scale(iconScale.value)) {
+                            Box(modifier = Modifier.graphicsLayer { val s = iconScale.value; scaleX = s; scaleY = s }) {
                                 ThreatIcon(
                                     type = threat.type,
                                     set = iconSet,
@@ -535,7 +524,6 @@ fun ThreatPopupCard(
                     ThreatLevelGauge(level = threatLevel)
                 }
             }
-        }
         }
     }
 }
