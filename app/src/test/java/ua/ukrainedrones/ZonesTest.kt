@@ -30,7 +30,7 @@ class ZonesTest {
         assertEquals(1000.0, reachKm(ThreatType.SHAHED), 1e-9)
         assertEquals(1500.0, reachKm(ThreatType.BALLISTIC), 1e-9)
         assertEquals(1500.0, reachKm(ThreatType.CRUISE_MISSILE), 1e-9)
-        assertEquals(1500.0, reachKm(ThreatType.AVIATION), 1e-9)
+        assertEquals(9999.0, reachKm(ThreatType.AVIATION), 1e-9)
         assertEquals(1500.0, reachKm(ThreatType.UNKNOWN), 1e-9)
     }
 
@@ -93,7 +93,7 @@ class ZonesTest {
 
     @Test
     fun `aviation beyond reach never tiers`() {
-        assertNull(zoneTier(threat(type = ThreatType.AVIATION), 1500.1, 900.0, params))
+        assertNull(zoneTier(threat(type = ThreatType.AVIATION), 10_000.0, 900.0, params))
     }
 
     @Test

@@ -45,7 +45,8 @@ fun reachKm(type: ThreatType): Double = when (type) {
     ThreatType.FPV_LOITERING -> 40.0
     ThreatType.RECON -> 50.0
     ThreatType.SHAHED -> 1000.0
-    else -> 1500.0 // ballistic, cruise, aviation, unknown — country-scale
+    ThreatType.AVIATION -> 9999.0
+    else -> 1500.0 // ballistic, cruise, unknown — country-scale
 }
 
 /**

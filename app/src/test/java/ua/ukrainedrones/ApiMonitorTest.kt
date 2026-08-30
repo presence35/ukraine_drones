@@ -53,7 +53,7 @@ class ApiMonitorTest {
     @Test
     fun `serialize handles special characters in detail`() {
         val entry = SystemEntry(100L, SystemEntryKind.SDK_CHANGED, "SHA256: aa:bb -> cc:dd (new)")
-        val raw = serializeSystemLog(entry)
+        val raw = serializeSystemLog(listOf(entry))
         val parsed = parseSystemLog(raw)
         assertEquals(1, parsed.size)
         assertEquals("SHA256: aa:bb -> cc:dd (new)", parsed[0].detail)

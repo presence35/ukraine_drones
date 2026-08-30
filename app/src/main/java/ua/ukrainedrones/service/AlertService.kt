@@ -126,7 +126,7 @@ class AlertService : Service() {
     private var lastMonitorProgressNow: Int? = null
     private var lastMonitorIgnore: String? = null
     private var hasShownGpsFallbackToast = false
-    private var wasConnected = true
+    @Volatile private var wasConnected = true
     private var offlineAlertJob: Job? = null
     private var offlineRestorePending = false
     private val screenOnFlow = MutableStateFlow(true)
@@ -1424,7 +1424,7 @@ private var notif3minShown = false
         // Critical offline: audible, but a friendly chime (not a siren) — the "we've been
         // dark for CRITICAL_OFFLINE_MIN minutes" reminder behind the critical-offline override.
         // When bypassSilent is enabled, use alarm stream to ring through silent mode.
-        val bypassSilent = kotlinx.coroutines.runBlocking { UserPrefs(applicationContext).criticalOfflineBypassSilent().first() }
+        val bypassSilent = kotlinx.coroutines.runBlocking(Dispatchers.IO) { UserPrefs(applicationContext).criticalOfflineBypassSilent().first() }
         val criticalAttrs = if (bypassSilent) alarmAttributes() else notificationAttributes()
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_OFFLINE_CRITICAL, s.offlineCriticalChannelName, NotificationManager.IMPORTANCE_HIGH).apply {

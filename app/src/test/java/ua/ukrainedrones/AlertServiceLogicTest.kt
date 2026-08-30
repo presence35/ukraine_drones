@@ -1,157 +1,206 @@
-package ua.ukrainedrones.service
+package ua.ukrainedrones
 
 import org.junit.Assert.*
 import org.junit.Test
-import ua.ukrainedrones.data.Threat
-import ua.ukrainedrones.data.ThreatStatus
-import ua.ukrainedrones.data.ThreatType
+import ua.ukrainedrones.connection.NeptunConnectionClient
 
 /**
- * Pure-logic tests for [AlertService] alert-decision rules.
- * These test the helper methods without needing Android framework.
+ * Pure-logic tests for alert-decision rules and domain functions.
+ * No Android framework required.
  */
 class AlertServiceLogicTest {
 
     // ─────────────────────────────────────────────────────────────
-    // Official alert token logic
+    // reachKm — per-type reach caps
     // ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `shouldAnnounceOfficial - new alert triggers`() {
-        val lastToken = "old-token"
-        val newToken = "new-token"
-        assertTrue(AlertService.shouldAnnounceOfficial(newToken, lastToken))
-    }
+    fun `reachKm - KAB caps at 70`() = assertEquals(70.0, reachKm(ThreatType.KAB), 0.01)
 
     @Test
-    fun `shouldAnnounceOfficial - same token does not re-trigger`() {
-        val token = "same-token"
-        assertFalse(AlertService.shouldAnnounceOfficial(token, token))
-    }
+    fun `reachKm - FPV caps at 40`() = assertEquals(40.0, reachKm(ThreatType.FPV_LOITERING), 0.01)
 
     @Test
-    fun `shouldAnnounceOfficial - null last token always triggers`() {
-        assertTrue(AlertService.shouldAnnounceOfficial("any-token", null))
-    }
+    fun `reachKm - RECON caps at 50`() = assertEquals(50.0, reachKm(ThreatType.RECON), 0.01)
+
+    @Test
+    fun `reachKm - SHAHED caps at 1000`() = assertEquals(1000.0, reachKm(ThreatType.SHAHED), 0.01)
+
+    @Test
+    fun `reachKm - AVIATION caps at 9999`() = assertEquals(9999.0, reachKm(ThreatType.AVIATION), 0.01)
+
+    @Test
+    fun `reachKm - BALLISTIC defaults to 1500`() = assertEquals(1500.0, reachKm(ThreatType.BALLISTIC), 0.01)
+
+    @Test
+    fun `reachKm - CRUISE defaults to 1500`() = assertEquals(1500.0, reachKm(ThreatType.CRUISE_MISSILE), 0.01)
+
+    @Test
+    fun `reachKm - UNKNOWN defaults to 1500`() = assertEquals(1500.0, reachKm(ThreatType.UNKNOWN), 0.01)
 
     // ─────────────────────────────────────────────────────────────
-    // Zone alert cooldown
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `zoneAlertCooldown - within 60 seconds suppresses repeat`() {
-        val now = 1_000_000L
-        val lastAlert = 999_000L // 1 second ago
-        assertTrue(AlertService.isZoneAlertOnCooldown(lastAlert, now))
-    }
-
-    @Test
-    fun `zoneAlertCooldown - after 60 seconds allows new alert`() {
-        val now = 1_000_000L
-        val lastAlert = 939_000L // 61 seconds ago
-        assertFalse(AlertService.isZoneAlertOnCooldown(lastAlert, now))
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Threat filtering for notifications
+    // etaMinutes
     // ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `filterForNotification - excludes stale threats`() {
+    fun `etaMinutes - 100km at 100kmh = 60 min`() = assertEquals(60.0, etaMinutes(100.0, 100.0)!!, 0.01)
+
+    @Test
+    fun `etaMinutes - null speed returns null`() = assertNull(etaMinutes(100.0, null))
+
+    @Test
+    fun `etaMinutes - zero speed returns null`() = assertNull(etaMinutes(100.0, 0.0))
+
+    @Test
+    fun `etaMinutes - negative speed returns null`() = assertNull(etaMinutes(100.0, -50.0))
+
+    // ─────────────────────────────────────────────────────────────
+    // zoneTier
+    // ─────────────────────────────────────────────────────────────
+
+    private val defaultParams = ZoneParams(slowRedKm = 20, slowYellowKm = 50, fastRedMin = 5, fastYellowMin = 20)
+
+    @Test
+    fun `zoneTier - beyond reach returns null`() {
+        val t = threat(type = ThreatType.FPV_LOITERING)
+        assertNull(zoneTier(t, distKm = 41.0, speedKmh = null, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - AVIATION within reach always INNER`() {
+        val t = threat(type = ThreatType.AVIATION)
+        assertEquals(ThreatZone.INNER, zoneTier(t, distKm = 100.0, speedKmh = null, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - slow threat within red zone`() {
+        val t = threat(type = ThreatType.SHAHED)
+        assertEquals(ThreatZone.INNER, zoneTier(t, distKm = 15.0, speedKmh = null, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - slow threat within yellow zone`() {
+        val t = threat(type = ThreatType.SHAHED)
+        assertEquals(ThreatZone.OUTER, zoneTier(t, distKm = 30.0, speedKmh = null, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - slow threat beyond yellow returns null`() {
+        val t = threat(type = ThreatType.SHAHED)
+        assertNull(zoneTier(t, distKm = 60.0, speedKmh = null, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - fast threat ETA within red`() {
+        val t = threat(type = ThreatType.BALLISTIC)
+        assertEquals(ThreatZone.INNER, zoneTier(t, distKm = 100.0, speedKmh = 2400.0, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - fast threat ETA within yellow`() {
+        val t = threat(type = ThreatType.BALLISTIC)
+        assertEquals(ThreatZone.OUTER, zoneTier(t, distKm = 400.0, speedKmh = 2400.0, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - fast threat ETA beyond yellow returns null`() {
+        val t = threat(type = ThreatType.BALLISTIC)
+        // ETA = 2000km / 2400kmh * 60 = 50 min, well beyond fastYellowMin=20
+        assertNull(zoneTier(t, distKm = 2000.0, speedKmh = 2400.0, params = defaultParams))
+    }
+
+    @Test
+    fun `zoneTier - fast threat with null speed returns null`() {
+        val t = threat(type = ThreatType.CRUISE_MISSILE)
+        assertNull(zoneTier(t, distKm = 50.0, speedKmh = null, params = defaultParams))
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // distanceMeters / bearingDegrees
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `distanceMeters - same point = 0`() = assertEquals(0.0, distanceMeters(50.0, 30.0, 50.0, 30.0), 0.1)
+
+    @Test
+    fun `distanceMeters - 1 degree lat ~ 111km`() {
+        val d = distanceMeters(50.0, 30.0, 51.0, 30.0)
+        assertEquals(110_574.0, d, 1000.0)
+    }
+
+    @Test
+    fun `bearingDegrees - due north`() {
+        val b = bearingDegrees(50.0, 30.0, 51.0, 30.0)
+        assertEquals(0.0, b, 1.0)
+    }
+
+    @Test
+    fun `bearingDegrees - due east`() {
+        val b = bearingDegrees(50.0, 30.0, 50.0, 31.0)
+        assertEquals(90.0, b, 5.0)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // calculateBackoffMs
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `backoff attempt 0-1 returns 1-3s`() {
+        repeat(10) {
+            val ms = NeptunConnectionClient.calculateBackoffMs(1)
+            assertTrue("attempt 1 should be 1000-3000ms, got $ms", ms in 1000L..3000L)
+        }
+    }
+
+    @Test
+    fun `backoff attempt 2 returns ~2-2_4s`() {
+        repeat(10) {
+            val ms = NeptunConnectionClient.calculateBackoffMs(2)
+            assertTrue("attempt 2 should be 2000-2400ms, got $ms", ms in 2000L..2400L)
+        }
+    }
+
+    @Test
+    fun `backoff caps at 15s`() {
+        repeat(10) {
+            val ms = NeptunConnectionClient.calculateBackoffMs(20)
+            assertTrue("attempt 20 should be <= 15400ms, got $ms", ms <= 15400L)
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // isExpired / isStale
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `isExpired - fresh threat not expired`() {
+        val t = threat(updatedAtMillis = System.currentTimeMillis(), type = ThreatType.SHAHED)
+        assertFalse(isExpired(t, System.currentTimeMillis()))
+    }
+
+    @Test
+    fun `isExpired - stale SHAHED expired after 5 min`() {
         val now = System.currentTimeMillis()
-        val threats = listOf(
-            makeThreat(updatedAt = now - 30_000),      // fresh
-            makeThreat(updatedAt = now - 400_000)      // stale
-        )
-        val filtered = AlertService.filterForNotification(threats, now)
-        assertEquals(1, filtered.size)
-        assertEquals(now - 30_000, filtered[0].updatedAtMillis)
+        val t = threat(updatedAtMillis = now - 310_000L, type = ThreatType.SHAHED)
+        assertTrue(isExpired(t, now))
     }
 
     @Test
-    fun `filterForNotification - excludes ghost threats`() {
+    fun `isStale - server stale flag always stale`() {
+        val t = threat(status = "stale")
+        assertTrue(t.isStale(System.currentTimeMillis()))
+    }
+
+    @Test
+    fun `isStale - AVIATION exempt from local expiry`() {
         val now = System.currentTimeMillis()
-        val threats = listOf(
-            makeThreat(status = ThreatStatus.ACTIVE),
-            makeThreat(status = ThreatStatus.GHOST)
-        )
-        val filtered = AlertService.filterForNotification(threats, now)
-        assertEquals(1, filtered.size)
-        assertEquals(ThreatStatus.ACTIVE, filtered[0].status)
+        val t = threat(type = ThreatType.AVIATION, updatedAtMillis = now - 600_000L)
+        assertFalse(t.isStale(now))
     }
 
     @Test
-    fun `filterForNotification - excludes user-shot threats`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(id = "shot-1")
-        AlertService.markUserShot("shot-1", now)
-        val filtered = AlertService.filterForNotification(listOf(threat), now)
-        assertTrue(filtered.none { it.id == "shot-1" })
+    fun `isStale - fresh threat not stale`() {
+        val t = threat(updatedAtMillis = System.currentTimeMillis())
+        assertFalse(t.isStale(System.currentTimeMillis()))
     }
-
-    @Test
-    fun `filterForNotification - user-shot expires after 3 seconds`() {
-        val t0 = 1_000_000L
-        val t3 = 1_003_001L // 3+ seconds later
-        val threat = makeThreat(id = "shot-2")
-        AlertService.markUserShot("shot-2", t0)
-        val filtered = AlertService.filterForNotification(listOf(threat), t3)
-        assertEquals(1, filtered.size) // Expired, so included again
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Offline milestone logic
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `offlineMilestone - 3 minutes triggers first milestone`() {
-        val elapsedMs = 3 * 60_000L
-        val milestone = AlertService.calculateOfflineMilestone(elapsedMs, lastMilestone = 0)
-        assertEquals(3, milestone)
-    }
-
-    @Test
-    fun `offlineMilestone - 6 minutes triggers next milestone`() {
-        val elapsedMs = 6 * 60_000L
-        val milestone = AlertService.calculateOfflineMilestone(elapsedMs, lastMilestone = 3)
-        assertEquals(6, milestone)
-    }
-
-    @Test
-    fun `offlineMilestone - same milestone does not re-trigger`() {
-        val elapsedMs = 6 * 60_000L
-        val milestone = AlertService.calculateOfflineMilestone(elapsedMs, lastMilestone = 6)
-        assertNull(milestone)
-    }
-
-    @Test
-    fun `offlineMilestone - 2 minutes is too early`() {
-        val elapsedMs = 2 * 60_000L
-        val milestone = AlertService.calculateOfflineMilestone(elapsedMs, lastMilestone = 0)
-        assertNull(milestone)
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────
-
-    private fun makeThreat(
-        id: String = "test-${System.nanoTime()}",
-        updatedAt: Long = System.currentTimeMillis(),
-        status: ThreatStatus = ThreatStatus.ACTIVE
-    ): Threat = Threat(
-        id = id,
-        type = ThreatType.UAV,
-        lat = 50.0,
-        lng = 30.0,
-        speedKmh = 100.0,
-        course = 180.0,
-        updatedAtMillis = updatedAt,
-        status = status,
-        altitudeMeters = null,
-        source = "test",
-        region = null,
-        etaMinutes = null,
-        reliability = 0.5f
-    )
 }

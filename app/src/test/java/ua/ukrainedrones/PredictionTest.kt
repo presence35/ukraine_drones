@@ -353,6 +353,7 @@ class PredictionTest {
         bearingDeg: Double? = 180.0,
         heading: Double? = null,
         confirmedAtMillis: Long? = System.currentTimeMillis() - 60_000,
+        updatedAtMillis: Long? = null,
         status: String = "active"
     ): Threat = Threat(
         id = id,
@@ -378,7 +379,7 @@ class PredictionTest {
         confirmedAt = null,
         confirmedAtMillis = confirmedAtMillis,
         updatedAt = null,
-        updatedAtMillis = confirmedAtMillis ?: System.currentTimeMillis(),
+        updatedAtMillis = updatedAtMillis ?: confirmedAtMillis ?: System.currentTimeMillis(),
         trail = emptyList()
     )
 }

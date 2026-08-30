@@ -16,10 +16,10 @@ class ThreatEvaluatorTest {
 
     // Standard zone params
     private val params = ZoneParams(
-        slowRedKm = 15.0,
-        slowYellowKm = 40.0,
-        fastRedMin = 2.0,
-        fastYellowMin = 5.0
+        slowRedKm = 15,
+        slowYellowKm = 40,
+        fastRedMin = 2,
+        fastYellowMin = 5
     )
 
     @Before
@@ -36,7 +36,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05, // ~5.5 km north
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val result = ThreatEvaluator.evaluate(
@@ -55,7 +55,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.20, // ~22 km north
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val result = ThreatEvaluator.evaluate(
@@ -74,7 +74,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.50, // ~55 km north
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val result = ThreatEvaluator.evaluate(
@@ -93,7 +93,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0,
             status = "resolved"
         )
@@ -110,7 +110,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0,
             areaOnly = true
         )
@@ -128,7 +128,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0,
             updatedAtMillis = now - 3_000_000 // 50 min old -> ghost
         )
@@ -146,7 +146,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0,
             advisory = true
         )
@@ -165,7 +165,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val result = ThreatEvaluator.evaluate(
@@ -183,14 +183,14 @@ class ThreatEvaluatorTest {
             id = "shahed-1",
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val cruise = makeThreat(
             id = "cruise-1",
             type = ThreatType.CRUISE_MISSILE,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 850.0
         )
         val result = ThreatEvaluator.evaluate(
@@ -211,7 +211,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val result = ThreatEvaluator.evaluate(
@@ -231,21 +231,21 @@ class ThreatEvaluatorTest {
             id = "red",
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val yellow = makeThreat(
             id = "yellow",
             type = ThreatType.SHAHED,
             lat = userLat + 0.20,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val far = makeThreat(
             id = "far",
             type = ThreatType.SHAHED,
             lat = userLat + 0.50,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0
         )
         val result = ThreatEvaluator.evaluate(
@@ -268,7 +268,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.BALLISTIC,
             lat = userLat + 1.8, // ~200 km north
-            lng = userLng,
+            lon = userLng,
             speedKmh = 3300.0,
             bearingDeg = 180.0, // heading south
             confirmedAtMillis = System.currentTimeMillis() - 30_000 // 30 sec ago
@@ -290,7 +290,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0,
             bearingDeg = 180.0
         )
@@ -392,7 +392,7 @@ class ThreatEvaluatorTest {
             id = "reason-test",
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0,
             region = "Київська область",
             explanationShort = "Шахеди курсом на Київ"
@@ -438,7 +438,7 @@ class ThreatEvaluatorTest {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.10, // ~11 km
-            lng = userLng,
+            lon = userLng,
             speedKmh = 180.0,
             bearingDeg = 180.0
         )

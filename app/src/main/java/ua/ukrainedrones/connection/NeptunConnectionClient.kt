@@ -1,6 +1,7 @@
 package ua.ukrainedrones.connection
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,7 +72,8 @@ class NeptunConnectionClient(
         private const val REST_URL = "https://neptun.in.ua/api/v1/threats"
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
             .pingInterval(20, TimeUnit.SECONDS)
             .build()
     }
@@ -118,7 +120,7 @@ class NeptunConnectionClient(
     private var ignoreUntilMs = 0L
 
     // Test Seam
-    val testHarness = TestHarnessImpl()
+    internal val testHarness = TestHarnessImpl()
 
     fun start(savedReconnectStartMs: Long = 0L, savedIgnoreUntilMs: Long = 0L) {
         if (!scope.isActive) return
@@ -236,6 +238,8 @@ class NeptunConnectionClient(
                     return
                 }
 
+                activeWebSocket = webSocket
+
                 val now = System.currentTimeMillis()
                 reconnectAttempt = 0
                 openedAtMs = now
@@ -278,12 +282,11 @@ class NeptunConnectionClient(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (connectionGeneration.get() != gen) return
+                activeWebSocket?.close(1001, t.message)
                 _lastError.value = t.message
                 handleDisconnect(gen, reason = t.message)
             }
         })
-
-        activeWebSocket = ws
     }
 
     private fun handleDisconnect(gen: Int, reason: String?) {
@@ -313,8 +316,8 @@ class NeptunConnectionClient(
     private fun scheduleReconnect() {
         if (isManuallyStopped || isIgnoringPause()) return
 
-        if (openedAtMs > 0L && System.currentTimeMillis() - openedAtMs > 10_000L) {
-            reconnectAttempt = 0
+        if (openedAtMs > 0L && System.currentTimeMillis() - openedAtMs > 60_000L) {
+            reconnectAttempt = reconnectAttempt.coerceAtMost(2)
         }
         reconnectAttempt++
 
@@ -381,15 +384,18 @@ class NeptunConnectionClient(
         try {
             val env = JSONObject(body)
             val arr = env.optJSONArray("threats") ?: return
-            threatsMutex.withLock {
-                val snapshotMap = LinkedHashMap<String, Threat>()
-                for (i in 0 until arr.length()) {
+            val snapshotMap = LinkedHashMap<String, Threat>()
+            for (i in 0 until arr.length()) {
+                try {
                     val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
                     snapshotMap[t.id] = t
+                } catch (e: Exception) {
+                    Log.w("NeptunClient", "Malformed REST threat at index $i", e)
                 }
+            }
+            threatsMutex.withLock {
                 val now = System.currentTimeMillis()
                 val prev = _threats.value
-                // Preserve user-shot drones within grace window
                 for (id in prev.keys) {
                     if (id in snapshotMap) continue
                     val shotAt = userShotAt[id] ?: continue
@@ -397,7 +403,6 @@ class NeptunConnectionClient(
                         snapshotMap[id] = prev.getValue(id)
                     }
                 }
-                // Emit ThreatRemoved for IDs that disappeared from REST snapshot
                 for (id in prev.keys) {
                     if (id in snapshotMap) continue
                     if (userShotAt.containsKey(id)) continue
@@ -436,6 +441,10 @@ class NeptunConnectionClient(
                 val now = System.currentTimeMillis()
                 val quietFor = now - lastFrameAtMs
 
+                if (restInFlight.get() && now - lastFrameAtMs > 15_000L) {
+                    restInFlight.set(false)
+                }
+
                 val currentState = _connectionState.value
                 if (currentState is ConnectionState.Connected && lastFrameAtMs > 0L && quietFor >= DEGRADED_STALE_MS) {
                     _connectionState.value = ConnectionState.Degraded(
@@ -464,8 +473,12 @@ class NeptunConnectionClient(
                     threatsMutex.withLock {
                         val map = LinkedHashMap<String, Threat>()
                         for (i in 0 until arr.length()) {
-                            val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
-                            map[t.id] = t
+                            try {
+                                val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
+                                map[t.id] = t
+                            } catch (e: Exception) {
+                                Log.w("NeptunClient", "Malformed WS threat at index $i", e)
+                            }
                         }
                         val now = System.currentTimeMillis()
                         val prev = _threats.value
@@ -531,8 +544,8 @@ class NeptunConnectionClient(
                 }
                 "heartbeat" -> { /* live keep-alive */ }
             }
-        } catch (_: Exception) {
-            // Malformed frame ignored
+        } catch (e: Exception) {
+            Log.w("NeptunClient", "Malformed frame", e)
         }
     }
 

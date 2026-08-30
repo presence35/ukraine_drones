@@ -116,17 +116,20 @@ object LocationTracker {
             return
         }
         _isRefreshing.value = true
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val onFix: (Location?) -> Unit = { loc ->
-            _isRefreshing.value = false
-            if (loc != null) recordFix(loc)
-            onComplete?.invoke()
+            if (completed.compareAndSet(false, true)) {
+                _isRefreshing.value = false
+                if (loc != null) recordFix(loc)
+                onComplete?.invoke()
+            }
         }
 
         // Safety timeout in case GPS hardware hangs
         scope.launch {
             delay(12_000L)
-            if (_isRefreshing.value) {
+            if (completed.compareAndSet(false, true)) {
                 _isRefreshing.value = false
                 onComplete?.invoke()
             }
