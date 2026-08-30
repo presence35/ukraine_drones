@@ -1,5 +1,6 @@
 package ua.ukrainedrones
 
+import android.os.Build
 import ua.ukrainedrones.connection.ConnectionHolder
 import ua.ukrainedrones.connection.ConnEvent
 import ua.ukrainedrones.connection.ConnRetryState
@@ -62,6 +63,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -190,7 +192,8 @@ fun LogsScreen(
     val window = entries.filter { now - it.atMillis < DebugLog.AUTO_CLEAR_AGE_MS }
     val isDecisions = filter == LogsFilter.DECISIONS
     val isSystem = filter == LogsFilter.SYSTEM
-    val rows: List<LogRow> = buildRows(window, connEntries, systemEntries, now, isDecisions, isSystem, newestFirst, shownOnly, showFlourish)
+    val isTests = filter == LogsFilter.TESTS
+    val rows: List<LogRow> = buildRows(window, connEntries, systemEntries, now, isDecisions, isSystem, isTests, newestFirst, shownOnly, showFlourish)
     val visible = rows.take(visibleCount)
     val hasMore = visibleCount < rows.size
     val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy, showFlourish, proximitySort, newestFirst) else emptyList()
@@ -209,18 +212,18 @@ fun LogsScreen(
     ) { padding ->
         val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS, LogsFilter.SYSTEM, LogsFilter.TESTS)
         val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections, s.logsFilterSystem, s.logsFilterTests)
-        val tabCounts = listOf(window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0, systemEntries.size, 0)
         Column(Modifier.padding(padding).fillMaxWidth()) {
-            TabRow(
+            ScrollableTabRow(
                 selectedTabIndex = tabFilters.indexOf(filter),
                 containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary
+                contentColor = MaterialTheme.colorScheme.primary,
+                edgePadding = 0.dp
             ) {
                 tabFilters.forEachIndexed { index, f ->
                     Tab(
                         selected = filter == f,
                         onClick = { filter = f; visibleCount = VISIBLE_INITIAL },
-                        text = { Text("${tabLabels[index]} \u00B7 ${tabCounts[index]}") }
+                        text = { Text(tabLabels[index]) }
                     )
                 }
             }
@@ -375,10 +378,12 @@ private fun buildRows(
     now: Long,
     isDecisions: Boolean,
     isSystem: Boolean,
+    isTests: Boolean,
     newestFirst: Boolean,
     shownOnly: Boolean,
     showFlourish: Boolean
 ): List<LogRow> {
+    if (isTests) return emptyList()
     if (isSystem) {
         val sysRows = systemEntries.map { SystemRow(it) }
         return if (newestFirst) sysRows.sortedByDescending { it.atMillis } else sysRows.sortedBy { it.atMillis }
@@ -1137,7 +1142,8 @@ private fun MigSimButton(context: android.content.Context, s: Strings.StringSet)
 
 @Composable
 private fun OemSimButton(context: android.content.Context, s: Strings.StringSet) {
-    val currentOem = remember { mutableStateOf(BatteryOptimization.getOemInfo(context).manufacturer) }
+    val realManufacturer = remember { Build.MANUFACTURER.lowercase() }
+    var selectedOem by remember { mutableStateOf<String?>(null) }
     val oemOptions = listOf(null to "Auto", "xiaomi" to "Xiaomi", "samsung" to "Samsung", "huawei" to "Huawei", "oppo" to "Oppo", "realme" to "Realme", "vivo" to "Vivo", "oneplus" to "OnePlus")
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -1146,8 +1152,9 @@ private fun OemSimButton(context: android.content.Context, s: Strings.StringSet)
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(bottom = 4.dp)
         )
+        val displayOem = selectedOem ?: realManufacturer
         Text(
-            "Current: ${currentOem.value}",
+            "Simulating: $displayOem",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp)
@@ -1160,10 +1167,12 @@ private fun OemSimButton(context: android.content.Context, s: Strings.StringSet)
         ) {
             oemOptions.forEach { (oem, label) ->
                 FilterChip(
-                    selected = currentOem.value == (oem ?: BatteryOptimization.getOemInfo().manufacturer),
+                    selected = selectedOem == oem,
                     onClick = {
+                        selectedOem = oem
                         BatteryOptimization.setSimulatedOem(context, oem)
-                        currentOem.value = oem ?: BatteryOptimization.getOemInfo().manufacturer
+                        val msg = if (oem != null) "OEM simulation: $label" else "OEM simulation cleared"
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
                     },
                     label = { Text(label, style = MaterialTheme.typography.labelSmall) }
                 )

@@ -1131,11 +1131,14 @@ private fun ThreatCardHost(
             sel.neutralized != null -> 2
             else -> 0
         },
-        // Card appears/disappears in one frame — tap must feel instant. Selection
-        // motion is the map's bullet + the card's icon pop; the slower fade below is
-        // reserved for the neutralized state's death-window exit.
+        // Slide-down + fade-in for the card entrance; exit is instant so dismiss
+        // feels snappy.  The implicit AnimatedContent size transition was visibly
+        // laggy on the LARGE card — a deliberate slide masks the layout change.
         transitionSpec = {
-            fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+            val enter = slideInVertically(tween(200, easing = FastOutSlowInEasing)) { it / 5 } +
+                fadeIn(tween(150, easing = FastOutSlowInEasing))
+            val exit = fadeOut(tween(0))
+            enter togetherWith exit
         },
         label = "threatCardSwap",
         modifier = Modifier

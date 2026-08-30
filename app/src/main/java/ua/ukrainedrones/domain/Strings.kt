@@ -2253,12 +2253,25 @@ val SHELTER_NAME_GLOSSARY: Map<String, String> = mapOf(
     "№" to "No.",
     "найпростіше укриття" to "simplest shelter",
     "первинне (мобільне) укриття" to "primary (mobile) shelter",
+    "укриття: ст. м." to "Shelter: metro st.",
+    "укриття: ст. швидк. трамвая" to "Shelter: fast tram st.",
+    "ст. м." to "metro st.",
+    "ст. швидк. трамвая" to "fast tram st.",
+    "метро" to "metro",
     "укриття" to "shelter",
     "зсцз" to "CDS",
     "вулиця" to "street",
+    "вул." to "St",
     "вул" to "St",
     "дорога" to "road",
     "бульвар" to "boulevard",
+    "бул" to "Blvd",
+    "проспект" to "prospect",
+    "просп." to "Ave",
+    "просп" to "Ave",
+    "майдан" to "sq.",
+    "площа" to "sq.",
+    "пл" to "sq.",
     "провулок" to "lane",
     "пров" to "Ln",
     "жк" to "complex",
@@ -2266,7 +2279,6 @@ val SHELTER_NAME_GLOSSARY: Map<String, String> = mapOf(
     "пляж" to "beach",
     "парк" to "park",
 )
-
 
 /**
  * Pluralized "source(s)" word for the given count, per language.

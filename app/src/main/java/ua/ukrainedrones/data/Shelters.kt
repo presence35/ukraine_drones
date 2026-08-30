@@ -13,14 +13,14 @@ enum class ShelterType {
             val lower = name.lowercase()
             return when {
                 lower.contains("мобільн") || lower.contains("первинн") -> MOBILE
-                name.contains("ЗСЦЗ") || iconStr.contains("195861") || iconStr.contains("195862") -> BUNKER
+                name.contains("ЗСЦЗ") || lower.contains("метро") || lower.contains("ст. м.") || lower.contains("трамва") || lower.contains("бункер") || iconStr.contains("195861") || iconStr.contains("195862") -> BUNKER
                 else -> BASIC
             }
         }
     }
 }
 
-/** One protective structure from the Odesa city shelter layer (map-shelter, type=36). */
+/** One protective structure from the shelter layer. */
 data class Shelter(
     val id: String,
     val name: String,
@@ -67,37 +67,78 @@ data class NearestShelter(
 }
 
 /**
- * In-memory index of Odesa shelters, parsed from the city's compact
+ * In-memory spatial index of shelters, parsed from the compact
  * [id, "lat,lon", icon, name, flag] JSON array. Immutable once built, so it is
- * safe to share across the UI. Rows with empty or out-of-city coordinates are dropped.
+ * safe to share across the UI. Rows with empty or out-of-bounds coordinates are dropped.
  */
 class ShelterIndex private constructor(
-    private val shelters: List<Shelter>
+    private val shelters: List<Shelter>,
+    val minLat: Double, val maxLat: Double,
+    val minLon: Double, val maxLon: Double
 ) {
     val size: Int get() = shelters.size
 
-    /** Whether a point falls inside the city's shelter coverage. */
+    // Spatial hash grid: 0.1 degree grid cells (~11km lat x ~7-8km lon)
+    private val grid: Map<Long, List<Shelter>>
+
+    init {
+        val map = HashMap<Long, MutableList<Shelter>>(shelters.size.coerceAtLeast(16))
+        for (s in shelters) {
+            val key = cellKey(s.lat, s.lon)
+            map.getOrPut(key) { ArrayList(8) }.add(s)
+        }
+        grid = map
+    }
+
+    /** Whether a point falls inside the parsed shelter data extent. */
     fun withinRegion(lat: Double, lon: Double): Boolean =
-        lat in MIN_LAT..MAX_LAT && lon in MIN_LON..MAX_LON
+        lat in minLat..maxLat && lon in minLon..maxLon
 
     /** Nearest [limit] shelters to the given point, closest first. */
-    fun nearest(fromLat: Double, fromLon: Double, limit: Int = 20): List<NearestShelter> =
-        shelters
+    fun nearest(fromLat: Double, fromLon: Double, limit: Int = 20): List<NearestShelter> {
+        if (shelters.isEmpty()) return emptyList()
+        val targetLimit = limit.coerceAtLeast(1)
+
+        val latCell = (fromLat * GRID_SCALE).toInt()
+        val lonCell = (fromLon * GRID_SCALE).toInt()
+
+        val candidates = ArrayList<Shelter>(targetLimit * 4)
+        var ring = 0
+        val maxRing = 15 // up to ~150km search radius in grid
+        while (ring <= maxRing) {
+            for (dLat in -ring..ring) {
+                for (dLon in -ring..ring) {
+                    if (ring > 0 && Math.abs(dLat) != ring && Math.abs(dLon) != ring) continue
+                    val key = packKey(latCell + dLat, lonCell + dLon)
+                    grid[key]?.let { candidates.addAll(it) }
+                }
+            }
+            if (candidates.size >= targetLimit && ring >= 2) break
+            ring++
+        }
+
+        val sourceList = if (candidates.size >= targetLimit) candidates else shelters
+        return sourceList
             .map { NearestShelter(it, it.distanceMeters(fromLat, fromLon)) }
             .sortedBy { it.distanceMeters }
-            .take(limit.coerceAtLeast(1))
+            .take(targetLimit)
+    }
 
     companion object {
-        // Odesa city bounding box, generous around the published dataset extent.
-        private const val MIN_LAT = 46.20
-        private const val MAX_LAT = 46.70
-        private const val MIN_LON = 30.45
-        private const val MAX_LON = 30.95
+        private const val GRID_SCALE = 10.0 // 0.1 degree grid cells
 
-        /** Parses the city's JSON payload; null when unreadable. */
+        private fun cellKey(lat: Double, lon: Double): Long =
+            packKey((lat * GRID_SCALE).toInt(), (lon * GRID_SCALE).toInt())
+
+        private fun packKey(latCell: Int, lonCell: Int): Long =
+            (latCell.toLong() shl 32) or (lonCell.toLong() and 0xFFFFFFFFL)
+
+        /** Parses the JSON payload; null when unreadable. Supports compact [id, "lat,lon", name] and legacy arrays. */
         fun fromJson(json: String): ShelterIndex? = runCatching {
             val data = JSONObject(json).getJSONArray("data")
             val list = ArrayList<Shelter>(data.length())
+            var minLat = Double.MAX_VALUE; var maxLat = -Double.MAX_VALUE
+            var minLon = Double.MAX_VALUE; var maxLon = -Double.MAX_VALUE
             for (i in 0 until data.length()) {
                 val row = data.getJSONArray(i)
                 val coordStr = row.optString(1)
@@ -105,13 +146,23 @@ class ShelterIndex private constructor(
                 if (comma <= 0) continue
                 val lat = coordStr.substring(0, comma).trim().toDoubleOrNull() ?: continue
                 val lon = coordStr.substring(comma + 1).trim().toDoubleOrNull() ?: continue
-                if (lat !in MIN_LAT..MAX_LAT || lon !in MIN_LON..MAX_LON) continue
-                val iconStr = row.optString(2)
-                val name = row.optString(3)
+                if (lat < 30.0 || lat > 60.0 || lon < 15.0 || lon > 50.0) continue
+
+                val (name, iconStr) = if (row.length() >= 4) {
+                    row.optString(3) to row.optString(2)
+                } else {
+                    row.optString(2) to ""
+                }
+                if (name.isBlank()) continue
                 val type = ShelterType.infer(name, iconStr)
                 list += Shelter(row.optString(0), name, lat, lon, type)
+                if (lat < minLat) minLat = lat
+                if (lat > maxLat) maxLat = lat
+                if (lon < minLon) minLon = lon
+                if (lon > maxLon) maxLon = lon
             }
-            ShelterIndex(list)
+            if (list.isEmpty()) return@runCatching null
+            ShelterIndex(list, minLat, maxLat, minLon, maxLon)
         }.getOrNull()
     }
 }

@@ -11,7 +11,7 @@ class ShelterTest {
 
     private fun payload(vararg rows: Array<Any?>): String {
         val data = JSONArray()
-        rows.forEach { data.put(JSONArray(listOf(it[0], it[1], it[2], it[3], it[4]))) }
+        rows.forEach { data.put(JSONArray(it.toList())) }
         return "{\"result\":\"OK\",\"data\":$data}"
     }
 
@@ -19,16 +19,30 @@ class ShelterTest {
     fun `parses the city payload shape and drops bad rows`() {
         val json = payload(
             arrayOf(1, "46.48, 30.73", "icon1", "Вулиця Дерибасівська, 1", false),
-            arrayOf(2, "46.50,30.74", "icon2", "ЗСЦЗ №00001", false),
+            arrayOf(2, "50.45, 30.52", "icon2", "Укриття: ст. м. Хрещатик", false),
             arrayOf(3, "", "icon3", "no coords", false),                    // dropped: empty
             arrayOf(4, "abc,def", "icon4", "garbage", false),               // dropped: unparsable
-            arrayOf(5, "50.45,30.52", "icon5", "Київ", false),              // dropped: outside Odesa bbox
+            arrayOf(5, "51.50,-0.12", "icon5", "London", false),            // dropped: outside Ukraine bbox
             arrayOf(6, "46.48, 30.73", "icon6", "Дублікат координат", false)
         )
         val index = ShelterIndex.fromJson(json)
         assertNotNull(index)
         assertEquals(3, index!!.size)
         assertEquals("Вулиця Дерибасівська, 1", index.nearest(46.48, 30.73, 1).single().shelter.name)
+    }
+
+    @Test
+    fun `parses compact 3-element payload format`() {
+        val json = payload(
+            arrayOf(1, "46.48, 30.73", "Вулиця Дерибасівська, 1"),
+            arrayOf(2, "50.45, 30.52", "Укриття: ст. м. Хрещатик")
+        )
+        val index = ShelterIndex.fromJson(json)
+        assertNotNull(index)
+        assertEquals(2, index!!.size)
+        val nearestKyiv = index.nearest(50.45, 30.52, 1).single()
+        assertEquals("Укриття: ст. м. Хрещатик", nearestKyiv.shelter.name)
+        assertEquals(ShelterType.BUNKER, nearestKyiv.shelter.type)
     }
 
     @Test
@@ -53,10 +67,22 @@ class ShelterTest {
     }
 
     @Test
-    fun `withinRegion respects the Odesa bbox`() {
-        val index = ShelterIndex.fromJson(payload(arrayOf(1, "46.48,30.73", "i", "x", false)))!!
-        assertTrue(index.withinRegion(46.48, 30.73))
-        assertTrue(!index.withinRegion(50.45, 30.52))
+    fun `withinRegion reflects the parsed data extent`() {
+        val index = ShelterIndex.fromJson(payload(
+            arrayOf(1, "46.48, 30.73", "i", "Odesa", false),
+            arrayOf(2, "50.45, 30.52", "i", "Kyiv", false)
+        ))!!
+        assertTrue(index.withinRegion(46.48, 30.73))   // Odesa — in data
+        assertTrue(index.withinRegion(50.45, 30.52))   // Kyiv — in data
+        assertTrue(!index.withinRegion(49.84, 24.03))  // Lviv — not in data
+        assertTrue(!index.withinRegion(51.50, -0.12))  // London — not in data
+    }
+
+    @Test
+    fun `shelterNameEn translates glossary terms and transliterates correctly`() {
+        assertEquals("Shelter: metro st. Khreshchatyk", shelterNameEn("Укриття: ст. м. Хрещатик"))
+        assertEquals("CDS No.10542 (St Bohdana Khmelnytskoho, 15)", shelterNameEn("ЗСЦЗ №10542 (вул. Богдана Хмельницького, 15)"))
+        assertEquals("Primary (mobile) shelter (Ave Tsentralnyi, 24)", shelterNameEn("Первинне (мобільне) укриття (просп. Центральний, 24)"))
     }
 
     @Test
