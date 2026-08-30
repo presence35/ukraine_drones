@@ -51,6 +51,10 @@ class DeathFxController(
     private val vibrator = context.getSystemService(Vibrator::class.java)
     // A pending "return the camera to where the user was" job — replaced by each new strike.
     private var cameraReturnJob: Job? = null
+    // The original camera position before the first strike in a sequence — persists across
+    // rapid successive strikes so the camera always returns to where the user actually was,
+    // not to whatever mid-animation position the second strike captured.
+    private var savedHome: GeoPoint? = null
     // The running tally-tap replay, so a red alert can cancel it mid-show (clear()).
     private var replayJob: Job? = null
 
@@ -72,6 +76,7 @@ class DeathFxController(
      *  a red alert ejects the flourish (safety outranks the playful replay). */
     fun clear() {
         cameraReturnJob?.cancel()
+        savedHome = null
         replayJob?.cancel()
         replayJob = null
         _replayProgress.value = null
@@ -135,12 +140,18 @@ class DeathFxController(
         // Snapshot the coordinates: osmdroid's getMapCenter() returns its projection's reusable
         // internal point, which keeps mutating as the camera moves — holding it across the
         // animation would "return" to whatever that shared point held later (a random spot).
-        val preCenter = GeoPoint(mapView.mapCenter.latitude, mapView.mapCenter.longitude)
+        // On the first strike, save the camera position as home; rapid successive strikes reuse
+        // the saved home so the camera always returns to where the user actually started.
+        if (savedHome == null) {
+            savedHome = GeoPoint(mapView.mapCenter.latitude, mapView.mapCenter.longitude)
+        }
+        val home = savedHome!!
         cameraReturnJob?.cancel()
         cameraReturnJob = scope.launch {
             mapView.controller.animateTo(target)
             delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
-            this@DeathFxController.mapView()?.controller?.animateTo(preCenter)
+            savedHome = null
+            this@DeathFxController.mapView()?.controller?.animateTo(home)
         }
     }
 
