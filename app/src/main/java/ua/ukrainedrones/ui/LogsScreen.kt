@@ -41,11 +41,22 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.NearMe
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,6 +67,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -92,7 +104,7 @@ private const val VISIBLE_INITIAL = 25
 private const val VISIBLE_STEP = 50
 
 /** Which data source to show. */
-private enum class LogsFilter { DECISIONS, CONNECTIONS, SYSTEM }
+private enum class LogsFilter { DECISIONS, CONNECTIONS, SYSTEM, TESTS }
 
 /** How to group decision rows. */
 private enum class GroupBy { TIMELINE, PROXIMITY, TYPE }
@@ -166,6 +178,7 @@ fun LogsScreen(
     var proximitySort by rememberSaveable { mutableStateOf(ProximitySort.DISTANCE) }
     var shownOnly by rememberSaveable { mutableStateOf(true) }
     var showFlourish by rememberSaveable { mutableStateOf(false) }
+    var legendExpanded by rememberSaveable { mutableStateOf(false) }
     var visibleCount by remember { mutableIntStateOf(VISIBLE_INITIAL) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -194,9 +207,9 @@ fun LogsScreen(
             )
         }
     ) { padding ->
-        val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS, LogsFilter.SYSTEM)
-        val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections, s.logsFilterSystem)
-        val tabCounts = listOf(window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0, systemEntries.size)
+        val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS, LogsFilter.SYSTEM, LogsFilter.TESTS)
+        val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections, s.logsFilterSystem, s.logsFilterTests)
+        val tabCounts = listOf(window.size, connEntries.size + if (ConnectionLog.currentEpisode(now) != null) 1 else 0, systemEntries.size, 0)
         Column(Modifier.padding(padding).fillMaxWidth()) {
             TabRow(
                 selectedTabIndex = tabFilters.indexOf(filter),
@@ -209,6 +222,15 @@ fun LogsScreen(
                         onClick = { filter = f; visibleCount = VISIBLE_INITIAL },
                         text = { Text("${tabLabels[index]} \u00B7 ${tabCounts[index]}") }
                     )
+                }
+            }
+            if (isDecisions) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    LegendRow(s, legendExpanded) { legendExpanded = !legendExpanded }
                 }
             }
             LazyColumn(
@@ -255,14 +277,20 @@ fun LogsScreen(
                     }
                 }
             }
+            if (filter == LogsFilter.TESTS) {
+                item(key = "testsim") {
+                    TestSimButtons(context, s)
+                }
+                item(key = "testmig") {
+                    MigSimButton(context, s)
+                }
+                item(key = "testoem") {
+                    OemSimButton(context, s)
+                }
+            }
             if (filter == LogsFilter.CONNECTIONS && connEvents.isNotEmpty()) {
                 item(key = "retrylog") {
                     RetryLogCard(connEvents, connRetry, s, now) { ConnectionHolder.getSupervisor(context).dismissLogCard() }
-                }
-            }
-            if (filter == LogsFilter.CONNECTIONS) {
-                item(key = "testsim") {
-                    TestSimButtons(context)
                 }
             }
             if (visible.isEmpty()) {
@@ -271,6 +299,7 @@ fun LogsScreen(
                         when (filter) {
                             LogsFilter.CONNECTIONS -> s.logsEmptyConnections
                             LogsFilter.SYSTEM -> s.apiSystemEmpty
+                            LogsFilter.TESTS -> s.logsEmptyConnections
                             else -> s.debugLogEmpty
                         },
                         style = MaterialTheme.typography.bodyLarge,
@@ -445,68 +474,146 @@ private fun ViewOptionsRow(
     onShownOnlyChange: (Boolean) -> Unit,
     onShowFlourishChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        val groupIcon = mapOf(
-            GroupBy.TIMELINE to Icons.Outlined.AccessTime,
-            GroupBy.PROXIMITY to Icons.Outlined.NearMe,
-            GroupBy.TYPE to Icons.Outlined.Category
-        )
-        val groupLabel = mapOf(
-            GroupBy.TIMELINE to s.logsGroupTimeline,
-            GroupBy.PROXIMITY to s.logsGroupProximity,
-            GroupBy.TYPE to s.logsGroupType
-        )
-        GroupBy.entries.forEach { value ->
+    val groupIcon = mapOf(
+        GroupBy.TIMELINE to Icons.Outlined.AccessTime,
+        GroupBy.PROXIMITY to Icons.Outlined.NearMe,
+        GroupBy.TYPE to Icons.Outlined.Category
+    )
+    val groupLabel = mapOf(
+        GroupBy.TIMELINE to s.logsGroupTimeline,
+        GroupBy.PROXIMITY to s.logsGroupProximity,
+        GroupBy.TYPE to s.logsGroupType
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            GroupBy.entries.forEach { value ->
+                FilterChip(
+                    selected = groupBy == value,
+                    onClick = { onGroupBy(value) },
+                    label = { Text(groupLabel[value]!!) },
+                    leadingIcon = {
+                        Icon(groupIcon[value]!!, contentDescription = groupLabel[value], modifier = Modifier.size(16.dp))
+                    }
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (groupBy == GroupBy.PROXIMITY) {
+                FilterChip(
+                    selected = proximitySort == ProximitySort.DISTANCE,
+                    onClick = { onProximitySortChange(ProximitySort.DISTANCE) },
+                    label = { Text(s.logsSortDistance) },
+                    leadingIcon = { Icon(Icons.Filled.Place, contentDescription = s.logsSortDistance, modifier = Modifier.size(16.dp)) }
+                )
+                FilterChip(
+                    selected = proximitySort == ProximitySort.AGE,
+                    onClick = { onProximitySortChange(ProximitySort.AGE) },
+                    label = { Text(s.logsSortAge) },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = s.logsSortAge, modifier = Modifier.size(16.dp)) }
+                )
+            } else {
+                val sortRotation by animateFloatAsState(targetValue = if (newestFirst) 0f else 180f, label = "sortRotation")
+                FilterChip(
+                    selected = newestFirst,
+                    onClick = onSortToggle,
+                    label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = if (newestFirst) s.logsSortNewest else s.logsSortOldest, modifier = Modifier.rotate(sortRotation).size(16.dp)) }
+                )
+            }
             FilterChip(
-                selected = groupBy == value,
-                onClick = { onGroupBy(value) },
-                label = { Text(groupLabel[value]!!) },
-                leadingIcon = {
-                    Icon(groupIcon[value]!!, contentDescription = null, modifier = Modifier.size(16.dp))
+                selected = shownOnly,
+                onClick = { onShownOnlyChange(!shownOnly) },
+                label = { Text(s.logsNotified) },
+                leadingIcon = { Icon(Icons.Filled.CheckCircle, contentDescription = s.logsNotified, modifier = Modifier.size(16.dp)) }
+            )
+            FilterChip(
+                selected = showFlourish,
+                onClick = { onShowFlourishChange(!showFlourish) },
+                label = { Text(s.logsFlourishToggle) },
+                leadingIcon = { Icon(Icons.Filled.Star, contentDescription = s.logsFlourishToggle, modifier = Modifier.size(16.dp)) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun LegendRow(s: Strings.StringSet, expanded: Boolean, onToggle: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                s.logsLegend,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LegendItem(Icons.Filled.LightMode, s.debugLogDay)
+                    LegendItem(Icons.Filled.DarkMode, s.debugLogNight)
                 }
-            )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LegendItem(Icons.Filled.Notifications, s.debugLogSoundFollows)
+                    LegendItem(Icons.AutoMirrored.Filled.VolumeUp, s.debugLogSoundOverride)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LegendItem(Icons.Filled.CheckCircle, s.debugLogShown)
+                    LegendItem(Icons.Outlined.History, s.debugReasonStale)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LegendItem(Icons.Outlined.AccessTime, s.logsGroupTimeline)
+                    LegendItem(Icons.Outlined.NearMe, s.logsGroupProximity)
+                    LegendItem(Icons.Outlined.Category, s.logsGroupType)
+                }
+            }
         }
-        if (groupBy == GroupBy.PROXIMITY) {
-            FilterChip(
-                selected = proximitySort == ProximitySort.DISTANCE,
-                onClick = { onProximitySortChange(ProximitySort.DISTANCE) },
-                label = { Text(s.logsSortDistance) },
-                leadingIcon = { Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(16.dp)) }
-            )
-            FilterChip(
-                selected = proximitySort == ProximitySort.AGE,
-                onClick = { onProximitySortChange(ProximitySort.AGE) },
-                label = { Text(s.logsSortAge) },
-                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.size(16.dp)) }
-            )
-        } else {
-            val sortRotation by animateFloatAsState(targetValue = if (newestFirst) 0f else 180f, label = "sortRotation")
-            FilterChip(
-                selected = newestFirst,
-                onClick = onSortToggle,
-                label = { Text(if (newestFirst) s.logsSortNewest else s.logsSortOldest) },
-                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.rotate(sortRotation).size(16.dp)) }
-            )
-        }
-        Spacer(Modifier.width(4.dp))
-        FilterChip(
-            selected = shownOnly,
-            onClick = { onShownOnlyChange(!shownOnly) },
-            label = { Text(s.logsNotified) },
-            leadingIcon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp)) }
+    }
+}
+
+@Composable
+private fun LegendItem(icon: ImageVector, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(14.dp)
         )
-        FilterChip(
-            selected = showFlourish,
-            onClick = { onShowFlourishChange(!showFlourish) },
-            label = { Text(s.logsFlourishToggle) },
-            leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(16.dp)) }
+        Spacer(Modifier.width(4.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -652,21 +759,45 @@ private fun DebugLogKind.label(
 ): String = when (this) {
     DebugLogKind.OFFICIAL_ON -> s.debugKindOfficialOn
     DebugLogKind.OFFICIAL_OFF -> s.debugKindOfficialOff
-    DebugLogKind.ZONE_ENTER -> s.debugKindZoneEnter
+    DebugLogKind.ZONE_ENTER -> {
+        val typeLabel = threatType?.let {
+            val info = ThreatTypeCatalog.INFO.getValue(it)
+            if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+        }
+        val loc = localityText(locality, lang)
+        when {
+            typeLabel != null && loc != null -> "$typeLabel \u00B7 $loc"
+            typeLabel != null -> typeLabel
+            loc != null -> "${s.debugKindZoneEnter} \u00B7 $loc"
+            else -> s.debugKindZoneEnter
+        }
+    }
     DebugLogKind.ZONE_EXIT -> {
         val typeLabel = threatType?.let {
             val info = ThreatTypeCatalog.INFO.getValue(it)
             if (lang == AppLanguage.UA) info.labelUa else info.labelEn
         }
-        val parts = mutableListOf<String>()
-        typeLabel?.let { parts += it }
-        parts += s.debugKindZoneExit
-        localityText(locality, lang)?.let { parts += it }
-        parts.joinToString(" · ")
+        val loc = localityText(locality, lang)
+        when {
+            typeLabel != null && loc != null -> "$typeLabel \u00B7 ${s.debugKindZoneExit} \u00B7 $loc"
+            typeLabel != null -> "$typeLabel \u00B7 ${s.debugKindZoneExit}"
+            loc != null -> "${s.debugKindZoneExit} \u00B7 $loc"
+            else -> s.debugKindZoneExit
+        }
     }
-    DebugLogKind.REGION_THREAT -> localityText(locality, lang)?.let {
-        String.format(s.debugKindRegionFormat, it)
-    } ?: s.debugKindRegionThreat
+    DebugLogKind.REGION_THREAT -> {
+        val typeLabel = threatType?.let {
+            val info = ThreatTypeCatalog.INFO.getValue(it)
+            if (lang == AppLanguage.UA) info.labelUa else info.labelEn
+        }
+        val loc = localityText(locality, lang)
+        when {
+            typeLabel != null && loc != null -> "$typeLabel \u00B7 $loc"
+            typeLabel != null -> typeLabel
+            loc != null -> "${s.debugKindRegionThreat} \u00B7 $loc"
+            else -> s.debugKindRegionThreat
+        }
+    }
     DebugLogKind.FLOURISH -> s.debugKindFlourish
 }
 
@@ -723,21 +854,6 @@ private fun DecisionCard(
             }
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                entry.threatType?.let { type ->
-                    val info = ThreatTypeCatalog.INFO.getValue(type)
-                    Text(
-                        if (lang == AppLanguage.UA) info.labelUa else info.labelEn,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "\u00B7",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.width(6.dp))
-                }
                 entry.distanceKm?.let { km ->
                     Text(
                         String.format(s.logDistanceFormat, km.roundToInt()),
@@ -754,45 +870,43 @@ private fun DecisionCard(
             }
             Spacer(Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (entry.night) s.debugLogNight else s.debugLogDay,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                Icon(
+                    imageVector = if (entry.night) Icons.Filled.DarkMode else Icons.Filled.LightMode,
+                    contentDescription = if (entry.night) s.debugLogNight else s.debugLogDay,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
                 )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (entry.sirenOverride) s.debugLogSoundOverride else s.debugLogSoundFollows,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    imageVector = if (entry.sirenOverride) Icons.AutoMirrored.Filled.VolumeUp else Icons.Filled.Notifications,
+                    contentDescription = if (entry.sirenOverride) s.debugLogSoundOverride else s.debugLogSoundFollows,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
                 )
                 Spacer(Modifier.weight(1f))
                 if (entry.notified) {
                     Icon(
                         Icons.Filled.CheckCircle,
-                        contentDescription = null,
+                        contentDescription = s.debugLogShown,
                         tint = DebugGreen,
                         modifier = Modifier.size(14.dp)
                     )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        s.debugLogShown,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = DebugGreen
-                    )
                 } else {
-                    Image(
-                        painter = painterResource(R.drawable.ic_notifications_off),
-                        contentDescription = null,
-                        colorFilter = ColorFilter.tint(DebugAmber),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        String.format(s.debugLogSuppressed, entry.reason.label(s)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = DebugAmber
-                    )
+                    if (entry.reason == DebugLogReason.STALE) {
+                        Icon(
+                            Icons.Outlined.History,
+                            contentDescription = s.debugReasonStale,
+                            tint = DebugAmber,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(R.drawable.ic_notifications_off),
+                            contentDescription = String.format(s.debugLogSuppressed, entry.reason.label(s)),
+                            colorFilter = ColorFilter.tint(DebugAmber),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }
@@ -909,88 +1023,152 @@ private fun RetryLogCard(
 }
 
 @Composable
-private fun TestSimButtons(context: android.content.Context) {
+private fun TestSimButtons(context: android.content.Context, s: Strings.StringSet) {
     val client = ConnectionHolder.getClient(context)
     var forceOffline by remember { mutableStateOf(false) }
     var noNetwork by remember { mutableStateOf(false) }
     var blackHole by remember { mutableStateOf(false) }
     var slowDrain by remember { mutableStateOf(false) }
 
-    Spacer(Modifier.height(4.dp))
-    Text(
-        "Simulate:",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-    ) {
-        FilterChip(
-            selected = forceOffline,
-            onClick = {
-                forceOffline = !forceOffline
-                if (forceOffline) {
-                    noNetwork = false; blackHole = false; slowDrain = false
-                    client.testHarness.suppressFrames = false
-                    client.testHarness.frameDropPercent = 0
-                }
-                client.testHarness.setForceOffline(forceOffline)
-            },
-            label = { Text("Offline", style = MaterialTheme.typography.labelSmall) }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            FilterChip(
+                selected = forceOffline,
+                onClick = {
+                    forceOffline = !forceOffline
+                    if (forceOffline) {
+                        noNetwork = false; blackHole = false; slowDrain = false
+                        client.testHarness.suppressFrames = false
+                        client.testHarness.frameDropPercent = 0
+                    }
+                    client.testHarness.setForceOffline(forceOffline)
+                },
+                label = { Text("Offline", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = { Icon(Icons.Filled.CloudOff, contentDescription = null, modifier = Modifier.size(16.dp)) }
+            )
+            FilterChip(
+                selected = noNetwork,
+                onClick = {
+                    noNetwork = !noNetwork
+                    if (noNetwork) {
+                        forceOffline = false; blackHole = false; slowDrain = false
+                        client.testHarness.setForceOffline(false)
+                        client.testHarness.suppressFrames = false
+                        client.testHarness.frameDropPercent = 0
+                    }
+                    client.testHarness.setNetworkValidated(!noNetwork)
+                },
+                label = { Text("No Network", style = MaterialTheme.typography.labelSmall) }
+            )
+            FilterChip(
+                selected = blackHole,
+                onClick = {
+                    blackHole = !blackHole
+                    if (blackHole) {
+                        forceOffline = false; noNetwork = false; slowDrain = false
+                        client.testHarness.setForceOffline(false)
+                        client.testHarness.setNetworkValidated(true)
+                        client.testHarness.frameDropPercent = 0
+                    }
+                    client.testHarness.suppressFrames = blackHole
+                },
+                label = { Text("Black Hole", style = MaterialTheme.typography.labelSmall) }
+            )
+            FilterChip(
+                selected = slowDrain,
+                onClick = {
+                    slowDrain = !slowDrain
+                    if (slowDrain) {
+                        forceOffline = false; noNetwork = false; blackHole = false
+                        client.testHarness.setForceOffline(false)
+                        client.testHarness.setNetworkValidated(true)
+                        client.testHarness.suppressFrames = false
+                    }
+                    client.testHarness.frameDropPercent = if (slowDrain) 50 else 0
+                },
+                label = { Text("Slow Drain", style = MaterialTheme.typography.labelSmall) }
+            )
+            FilterChip(
+                selected = false,
+                onClick = {
+                    forceOffline = false; noNetwork = false; blackHole = false; slowDrain = false
+                    client.testHarness.reset()
+                },
+                label = { Text("Reset", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp)) }
+            )
+        }
+        if (blackHole) {
+            Text(
+                s.logsSimBlackHoleDesc,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp, top = 2.dp)
+            )
+        }
+        if (slowDrain) {
+            Text(
+                s.logsSimSlowDrainDesc,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp, top = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MigSimButton(context: android.content.Context, s: Strings.StringSet) {
+    val client = ConnectionHolder.getClient(context)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = { client.testHarness.fireTestMig() },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(s.connSimMigTitle, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun OemSimButton(context: android.content.Context, s: Strings.StringSet) {
+    val currentOem = remember { mutableStateOf(BatteryOptimization.getOemInfo(context).manufacturer) }
+    val oemOptions = listOf(null to "Auto", "xiaomi" to "Xiaomi", "samsung" to "Samsung", "huawei" to "Huawei", "oppo" to "Oppo", "realme" to "Realme", "vivo" to "Vivo", "oneplus" to "OnePlus")
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            s.batteryOemTitle,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 4.dp)
         )
-        FilterChip(
-            selected = noNetwork,
-            onClick = {
-                noNetwork = !noNetwork
-                if (noNetwork) {
-                    forceOffline = false; blackHole = false; slowDrain = false
-                    client.testHarness.setForceOffline(false)
-                    client.testHarness.suppressFrames = false
-                    client.testHarness.frameDropPercent = 0
-                }
-                client.testHarness.setNetworkValidated(!noNetwork)
-            },
-            label = { Text("No Network", style = MaterialTheme.typography.labelSmall) }
+        Text(
+            "Current: ${currentOem.value}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp)
         )
-        FilterChip(
-            selected = blackHole,
-            onClick = {
-                blackHole = !blackHole
-                if (blackHole) {
-                    forceOffline = false; noNetwork = false; slowDrain = false
-                    client.testHarness.setForceOffline(false)
-                    client.testHarness.setNetworkValidated(true)
-                    client.testHarness.frameDropPercent = 0
-                }
-                client.testHarness.suppressFrames = blackHole
-            },
-            label = { Text("Black Hole", style = MaterialTheme.typography.labelSmall) }
-        )
-        FilterChip(
-            selected = slowDrain,
-            onClick = {
-                slowDrain = !slowDrain
-                if (slowDrain) {
-                    forceOffline = false; noNetwork = false; blackHole = false
-                    client.testHarness.setForceOffline(false)
-                    client.testHarness.setNetworkValidated(true)
-                    client.testHarness.suppressFrames = false
-                }
-                client.testHarness.frameDropPercent = if (slowDrain) 50 else 0
-            },
-            label = { Text("Slow Drain", style = MaterialTheme.typography.labelSmall) }
-        )
-        FilterChip(
-            selected = false,
-            onClick = {
-                forceOffline = false; noNetwork = false; blackHole = false; slowDrain = false
-                client.testHarness.reset()
-            },
-            label = { Text("Reset", style = MaterialTheme.typography.labelSmall) }
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            oemOptions.forEach { (oem, label) ->
+                FilterChip(
+                    selected = currentOem.value == (oem ?: BatteryOptimization.getOemInfo().manufacturer),
+                    onClick = {
+                        BatteryOptimization.setSimulatedOem(context, oem)
+                        currentOem.value = oem ?: BatteryOptimization.getOemInfo().manufacturer
+                    },
+                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
     }
 }
 

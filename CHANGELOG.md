@@ -18,6 +18,7 @@
 - Prediction: clarify estimateWithSource speed extraction pattern / Прогноз: покращення читабельності estimateWithSource
 - Tests: rewrite AlertServiceLogicTest to test actual pure domain functions (reachKm, zoneTier, etaMinutes, distanceMeters, backoff, isExpired, isStale) / Тести: переписано AlertServiceLogicTest для тестування чистих доменних функцій
 - Tests: fix pre-existing compilation errors in ThreatEvaluatorTest (lng→lon, Double→Int), NeptunConnectionClientTest (nonexistent APIs), PredictionTest (missing param), ApiMonitorTest (type mismatch) / Тести: виправлено попередні помилки компіляції в тестах
+- Tests: delete duplicate AlertServiceLogicTest and NeptunConnectionClientTest; fix 6 assertion bugs (isStale boundary, speedTracker clear fallback, measuredHeading bearing, zoneThreats prediction, computeProximity distance, icon exhaust coords) — 249/249 green / Тести: видалено дублікати AlertServiceLogicTest та NeptunConnectionClientTest; виправлено 6 помилкових assert-ів — 249/249 зелених
 
 - Background: add partial WakeLock to prevent CPU deep sleep from freezing WebSocket and milestone notifications when screen is off / Фон: додано частковий WakeLock для запобігання замерзанню WebSocket та сповіщень про віхи при вимкненому екрані
 - Notifications: milestone channel (3m/6m/10m/20m) now audible with critical_offline.ogg / Сповіщення: канал віх тепер звуковий з critical_offline.ogg

@@ -27,7 +27,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ripple
@@ -53,9 +52,6 @@ import ua.ukrainedrones.connection.NeptunConnectionClient
 internal fun ConnectionStatus(
     neptunDown: Boolean,
     degraded: Boolean,
-    forceOffline: Boolean,
-    onForceOfflineChange: (Boolean) -> Unit,
-    onSimulateMig: () -> Unit,
     onOpenLogs: () -> Unit,
     showInfo: Boolean,
     onShowInfoChange: (Boolean) -> Unit,
@@ -179,26 +175,6 @@ internal fun ConnectionStatus(
                         active = !neptunDown,
                         activeLabel = s.connActiveLabel
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            s.connForceOfflineTitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = forceOffline,
-                            onCheckedChange = onForceOfflineChange
-                        )
-                    }
-                    Button(
-                        onClick = onSimulateMig,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(s.connSimMigTitle)
-                    }
                 }
             }
         }
