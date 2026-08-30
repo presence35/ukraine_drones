@@ -2,15 +2,21 @@ package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionHolder
 
+import android.content.res.Configuration
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
@@ -52,6 +58,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         cleanLegacyOsmdroidCache()
         ConnectionLog.attach(applicationContext)
         DebugLog.attach(applicationContext)
@@ -70,7 +80,12 @@ class MainActivity : ComponentActivity() {
                 LocalDensity provides Density(baseDensity.density, fontScale)
             ) {
                 MaterialTheme(colorScheme = AppDarkColors) {
-                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.systemBars),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
                         MainScreen()
                     }
                 }
@@ -86,6 +101,14 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleReveal(intent)
         handleFlourish(intent)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
     }
 
     /**

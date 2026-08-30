@@ -801,16 +801,19 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.ic_notifications_off),
                         iconTint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    AlertToggleRow(
-                        title = s.offlineCriticalBypassSilentTitle,
-                        description = s.offlineCriticalBypassSilentDesc,
-                        checked = criticalOfflineBypassSilent,
-                        onCheckedChange = onCriticalOfflineBypassSilentChange,
-                        icon = painterResource(R.drawable.ic_volume_up),
-                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        enabled = criticalOfflineOverride
-                    )
+                    AnimatedVisibility(visible = criticalOfflineOverride) {
+                        Column(modifier = Modifier.padding(start = 40.dp)) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            AlertToggleRow(
+                                title = s.offlineCriticalBypassSilentTitle,
+                                description = s.offlineCriticalBypassSilentDesc,
+                                checked = criticalOfflineBypassSilent,
+                                onCheckedChange = onCriticalOfflineBypassSilentChange,
+                                icon = painterResource(R.drawable.ic_volume_up),
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     // Battery Optimization
                     if (batteryOptimized) {
@@ -1783,13 +1786,13 @@ internal fun AlertToggleRow(
                             appendInlineContent(iconId, "[icon]")
                             append(" $it")
                         },
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         inlineContent = mapOf(
                             iconId to InlineTextContent(
                                 Placeholder(
-                                    12.sp,
-                                    12.sp,
+                                    14.sp,
+                                    14.sp,
                                     PlaceholderVerticalAlign.TextCenter
                                 )
                             ) {
@@ -1805,7 +1808,7 @@ internal fun AlertToggleRow(
                 } else {
                     Text(
                         it,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

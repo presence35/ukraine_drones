@@ -48,12 +48,14 @@ object BatteryOptimization {
                 OemInfo(raw, isAggressive = true, hasAutoStartIntent = false)
             mfg.contains("huawei") || mfg.contains("honor") ->
                 OemInfo(raw, isAggressive = true, hasAutoStartIntent = true)
-            mfg.contains("oppo") || mfg.contains("realme") || mfg.contains("oneplus") || mfg.contains("oppo") ->
+            mfg.contains("oppo") || mfg.contains("realme") || mfg.contains("oneplus") ->
                 OemInfo(raw, isAggressive = true, hasAutoStartIntent = true)
             mfg.contains("vivo") ->
                 OemInfo(raw, isAggressive = true, hasAutoStartIntent = false)
+            mfg.contains("tecno") || mfg.contains("infinix") || mfg.contains("itel") ->
+                OemInfo(raw, isAggressive = true, hasAutoStartIntent = true)
             else ->
-                OemInfo(raw, isAggressive = false, hasAutoStartIntent = false)
+                OemInfo(raw, isAggressive = true, hasAutoStartIntent = false)
         }
     }
 
@@ -116,6 +118,15 @@ object BatteryOptimization {
                     component = ComponentName(
                         "com.coloros.safecenter",
                         "com.coloros.safecenter.startupapp.StartupAppActivity"
+                    )
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            // Transsion (Tecno / Infinix / Itel) — HiOS auto-start
+            oem.manufacturer.lowercase().let { it.contains("tecno") || it.contains("infinix") || it.contains("itel") } ->
+                Intent().apply {
+                    component = ComponentName(
+                        "com.transsion.phonemanager",
+                        "com.transsion.phonemanager.view.AutoRunListActivity"
                     )
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
