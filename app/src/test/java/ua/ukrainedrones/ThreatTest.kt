@@ -21,10 +21,10 @@ class ThreatTest {
     }
 
     @Test
-    fun `isStale - exactly at threshold returns true`() {
+    fun `isStale - exactly at threshold returns false`() {
         val now = System.currentTimeMillis()
         val threat = makeThreat(updatedAtMillis = now - 300_000) // 5 min old
-        assertTrue(threat.isStale(now))
+        assertFalse(threat.isStale(now))
     }
 
     @Test

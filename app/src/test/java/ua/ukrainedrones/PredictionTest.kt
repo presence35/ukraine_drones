@@ -252,7 +252,7 @@ class PredictionTest {
         val now = System.currentTimeMillis()
         ThreatSpeedTracker.record("t4", now, 50.0, 30.0)
         ThreatSpeedTracker.clear()
-        val threat = makeThreat(id = "t4", speedKmh = null, bearingDeg = null)
+        val threat = makeThreat(id = "t4", type = ThreatType.UNKNOWN, speedKmh = null, bearingDeg = null)
         assertNull(ThreatSpeedTracker.estimate("t4", threat))
     }
 
@@ -285,8 +285,8 @@ class PredictionTest {
         ThreatSpeedTracker.record("heading-test", now, 50.1, 30.1)
         val heading = ThreatSpeedTracker.measuredHeading("heading-test")
         assertNotNull(heading)
-        // Heading from (50,30) to (50.1,30.1) should be roughly NE (~45 deg)
-        assertEquals(45.0, heading!!, 10.0)
+        // Heading from (50,30) to (50.1,30.1) is ~33° (cos(50°) compresses longitude)
+        assertEquals(33.0, heading!!, 10.0)
     }
 
     // ─────────────────────────────────────────────────────────────

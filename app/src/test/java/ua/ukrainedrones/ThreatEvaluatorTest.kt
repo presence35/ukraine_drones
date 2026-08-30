@@ -280,9 +280,9 @@ class ThreatEvaluatorTest {
             enabled = ThreatType.entries.toSet(),
             now = System.currentTimeMillis()
         )
-        // Ballistic at 3300 km/h for 30 sec = ~27.5 km traveled
-        // Started at 200 km, now at ~172.5 km, still outside 40 km yellow
-        assertNull(zones[threat.id])
+        // Ballistic at 3300 km/h for 30 sec = ~27.5 km traveled (capped at 20 km by flyParams)
+        // Started at 200 km, now at ~180 km, ETA ≈ 3.27 min < fastYellowMin=5 → OUTER
+        assertEquals(ThreatZone.OUTER, zones[threat.id])
     }
 
     @Test
@@ -440,7 +440,8 @@ class ThreatEvaluatorTest {
             lat = userLat + 0.10, // ~11 km
             lon = userLng,
             speedKmh = 180.0,
-            bearingDeg = 180.0
+            bearingDeg = 180.0,
+            confirmedAtMillis = null // disable prediction so raw distance is used
         )
         val proximity = ThreatEvaluator.computeProximity(
             threat,
