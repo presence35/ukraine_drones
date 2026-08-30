@@ -8,7 +8,7 @@ change a documented invariant, update the relevant section.
 
 - Single-module Android app (`:app`) — a live air-threat map for Ukraine.
 - Jetpack Compose (Material 3, dark-only) + OSMdroid. Kotlin 1.9.24, JDK 17, minSdk 26 /
-  targetSdk 34, namespace `ua.ukrainedrones`.
+  targetSdk 35, namespace `ua.ukrainedrones`.
 - No runtime backend of ours: data comes straight from the public
   [NEPTUN](https://neptun.in.ua) API (WS stream + REST merge). No Firebase, no push.
 - Update feed: static `version.json` + APK on `odesaplay.com.ua`, self-checked daily, in-app install.

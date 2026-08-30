@@ -97,7 +97,7 @@ threat levels are approximate, never exact.
 
 ## Build from source
 
-Requirements: JDK 17+ and the Android SDK (compileSdk 34).
+Requirements: JDK 17+ and the Android SDK (compileSdk 35).
 
 ```powershell
 .\gradlew.bat :app:assembleDebug

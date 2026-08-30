@@ -11,9 +11,14 @@ import android.content.Intent
  */
 class NeutralizedDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        context.startService(
-            Intent(context, AlertService::class.java)
-                .setAction(NeutralizedTally.ACTION_NEUTRALIZED_DISMISS)
-        )
+        try {
+            context.startService(
+                Intent(context, AlertService::class.java)
+                    .setAction(NeutralizedTally.ACTION_NEUTRALIZED_DISMISS)
+            )
+        } catch (_: IllegalStateException) {
+            // Service not running or background start blocked — safe to ignore;
+            // the tally resets on next service start anyway.
+        }
     }
 }

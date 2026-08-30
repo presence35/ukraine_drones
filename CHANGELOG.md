@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Build: target SDK 35 (Android 15) for Play Store compliance; guard NeutralizedDismissReceiver against background start restriction / Збірка: target SDK 35 (Android 15) для відповідності Play Store; захист NeutralizedDismissReceiver від обмеження запуску з фону
 - Connection: add 10s connectTimeout and 30s readTimeout to OkHttp client (was infinite) / З'єднання: додано connectTimeout 10с та readTimeout 30с для OkHttp (було без ліміту)
 - Connection: close WebSocket on onFailure to prevent socket leak / З'єднання: закриття WebSocket при onFailure для запобігання витоку сокетів
 - Connection: cap backoff grace reset — after 60s stable connection, reconnectAttempt floors at 2 (prevents rapid-fire reconnect hammering on flaky networks) / З'єднання: обмеження скидання — після 60с стабільного з'єднання reconnectAttempt не нижче 2 (запобігає швидкому перепідключенню на нестійких мережах)
