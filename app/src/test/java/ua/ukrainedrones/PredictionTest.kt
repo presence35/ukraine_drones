@@ -165,6 +165,26 @@ class PredictionTest {
         assertNull(pos)
     }
 
+    @Test
+    fun `predictPosition - speed from tracker when server speed absent`() {
+        ThreatSpeedTracker.clear()
+        val now = System.currentTimeMillis()
+        ThreatSpeedTracker.record("no-speed", now - 60_000, 50.0, 30.0)
+        ThreatSpeedTracker.record("no-speed", now, 50.1, 30.0)
+
+        val threat = makeThreat(
+            id = "no-speed",
+            speedKmh = null,
+            bearingDeg = 90.0,
+            confirmedAtMillis = now - 60_000
+        )
+        assertTrue(threat.flying)
+        val speed = ThreatSpeedTracker.estimate("no-speed", threat)
+        assertNotNull(speed)
+        val pos = predictPosition(threat, speed!!, now)
+        assertNotNull(pos)
+    }
+
     // ─────────────────────────────────────────────────────────────
     // staleAfterMs() per-type
     // ─────────────────────────────────────────────────────────────

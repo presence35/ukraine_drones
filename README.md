@@ -1,12 +1,10 @@
 # Ukraine Drones · Українські дрони
 
-**A live air-threat map for all of Ukraine.** It connects straight to the
-[NEPTUN](https://neptun.in.ua) public API and rings alerts when threats come close —
-drones, missiles, guided bombs, and more — right on your phone.
+Android app for monitoring publicly available Ukrainian air-threat data from the NEPTUN service.
 
-**No account. No server of ours. No API key.** The app talks directly to NEPTUN's public
-WebSocket, tracks your (approximate) location on-device, and fires siren/chime
-notifications from its own local background service.
+The app displays live threat information on an OpenStreetMap-based map and can generate local audio/visual alerts when threats approach user-configured zones.
+
+> **Important:** This is an experimental situational-awareness tool. It is **not an official warning system** and must not be relied upon as a sole source of safety information. Always follow official air-raid alerts and local authorities.
 
 ## Screenshots
 
@@ -23,118 +21,122 @@ To replace a capture, run the app (e.g. in an emulator) and use
 
 ## Features
 
-- **Live threat stream** from `wss://neptun.in.ua/api/v1/stream` (with REST merge when the
-  stream goes quiet), drawn over a dark OpenStreetMap-style base. No Google account or key.
-- **Two alert tiers** — a Red tier (urgent, full siren) for threats inside the inner band and
-  a Yellow tier (warning, two-tone chime) for the outer band. Slow threats (UAVs, FPV, recon,
-  unknown) are measured by distance in km (red default 20, yellow default 50); fast threats
-  (ballistic, cruise, aviation, guided bombs) by time-to-arrival in minutes (red default 5,
-  yellow default 20). Thresholds are adjustable.
-- **Official oblast air-raid alerts** on their own — the trident glow in the header turns
-  red while a government signal is active. Controlled independently in Settings.
-- **Eight threat types** with vector icons, plain-language descriptions and reference
-  photos: UAV (Shahed), FPV/loitering (Lancet), cruise missile, ballistic, guided bomb,
-  aviation (MiG-31K), reconnaissance, unknown.
-- **Threat detail cards in two sizes** (Small / Large, pick in Settings): type,
-  region, an experimental 0–10 threat-level gauge, speed, distance/ETA, precision (±km),
-  reliability with source count, wave size and time since last seen. Tap the map to dismiss.
-- **Live city alerts** — city labels turn red while their oblast is on official alert and
-  show active-threat counts (e.g. "Kharkiv (2)").
-- **UA / EN** — English uses Canadian spelling and the 🇨🇦 flag; first launch asks your
-  preference, or switch anytime in Settings.
-- **Battery-cheap location** — coarse network fix only (~2 min / ~250 m), so the rings stay
-  honest and the battery stays alive.
-- **Monitoring keeps running in the background** — a foreground service keeps alerting while
-  you use other apps, and restarts itself after a phone reboot or an in-app update.
-- **Self-updating** — silent daily checks plus a manual button, with in-app install.
+* Live air-threat data from the public NEPTUN API
+* WebSocket streaming with REST fallback
+* Map display using OpenStreetMap / OSMdroid
+* Support for multiple threat types, including UAVs, missiles and guided bombs
+* User-configurable red/yellow monitoring zones
+* Local siren, chime and notification alerts
+* Optional location-based monitoring
+* UA / EN interface
+* Persistent foreground monitoring service
+* Monitoring recovery after reboot and app/package restart
+* Local settings stored with Android DataStore
+* Experimental threat-level indicator
+* Dead-reckoning / predicted threat positions when appropriate
+* No user accounts
+* No Firebase
+* No analytics or advertising backend
 
-## How alerts work
+## Location
 
-Three independent alert sources, each with its own toggle:
+The app normally uses the device's network location to determine which monitoring zones apply.
 
-1. **Red tier** — a slow threat (UAV/FPV/recon/unknown) within the red distance (default
-   20 km, adjustable 2–20) or a fast threat (ballistic/cruise/aviation/guided bomb) within the
-   red time-to-arrival (default 5 min) triggers the urgent air-raid siren.
-2. **Yellow tier** — a slow threat within the yellow distance (default 50 km, adjustable
-   21–50) or a fast threat within the yellow time-to-arrival (default 20 min) triggers a
-   two-tone warning chime.
-3. **Official oblast alert** — follows the government signal on its own; never mixed with
-   the zone alerts.
+A GPS-based location refresh may also be requested when the app needs to obtain or improve a location fix.
 
-Zone tiers follow your last location fix — or, when you pin the map to a city in Settings
-(**Map centre**, 26 major cities), they centre on that city instead. "Follow me" keeps the
-camera and zones on your GPS; pinning to a city switches it off and marks the city with a
-map pin. Time thresholds are dragged in the **Edit zones** sheet (sliders update the map
-circles live); each zone has its own bell + switch, and when both are muted a small "All
-alerts are off" pill appears on the map.
+Location processing is performed locally by the app and is not intentionally sent to the NEPTUN service.
 
-Slow threats are tiered by straight-line distance from your focus point; fast threats by
-estimated time-to-arrival (ETA), computed from their speed — a fast ballistic/cruise missile
-crosses its ETA threshold sooner, and from farther out, than a Shahed. Because the circles on
-the map only show the **slow km** thresholds (a reference for how far a Shahed can be and still
-alert), a fast object can legitimately ring from outside the drawn circle.
+Location availability and freshness can affect the accuracy of zone-based alerts.
 
-Sirens respect your phone's sound mode by default — they ring at notification volume and
-only vibrate on vibrate/silent. The **"Sirens always sound"** setting (off by default, in
-Settings → Alerts) makes siren alerts ring even on vibrate/silent. When an official alert
-ends, a short "all clear" chime plays; the all-clear always follows the phone's mode.
+## Threat data
 
-Alerting keeps working while you're in another app — a foreground `dataSync` service
-monitors in the background. The **Stop Monitoring & Exit** button in Settings ends it.
-Positions are deliberately **coarse-only**, and you'll see disclaimers that positions and
-threat levels are approximate, never exact.
+Threat information is obtained from the public NEPTUN service:
 
-## What it deliberately does **not** do
+* WebSocket: `wss://neptun.in.ua/api/v1/stream`
+* REST fallback: `https://neptun.in.ua/api/v1/threats`
 
-- **No cloud anywhere** — no server of ours, no Firebase, no accounts, no billing. If the
-  NEPTUN stream is down, the app keeps retrying silently; there's no intermediate service
-  to buffer anything.
-- **No precise GPS** — coarse location only, to save battery and respect your privacy.
-- **No push infrastructure** — alerts are generated locally by the app's own foreground
-  service, so they stop the moment you exit. This is a conscious zero-backend tradeoff.
-- **Not an official alert system** — NEPTUN is an aggregator. Always defer to official
-  sirens and government channels for actual safety decisions.
+The app maintains a local threat state and combines streaming updates with REST snapshots when the live stream becomes unavailable or stale.
 
-## Build from source
+Network connectivity can fail independently of the app. A connection indicator is provided in the UI, but users should not assume that a connected state guarantees complete or perfectly current threat information.
 
-Requirements: JDK 17+ and the Android SDK (compileSdk 35).
+## Threat prediction
 
-```powershell
-.\gradlew.bat :app:assembleDebug
-adb install app\build\outputs\apk\debug\app-debug.apk
-```
+For some fast-moving threats, the app can estimate a short-term predicted position using the reported position, heading, speed and timestamp.
 
-For a release build you also need `app/keystore.properties` (git-ignored) with
-`storeFile`, `storePassword`, `keyAlias`, `keyPassword`, then run `.\gradlew.bat :app:release`.
+Predicted positions are **estimates**, not direct observations. They are intentionally bounded and should not be interpreted as precise tracking.
 
-## Architecture
+## Alerts
 
-Jetpack Compose + OSMdroid, Kotlin, coroutines + DataStore. Key files under
-`app/src/main/java/ua/ukrainedrones/`:
+Alerts are generated locally based on:
 
-- `NeptunClient.kt` — NEPTUN WebSocket with auto-reconnect (backoff) and REST merge.
-- `MainViewModel.kt` — combines the threat stream, alerts and location into UI state.
-- `MapView.kt` — OSMdroid rendering: zone circles, type-icon markers, course rotation,
-  dead-reckoned positions, city labels, scale bar.
-- `MainScreen.kt` — top-level Compose UI: header (trident, title, connection pill, gear),
-  alert banner, map, threat strip, navigation.
-- `SettingsScreen.kt` — language, Map centre, threat toggles/cards, alerts, updates,
-  battery, feature guide.
-- `ZonesSheet.kt` — "Edit zones" bottom sheet with live radius sliders.
-- `AlertService.kt` — foreground service that rings siren/chime for zone crossings and
-  official alerts; `BootReceiver.kt` restarts it after reboot/update.
-- `LocationTracker.kt` — battery-cheap coarse GPS (network-first, ~2 min / 250 m).
-- `Prediction.kt` — dead-reckoning: markers drift only while flying, using a real course.
-- `Threat.kt` / `ThreatTypeCatalog` — data model and type catalog (labels, descriptions,
-  icons in UA+EN, staleness windows, typical speeds).
-- `ThreatLevel.kt` — the experimental 0–10 threat-level estimator.
-- `Zones.kt` / `ZoneConfig` — zone definitions and point-in-polygon helpers.
-- `Cities.kt` / `Translate.kt` — city alert coloring and NEPTUN locality translation.
-- `UpdateManager.kt` — silent daily version checks + manual check, in-app install.
-- `Strings.kt` / `ZonePrefs.kt` — UA/EN string table and DataStore-backed prefs.
+* current threat state
+* threat type
+* threat position / predicted position
+* user-configured zones
+* current device location
+* alert settings
 
-## Attribution & safety
+The app can also surface official alert-state information received from the data source.
 
-Per NEPTUN's API terms, the app links back to [neptun.in.ua](https://neptun.in.ua/). NEPTUN
-is an aggregator, not an official alert system — always defer to official siren/alert
-sources for actual safety decisions.
+Notification, audio, location, network and Android background restrictions can all affect alert delivery. The app should therefore be treated as a supplementary warning tool rather than a guaranteed alert mechanism.
+
+## Threat level
+
+The 0–10 threat-level indicator is an **experimental heuristic** based on factors such as threat type, distance, reliability, confirmations, position quality, staleness and estimated time to arrival.
+
+It is **not an official threat assessment, probability, or prediction**, and the numeric value should not be interpreted as a calibrated measure of risk.
+
+## Privacy
+
+The project is designed to operate without user accounts or a dedicated application backend.
+
+There is no Firebase integration, advertising SDK or analytics service.
+
+The app does communicate with external services required for its functionality, including NEPTUN and map/tile providers. Network providers may therefore receive normal connection metadata such as the device IP address.
+
+Threat data and map data are downloaded from their respective services. Local monitoring and alert calculations are performed on the device.
+
+## Monitoring service
+
+Continuous monitoring uses an Android foreground service.
+
+The service is responsible for:
+
+* maintaining the threat connection
+* tracking local location
+* evaluating configured zones
+* generating local alerts
+* recovering monitoring state after restart/reboot where Android permits it
+
+Android system restrictions, battery-management settings and manufacturer-specific background restrictions can still affect long-running operation.
+
+## Updates
+
+The project includes an APK update mechanism for independently distributed builds.
+
+This mechanism is intended for builds distributed outside Google Play. Google Play distribution has additional restrictions around APK installation and `REQUEST_INSTALL_PACKAGES`.
+
+## Technology
+
+* Kotlin
+* Jetpack Compose
+* Android Foreground Services
+* Kotlin Coroutines / Flow
+* DataStore
+* OSMdroid
+* OkHttp / WebSocket
+* OpenStreetMap data
+
+## Project status
+
+This is an independent experimental project.
+
+It is actively developed and tested, but it should not be considered safety-critical software. Network outages, upstream data errors, Android restrictions, stale location data, missing permissions, or other failures can result in delayed, missing or incorrect information.
+
+## Disclaimer
+
+This software is provided as-is, without any guarantee that threat information is complete, accurate, timely or available.
+
+Do not use this application as a replacement for official Ukrainian air-raid warning systems, emergency instructions, or local authorities.
+
+The developer is not responsible for decisions made solely on the basis of information displayed by the application.

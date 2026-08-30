@@ -170,23 +170,22 @@ data class Threat(
     val trail: List<TrailPoint> = emptyList()
 ) {
     /**
-     * True when NEPTUN's SDK would dead-reckon this track (`predict()`): it needs a real
-     * velocity (bearing + speed), a confirmed fix to anchor on, and an active status.
+     * True when NEPTUN's SDK would dead-reckon this track (`predict()`): it needs a
+     * velocity bearing, a confirmed fix to anchor on, and an active status. Speed may be
+     * absent — [ThreatSpeedTracker.estimate] fills in measured or nominal speed.
      */
     val flying: Boolean
-        get() = bearingDeg != null && speedKmh != null && confirmedAtMillis != null && status == "active"
+        get() = bearingDeg != null && confirmedAtMillis != null && status == "active"
 
     /**
      * Direction to display, sharing the exact heading `predictPosition` glides along so a
-     * marker that moves always faces its motion. Both call the shared `motionHeading` (our
-     * measured track from recorded fixes, else the server's velocity bearing, else the
-     * reported heading) — when even that is unknown but the course message names a
-     * destination ("…курсом на Київ"), the icon faces the bearing toward that city instead of
-     * a pseudo-random angle; finally NEPTUN's deterministic A(id) pseudo-course applies.
+     * marker that moves always faces its motion. Uses the shared `motionHeading` (server's
+     * velocity bearing, then reported heading, then our measured track from fixes);
+     * when even that is unknown, NEPTUN's deterministic A(id) pseudo-course applies.
      * 0 = north.
      */
     val courseDeg: Double
-        get() = motionHeading(this) ?: courseFromMessage() ?: fallbackCourse(id)
+        get() = motionHeading(this) ?: fallbackCourse(id)
 
     /**
      * Best-effort course from the NEPTUN course text when the velocity bearing and heading

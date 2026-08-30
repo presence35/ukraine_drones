@@ -196,10 +196,21 @@ class ThreatTest {
     // ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `flying - needs bearing speed and confirmedAt and active status`() {
+    fun `flying - needs bearing and confirmedAt and active status`() {
         val threat = makeThreat(
             bearingDeg = 180.0,
             speedKmh = 100.0,
+            confirmedAtMillis = System.currentTimeMillis() - 10_000,
+            status = "active"
+        )
+        assertTrue(threat.flying)
+    }
+
+    @Test
+    fun `flying - missing speed still returns true`() {
+        val threat = makeThreat(
+            bearingDeg = 180.0,
+            speedKmh = null,
             confirmedAtMillis = System.currentTimeMillis() - 10_000,
             status = "active"
         )
