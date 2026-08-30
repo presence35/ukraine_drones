@@ -871,7 +871,7 @@ private fun RetryLogCard(
                 .heightIn(max = 200.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            events.reversed().forEach { ev ->
+            events.takeLast(8).reversed().forEach { ev ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         ev.label(s),
@@ -996,8 +996,21 @@ private fun TestSimButtons(context: android.content.Context) {
 
 @Composable
 private fun ConnectionCard(entry: ConnLogEntry, s: Strings.StringSet, lang: AppLanguage, now: Long) {
-    val online = entry.status == ConnStatus.ONLINE
-    val accent = if (online) DebugGreen else DebugRed
+    val accent = when (entry.status) {
+        ConnStatus.ONLINE -> DebugGreen
+        ConnStatus.OFFLINE -> DebugRed
+        ConnStatus.DEGRADED -> DebugAmber
+    }
+    val icon = when (entry.status) {
+        ConnStatus.ONLINE -> Icons.Filled.CheckCircle
+        ConnStatus.OFFLINE -> Icons.Filled.Close
+        ConnStatus.DEGRADED -> Icons.Filled.Warning
+    }
+    val label = when (entry.status) {
+        ConnStatus.ONLINE -> s.connOnline
+        ConnStatus.OFFLINE -> s.connOffline
+        ConnStatus.DEGRADED -> s.connDegraded
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1007,7 +1020,7 @@ private fun ConnectionCard(entry: ConnLogEntry, s: Strings.StringSet, lang: AppL
         verticalAlignment = Alignment.Top
     ) {
         Icon(
-            imageVector = if (online) Icons.Filled.CheckCircle else Icons.Filled.Close,
+            imageVector = icon,
             contentDescription = null,
             tint = accent,
             modifier = Modifier.size(22.dp)
@@ -1016,7 +1029,7 @@ private fun ConnectionCard(entry: ConnLogEntry, s: Strings.StringSet, lang: AppL
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (online) s.connOnline else s.connOffline,
+                    label,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = accent,
@@ -1054,14 +1067,17 @@ private fun SystemCard(entry: SystemEntry, s: Strings.StringSet, lang: AppLangua
     val accent = when (entry.kind) {
         SystemEntryKind.SDK_CHANGED -> DebugAmber
         SystemEntryKind.SDK_CHECK_FAILED -> DebugRed
+        SystemEntryKind.MALFORMED_FRAME -> DebugRed
     }
     val icon = when (entry.kind) {
         SystemEntryKind.SDK_CHANGED -> Icons.Filled.Warning
         SystemEntryKind.SDK_CHECK_FAILED -> Icons.Filled.Close
+        SystemEntryKind.MALFORMED_FRAME -> Icons.Filled.Warning
     }
     val label = when (entry.kind) {
         SystemEntryKind.SDK_CHANGED -> s.apiSdkChanged
         SystemEntryKind.SDK_CHECK_FAILED -> s.apiSdkCheckFailed
+        SystemEntryKind.MALFORMED_FRAME -> s.apiMalformedFrame
     }
     Row(
         modifier = Modifier

@@ -499,6 +499,7 @@ fun SettingsScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val appContext = LocalContext.current
     var batteryOptimized by remember { mutableStateOf(BatteryOptimization.isIgnoringBatteryOptimizations(appContext)) }
+    val batteryOemInfo = remember { BatteryOptimization.getOemInfo() }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -834,15 +835,17 @@ fun SettingsScreen(
                             )
                         }
                     } else {
+                        val title = if (batteryOemInfo.isAggressive) s.batteryOemTitle else s.batteryTitle
+                        val body = if (batteryOemInfo.isAggressive) s.batteryOemBody else s.batteryBody
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                s.batteryTitle,
+                                title,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                s.batteryBody,
+                                body,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

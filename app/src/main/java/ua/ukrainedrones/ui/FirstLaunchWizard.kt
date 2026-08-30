@@ -2,6 +2,7 @@ package ua.ukrainedrones
 
 import android.Manifest
 import android.content.pm.PackageManager
+import ua.ukrainedrones.BatteryOptimization
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -977,6 +978,7 @@ private fun SetupFeaturesStep(
 /**
  * First-run battery exemption. Appears once, right after the language picker (only when the OS
  * still throttles this app), so MainActivity's deferred system permission dialogs come last.
+ * Shows OEM-specific guidance when the device manufacturer is known to restrict background apps.
  */
 @Composable
 internal fun BatteryOnboardingDialog(
@@ -984,12 +986,15 @@ internal fun BatteryOnboardingDialog(
     onAllow: () -> Unit,
     onLater: () -> Unit
 ) {
+    val oemInfo = remember { BatteryOptimization.getOemInfo() }
+    val title = if (oemInfo.isAggressive) s.batteryOemTitle else s.batteryTitle
+    val body = if (oemInfo.isAggressive) s.batteryOemBody else s.batteryBody
     AlertDialog(
         onDismissRequest = onLater,
         confirmButton = { TextButton(onClick = onAllow) { Text(s.batteryAllowButton) } },
         dismissButton = { TextButton(onClick = onLater) { Text(s.batteryLater) } },
-        title = { Text(s.batteryTitle) },
-        text = { Text(s.batteryBody) }
+        title = { Text(title) },
+        text = { Text(body) }
     )
 }
 

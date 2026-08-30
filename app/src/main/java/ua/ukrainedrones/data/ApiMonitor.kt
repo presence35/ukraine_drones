@@ -18,7 +18,7 @@ import ua.ukrainedrones.service.ServiceState
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-enum class SystemEntryKind { SDK_CHANGED, SDK_CHECK_FAILED }
+enum class SystemEntryKind { SDK_CHANGED, SDK_CHECK_FAILED, MALFORMED_FRAME }
 
 data class SystemEntry(
     val atMillis: Long,
@@ -36,7 +36,7 @@ object ApiMonitor {
 
     private const val TAG = "ApiMonitor"
     internal const val MAX_ENTRIES = 100
-    internal const val AUTO_CLEAR_AGE_MS = 24L * 60 * 60 * 1000
+    internal const val AUTO_CLEAR_AGE_MS = 7L * 24 * 60 * 60 * 1000
     private const val MANIFEST_URL = "https://neptun.in.ua/sdk/build-manifest.json"
 
     private val _entries = MutableStateFlow<List<SystemEntry>>(emptyList())

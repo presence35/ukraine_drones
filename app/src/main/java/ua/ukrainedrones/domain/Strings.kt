@@ -254,6 +254,9 @@ object Strings {
         val batteryAllowButton: String,
         val batteryLater: String,
         val batteryGranted: String,
+        val batteryOemTitle: String,
+        val batteryOemBody: String,
+        val batteryGenericBody: String,
         val resetTipsTitle: String,
         val resetTipsDesc: String,
         val tipsResetToast: String,
@@ -325,6 +328,7 @@ object Strings {
         val connEventLost: String,
         val connEventRetry: String,
         val connEventNoNetwork: String,
+        val connEventDegraded: String,
         val connEventMin3: String,
         val connEventMin5: String,
         val connEventMin6: String,
@@ -395,7 +399,8 @@ object Strings {
         val logsFilterSystem: String,
         val apiSdkChanged: String,
         val apiSdkCheckFailed: String,
-        val apiSystemEmpty: String
+        val apiSystemEmpty: String,
+        val apiMalformedFrame: String
     )
 
     data class Widget(
@@ -845,6 +850,9 @@ object Strings {
         val batteryAllowButton: String get() = misc.batteryAllowButton
         val batteryLater: String get() = misc.batteryLater
         val batteryGranted: String get() = misc.batteryGranted
+        val batteryOemTitle: String get() = misc.batteryOemTitle
+        val batteryOemBody: String get() = misc.batteryOemBody
+        val batteryGenericBody: String get() = misc.batteryGenericBody
         val resetTipsTitle: String get() = misc.resetTipsTitle
         val resetTipsDesc: String get() = misc.resetTipsDesc
         val tipsResetToast: String get() = misc.tipsResetToast
@@ -916,6 +924,7 @@ object Strings {
         val connEventLost: String get() = misc.connEventLost
         val connEventRetry: String get() = misc.connEventRetry
         val connEventNoNetwork: String get() = misc.connEventNoNetwork
+        val connEventDegraded: String get() = misc.connEventDegraded
         val connEventMin3: String get() = misc.connEventMin3
         val connEventMin5: String get() = misc.connEventMin5
         val connEventMin6: String get() = misc.connEventMin6
@@ -987,6 +996,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val apiSdkChanged: String get() = misc.apiSdkChanged
         val apiSdkCheckFailed: String get() = misc.apiSdkCheckFailed
         val apiSystemEmpty: String get() = misc.apiSystemEmpty
+        val apiMalformedFrame: String get() = misc.apiMalformedFrame
         val guideTitle: String get() = guide.guideTitle
         val guideSettingsButton: String get() = guide.guideSettingsButton
         val guideCategoryMap: String get() = guide.guideCategoryMap
@@ -1214,8 +1224,8 @@ val iconSetTitle: String get() = misc.iconSetTitle
         madeBy = "Зроблено Presaince",
 connOnline = "Онлайн",
         connOffline = "Офлайн",
-        connDegraded = "Затримка",
-        connDegradedBody = "З'єднання нестабільне — дані про загрози можуть затримуватися.",
+        connDegraded = "Запасний",
+        connDegradedBody = "Запасне з'єднання — дані про загрози можуть затримуватися.",
         connServerLine = "З'єднання з сервером повітряних тривог NEPTUN.",
         connStatusTitle = "Статус системи",
         connNeptunLabel = "NEPTUN",
@@ -1328,7 +1338,7 @@ connOnline = "Онлайн",
     )
 
     private fun uaMisc() = Misc(
-        connLogTitle = "Журнал з'єднання",
+        connLogTitle = "Живий журнал з'єднання",
         connLogEmpty = "Подій ще немає",
         connLogDurFormat = "%1\$d хв %2\$d с",
         allClearTitle = "%1\$s: відбій тривоги",
@@ -1338,6 +1348,9 @@ connOnline = "Онлайн",
         batteryAllowButton = "Дозволити",
         batteryLater = "Пізніше",
         batteryGranted = "Без обмежень у фоні",
+        batteryOemTitle = "Обмеження фону на цьому пристрої",
+        batteryOemBody = "Цей пристрій може обмежувати фонову роботу. Щоб отримувати сповіщення, дозвільте необмежену фонову роботу для цього застосунку.",
+        batteryGenericBody = "Цей пристрій може обмежувати фонову роботу. Дозвіл необмеженої фонової роботи гарантує, що сповіщення лунатимуть.",
         resetTipsTitle = "Скинути всі підказки",
         resetTipsDesc = "Показувати підказки першого запуску знову",
         tipsResetToast = "Підказки скинуто",
@@ -1409,6 +1422,7 @@ connOnline = "Онлайн",
         connEventLost = "З'єднання втрачено",
         connEventRetry = "Повтор через %1\$ds · спроба %2\$d",
         connEventNoNetwork = "Немає мережі — чекаємо",
+        connEventDegraded = "Запасний зв'язок",
         connEventMin3 = "3 хв офлайн",
         connEventMin5 = "5 хв офлайн — тривога",
         connEventMin6 = "6 хв офлайн",
@@ -1480,6 +1494,7 @@ connOnline = "Онлайн",
         apiSdkChanged = "SDK змінено",
         apiSdkCheckFailed = "Перевірка SDK не вдалася",
         apiSystemEmpty = "Змін системи не зафіксовано",
+        apiMalformedFrame = "Кадр з помилкою",
     )
 
     private fun uaWidget() = Widget(
@@ -1772,8 +1787,8 @@ connOnline = "Онлайн",
         madeBy = "Made by Presaince",
 connOnline = "Online",
         connOffline = "Offline",
-        connDegraded = "Degraded",
-        connDegradedBody = "Connection is unstable — threat data may be delayed.",
+        connDegraded = "Backup",
+        connDegradedBody = "Backup connection active — threat data may be delayed.",
         connServerLine = "Connection to the NEPTUN air-threat server.",
         connStatusTitle = "System status",
         connNeptunLabel = "NEPTUN",
@@ -1886,7 +1901,7 @@ alertBannerFormat = "%1\$s: alert",
     )
 
     private fun enMisc() = Misc(
-        connLogTitle = "Connection log",
+        connLogTitle = "Live connection log",
         connLogEmpty = "No events yet",
         connLogDurFormat = "%1\$dm %2\$ds",
         allClearTitle = "%1\$s: all clear",
@@ -1896,6 +1911,9 @@ alertBannerFormat = "%1\$s: alert",
         batteryAllowButton = "Allow",
         batteryLater = "Later",
         batteryGranted = "Unrestricted in background",
+        batteryOemTitle = "Background restriction on this device",
+        batteryOemBody = "This device may restrict background apps. Allow unrestricted background use to keep air-raid alerts ringing.",
+        batteryGenericBody = "This device may restrict background apps. Unrestricted background use keeps alerts alive.",
         resetTipsTitle = "Reset all tips",
         resetTipsDesc = "Show first-run hints again",
         tipsResetToast = "Tips reset",
@@ -1967,6 +1985,7 @@ alertBannerFormat = "%1\$s: alert",
         connEventLost = "Connection lost",
         connEventRetry = "Retrying in %1\$ds · attempt %2\$d",
         connEventNoNetwork = "No network — waiting to retry",
+        connEventDegraded = "Backup connection",
         connEventMin3 = "3 min offline",
         connEventMin5 = "5 min offline — alarm",
         connEventMin6 = "6 min offline",
@@ -2038,6 +2057,7 @@ alertBannerFormat = "%1\$s: alert",
         apiSdkChanged = "SDK changed",
         apiSdkCheckFailed = "SDK check failed",
         apiSystemEmpty = "No system changes recorded",
+        apiMalformedFrame = "Malformed frame",
     )
 
     private fun enWidget() = Widget(

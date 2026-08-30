@@ -31,6 +31,9 @@ import ua.ukrainedrones.OblastAlert
 import ua.ukrainedrones.Reliability
 import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatType
+import ua.ukrainedrones.data.ApiMonitor
+import ua.ukrainedrones.data.SystemEntry
+import ua.ukrainedrones.data.SystemEntryKind
 import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -546,6 +549,11 @@ class NeptunConnectionClient(
             }
         } catch (e: Exception) {
             Log.w("NeptunClient", "Malformed frame", e)
+            ApiMonitor.record(SystemEntry(
+                atMillis = System.currentTimeMillis(),
+                kind = SystemEntryKind.MALFORMED_FRAME,
+                detail = text.take(200)
+            ))
         }
     }
 

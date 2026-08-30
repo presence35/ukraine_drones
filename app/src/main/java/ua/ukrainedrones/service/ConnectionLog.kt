@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import ua.ukrainedrones.service.ServiceState
 
 /** Connection states shown in the status log — mirrors the header pill's two states. */
-enum class ConnStatus { ONLINE, OFFLINE }
+enum class ConnStatus { ONLINE, OFFLINE, DEGRADED }
 
 /** One logged status change. [durationSec] is the episode length for OFF, null for ONLINE. */
 data class ConnLogEntry(
@@ -31,7 +31,7 @@ data class ConnLogEntry(
  */
 object ConnectionLog {
 
-    private const val MAX_ENTRIES = 10
+    private const val MAX_ENTRIES = 50
     private const val LINE_SEP = '\n'
 
     private val _entries = MutableStateFlow<List<ConnLogEntry>>(emptyList())

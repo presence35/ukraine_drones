@@ -31,7 +31,7 @@ class ConnectionSupervisor(
     private val onMilestoneReached: ((ConnEventKind, Long) -> Unit)? = null
 ) {
     companion object {
-        private const val MAX_CONN_EVENTS = 8
+        private const val MAX_CONN_EVENTS = 50
         const val MILESTONE_3_MS = 3 * 60_000L
         const val MILESTONE_5_MS = 5 * 60_000L
         const val MILESTONE_6_MS = 6 * 60_000L
@@ -95,8 +95,10 @@ class ConnectionSupervisor(
             }
 
             is ConnectionState.Degraded -> {
-                // Keep online in main log, but retain warning status
-                ConnectionLog.observe(ConnStatus.ONLINE, now)
+                if (prev !is ConnectionState.Degraded) {
+                    recordEvent(ConnEventKind.DEGRADED)
+                }
+                ConnectionLog.observe(ConnStatus.DEGRADED, now)
             }
 
             is ConnectionState.Connecting -> {
