@@ -216,7 +216,7 @@ private fun zoneColor(zone: ThreatZone?): Int = when (zone) {
  *  dot stands in while the first fix hasn't arrived yet (the "locating you" state). */
 private fun gpsDotBitmap(context: Context, hasFix: Boolean): Bitmap {
     val density = context.resources.displayMetrics.density
-    val coreR = 5f * density
+    val coreR = 4f * density
     val glowR = coreR * 2.8f
     val size = (glowR * 2).toInt().coerceAtLeast(2)
     val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -884,7 +884,7 @@ fun NeptunMapView(
                     if (pos != null) {
                         mapView.overlays.add(Marker(mapView).apply {
                             position = pos
-                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            setAnchor(Marker.ANCHOR_CENTER, 0.1f)
                             icon = BitmapDrawable(
                                 context.resources, gpsDotBitmap(context, uiState.gpsFixAvailable)
                             )

@@ -518,6 +518,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val explainerList = remember(s) { explainers(s) }
     var seenExplainers by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingCardSize by remember { mutableStateOf<ThreatCardSize?>(null) }
     LaunchedEffect(Unit) {
         seenExplainers = explainerList.map { it.id }
             .filter { explainerPrefs.explainerSeen(it).first() }
@@ -555,6 +556,7 @@ fun SettingsScreen(
                 flashId = null
             }
         }
+        pendingCardSize?.let { onThreatCardSizeChange(it); pendingCardSize = null }
     }
     // Collapse states are hoisted to MainScreen (rememberSaveable) so they survive screen
     // switches and process death; only the disclaimer card keeps its own remember logic.
@@ -945,9 +947,9 @@ fun SettingsScreen(
                                         cubicTo(cx - r * 0.15f, bottom - 2f * scale, dx, bulbMidY + r * 0.5f, dx, bulbMidY)
                                         cubicTo(dx, top, dx + cw * scale, top, dx + cw * scale, bulbMidY)
                                         cubicTo(dx + cw * scale, bulbMidY + r * 0.5f, cx + r * 0.15f, bottom - 2f * scale, cx, bottom)
-                                        close()
                                     },
-                                    color = Color.Black
+                                    color = Color.Black,
+                                    style = Stroke(width = 2.6f * scale)
                                 )
                             }
                         }
@@ -1141,7 +1143,14 @@ fun SettingsScreen(
                         ThreatCardSizeSelector(
                             lang = lang,
                             selected = threatCardSize,
-                            onChange = { v -> showExplainer("cardSize"); onThreatCardSizeChange(v) }
+                            onChange = { v ->
+                                if ("cardSize" !in seenExplainers) {
+                                    pendingCardSize = v
+                                    showExplainer("cardSize")
+                                } else {
+                                    onThreatCardSizeChange(v)
+                                }
+                            }
                         )
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {

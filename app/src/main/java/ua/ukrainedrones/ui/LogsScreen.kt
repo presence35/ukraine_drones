@@ -229,10 +229,11 @@ fun LogsScreen(
                 }
             }
             if (isDecisions) {
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.CenterEnd
                 ) {
                     LegendRow(s, legendExpanded) { legendExpanded = !legendExpanded }
                 }
@@ -596,11 +597,6 @@ private fun LegendRow(s: Strings.StringSet, expanded: Boolean, onToggle: () -> U
                     LegendItem(Icons.Filled.CheckCircle, s.debugLogShown)
                     LegendItem(Icons.Outlined.History, s.debugReasonStale)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LegendItem(Icons.Outlined.AccessTime, s.logsGroupTimeline)
-                    LegendItem(Icons.Outlined.NearMe, s.logsGroupProximity)
-                    LegendItem(Icons.Outlined.Category, s.logsGroupType)
-                }
             }
         }
     }
@@ -613,12 +609,12 @@ private fun LegendItem(icon: ImageVector, label: String) {
             imageVector = icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(16.dp)
         )
         Spacer(Modifier.width(4.dp))
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
