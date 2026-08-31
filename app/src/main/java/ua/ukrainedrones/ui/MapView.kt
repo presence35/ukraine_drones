@@ -168,9 +168,10 @@ private fun threatIconFor(
     context: Context,
     type: ThreatType,
     iconSet: ThreatIconSet,
-    revealed: Boolean = false
+    revealed: Boolean = false,
+    areaOnly: Boolean = false
 ): Drawable {
-    val key = "${type.name}|${iconSet.name}|$revealed"
+    val key = "${type.name}|${iconSet.name}|$revealed|$areaOnly"
     val cached = threatIconCache.get(key)
     val bmp: Bitmap
     if (cached != null) {
@@ -187,13 +188,15 @@ private fun threatIconFor(
         val canvas = Canvas(bmp)
         src.setBounds(0, 0, w, h)
         src.draw(canvas)
-        if (revealed) {
+        if (revealed || areaOnly) {
             val r = 4f * density
             val cx = w - r - 1.5f * density
             val cy = r + 1.5f * density
+            // areaOnly gets an amber dot (oblast-level uncertainty); revealed gets green.
+            val dotColor = if (areaOnly) Color.rgb(255, 183, 77) else Color.rgb(76, 175, 80)
             canvas.drawCircle(cx, cy, r, Paint().apply {
                 isAntiAlias = true
-                color = Color.rgb(76, 175, 80)
+                color = dotColor
             })
             // Small white core so the dot reads on any icon colour.
             canvas.drawCircle(cx, cy, r * 0.45f, Paint().apply {
@@ -827,7 +830,7 @@ fun NeptunMapView(
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = threatIconFor(context, t.type, iconSet, revealed = revealed)
+                        icon = threatIconFor(context, t.type, iconSet, revealed = revealed, areaOnly = t.areaOnly)
                         alpha = if (stale) 0.45f else 1.0f
                         title = typeLabel
                         snippet = regionLabel

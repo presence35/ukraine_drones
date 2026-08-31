@@ -106,7 +106,7 @@ class ThreatEvaluatorTest {
     }
 
     @Test
-    fun `evaluate - areaOnly threat is excluded`() {
+    fun `evaluate - areaOnly threat appears on map but not in zones`() {
         val threat = makeThreat(
             type = ThreatType.SHAHED,
             lat = userLat + 0.05,
@@ -119,7 +119,9 @@ class ThreatEvaluatorTest {
             params = params,
             focusLocation = LatLng(userLat, userLng)
         )
-        assertEquals(0, result.mapThreats.size)
+        assertEquals(1, result.mapThreats.size)
+        assertTrue(result.threatsInner.isEmpty())
+        assertTrue(result.threatsOuter.isEmpty())
     }
 
     @Test

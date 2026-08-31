@@ -112,7 +112,7 @@ fun isExpired(t: Threat, now: Long): Boolean {
  * it's removed entirely. NEPTUN documents no server-side death timeout, so this is the
  * backstop that guarantees a ghost marker can't linger forever.
  */
-const val STALE_GHOST_CAP_MS = 30 * 60 * 1000L
+const val STALE_GHOST_CAP_MS = 15 * 60 * 1000L
 
 /**
  * Hard local lifetime for an AVIATION takeoff alert with no fresh fix. These pins sit at the

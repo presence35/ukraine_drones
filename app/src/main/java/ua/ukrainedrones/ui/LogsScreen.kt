@@ -1,6 +1,8 @@
 package ua.ukrainedrones
 
 import android.os.Build
+import android.content.Intent
+import android.net.Uri
 import ua.ukrainedrones.connection.ConnectionHolder
 import ua.ukrainedrones.connection.ConnEvent
 import ua.ukrainedrones.connection.ConnRetryState
@@ -1263,6 +1265,7 @@ private fun SystemCard(entry: SystemEntry, s: Strings.StringSet, lang: AppLangua
         SystemEntryKind.SDK_CHECK_FAILED -> s.apiSdkCheckFailed
         SystemEntryKind.MALFORMED_FRAME -> s.apiMalformedFrame
     }
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1306,6 +1309,19 @@ private fun SystemCard(entry: SystemEntry, s: Strings.StringSet, lang: AppLangua
                     formatDateTime(lang, entry.atMillis),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (entry.kind == SystemEntryKind.SDK_CHANGED) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    s.apiSdkViewManifest,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accent,
+                    modifier = Modifier.clickable {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://neptun.in.ua/sdk/build-manifest.json"))
+                        )
+                    }
                 )
             }
         }

@@ -51,3 +51,26 @@ Also log unkonwn threat types
 val typeRaw = json.optString("type", "unknown")
 val type = typeRaw.toThreatTypeOrUnknown() // falls back to UNKNOWN instead of crashing
 ###
+
+## In-app tutorial popup (TL;DR)
+
+Lightweight tutorial dialog that appears on ~10th app open or day 3 (whichever comes first),
+explaining core concepts the first-launch wizard doesn't cover:
+
+- How advisory vs non-advisory threats work (amber badge = observation, not danger)
+- Why some threats show at oblast level (areaOnly — amber dot, no precise point)
+- How the connection status pill works
+- That Telegram channels are faster than official air-raid alerts
+- How zone alerts differ from official air-raid alerts
+
+Implementation: new pref key (`tutorialShownCount`/`tutorialShownAt`) in `UserPrefs`, check in
+`MainViewModel.init` or `MainScreen` composition. Simple AlertDialog with swipeable pages or
+single rich-text dialog. Steer users to Settings → Feature Guide at the end. Strings in
+`Strings.kt` (UA + EN).
+
+## Threat clustering at low zoom (TL;DR)
+
+When multiple threats overlap at low zoom levels, show a single count badge instead of 10
+stacked icons. Zoom in reveals individual threats. Requires a spatial index or grid-based
+grouping in the map rendering layer (`MapView.kt`). Could piggyback on the osmdroid → MapLibre
+migration or be done standalone with a simple grid-bucket approach.

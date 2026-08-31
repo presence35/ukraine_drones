@@ -482,7 +482,15 @@ fun ThreatPopupCard(
 
                         if (threat.areaOnly) {
                             Spacer(Modifier.height(6.dp))
-                            Text(s.areaOnlyLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF9E9E9E))
+                            Surface(shape = RoundedCornerShape(12.dp), color = AdvisoryAmber.copy(alpha = 0.18f)) {
+                                Text(
+                                    s.areaOnlyLabel,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = AdvisoryAmber,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
 
                         Spacer(Modifier.height(10.dp))

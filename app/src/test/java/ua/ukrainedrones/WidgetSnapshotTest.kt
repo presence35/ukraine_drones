@@ -36,8 +36,8 @@ class WidgetSnapshotTest {
             threat(id = "e", type = ThreatType.RECON, updatedAtMillis = now)
         )
         val snap = computeWidgetSnapshot(ConnectionState.Disconnected, s, emptyList(), focus, "Одеськ", params, allTypes, now)
-        assertEquals(2, snap.threatCount)
-        assertEquals(1, snap.typeCounts[ThreatType.SHAHED])
+        assertEquals(3, snap.threatCount)
+        assertEquals(2, snap.typeCounts[ThreatType.SHAHED])
         assertEquals(1, snap.typeCounts[ThreatType.RECON])
     }
 

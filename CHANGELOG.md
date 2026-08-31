@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Map: areaOnly threats (oblast-level, no precise point) now render on the map with an amber dot instead of being hidden; card shows amber "Area-level" badge / Мапа: загрози areaOnly (на рівні області, без точної точки) тепер відображаються на мапі з бурим замість приховування; картка показує бейдж "Лише область"
+- Map: footer strip tap now opens the threat popup card (was pan-only) / Мапа: дотик на панелі загроз тепер відкриває картку загрози (було лише переміщення)
+- Prediction: stale ghost cap reduced from 30min to 15min / Прогноз: ліміт привидів зменшено з 30хв до 15хв
+- Service: renamed CENTRE_ALERT_GRACE_MS to ALL_CLEAR_GRACE_MS for clarity / Сервіс: перейменовано CENTRE_ALERT_GRACE_MS на ALL_CLEAR_GRACE_MS
+- Logs: SDK change entries now show "View manifest →" link to inspect what changed on Neptun's side / Логи: запис зміни SDK тепер показує посилання "Переглянути маніфест →"
+
 - Build: target SDK 35 (Android 15) for Play Store compliance; guard NeutralizedDismissReceiver against background start restriction / Збірка: target SDK 35 (Android 15) для відповідності Play Store; захист NeutralizedDismissReceiver від обмеження запуску з фону
 - Connection: add 10s connectTimeout and 30s readTimeout to OkHttp client (was infinite) / З'єднання: додано connectTimeout 10с та readTimeout 30с для OkHttp (було без ліміту)
 - Connection: close WebSocket on onFailure to prevent socket leak / З'єднання: закриття WebSocket при onFailure для запобігання витоку сокетів

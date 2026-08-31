@@ -84,7 +84,7 @@ class AlertService : Service() {
         private const val NOTIF_UPDATE = 7
         /** Minutes offline before the (audible) critical offline notification rings. */
         const val CRITICAL_OFFLINE_MIN = 5
-        private const val CENTRE_ALERT_GRACE_MS = 20_000L
+        private const val ALL_CLEAR_GRACE_MS = 20_000L
         /** How often the monitoring loop re-evaluates state (fast tick, decoupled from the
          *  all-clear grace so a threat that leaves a zone clears promptly). */
         private const val MONITOR_TICK_MS = 1_000L
@@ -1017,7 +1017,7 @@ private var notif3minShown = false
             val since = emptySince
             if (since == null) {
                 emptySince = System.currentTimeMillis()
-            } else if (System.currentTimeMillis() - since >= CENTRE_ALERT_GRACE_MS) {
+            } else if (System.currentTimeMillis() - since >= ALL_CLEAR_GRACE_MS) {
                 emptySince = null
                 cancelAlert()
                 knownZones = emptyMap()

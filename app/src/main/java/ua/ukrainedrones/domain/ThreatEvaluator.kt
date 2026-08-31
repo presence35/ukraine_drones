@@ -28,7 +28,7 @@ object ThreatEvaluator {
         val threatScores = mutableListOf<Double>()
 
         for (t in threats.values) {
-            if (t.status == "resolved" || t.areaOnly || t.isGhost(now)) continue
+            if (t.status == "resolved" || t.isGhost(now)) continue
             if (t.type !in mapEnabledTypes) continue
             val stale = t.isStale(now)
             if (!stale) {
@@ -38,7 +38,7 @@ object ThreatEvaluator {
                 ?.let { predictPosition(t, it, now) } ?: GeoPoint(t.lat, t.lon)
             mapThreats.add(t)
             if (stale || focusLocation == null) continue
-            if (t.advisory || t.type !in alertEnabledTypes) continue
+            if (t.advisory || t.areaOnly || t.type !in alertEnabledTypes) continue
 
             val tierLat = if (t.type in FastThreatTypes) predicted.latitude else t.lat
             val tierLon = if (t.type in FastThreatTypes) predicted.longitude else t.lon

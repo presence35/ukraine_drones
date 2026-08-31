@@ -788,7 +788,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             // The selected threat is gone (removed by the server, marked resolved/area-only, a
             // ghost past the hard cap, or long-pressed) — show a brief neutralized card.
             val selectedGone = sel.selected != null && (
-                (refreshed?.let { t -> t.status == "resolved" || t.areaOnly || t.isGhost(nowMs) } ?: true) ||
+                (refreshed?.let { t -> t.status == "resolved" || t.isGhost(nowMs) } ?: true) ||
                     sel.selected.id == sel.neutralizedId
                 )
             // With the death animation disabled the card never flips to the "Neutralized"
@@ -1422,13 +1422,13 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
     /**
      * Footer strip tap: pan the camera onto [t]'s dead-reckoned position (where its marker
-     * actually sits), without selecting it or opening the popup.
+     * actually sits) and open its popup card.
      */
     fun panToThreat(t: Threat) {
         val now = System.currentTimeMillis()
         val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
             ?: GeoPoint(t.lat, t.lon)
-        revealThreat(t.id, predicted.latitude, predicted.longitude, select = false)
+        revealThreat(t.id, predicted.latitude, predicted.longitude, select = true)
     }
 
     /** Auto-check at most once per day. [allowPopup] pops the dialog on start when no alert is active. */
