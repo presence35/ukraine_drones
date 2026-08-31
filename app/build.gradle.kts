@@ -23,6 +23,14 @@ val cartoApiKey: String = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }.getProperty("cartoApiKey") ?: ""
 
+/** Telegram bot credentials live in app/telegram.properties (git-ignored). */
+val telegramProps: Properties = Properties().apply {
+    val f = file("telegram.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val telegramBotToken: String = telegramProps.getProperty("botToken") ?: ""
+val telegramChatId: String = telegramProps.getProperty("chatId") ?: ""
+
 android {
     namespace = "ua.ukrainedrones"
     compileSdk = 35
@@ -34,6 +42,8 @@ android {
         versionCode = (readVersionProps().getProperty("versionCode") ?: "1").toIntOrNull() ?: 1
         versionName = readVersionProps().getProperty("versionName") ?: "0.1.0"
         buildConfigField("String", "CARTO_API_KEY", "\"$cartoApiKey\"")
+        buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"$telegramBotToken\"")
+        buildConfigField("String", "TELEGRAM_CHAT_ID", "\"$telegramChatId\"")
     }
 
     signingConfigs {

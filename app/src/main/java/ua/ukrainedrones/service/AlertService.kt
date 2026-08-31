@@ -48,6 +48,7 @@ import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.data.ManifestResult
 import ua.ukrainedrones.data.SystemEntry
 import ua.ukrainedrones.data.SystemEntryKind
+import ua.ukrainedrones.data.TelegramNotifier
 import ua.ukrainedrones.service.ServiceState
 import java.util.Calendar
 
@@ -225,6 +226,22 @@ private var notif3minShown = false
             ConnectionLog.awaitAttached()
             DebugLog.awaitAttached()
             ApiMonitor.awaitAttached()
+            // Check for Neptun SDK changes on service start
+            launch {
+                val manifestResult = ApiMonitor.checkManifest(applicationContext)
+                if (manifestResult is ManifestResult.Changed) {
+                    ApiMonitor.record(
+                        SystemEntry(System.currentTimeMillis(), SystemEntryKind.SDK_CHANGED,
+                            "SHA256: ${manifestResult.oldHash} -> ${manifestResult.newHash}")
+                    )
+                    TelegramNotifier.sendSdkChanged(manifestResult.oldHash, manifestResult.newHash)
+                } else if (manifestResult is ManifestResult.Failed) {
+                    ApiMonitor.record(
+                        SystemEntry(System.currentTimeMillis(), SystemEntryKind.SDK_CHECK_FAILED,
+                            manifestResult.message)
+                    )
+                }
+            }
             val client = ConnectionHolder.getClient(applicationContext)
             val sup = ConnectionHolder.getSupervisor(applicationContext)
             val recStart = ServiceState(applicationContext).reconnectStartMillis().first()
@@ -1293,6 +1310,7 @@ private var notif3minShown = false
                     SystemEntry(System.currentTimeMillis(), SystemEntryKind.SDK_CHANGED,
                         "SHA256: ${manifestResult.oldHash} -> ${manifestResult.newHash}")
                 )
+                TelegramNotifier.sendSdkChanged(manifestResult.oldHash, manifestResult.newHash)
             } else if (manifestResult is ManifestResult.Failed) {
                 ApiMonitor.record(
                     SystemEntry(System.currentTimeMillis(), SystemEntryKind.SDK_CHECK_FAILED,

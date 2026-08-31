@@ -402,6 +402,7 @@ object Strings {
         val apiSystemEmpty: String,
         val apiMalformedFrame: String,
         val apiSdkViewManifest: String,
+        val apiUnknownType: String,
         val logsLegend: String,
         val logsSimBlackHoleDesc: String,
         val logsSimSlowDrainDesc: String,
@@ -1003,6 +1004,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val apiSystemEmpty: String get() = misc.apiSystemEmpty
         val apiMalformedFrame: String get() = misc.apiMalformedFrame
         val apiSdkViewManifest: String get() = misc.apiSdkViewManifest
+        val apiUnknownType: String get() = misc.apiUnknownType
         val logsLegend: String get() = misc.logsLegend
         val logsSimBlackHoleDesc: String get() = misc.logsSimBlackHoleDesc
         val logsSimSlowDrainDesc: String get() = misc.logsSimSlowDrainDesc
@@ -1506,6 +1508,7 @@ connOnline = "Онлайн",
         apiSystemEmpty = "Змін системи не зафіксовано",
         apiMalformedFrame = "Кадр з помилкою",
         apiSdkViewManifest = "Переглянути маніфест →",
+        apiUnknownType = "Невідомий тип: %s",
         logsLegend = "Легенда",
         logsSimBlackHoleDesc = "Пригнічує кадри WebSocket (імітує втрату пакетів)",
         logsSimSlowDrainDesc = "Знижує 50% кадрів (імітує повільне з'єднання)",
@@ -2074,6 +2077,7 @@ alertBannerFormat = "%1\$s: alert",
         apiSystemEmpty = "No system changes recorded",
         apiMalformedFrame = "Malformed frame",
         apiSdkViewManifest = "View manifest →",
+        apiUnknownType = "Unknown type: %s",
         logsLegend = "Legend",
         logsSimBlackHoleDesc = "Suppresses WebSocket frames (simulates packet drop)",
         logsSimSlowDrainDesc = "Drops 50% of frames (simulates slow connection)",

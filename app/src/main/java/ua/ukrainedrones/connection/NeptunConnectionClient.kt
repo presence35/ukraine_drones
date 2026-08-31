@@ -34,6 +34,7 @@ import ua.ukrainedrones.ThreatType
 import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.data.SystemEntry
 import ua.ukrainedrones.data.SystemEntryKind
+import ua.ukrainedrones.showToast
 import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -124,6 +125,15 @@ class NeptunConnectionClient(
 
     // Test Seam
     internal val testHarness = TestHarnessImpl()
+
+    private fun recordUnknownType(rawType: String) {
+        val now = System.currentTimeMillis()
+        val lastSeen = unknownTypeLastSeen[rawType] ?: 0L
+        if (now - lastSeen < UNKNOWN_TYPE_TOAST_COOLDOWN_MS) return
+        unknownTypeLastSeen[rawType] = now
+        ApiMonitor.record(SystemEntry(now, SystemEntryKind.UNKNOWN_TYPE_DETECTED, rawType))
+        showToast(context, "Unknown type: $rawType")
+    }
 
     fun start(savedReconnectStartMs: Long = 0L, savedIgnoreUntilMs: Long = 0L) {
         if (!scope.isActive) return
@@ -383,6 +393,11 @@ class NeptunConnectionClient(
         })
     }
 
+    private val knownTypeKeys = ThreatType.entries.map { it.apiKey }.toSet() +
+        setOf("uav", "drone", "lancet", "molniya", "loitering", "missile", "cruise_missile", "mig31", "mig31k", "kinzhal")
+    private val unknownTypeLastSeen = ConcurrentHashMap<String, Long>()
+    private val UNKNOWN_TYPE_TOAST_COOLDOWN_MS = 60_000L
+
     private suspend fun parseRestPayload(body: String) {
         try {
             val env = JSONObject(body)
@@ -390,7 +405,12 @@ class NeptunConnectionClient(
             val snapshotMap = LinkedHashMap<String, Threat>()
             for (i in 0 until arr.length()) {
                 try {
-                    val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
+                    val obj = arr.getJSONObject(i)
+                    val rawType = if (obj.has("type") && !obj.isNull("type")) obj.optString("type") else null
+                    if (rawType != null && rawType !in knownTypeKeys) {
+                        recordUnknownType(rawType)
+                    }
+                    val t = Threat.fromJson(obj) ?: continue
                     snapshotMap[t.id] = t
                 } catch (e: Exception) {
                     Log.w("NeptunClient", "Malformed REST threat at index $i", e)
@@ -477,7 +497,12 @@ class NeptunConnectionClient(
                         val map = LinkedHashMap<String, Threat>()
                         for (i in 0 until arr.length()) {
                             try {
-                                val t = Threat.fromJson(arr.getJSONObject(i)) ?: continue
+                                val obj = arr.getJSONObject(i)
+                                val rawType = if (obj.has("type") && !obj.isNull("type")) obj.optString("type") else null
+                                if (rawType != null && rawType !in knownTypeKeys) {
+                                    recordUnknownType(rawType)
+                                }
+                                val t = Threat.fromJson(obj) ?: continue
                                 map[t.id] = t
                             } catch (e: Exception) {
                                 Log.w("NeptunClient", "Malformed WS threat at index $i", e)
@@ -499,6 +524,10 @@ class NeptunConnectionClient(
                 }
                 "upsert" -> {
                     val data = env.optJSONObject("data") ?: return
+                    val rawType = if (data.has("type") && !data.isNull("type")) data.optString("type") else null
+                    if (rawType != null && rawType !in knownTypeKeys) {
+                        recordUnknownType(rawType)
+                    }
                     val t = Threat.fromJson(data) ?: return
                     threatsMutex.withLock {
                         val updated = _threats.value.toMutableMap()
