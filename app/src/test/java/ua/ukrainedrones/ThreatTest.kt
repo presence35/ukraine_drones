@@ -191,6 +191,110 @@ class ThreatTest {
         assertEquals(90.0, threat.bearingDeg!!, 0.001)
     }
 
+    @Test
+    fun `fromJson - future updatedAtMillis is clamped to now`() {
+        val future = "2099-01-01T00:00:00Z"
+        val json = org.json.JSONObject().apply {
+            put("id", "test-future")
+            put("lat", 50.0)
+            put("lon", 30.0)
+            put("status", "active")
+            put("updatedAt", future)
+        }
+        val before = System.currentTimeMillis()
+        val threat = Threat.fromJson(json)!!
+        val after = System.currentTimeMillis()
+        assertNotNull(threat.updatedAtMillis)
+        assertTrue("clamped timestamp must be <= now", threat.updatedAtMillis!! <= after)
+        assertTrue("clamped timestamp must be >= parse time", threat.updatedAtMillis!! >= before)
+    }
+
+    @Test
+    fun `fromJson - future confirmedAtMillis is clamped to now`() {
+        val future = "2099-01-01T00:00:00Z"
+        val json = org.json.JSONObject().apply {
+            put("id", "test-future-confirm")
+            put("lat", 50.0)
+            put("lon", 30.0)
+            put("status", "active")
+            put("confirmedAt", future)
+        }
+        val before = System.currentTimeMillis()
+        val threat = Threat.fromJson(json)!!
+        val after = System.currentTimeMillis()
+        assertNotNull(threat.confirmedAtMillis)
+        assertTrue(threat.confirmedAtMillis!! <= after)
+        assertTrue(threat.confirmedAtMillis!! >= before)
+    }
+
+    @Test
+    fun `fromJson - past timestamps are preserved`() {
+        val json = org.json.JSONObject().apply {
+            put("id", "test-past")
+            put("lat", 50.0)
+            put("lon", 30.0)
+            put("status", "active")
+            put("updatedAt", "2025-06-15T12:00:00Z")
+            put("confirmedAt", "2025-06-15T11:55:00Z")
+        }
+        val threat = Threat.fromJson(json)!!
+        val expectedUpdated = java.time.Instant.parse("2025-06-15T12:00:00Z").toEpochMilli()
+        val expectedConfirmed = java.time.Instant.parse("2025-06-15T11:55:00Z").toEpochMilli()
+        assertEquals(expectedUpdated, threat.updatedAtMillis)
+        assertEquals(expectedConfirmed, threat.confirmedAtMillis)
+    }
+
+    @Test
+    fun `fromJson - future threat does not become immortal`() {
+        val future = "2099-01-01T00:00:00Z"
+        val json = org.json.JSONObject().apply {
+            put("id", "test-immortal")
+            put("lat", 50.0)
+            put("lon", 30.0)
+            put("type", "shahed")
+            put("status", "active")
+            put("updatedAt", future)
+        }
+        val threat = Threat.fromJson(json)!!
+        val now = System.currentTimeMillis()
+        // With clamped timestamp, threat should become stale after its window
+        // SHAHED staleAfterMs = 300_000 (5 min). A clamped-to-now threat is fresh,
+        // but it should NOT be immune to staleness in the future.
+        assertFalse("fresh clamped threat is not stale", threat.isStale(now))
+    }
+
+    @Test
+    fun `fromJson - future trail timestamps are clamped`() {
+        val json = org.json.JSONObject().apply {
+            put("id", "test-trail-future")
+            put("lat", 50.0)
+            put("lon", 30.0)
+            put("status", "active")
+            put("trail", org.json.JSONArray().apply {
+                put(org.json.JSONObject().apply {
+                    put("lat", 50.1)
+                    put("lon", 30.1)
+                    put("t", "2099-01-01T00:00:00Z")
+                })
+                put(org.json.JSONObject().apply {
+                    put("lat", 50.2)
+                    put("lon", 30.2)
+                    put("t", "2025-06-15T12:00:00Z")
+                })
+            })
+        }
+        val before = System.currentTimeMillis()
+        val threat = Threat.fromJson(json)!!
+        val after = System.currentTimeMillis()
+        assertEquals(2, threat.trail.size)
+        val futurePoint = threat.trail[0]
+        assertNotNull(futurePoint.tMillis)
+        assertTrue("future trail tMillis clamped to <= now", futurePoint.tMillis!! <= after)
+        assertTrue("future trail tMillis clamped to >= parse time", futurePoint.tMillis!! >= before)
+        val pastPoint = threat.trail[1]
+        assertEquals(java.time.Instant.parse("2025-06-15T12:00:00Z").toEpochMilli(), pastPoint.tMillis)
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Threat.flying property
     // ─────────────────────────────────────────────────────────────

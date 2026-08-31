@@ -229,12 +229,13 @@ data class Threat(
             val uncertainty = o.optDouble("uncertaintyKm", Double.NaN)
                 .takeIf { !it.isNaN() }
 
+            val now = System.currentTimeMillis()
             val updatedAt = optNullable("updatedAt")
             val updatedAtMillis = runCatching { updatedAt?.let { Instant.parse(it).toEpochMilli() } }
-                .getOrNull()
+                .getOrNull()?.coerceAtMost(now)
             val confirmedAt = optNullable("confirmedAt")
             val confirmedAtMillis = runCatching { confirmedAt?.let { Instant.parse(it).toEpochMilli() } }
-                .getOrNull()
+                .getOrNull()?.coerceAtMost(now)
 
             return Threat(
                 id = o.optString("id"),
@@ -292,6 +293,7 @@ data class Threat(
          */
         private fun parseTrail(o: JSONObject): List<TrailPoint> {
             val arr = o.optJSONArray("trail") ?: return emptyList()
+            val now = System.currentTimeMillis()
             val out = ArrayList<TrailPoint>(arr.length())
             for (i in 0 until arr.length()) {
                 val item = arr.optJSONObject(i) ?: continue
@@ -301,6 +303,7 @@ data class Threat(
                 if (pLat.isNaN() || pLon.isNaN()) continue
                 val t = if (item.has("t") && !item.isNull("t")) {
                     runCatching { Instant.parse(item.optString("t")).toEpochMilli() }.getOrNull()
+                        ?.coerceAtMost(now)
                 } else null
                 out.add(TrailPoint(pLat, pLon, t))
             }

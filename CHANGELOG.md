@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Parsing: clamp future NEPTUN timestamps (updatedAt, confirmedAt, trail) to now instead of rejecting — prevents threats with clock-skewed timestamps from becoming immortal on the map / Парсинг: обмеження майбутніх часових міток NEPTUN (updatedAt, confirmedAt, trail) до поточного часу замість відхилення — запобігає вічній загрозі на мапі через годинникова похибка
+
 - Map: areaOnly threats (oblast-level, no precise point) now render on the map with an amber dot instead of being hidden; card shows amber "Area-level" badge / Мапа: загрози areaOnly (на рівні області, без точної точки) тепер відображаються на мапі з бурим замість приховування; картка показує бейдж "Лише область"
 - Map: footer strip tap now opens the threat popup card (was pan-only) / Мапа: дотик на панелі загроз тепер відкриває картку загрози (було лише переміщення)
 - Prediction: stale ghost cap reduced from 30min to 15min / Прогноз: ліміт привидів зменшено з 30хв до 15хв
