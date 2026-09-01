@@ -128,6 +128,9 @@ class MainActivity : ComponentActivity() {
                 viewModel.revealThreat(id, lat, lon)
             }
         }
+        if (intent?.getBooleanExtra(AlertService.EXTRA_SHOW_MAP, false) == true) {
+            viewModel.navigateToMap()
+        }
         if (intent?.getBooleanExtra(AlertService.EXTRA_SHOW_UPDATE, false) == true) {
             viewModel.checkForUpdates()
         }

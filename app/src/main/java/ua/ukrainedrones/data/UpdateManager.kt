@@ -8,6 +8,7 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,7 +24,8 @@ data class UpdateInfo(
     val versionName: String,
     val apkUrl: String,
     val notesEn: String,
-    val notesUa: String
+    val notesUa: String,
+    val sha256: String? = null
 )
 
 sealed interface UpdateState {
@@ -68,12 +70,14 @@ class UpdateManager(private val context: Context) {
                 }
                 val json = JSONObject(response.body?.string().orEmpty())
                 val notes = json.optJSONObject("notes")
+                val sha256Val = json.optString("sha256").takeIf { it.isNotBlank() }
                 val latest = UpdateInfo(
                     versionCode = json.getInt("versionCode"),
                     versionName = json.optString("versionName"),
                     apkUrl = json.getString("apkUrl"),
                     notesEn = notes?.optString("en").orEmpty(),
-                    notesUa = notes?.optString("ua").orEmpty()
+                    notesUa = notes?.optString("ua").orEmpty(),
+                    sha256 = sha256Val
                 )
                 if (latest.versionCode > BuildConfig.VERSION_CODE ||
                     (latest.versionCode == BuildConfig.VERSION_CODE &&
@@ -111,6 +115,7 @@ class UpdateManager(private val context: Context) {
             val dir = File(context.cacheDir, "updates").apply { mkdirs() }
             val target = File(dir, "app-update.apk")
             var downloaded = 0L
+
             body.byteStream().use { input ->
                 target.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
@@ -123,16 +128,48 @@ class UpdateManager(private val context: Context) {
                     }
                 }
             }
+
             if (total > 0 && downloaded != total) {
                 target.delete()
                 throw IOException("Incomplete download")
             }
+
             if (!isLikelyApk(target)) {
                 target.delete()
                 throw IOException("Downloaded file is not a valid APK — check the apkUrl in version.json")
             }
+
+            // SHA-256 verification when digest is provided in version.json
+            if (info.sha256 != null) {
+                val computedHash = calculateSha256(target)
+                if (!computedHash.equals(info.sha256.trim(), ignoreCase = true)) {
+                    target.delete()
+                    throw IOException("APK SHA-256 mismatch (expected: ${info.sha256}, got: $computedHash)")
+                }
+            }
+
+            // Verify package integrity using PackageManager
+            val pm = context.packageManager
+            val archiveInfo = pm.getPackageArchiveInfo(target.absolutePath, 0)
+            if (archiveInfo == null || archiveInfo.packageName != context.packageName) {
+                target.delete()
+                throw IOException("APK package validation failed (package: ${archiveInfo?.packageName})")
+            }
+
             target
         }
+    }
+
+    private fun calculateSha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            var read: Int
+            while (input.read(buf).also { read = it } != -1) {
+                digest.update(buf, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun isLikelyApk(file: File): Boolean {

@@ -193,6 +193,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val neutralizedFlow = MutableStateFlow<String?>(null)
     private val revealFlow = MutableStateFlow<RevealRequest?>(null)
     private var revealTick = 0
+    private var navigateToMapCounter = 0
+    private val _navigateToMapFlow = MutableStateFlow(0)
+    val navigateToMapTick: StateFlow<Int> get() = _navigateToMapFlow
     /** Tally-tap replay: remembered resolved threats to shoot down on the map (flourish only). */
     private val flourishFlow = MutableStateFlow<FlourishShow?>(null)
     private var flourishTick = 0
@@ -1385,6 +1388,12 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         // MiG-31 cruise ~900 km/h; scale for visibility (1.5x), clamp 1.5–8 s
         val durationSec = (distKm / 900.0) * 3600.0 * 1.5
         return (durationSec * 1000).roundToLong().coerceIn(1500, 8000)
+    }
+
+    /** Notification tap (or any intent): navigate to the map screen regardless of current tab. */
+    fun navigateToMap() {
+        navigateToMapCounter++
+        _navigateToMapFlow.value = navigateToMapCounter
     }
 
     /**

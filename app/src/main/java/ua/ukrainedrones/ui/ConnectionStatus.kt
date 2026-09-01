@@ -22,13 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -44,10 +41,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import ua.ukrainedrones.connection.NeptunConnectionClient
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ConnectionStatus(
     neptunDown: Boolean,
@@ -99,16 +96,18 @@ internal fun ConnectionStatus(
     }
     if (showInfo) {
         val context = LocalContext.current
-        ModalBottomSheet(
+        Dialog(
             onDismissRequest = { onShowInfoChange(false) },
-            sheetState = rememberModalBottomSheetState(),
-            dragHandle = { SheetDragHandle() }
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
+                    .background(MaterialTheme.colorScheme.surface)
                     .verticalScroll(rememberScrollState())
-                    .padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+                    .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -146,34 +145,30 @@ internal fun ConnectionStatus(
                         }
                     )
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
+                Column(
+                    modifier = Modifier.padding(top = 12.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Button(
-                        onClick = onOpenLogs,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.List,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            s.debugLogOpen,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SourceStatusRow(
                         color = connColor,
                         name = s.connNeptunLabel,
-                        active = !neptunDown,
-                        activeLabel = s.connActiveLabel
+                        active = !neptunDown
+                    )
+                }
+                Button(
+                    onClick = onOpenLogs,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.List,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        s.debugLogOpen,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -182,9 +177,7 @@ internal fun ConnectionStatus(
 }
 
 @Composable
-internal fun SourceStatusRow(color: Color, name: String, active: Boolean, activeLabel: String) {
-    val accent = Color(0xFFF9A825)
-    val nameColor = if (active) accent else MaterialTheme.colorScheme.onSurface
+internal fun SourceStatusRow(color: Color, name: String, active: Boolean) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.alpha(if (active) 1f else 0.65f)
@@ -196,15 +189,6 @@ internal fun SourceStatusRow(color: Color, name: String, active: Boolean, active
                 .background(color)
         )
         Spacer(Modifier.width(8.dp))
-        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = nameColor)
-        if (active) {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                activeLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = accent,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = color)
     }
 }

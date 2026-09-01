@@ -32,10 +32,10 @@ import kotlinx.coroutines.launch
  * prevent cell-tower drift.
  */
 object LocationTracker {
-
     private const val UPDATE_INTERVAL_MS = 120_000L
     private const val MIN_DISTANCE_METERS = 250f
     private const val PERIODIC_GPS_INTERVAL_MS = 15 * 60 * 1000L // 15 minutes
+    const val MAX_LOCATION_AGE_MS = 15 * 60 * 1000L // 15 minutes freshness threshold
 
     private val _location = MutableStateFlow<LatLng?>(null)
     val location: StateFlow<LatLng?> = _location.asStateFlow()
@@ -57,21 +57,30 @@ object LocationTracker {
     private var appContext: Context? = null
     private var listener: LocationListener? = null
 
+    fun isFresh(now: Long = System.currentTimeMillis(), maxAgeMs: Long = MAX_LOCATION_AGE_MS): Boolean {
+        val fixTime = _lastFixAtMs.value ?: return false
+        return (now - fixTime) in 0..maxAgeMs
+    }
+
     fun start(ctx: Context) {
         val app = ctx.applicationContext
         appContext = app
         if (started) return
         if (!hasPermission(app)) return
+
         val l = object : LocationListener {
             override fun onLocationChanged(loc: Location) {
                 recordFix(loc)
             }
         }
         listener = l
+
         try {
             pickLastKnown(app)?.let { recordFix(it) }
+
             val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             val looper = Looper.getMainLooper()
+
             // Network provider only: the alert zones are km-scale, so a coarse fix is
             // plenty, and skipping GPS keeps the radio off (battery-cheapest).
             val requested = runCatching {
@@ -115,10 +124,12 @@ object LocationTracker {
             onComplete?.invoke()
             return
         }
+
         _isRefreshing.value = true
         val completed = java.util.concurrent.atomic.AtomicBoolean(false)
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val onFix: (Location?) -> Unit = { loc ->
+
+        fun finish(loc: Location?) {
             if (completed.compareAndSet(false, true)) {
                 _isRefreshing.value = false
                 if (loc != null) recordFix(loc)
@@ -126,39 +137,55 @@ object LocationTracker {
             }
         }
 
-        // Safety timeout in case GPS hardware hangs
-        scope.launch {
-            delay(12_000L)
-            if (completed.compareAndSet(false, true)) {
-                _isRefreshing.value = false
-                onComplete?.invoke()
+        fun tryNetworkFallback() {
+            if (completed.get()) return
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    lm.getCurrentLocation(
+                        LocationManager.NETWORK_PROVIDER,
+                        CancellationSignal(),
+                        ContextCompat.getMainExecutor(ctx)
+                    ) { loc -> finish(loc) }
+                } else {
+                    lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, object : LocationListener {
+                        override fun onLocationChanged(loc: Location) { finish(loc) }
+                        override fun onProviderDisabled(provider: String) { finish(null) }
+                    }, Looper.getMainLooper())
+                }
+            }.onFailure {
+                finish(null)
             }
         }
 
-        val requested = runCatching {
+        // Safety timeout for GPS (8s), falling back to network (4s)
+        scope.launch {
+            delay(8_000L)
+            if (!completed.get()) {
+                tryNetworkFallback()
+                delay(4_000L)
+                finish(null)
+            }
+        }
+
+        val requestedGps = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 lm.getCurrentLocation(
                     LocationManager.GPS_PROVIDER,
                     CancellationSignal(),
                     ContextCompat.getMainExecutor(ctx)
-                ) { loc -> onFix(loc) }
+                ) { loc ->
+                    if (loc != null) finish(loc) else tryNetworkFallback()
+                }
             } else {
                 lm.requestSingleUpdate(LocationManager.GPS_PROVIDER, object : LocationListener {
-                    override fun onLocationChanged(loc: Location) { onFix(loc) }
-                    override fun onProviderDisabled(provider: String) { onFix(null) }
+                    override fun onLocationChanged(loc: Location) { finish(loc) }
+                    override fun onProviderDisabled(provider: String) { tryNetworkFallback() }
                 }, Looper.getMainLooper())
             }
         }
-        if (requested.isFailure) {
-            runCatching {
-                lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, object : LocationListener {
-                    override fun onLocationChanged(loc: Location) { onFix(loc) }
-                    override fun onProviderDisabled(provider: String) { onFix(null) }
-                }, Looper.getMainLooper())
-            }.onFailure {
-                _isRefreshing.value = false
-                onComplete?.invoke()
-            }
+
+        if (requestedGps.isFailure) {
+            tryNetworkFallback()
         }
     }
 
@@ -179,10 +206,11 @@ object LocationTracker {
     private fun recordFix(loc: Location) {
         _location.value = LatLng(loc.latitude, loc.longitude)
         val now = System.currentTimeMillis()
-        _lastFixAtMs.value = now
+        val fixTime = if (loc.time > 0L) loc.time else now
+        _lastFixAtMs.value = fixTime
         val isGps = loc.provider == LocationManager.GPS_PROVIDER || (loc.hasAccuracy() && loc.accuracy < 35f)
         if (isGps) {
-            _lastPreciseFixAtMs.value = now
+            _lastPreciseFixAtMs.value = fixTime
         }
         _isRefreshing.value = false
     }
@@ -192,6 +220,13 @@ object LocationTracker {
 
     private fun pickLastKnown(ctx: Context): Location? {
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return runCatching { lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) }.getOrNull()
+        val net = runCatching { lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) }.getOrNull()
+        val gps = runCatching { lm.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
+        return when {
+            net == null -> gps
+            gps == null -> net
+            gps.time > net.time -> gps
+            else -> net
+        }
     }
 }

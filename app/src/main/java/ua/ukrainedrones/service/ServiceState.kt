@@ -25,6 +25,7 @@ class ServiceState(private val context: Context) {
     private val officialAnnouncedTokenKey = stringPreferencesKey("official_announced_token")
     private val officialAnnouncedSinceKey = stringPreferencesKey("official_announced_since")
     private val officialAnnouncedReasonIdKey = stringPreferencesKey("official_announced_reason_id")
+    private val activeZoneAlertsKey = stringPreferencesKey("active_zone_alerts")
     private val debugLogKey = stringPreferencesKey("debug_log")
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
     private val lastNotifiedUpdateCodeKey = longPreferencesKey("last_notified_update_code")
@@ -89,6 +90,13 @@ class ServiceState(private val context: Context) {
             it[officialAnnouncedSinceKey] = since ?: ""
             it[officialAnnouncedReasonIdKey] = reasonId ?: ""
         }
+    }
+
+    fun activeZoneAlerts(): Flow<String> =
+        context.dataStore.data.map { prefs -> prefs[activeZoneAlertsKey] ?: "" }
+
+    suspend fun setActiveZoneAlerts(serialized: String) {
+        context.dataStore.edit { it[activeZoneAlertsKey] = serialized }
     }
 
     fun debugLog(): Flow<String> =

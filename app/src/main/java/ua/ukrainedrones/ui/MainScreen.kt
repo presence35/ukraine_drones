@@ -112,6 +112,11 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val context = LocalContext.current
 
     var screen by remember { mutableStateOf(Screen.MAP) }
+    // Notification tap: navigate to the map screen regardless of current tab.
+    val navigateToMapTick by viewModel.navigateToMapTick.collectAsState()
+    LaunchedEffect(navigateToMapTick) {
+        if (navigateToMapTick > 0) screen = Screen.MAP
+    }
     // The neutralizing card + map death flourish only run while the map is the visible
     // screen — off-map (Settings/Shelters/Guide) the popup just closes silently.
     LaunchedEffect(screen) { viewModel.setMapVisible(screen == Screen.MAP) }
