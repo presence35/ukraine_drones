@@ -382,17 +382,37 @@ class AlertService : Service() {
             }
 
             data class Quint<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
-            data class Sext<A, B, C, D, E, F>(val a: A, val b: B, val c: C, val d: D, val e: E, val f: F)
+            data class LiveInputs(
+                val cs: ConnectionState,
+                val rawThreats: Map<String, Threat>,
+                val alerts: List<OblastAlert>,
+                val threatDataStale: Boolean,
+                val gps: LatLng?,
+                val now: Long
+            )
+
+            val client = ConnectionHolder.getClient(applicationContext)
+            val liveFlow = combine(
+                client.connectionState,
+                client.threats,
+                client.alerts,
+                client.threatDataStale,
+                LocationTracker.location,
+                nowFlow
+            ) { values: Array<Any?> ->
+                @Suppress("UNCHECKED_CAST")
+                LiveInputs(
+                    cs = values[0] as ConnectionState,
+                    rawThreats = values[1] as Map<String, Threat>,
+                    alerts = values[2] as List<OblastAlert>,
+                    threatDataStale = values[3] as Boolean,
+                    gps = values[4] as LatLng?,
+                    now = values[5] as Long
+                )
+            }
 
             combine(
-                combine(
-                    ConnectionHolder.getClient(applicationContext).connectionState,
-                    ConnectionHolder.getClient(applicationContext).threats,
-                    ConnectionHolder.getClient(applicationContext).alerts,
-                    ConnectionHolder.getClient(applicationContext).threatDataStale,
-                    LocationTracker.location,
-                    nowFlow
-                ) { cs, threats, alerts, threatDataStale, gps, now -> Sext(cs, threats, alerts, threatDataStale, gps, now) },
+                liveFlow,
                 combine(
                     prefs.slowRedKm(), prefs.slowYellowKm(), prefs.fastRedMin(), prefs.fastYellowMin()
                 ) { slowRed, slowYellow, fastRed, fastYellow ->
@@ -454,7 +474,8 @@ class AlertService : Service() {
                 ) { window, zones, ov ->
                     NightSettings(window, zones, ov.first, ov.second)
                 }
-            ) { (cs, rawThreats, alerts, threatDataStale, gps, now), dayParams, cfg, tail, night ->
+            ) { live, dayParams, cfg, tail, night ->
+                val (cs, rawThreats, alerts, threatDataStale, gps, now) = live
                 val nowMin = nowMinuteOfDay()
                 val nightActive = night.window.enabled && isWithinNight(nowMin, night.window.startMin, night.window.endMin)
                 val params = if (nightActive && night.window.useCustomZones) {
