@@ -1,4 +1,4 @@
-package ua.ukrainedrones.service
+package ua.ukrainedrones
 
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -27,7 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import ua.ukrainedrones.AppLanguage
-import ua.ukrainedrones.ConnectionState
+import ua.ukrainedrones.connection.ConnectionState
 import ua.ukrainedrones.FastThreatTypes
 import ua.ukrainedrones.LatLng
 import ua.ukrainedrones.OblastAlert
@@ -38,27 +38,30 @@ import ua.ukrainedrones.UpdateInfo
 import ua.ukrainedrones.UpdateManager
 import ua.ukrainedrones.UpdateState
 import ua.ukrainedrones.ZoneParams
-import ua.ukrainedrones.connection.ApiMonitor
+import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.connection.ConnectionHolder
-import ua.ukrainedrones.connection.ConnectionLog
+import ua.ukrainedrones.ConnectionLog
 import ua.ukrainedrones.connection.ConnectionSupervisor
-import ua.ukrainedrones.connection.DebugLog
-import ua.ukrainedrones.connection.DebugLogContext
-import ua.ukrainedrones.connection.DebugLogKind
-import ua.ukrainedrones.connection.DebugLogReason
-import ua.ukrainedrones.connection.ManifestResult
-import ua.ukrainedrones.connection.SystemEntry
-import ua.ukrainedrones.connection.SystemEntryKind
-import ua.ukrainedrones.connection.TelegramNotifier
-import ua.ukrainedrones.data.FocusCity
-import ua.ukrainedrones.domain.NightZones
-import ua.ukrainedrones.domain.Strings
-import ua.ukrainedrones.domain.ThreatEvaluator
-import ua.ukrainedrones.domain.UserPrefs
-import ua.ukrainedrones.domain.distanceMeters
-import ua.ukrainedrones.domain.isWithinNight
-import ua.ukrainedrones.domain.threatAlertFlow
-import ua.ukrainedrones.flourish.NeutralizedTally
+import ua.ukrainedrones.DebugLog
+import ua.ukrainedrones.DebugLogContext
+import ua.ukrainedrones.DebugLogKind
+import ua.ukrainedrones.DebugLogReason
+import ua.ukrainedrones.data.ManifestResult
+import ua.ukrainedrones.data.SystemEntry
+import ua.ukrainedrones.data.SystemEntryKind
+import ua.ukrainedrones.data.TelegramNotifier
+import ua.ukrainedrones.NightZones
+import ua.ukrainedrones.Strings
+import ua.ukrainedrones.ThreatEvaluator
+import ua.ukrainedrones.UserPrefs
+import ua.ukrainedrones.distanceMeters
+import ua.ukrainedrones.isWithinNight
+import ua.ukrainedrones.threatAlertFlow
+import ua.ukrainedrones.NeutralizedTally
+import ua.ukrainedrones.service.ServiceState
+import ua.ukrainedrones.connection.isConnected
+import ua.ukrainedrones.connection.isDegraded
+import ua.ukrainedrones.connection.reconnectStartMillisOrZero
 
 class AlertService : Service() {
 
@@ -297,7 +300,7 @@ class AlertService : Service() {
             ACTION_IGNORE_RETRY -> {
                 scope.launch {
                     val client = ConnectionHolder.getClient(applicationContext)
-                    client.ignoreRetryFor(30 * 60 * 1000L)
+                    client.pauseFor(30)
                 }
             }
         }
@@ -306,7 +309,7 @@ class AlertService : Service() {
 
     private fun startForegroundCompat() {
         val s = Strings.get(AppLanguage.EN)
-        val notif = notificationManager.buildMonitorNotification(s.notifTitleIdle, s.notifBodyConnecting)
+        val notif = notificationManager.buildMonitorNotification(s.notifOngoingTitle, "")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
@@ -422,20 +425,37 @@ class AlertService : Service() {
                         NightWindow(enabled, start, end, use)
                     },
                     combine(
-                        prefs.nightZones(),
-                        prefs.nightZoneSirenOverride(),
-                        prefs.nightOfficialSirenOverride()
-                    ) { zones, zoneSiren, officialSiren ->
-                        Triple(zones, zoneSiren, officialSiren)
-                    }
-                ) { window, (zones, zoneSiren, officialSiren) ->
-                    NightSettings(window, zones, zoneSiren, officialSiren)
+                        combine(
+                            prefs.nightSlowRedKm(), prefs.nightSlowYellowKm(), prefs.nightFastRedMin(),
+                            prefs.nightFastYellowMin()
+                        ) { sr, sy, fr, fy ->
+                            NightZones(sr, sy, fr, fy, slowRedArmed = true, slowYellowArmed = true, fastRedArmed = true, fastYellowArmed = true)
+                        },
+                        combine(
+                            prefs.nightSlowRedZoneArmed(), prefs.nightSlowYellowZoneArmed(),
+                            prefs.nightFastRedZoneArmed(), prefs.nightFastYellowZoneArmed()
+                        ) { flags: Array<Boolean> ->
+                            flags
+                        }
+                    ) { zones, flags ->
+                        zones.copy(
+                            slowRedArmed = flags[0],
+                            slowYellowArmed = flags[1],
+                            fastRedArmed = flags[2],
+                            fastYellowArmed = flags[3]
+                        )
+                    },
+                    combine(
+                        prefs.nightZoneSirenOverride(), prefs.nightOfficialSirenOverride()
+                    ) { zoneOv, officialOv -> zoneOv to officialOv }
+                ) { window, zones, ov ->
+                    NightSettings(window, zones, ov.first, ov.second)
                 }
             ) { (cs, rawThreats, alerts, gps, now), dayParams, cfg, tail, night ->
                 val nowMin = nowMinuteOfDay()
                 val nightActive = night.window.enabled && isWithinNight(nowMin, night.window.startMin, night.window.endMin)
                 val params = if (nightActive && night.window.useCustomZones) {
-                    night.zones.toParams(dayParams)
+                    effectiveZoneParams(dayParams, night.zones, true, nightActive)
                 } else {
                     dayParams
                 }
@@ -451,7 +471,7 @@ class AlertService : Service() {
                     !cfg.followMe && pinnedLoc != null && pinnedName != null -> {
                         val c = FocusCity.find(pinnedName)
                         val name = if (tail.lang == AppLanguage.UA) (c?.nameUa ?: pinnedName) else pinnedName
-                        val reg = c?.oblastUa ?: ThreatEvaluator.matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
+                        val reg = c?.oblastStem ?: ThreatEvaluator.matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
                         Quint(pinnedLoc, name, c?.nameUa ?: pinnedName, reg, true)
                     }
                     gpsLoc != null -> {
@@ -466,7 +486,7 @@ class AlertService : Service() {
                     pinnedLoc != null && pinnedName != null -> {
                         val c = FocusCity.find(pinnedName)
                         val name = if (tail.lang == AppLanguage.UA) (c?.nameUa ?: pinnedName) else pinnedName
-                        val reg = c?.oblastUa ?: ThreatEvaluator.matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
+                        val reg = c?.oblastStem ?: ThreatEvaluator.matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
                         Quint(pinnedLoc, name, c?.nameUa ?: pinnedName, reg, false)
                     }
                     else -> {
@@ -479,13 +499,13 @@ class AlertService : Service() {
                 currentToken = focusToken
 
                 val (focusOblastAlertActive, focusOblastAlertSince) = if (focusToken != null) {
-                    val alert = alerts.firstOrNull { it.regionToken == focusToken }
+                    val alert = alerts.firstOrNull { it.inOblast(focusToken) }
                     (alert != null) to alert?.since
                 } else {
                     false to null
                 }
 
-                val activeOfficialAlert = alerts.firstOrNull { it.regionToken == focusToken }
+                val activeOfficialAlert = focusToken?.let { token -> alerts.firstOrNull { it.inOblast(token) } }
                 val (officialReason, officialReasonThreatId) = if (activeOfficialAlert != null) {
                     ThreatEvaluator.deriveOfficialAlertReason(
                         threats.values.toList(),
@@ -511,8 +531,8 @@ class AlertService : Service() {
                     emptyMap()
                 }
 
-                val fastVib = prefs.fastVibrationLevel().first()
-                val slowVib = prefs.slowVibrationLevel().first()
+                val fastVib = VIBRATION_ZONE
+                val slowVib = VIBRATION_ZONE
 
                 MonitorState(
                     focusOblastAlertActive = effectiveOfficialActive,
@@ -561,32 +581,26 @@ class AlertService : Service() {
 
         val isOfflineNow = !state.connectionState.isConnected
         val offlineMinutes = if (isOfflineNow) {
-            val start = (state.connectionState as? ConnectionState.Offline)?.reconnectStartMillis
-                ?: (state.connectionState as? ConnectionState.Connecting)?.reconnectStartMillis
-                ?: now
+            val start = state.connectionState.reconnectStartMillisOrZero
             ((now - start) / 60_000L).toInt()
         } else 0
 
         val twentyMinMs = 20 * 60 * 1000L
         val elapsedSinceReconnect = if (isOfflineNow) {
-            val start = (state.connectionState as? ConnectionState.Offline)?.reconnectStartMillis
-                ?: (state.connectionState as? ConnectionState.Connecting)?.reconnectStartMillis
-                ?: now
+            val start = state.connectionState.reconnectStartMillisOrZero
             now - start
         } else 0L
 
         val monitorTitle = when {
-            isOfflineNow -> s.offlineNotifTitle
-            state.focusOblastAlertActive -> String.format(s.notifTitleOfficialAlert, state.focusBannerCity)
-            state.zoneThreats.isNotEmpty() -> String.format(s.notifTitleTracking, state.zoneThreats.size)
-            else -> s.notifTitleIdle
+            isOfflineNow -> s.offlineStatusTitle
+            state.focusPinned -> String.format(s.notifMonitoringCityFormat, state.focusBannerCity)
+            else -> s.notifOngoingTitle
         }
 
         val monitorText = when {
             isOfflineNow -> offlineLiveBody(s, offlineMinutes)
-            state.focusOblastAlertActive -> state.officialReason ?: state.focusRegion
-            state.zoneThreats.isNotEmpty() -> s.notifBodyTracking
-            else -> s.notifBodyLive
+            state.connectionState.isDegraded -> s.connDegradedBody
+            else -> ""
         }
 
         notifyMonitor(

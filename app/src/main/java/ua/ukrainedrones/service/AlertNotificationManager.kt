@@ -1,4 +1,4 @@
-package ua.ukrainedrones.service
+package ua.ukrainedrones
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -19,9 +19,9 @@ import ua.ukrainedrones.MainActivity
 import ua.ukrainedrones.R
 import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatZone
-import ua.ukrainedrones.domain.Strings
-import ua.ukrainedrones.domain.UserPrefs
-import ua.ukrainedrones.flourish.NeutralizedTally
+import ua.ukrainedrones.Strings
+import ua.ukrainedrones.UserPrefs
+import ua.ukrainedrones.NeutralizedTally
 
 /**
  * Handles notification channels, notification building, and dispatching for [AlertService].

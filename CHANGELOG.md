@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Map: fix threats not moving/facing wrong direction — marker update loop now reads fresh threat data on each tick / Мапа: виправлено загрози, що не рухаються/дивляться в хибному напрямку — цикл оновлення маркерів тепер зчитує свіжі дані загроз кожен тик
+- Map: fix city labels not updating when language is changed / Мапа: виправлено міські мітки, що не оновлюються при зміні мови
+- Map: fix pinned city icon overlapping city name text — pin moved above the label / Мапа: виправлено іконку закріпленого міста, що перекриває текст назви — шпильку переміщено вище мітки
+- Map: fix double-painting of threats — stale state in marker loop was causing duplicate renders / Мапа: виправлено подвійне малювання загроз — застарілий стан в циклі маркерів спричиняв дублювання
+- Shoot-down: zoom out to level 11 during strike for better projectile visibility / Збиття: віддалення до рівня 11 під час удару для кращої видимості снаряду
+- Shoot-down: show hidden city labels during death animation for geographic context / Збиття: показ прихованих міських міток під час анімації знищення для географічного контексту
+- Shoot-down: restore original zoom level after returning home from strike / Збиття: відновлення початкового рівня масштабу після повернення додому з удару
+
 - Parsing: clamp future NEPTUN timestamps (updatedAt, confirmedAt, trail) to now instead of rejecting — prevents threats with clock-skewed timestamps from becoming immortal on the map / Парсинг: обмеження майбутніх часових міток NEPTUN (updatedAt, confirmedAt, trail) до поточного часу замість відхилення — запобігає вічній загрозі на мапі через годинникова похибка
 
 - Map: areaOnly threats (oblast-level, no precise point) now render on the map with an amber dot instead of being hidden; card shows amber "Area-level" badge / Мапа: загрози areaOnly (на рівні області, без точної точки) тепер відображаються на мапі з бурим замість приховування; картка показує бейдж "Лише область"

@@ -202,6 +202,23 @@ class NeptunConnectionClient(
         connect(gen)
     }
 
+    fun onForeground() {
+        val now = System.currentTimeMillis()
+        val isStale = lastFrameAtMs > 0L && (now - lastFrameAtMs > 5_000L)
+        if (isStale && _connectionState.value.isConnected) {
+            refreshFromRest()
+        }
+        if (!isManuallyStopped && _connectionState.value.isOffline && !isIgnoringPause()) {
+            retryNow()
+        }
+    }
+
+    fun markUserShot(id: String) {
+        if (id.isNotBlank()) {
+            userShotAt[id] = System.currentTimeMillis()
+        }
+    }
+
     fun pauseFor(minutes: Int) {
         val now = System.currentTimeMillis()
         ignoreUntilMs = now + minutes * 60_000L
@@ -496,10 +513,10 @@ class NeptunConnectionClient(
                 val currentState = _connectionState.value
                 if (currentState.isConnected && _lastSocketFrame.value > 0L && socketQuietFor > DEGRADED_STALE_MS && currentState !is ConnectionState.Degraded) {
                     _connectionState.value = ConnectionState.Degraded(
-                        generation = currentState.generationOrZero,
+                        generation = (currentState as? ConnectionState.Connected)?.generation ?: 0,
                         openedAtMs = openedAtMs,
                         lastFrameAtMs = _lastSocketFrame.value,
-                        staleSince = _lastSocketFrame.value + DEGRADED_STALE_MS
+                        quietDurationMs = socketQuietFor
                     )
                 }
 
@@ -637,7 +654,7 @@ class NeptunConnectionClient(
             showToast(context, "New threat type reported: $rawType")
             ApiMonitor.record(SystemEntry(
                 atMillis = now,
-                kind = SystemEntryKind.UNKNOWN_THREAT_TYPE,
+                kind = SystemEntryKind.UNKNOWN_TYPE_DETECTED,
                 detail = rawType
             ))
         }

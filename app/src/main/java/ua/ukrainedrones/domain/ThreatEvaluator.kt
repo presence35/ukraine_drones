@@ -202,4 +202,84 @@ object ThreatEvaluator {
             speedKmh = speed?.times(3.6)
         )
     }
+
+    fun matchOblast(lat: Double, lon: Double): OblastMatch? {
+        val city = Cities.nearestCity(lat, lon) ?: return null
+        val stem = Cities.cityOblast[city.nameUa] ?: return null
+        return OblastMatch(stem, city.nameUa, city.nameEn)
+    }
+
+    fun canonicalToken(region: String): String? {
+        if (region.isBlank()) return null
+        val trimmed = region.trim()
+        val idx = trimmed.indexOf(' ')
+        val stem = if (idx > 0) trimmed.substring(0, idx) else trimmed
+        return stem.ifBlank { null }
+    }
+
+    fun isCityScopedSuppressed(city: FocusCityInfo, threats: List<Threat>): Boolean {
+        if (threats.isEmpty()) return false
+        val stem = city.oblastStem ?: return false
+        return threats.none { t ->
+            t.status == "active" && !t.advisory && !t.areaOnly &&
+                (t.region?.contains(stem, ignoreCase = true) == true ||
+                    t.locality?.contains(city.nameUa, ignoreCase = true) == true)
+        }
+    }
+
+    fun evaluateThreatZones(
+        threats: List<Threat>,
+        focus: LatLng?,
+        params: ZoneParams
+    ): Map<String, ThreatZone> {
+        if (focus == null) return emptyMap()
+        val now = System.currentTimeMillis()
+        val result = mutableMapOf<String, ThreatZone>()
+        for (t in threats) {
+            if (t.status != "active" || t.advisory || t.areaOnly) continue
+            if (t.isStale(now)) continue
+            val distKm = distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
+            val speedKmh = ThreatSpeedTracker.estimate(t.id, t)?.times(3.6)
+            val tier = zoneTier(t, distKm, speedKmh, params)
+            if (tier != null) result[t.id] = tier
+        }
+        return result
+    }
+
+    fun deriveOfficialAlertReason(
+        threats: List<Threat>,
+        alert: OblastAlert?,
+        focus: LatLng?,
+        lang: AppLanguage
+    ): Pair<String?, String?> {
+        if (alert == null) return null to null
+        val token = canonicalToken(alert.oblast) ?: return null to null
+        val now = System.currentTimeMillis()
+        var best: Threat? = null
+        var bestScore = -1.0
+        for (t in threats) {
+            if (t.status != "active" || t.advisory || t.areaOnly || t.isStale(now)) continue
+            if (!inOblast(t.region, t.district, t.locality, token)) continue
+            val distKm = if (focus != null) {
+                distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
+            } else null
+            val score = distKm ?: 0.0
+            if (score > bestScore) {
+                bestScore = score
+                best = t
+            }
+        }
+        return if (best != null) {
+            val body = threatBody(best, lang)
+            body to best.id
+        } else {
+            alert.name to null
+        }
+    }
 }
+
+data class OblastMatch(
+    val stem: String,
+    val nameUa: String,
+    val nameEn: String
+)

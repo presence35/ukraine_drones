@@ -30,6 +30,9 @@ private val UA_MAX_LON = UA_TIGHT_MAX_LON
 /** Beat after an intermediate group's last impact before panning to the next one. */
 private const val REPLAY_PAN_BEAT_MS = 120L
 
+/** Fixed zoom level during a single strike — wide enough to see the projectile path. */
+private const val STRIKE_ZOOM_LEVEL = 11.0
+
 /**
  * Map-side flourish facade: owns the death-animation overlay plus everything that drives it —
  * the strike camera glide, the shot/kill haptics, the bullet take-off origin (a random point on
@@ -55,6 +58,7 @@ class DeathFxController(
     // rapid successive strikes so the camera always returns to where the user actually was,
     // not to whatever mid-animation position the second strike captured.
     private var savedHome: GeoPoint? = null
+    private var savedHomeZoom: Double = 0.0
     // The running tally-tap replay, so a red alert can cancel it mid-show (clear()).
     private var replayJob: Job? = null
 
@@ -62,6 +66,10 @@ class DeathFxController(
     /** During the tally-tap replay: per-group position for the footer copy + overall position
      *  for its progress bar. */
     val replayProgress: StateFlow<ReplayProgress?> = _replayProgress.asStateFlow()
+
+    /** When true, city labels should show all tiers regardless of user settings — toggled
+     *  during death animations so the projectile has geographic context. */
+    val forceShowAllCities = MutableStateFlow(false)
 
     val active: StateFlow<Boolean> get() = overlay.active
     val isActive: Boolean get() = overlay.isActive
@@ -80,6 +88,7 @@ class DeathFxController(
         replayJob?.cancel()
         replayJob = null
         _replayProgress.value = null
+        forceShowAllCities.value = false
         overlay.clear()
     }
 
@@ -144,14 +153,21 @@ class DeathFxController(
         // the saved home so the camera always returns to where the user actually started.
         if (savedHome == null) {
             savedHome = GeoPoint(mapView.mapCenter.latitude, mapView.mapCenter.longitude)
+            savedHomeZoom = mapView.zoomLevelDouble
         }
         val home = savedHome!!
+        val homeZoom = savedHomeZoom
         cameraReturnJob?.cancel()
         cameraReturnJob = scope.launch {
+            forceShowAllCities.value = true
+            mapView.controller.setZoom(STRIKE_ZOOM_LEVEL)
             mapView.controller.animateTo(target)
             delay(DEATH_EXPLOSION_START_MS + DEATH_EXPLOSION_LEN_MS + 300L)
             savedHome = null
-            this@DeathFxController.mapView()?.controller?.animateTo(home)
+            forceShowAllCities.value = false
+            val mv = this@DeathFxController.mapView() ?: return@launch
+            mv.controller.setZoom(homeZoom)
+            mv.controller.animateTo(home)
         }
     }
 
@@ -187,6 +203,7 @@ class DeathFxController(
         if (records.isEmpty()) return
         // Snapshot — see followStrike; getMapCenter() hands back a live mutable point.
         val preCenter = GeoPoint(mapView.mapCenter.latitude, mapView.mapCenter.longitude)
+        val preZoom = mapView.zoomLevelDouble
         cameraReturnJob?.cancel()
         // A group spans about a third of the current viewport width — zoomed in, groups are
         // tight; zoomed out, everything clusters.
@@ -250,6 +267,8 @@ class DeathFxController(
         }
         _replayProgress.value = null
         // Back home, at peace.
-        mapView()?.controller?.animateTo(preCenter)
+        val mv = mapView() ?: return
+        mv.controller.setZoom(preZoom)
+        mv.controller.animateTo(preCenter)
     }
 }

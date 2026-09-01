@@ -677,7 +677,8 @@ class CityLabelOverlay(
     private val lang: AppLanguage,
     private val redCityNames: Set<String> = emptySet(),
     private val showMediumCities: Boolean = true,
-    private val showSmallCities: Boolean = true
+    private val showSmallCities: Boolean = true,
+    private val forceShowAllProvider: () -> Boolean = { false }
 ) : Overlay() {
 
     private val density = context.resources.displayMetrics.density
@@ -693,11 +694,12 @@ class CityLabelOverlay(
     override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
         if (shadow) return
         val zoom = mapView.zoomLevelDouble.coerceAtLeast(0.0)
+        val forceAll = forceShowAllProvider()
         for (c in Cities.ALL) {
             val minZoom = when (c.tier) {
                 CityTier.MAJOR -> 4.0
-                CityTier.MEDIUM -> if (showMediumCities) 6.5 else Double.MAX_VALUE
-                CityTier.MINOR -> if (showSmallCities) 10.0 else Double.MAX_VALUE
+                CityTier.MEDIUM -> if (forceAll || showMediumCities) 6.5 else Double.MAX_VALUE
+                CityTier.MINOR -> if (forceAll || showSmallCities) 10.0 else Double.MAX_VALUE
             }
             if (zoom < minZoom) continue
             mapView.projection.toPixels(GeoPoint(c.lat, c.lon), reuse)

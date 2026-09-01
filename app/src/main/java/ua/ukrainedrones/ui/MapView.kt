@@ -461,7 +461,8 @@ fun NeptunMapView(
         showNearbyShelters,
         selectedShelter?.shelter?.id,
         uiState.redCities,
-        uiState.mapThreats
+        uiState.mapThreats,
+        lang
     ) {
         buildString {
             append(lang).append('A').append(uiState.activeZone)
@@ -505,6 +506,7 @@ fun NeptunMapView(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val hiddenTypesState by rememberUpdatedState(uiState.hiddenTypes)
     val iconSetState by rememberUpdatedState(uiState.iconSet)
+    val mapThreatsState by rememberUpdatedState(uiState.mapThreats)
     val selectedId by selectedThreatId.collectAsState()
     val selectedThreatIdState by rememberUpdatedState(selectedId)
     val focusLocationState by rememberUpdatedState(uiState.focusLocation)
@@ -775,7 +777,8 @@ fun NeptunMapView(
                 mapView.overlays.add(
                     CityLabelOverlay(
                         context, lang, uiState.redCities,
-                        uiState.showMediumCities, uiState.showSmallCities
+                        uiState.showMediumCities, uiState.showSmallCities,
+                        forceShowAllProvider = { deathFx.forceShowAllCities.value }
                     )
                 )
 
@@ -896,12 +899,12 @@ fun NeptunMapView(
                     }
                 }
 
-                // Pinned-city pin — tip of the marker sits exactly on the city.
+                // Pinned-city pin — tip of the marker sits above the city label text.
                 if (!uiState.followMe) {
                     uiState.pinnedCity?.let { city ->
                         mapView.overlays.add(Marker(mapView).apply {
                             position = GeoPoint(city.lat, city.lon)
-                            setAnchor(Marker.ANCHOR_CENTER, 1.0f)
+                            setAnchor(Marker.ANCHOR_CENTER, 1.5f)
                             icon = BitmapDrawable(context.resources, pinBitmap(context))
                             setInfoWindow(null)
                         })
@@ -1165,7 +1168,7 @@ fun NeptunMapView(
             val mapView = mapViewRef.value ?: continue
             val now = System.currentTimeMillis()
             var dirty = false
-            for (t in uiState.mapThreats) {
+            for (t in mapThreatsState) {
                 val marker = markerRefs.value[t.id] ?: continue
                 // Staleness dimming + course rotation update in-place too (they're excluded
                 // from overlayKey, so a full rebuild no longer runs for them).
@@ -1201,7 +1204,7 @@ fun NeptunMapView(
                 newRingState.value = null
                 ring.id?.let { id ->
                     markerRefs.value[id]?.let { m ->
-                        val t = uiState.mapThreats.firstOrNull { it.id == id }
+                        val t = mapThreatsState.firstOrNull { it.id == id }
                         if (t != null) {
                             m.icon = threatIconFor(context, t.type, iconSetState)
                             dirty = true

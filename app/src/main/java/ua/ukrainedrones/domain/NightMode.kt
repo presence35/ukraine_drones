@@ -78,3 +78,8 @@ fun effectiveArmed(
 } else {
     day
 }
+
+/** Simple minute-based night window check. Overnight windows (start > end) wrap past midnight. */
+fun isWithinNight(nowMin: Int, startMin: Int, endMin: Int): Boolean =
+    if (startMin < endMin) nowMin in startMin until endMin
+    else nowMin >= startMin || nowMin < endMin

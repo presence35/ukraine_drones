@@ -1,4 +1,4 @@
-package ua.ukrainedrones.service
+package ua.ukrainedrones
 
 import android.content.Context
 import android.os.PowerManager
