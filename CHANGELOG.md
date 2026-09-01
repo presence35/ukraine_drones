@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Service: fix startup crash by aligning startForeground foregroundServiceType with manifest declaration / Сервіс: виправлено збій запуску узгодженням foregroundServiceType у startForeground з оголошенням у маніфесті
+- Connection: remove legacy REST polling fallback completely; WebSocket channel is now the sole data source / З'єднання: повне видалення застарілого опитування REST; потік WebSocket тепер є єдиним джерелом даних
+- Alerts: fix official-alert focus change — switching focus between alerting oblasts now properly drops the previous region and announces the new region / Сповіщення: виправлено зміну фокусу офіційних тривог — перемикання між областями з тривогою тепер скидає попередню область та оголошує нову
+- Connection: track threat data freshness independently from socket liveness — suppress stale zone alerts if threat frames stop arriving / З'єднання: відстеження свіжості даних загроз окремо від стану сокету — приглушення застарілих зонних тривог, якщо кадри загроз перестають надходити
+- Location: validate location freshness against timeout before evaluating focus and zones / Локація: перевірка свіжості геопозиції за тайм-аутом перед оцінкою фокусу та зон
+- Settings: show warning banner when system notifications are disabled / Налаштування: показ попередження, коли сповіщення вимкнено в системі
+
 - Map: fix threats not moving/facing wrong direction — marker update loop now reads fresh threat data on each tick / Мапа: виправлено загрози, що не рухаються/дивляться в хибному напрямку — цикл оновлення маркерів тепер зчитує свіжі дані загроз кожен тик
 - Map: fix city labels not updating when language is changed / Мапа: виправлено міські мітки, що не оновлюються при зміні мови
 - Map: fix pinned city icon overlapping city name text — pin moved above the label / Мапа: виправлено іконку закріпленого міста, що перекриває текст назви — шпильку переміщено вище мітки

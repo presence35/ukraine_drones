@@ -53,6 +53,10 @@ class AlertNotificationManager(private val context: Context) {
         const val NOTIF_MILESTONE = 5
         const val NOTIF_OFFLINE_CRITICAL = 6
         const val NOTIF_UPDATE = 7
+
+        fun areNotificationsEnabled(context: Context): Boolean {
+            return NotificationManagerCompat.from(context).areNotificationsEnabled()
+        }
     }
 
     fun createChannels() {
@@ -77,6 +81,9 @@ class AlertNotificationManager(private val context: Context) {
             .filter { it.id !in keep }
             .forEach { nm.deleteNotificationChannel(it.id) }
     }
+
+    fun areNotificationsEnabled(): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     fun updateChannels(s: Strings.StringSet) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

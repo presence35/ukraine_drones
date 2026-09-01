@@ -43,6 +43,9 @@ object LocationTracker {
     private val _lastFixAtMs = MutableStateFlow<Long?>(null)
     val lastFixAtMs: StateFlow<Long?> = _lastFixAtMs.asStateFlow()
 
+    private val _lastReceivedAtMs = MutableStateFlow<Long?>(null)
+    val lastReceivedAtMs: StateFlow<Long?> = _lastReceivedAtMs.asStateFlow()
+
     private val _lastPreciseFixAtMs = MutableStateFlow<Long?>(null)
     val lastPreciseFixAtMs: StateFlow<Long?> = _lastPreciseFixAtMs.asStateFlow()
 
@@ -59,7 +62,8 @@ object LocationTracker {
 
     fun isFresh(now: Long = System.currentTimeMillis(), maxAgeMs: Long = MAX_LOCATION_AGE_MS): Boolean {
         val fixTime = _lastFixAtMs.value ?: return false
-        return (now - fixTime) in 0..maxAgeMs
+        val rxTime = _lastReceivedAtMs.value ?: return false
+        return (now - fixTime) in 0..maxAgeMs && (now - rxTime) in 0..maxAgeMs
     }
 
     fun start(ctx: Context) {
@@ -208,6 +212,7 @@ object LocationTracker {
         val now = System.currentTimeMillis()
         val fixTime = if (loc.time > 0L) loc.time else now
         _lastFixAtMs.value = fixTime
+        _lastReceivedAtMs.value = now
         val isGps = loc.provider == LocationManager.GPS_PROVIDER || (loc.hasAccuracy() && loc.accuracy < 35f)
         if (isGps) {
             _lastPreciseFixAtMs.value = fixTime

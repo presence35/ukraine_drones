@@ -10,7 +10,7 @@ change a documented invariant, update the relevant section.
 - Jetpack Compose (Material 3, dark-only) + OSMdroid. Kotlin 1.9.24, JDK 17, minSdk 26 /
   targetSdk 35, namespace `ua.ukrainedrones`.
 - No runtime backend of ours: data comes straight from the public
-  [NEPTUN](https://neptun.in.ua) API (WS stream + REST merge). No Firebase, no push.
+  [NEPTUN](https://neptun.in.ua) API (WebSocket stream). No Firebase, no push.
 - Update feed: static `version.json` + APK on `odesaplay.com.ua`, self-checked daily, in-app install.
 - Coroutines + flows throughout; singletons expose `StateFlow`s.
 
@@ -98,7 +98,7 @@ detail that matters when editing that file.
 | File | Responsibility |
 | --- | --- |
 | `connection/ConnectionState.kt` | Sealed interface state machine: `Disconnected` → `Connecting` → `Connected` → `Degraded` → `Offline` → `Paused`; convenience extensions `isConnected`, `isDegraded`, `isOffline`, `isForceOffline`, `offlineSinceOrNull`, `reconnectStartMillisOrZero`. |
-| `connection/NeptunConnectionClient.kt` | High-reliability WebSocket + REST client for the NEPTUN telemetry feed. Strict generation-based lifecycle (`AtomicInteger`) prevents stale socket callbacks. Merges WS stream + REST snapshot (`no-store` cache) → separate `StateFlow`s: `connectionState`, `threats`, `alerts`, `removedThreats`; reconnect backoff 1–3 s → capped 15 s (`calculateBackoffMs`, tested); keep-alive pings + 45 s watchdog; REST refresh on 15 s quiet. `markUserShot(id)` / `wasUserShotRecently(id)` for map death-animation grace. `onForeground()` refreshes stale REST. `recordEvent` / `dismissConnLog` for the connection-log card. Isolated `TestHarnessImpl` for MiG injection + force-offline. |
+| `connection/NeptunConnectionClient.kt` | High-reliability WebSocket client for the NEPTUN telemetry feed. Strict generation-based lifecycle (`AtomicInteger`) prevents stale socket callbacks. Asynchronous channel processor dispatches frames → separate `StateFlow`s: `connectionState`, `threats`, `alerts`, `removedThreats`, `threatDataStale`; reconnect backoff 1–3 s → capped 15 s (`calculateBackoffMs`, tested); keep-alive pings + 45 s watchdog. `markUserShot(id)` / `wasUserShotRecently(id)` for map death-animation grace. `recordEvent` / `dismissConnLog` for the connection-log card. Isolated `TestHarnessImpl` for MiG injection + force-offline. |
 | `connection/NetworkMonitor.kt` | Validated network observer via `ConnectivityManager.NetworkCallback`. Emits `isValidated` StateFlow. On validation, kicks `onValidatedReturn` callback (triggers fast reconnect in client). |
 | `connection/ConnectionSupervisor.kt` | Milestone tracker for offline episodes. Compares `offlineSinceOrNull` to thresholds (3/5/6/10/20 min) and emits milestone `ConnEventKind` entries. |
 | `connection/ConnectionHolder.kt` | Lazy singleton holder for `NeptunConnectionClient` + `ConnectionSupervisor`. `getClient(context)` / `getSupervisor(context)` / `clear()`. Avoids startup race — MainViewModel constructs before `AlertService.onCreate` runs. |
@@ -504,7 +504,8 @@ ow (1s ticker) and lastFrameAt are separate StateFlows on the
 - **Stability.** Model classes passed to composables (Threat, ThreatProximity, City,
   ZoneParams, LatLng, night types, flourish types, RevealRequest) are annotated
   @Immutable; UiState itself too. MapView's overlayKey is memoized via
-  emember(<fields it reads>); staleness dimming happens in-place in the 1s marker loop,
+  
+emember(<fields it reads>); staleness dimming happens in-place in the 1s marker loop,
   never through the key.
 - **Popup clock is a leaf.** ThreatPopupCard's elapsed-time text comes from
   ThreatElapsedText, a small composable with its own 1s clock — the card body does not

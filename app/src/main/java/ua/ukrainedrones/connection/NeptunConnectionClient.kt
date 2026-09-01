@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,8 +20,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okhttp3.Call
-import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -35,23 +34,21 @@ import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.data.SystemEntry
 import ua.ukrainedrones.data.SystemEntryKind
 import ua.ukrainedrones.showToast
-import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * High-reliability WebSocket and REST client for the NEPTUN telemetry feed.
+ * High-reliability WebSocket client for the NEPTUN telemetry feed.
  *
- * Architecture Improvements:
+ * Architecture:
  * 1. Strict generation-based WebSocket lifecycle ([connectionGeneration]) to eliminate socket identity races.
  * 2. Unambiguous [ConnectionState] state machine.
- * 3. Prevents watchdog pacification by never resetting [lastFrameAtMs] on UI foreground.
- * 4. Gated reconnect on validated network changes (via [NetworkMonitor]) preventing captive-portal hammer.
- * 5. Deterministic REST snapshot merge with timestamp-based conflict resolution and `no-store` cache semantics.
- * 6. Isolated threat data freshness vs socket connection freshness tracking.
+ * 3. Sequential frame processing via [Channel] to guarantee FIFO order across frames.
+ * 4. Prevents watchdog pacification by never resetting [lastFrameAtMs] on UI foreground.
+ * 5. Gated reconnect on validated network changes (via [NetworkMonitor]) preventing captive-portal hammer.
+ * 6. Isolated threat data freshness ([threatDataStale]) vs socket connection freshness tracking.
  * 7. Isolated test harness seam for test MiG injection and offline simulation.
  */
 class NeptunConnectionClient(
@@ -63,7 +60,7 @@ class NeptunConnectionClient(
         const val OFFLINE_GRACE_MS = 5_000L
         const val DEGRADED_STALE_MS = 30_000L
         const val WATCHDOG_STALE_MS = 45_000L
-        const val REST_KEEP_ALIVE_STALE_MS = 15_000L
+        const val THREAT_DATA_STALE_MS = 120_000L
         const val USER_SHOT_GRACE_MS = 3_000L
         const val RECENT_REMOVED_GRACE_MS = 60_000L
         const val NO_NETWORK_RECONNECT_MS = 60_000L
@@ -77,7 +74,6 @@ class NeptunConnectionClient(
         }
 
         private const val WS_URL = "wss://neptun.in.ua/api/v1/stream"
-        private const val REST_URL = "https://neptun.in.ua/api/v1/threats"
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -88,6 +84,7 @@ class NeptunConnectionClient(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val networkMonitor = NetworkMonitor(context)
+    private val frameChannel = Channel<String>(capacity = Channel.UNLIMITED)
 
     // Generation counter for all socket instances
     private val connectionGeneration = AtomicInteger(0)
@@ -119,19 +116,21 @@ class NeptunConnectionClient(
     private val _lastValidSnapshot = MutableStateFlow(0L)
     val lastValidSnapshot: StateFlow<Long> = _lastValidSnapshot.asStateFlow()
 
+    private val _threatDataStale = MutableStateFlow(false)
+    val threatDataStale: StateFlow<Boolean> = _threatDataStale.asStateFlow()
+
     // Tracking
     private var openedAtMs = 0L
     @Volatile private var lastFrameAtMs = 0L
     private var reconnectAttempt = 0
     private var reconnectJob: Job? = null
     private var isManuallyStopped = false
-    private val restInFlight = AtomicBoolean(false)
 
     // User-shot grace tracking and recently removed tombstone tracking
     private val userShotAt = ConcurrentHashMap<String, Long>()
     private val recentlyRemovedThreats = ConcurrentHashMap<String, Long>()
 
-    // Mutex to serialize _threats.value mutations from REST and WS paths
+    // Mutex to serialize _threats.value mutations from WS paths
     private val threatsMutex = Mutex()
 
     // Pause / Ignore state
@@ -142,7 +141,16 @@ class NeptunConnectionClient(
 
     init {
         startNetworkObserver()
-        startKeepAliveAndWatchdog()
+        startFrameProcessor()
+        startWatchdog()
+    }
+
+    private fun startFrameProcessor() {
+        scope.launch {
+            for (text in frameChannel) {
+                handleFrame(text)
+            }
+        }
     }
 
     private fun startNetworkObserver() {
@@ -203,11 +211,6 @@ class NeptunConnectionClient(
     }
 
     fun onForeground() {
-        val now = System.currentTimeMillis()
-        val isStale = lastFrameAtMs > 0L && (now - lastFrameAtMs > 5_000L)
-        if (isStale && _connectionState.value.isConnected) {
-            refreshFromRest()
-        }
         if (!isManuallyStopped && _connectionState.value.isOffline && !isIgnoringPause()) {
             retryNow()
         }
@@ -245,7 +248,6 @@ class NeptunConnectionClient(
 
     private fun connect(gen: Int = connectionGeneration.incrementAndGet()) {
         if (isManuallyStopped) return
-        val isNetValidated = networkMonitor.isValidated.value
         val request = Request.Builder().url(WS_URL).build()
 
         val ws = client.newWebSocket(request, object : WebSocketListener() {
@@ -267,7 +269,6 @@ class NeptunConnectionClient(
                     openedAtMs = now,
                     lastFrameAtMs = now
                 )
-                refreshFromRest()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -284,7 +285,7 @@ class NeptunConnectionClient(
                         lastFrameAtMs = now
                     )
                 }
-                scope.launch { handleFrame(text) }
+                frameChannel.trySend(text)
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -317,6 +318,7 @@ class NeptunConnectionClient(
         }
         persistedReconnectStartMs = recStart
         openedAtMs = 0L
+        _threatDataStale.value = false
         _connectionState.value = ConnectionState.Offline(
             since = offlineSince,
             reconnectStartMillis = recStart,
@@ -364,139 +366,12 @@ class NeptunConnectionClient(
         }
     }
 
-    fun refreshFromRest() {
-        if (isManuallyStopped || !restInFlight.compareAndSet(false, true)) return
-        val dispatchTimeMs = System.currentTimeMillis()
-        val request = Request.Builder()
-            .url(REST_URL)
-            .header("Cache-Control", "no-store")
-            .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                restInFlight.set(false)
-                _lastError.value = e.message
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                restInFlight.set(false)
-                response.use {
-                    if (!it.isSuccessful) {
-                        _lastError.value = "REST HTTP ${it.code}"
-                        return
-                    }
-                    val body = it.body?.string() ?: return
-                    scope.launch { parseRestPayload(body, dispatchTimeMs) }
-                }
-            }
-        })
-    }
-
     private val knownTypeKeys = ThreatType.entries.map { it.apiKey }.toSet() +
         setOf("uav", "drone", "lancet", "molniya", "loitering", "missile", "cruise_missile", "mig31", "mig31k", "kinzhal")
     private val unknownTypeLastSeen = ConcurrentHashMap<String, Long>()
     private val UNKNOWN_TYPE_TOAST_COOLDOWN_MS = 60_000L
 
-    private suspend fun parseRestPayload(body: String, dispatchTimeMs: Long) {
-        try {
-            val env = JSONObject(body)
-            val arr = env.optJSONArray("threats") ?: return
-            val snapshotMap = LinkedHashMap<String, Threat>()
-
-            for (i in 0 until arr.length()) {
-                try {
-                    val obj = arr.getJSONObject(i)
-                    val rawType = if (obj.has("type") && !obj.isNull("type")) obj.optString("type") else null
-                    if (rawType != null && rawType !in knownTypeKeys) {
-                        recordUnknownType(rawType)
-                    }
-                    val t = Threat.fromJson(obj) ?: continue
-                    snapshotMap[t.id] = t
-                } catch (e: Exception) {
-                    Log.w("NeptunClient", "Malformed REST threat at index $i", e)
-                }
-            }
-
-            threatsMutex.withLock {
-                val now = System.currentTimeMillis()
-                val prev = _threats.value
-                val merged = HashMap<String, Threat>()
-
-                // 1. Process snapshot items with timestamp & tombstone awareness
-                for ((id, restThreat) in snapshotMap) {
-                    // Check if recently removed via WS after this REST snapshot's data was stamped
-                    val removedAt = recentlyRemovedThreats[id] ?: 0L
-                    val restTime = restThreat.updatedAtMillis ?: restThreat.confirmedAtMillis ?: 0L
-                    if (removedAt > 0L && removedAt >= restTime) {
-                        // Threat was removed by newer WS event, do not resurrect
-                        continue
-                    }
-
-                    val existing = prev[id]
-                    if (existing == null) {
-                        merged[id] = restThreat
-                    } else {
-                        val existingTime = existing.updatedAtMillis ?: existing.confirmedAtMillis ?: 0L
-                        if (restTime >= existingTime) {
-                            merged[id] = restThreat
-                        } else {
-                            // Keep newer WS state
-                            merged[id] = existing
-                        }
-                    }
-                }
-
-                // 2. Preserve in-memory threats that were updated after REST request was dispatched
-                for ((id, existing) in prev) {
-                    if (id in merged) continue
-                    val existingTime = existing.updatedAtMillis ?: existing.confirmedAtMillis ?: 0L
-                    if (existingTime > dispatchTimeMs) {
-                        // Threat appeared or updated after REST call dispatched
-                        merged[id] = existing
-                        continue
-                    }
-
-                    // Preserve user-shot drones within grace window
-                    val shotAt = userShotAt[id]
-                    if (shotAt != null && now - shotAt <= USER_SHOT_GRACE_MS) {
-                        merged[id] = existing
-                        continue
-                    }
-
-                    // Otherwise, threat was missing in snapshot and updated prior to dispatch -> emit removed
-                    _removedThreats.tryEmit(
-                        ThreatRemoved(existing.id, existing.lat, existing.lon, existing.type, existing.courseDeg, existing.region, existing.district, existing.locality)
-                    )
-                    recentlyRemovedThreats[id] = now
-                }
-
-                // Cleanup stale tracking
-                userShotAt.entries.removeIf { now - it.value > USER_SHOT_GRACE_MS }
-                recentlyRemovedThreats.entries.removeIf { now - it.value > RECENT_REMOVED_GRACE_MS }
-
-                _threats.value = testHarness.mergeTestThreats(merged)
-                _lastValidSnapshot.value = now
-                _lastValidThreatUpdate.value = now
-            }
-            _lastError.value = null
-        } catch (_: Exception) {
-            _lastError.value = "Malformed REST payload"
-        }
-    }
-
-    private fun startKeepAliveAndWatchdog() {
-        // Keep-Alive REST check for quiet links
-        scope.launch {
-            while (isActive) {
-                delay(20_000)
-                if (isManuallyStopped) return@launch
-                val quietFor = System.currentTimeMillis() - _lastSocketFrame.value
-                if (_connectionState.value.isConnected && quietFor > REST_KEEP_ALIVE_STALE_MS) {
-                    refreshFromRest()
-                }
-            }
-        }
-
+    private fun startWatchdog() {
         // Watchdog & Degraded State transition check
         scope.launch {
             while (isActive) {
@@ -504,11 +379,7 @@ class NeptunConnectionClient(
                 if (isManuallyStopped) return@launch
                 val now = System.currentTimeMillis()
                 val socketQuietFor = now - _lastSocketFrame.value
-                val threatQuietFor = now - _lastValidThreatUpdate.value
-
-                if (restInFlight.get() && socketQuietFor > 15_000L) {
-                    restInFlight.set(false)
-                }
+                val threatQuietFor = if (_lastValidThreatUpdate.value > 0L) now - _lastValidThreatUpdate.value else 0L
 
                 val currentState = _connectionState.value
                 if (currentState.isConnected && _lastSocketFrame.value > 0L && socketQuietFor > DEGRADED_STALE_MS && currentState !is ConnectionState.Degraded) {
@@ -518,6 +389,12 @@ class NeptunConnectionClient(
                         lastFrameAtMs = _lastSocketFrame.value,
                         quietDurationMs = socketQuietFor
                     )
+                }
+
+                if (currentState.isConnected && _lastValidThreatUpdate.value > 0L && threatQuietFor >= THREAT_DATA_STALE_MS) {
+                    _threatDataStale.value = true
+                } else if (!currentState.isConnected) {
+                    _threatDataStale.value = false
                 }
 
                 if (currentState.isConnected && _lastSocketFrame.value > 0L && socketQuietFor > WATCHDOG_STALE_MS) {
@@ -568,6 +445,7 @@ class NeptunConnectionClient(
                         _threats.value = testHarness.mergeTestThreats(map)
                         _lastValidThreatUpdate.value = now
                         _lastValidSnapshot.value = now
+                        _threatDataStale.value = false
                     }
                 }
                 "upsert" -> {
@@ -596,6 +474,7 @@ class NeptunConnectionClient(
                         }
                         _threats.value = updated
                         _lastValidThreatUpdate.value = now
+                        _threatDataStale.value = false
                     }
                 }
                 "remove" -> {
@@ -611,6 +490,7 @@ class NeptunConnectionClient(
                         }
                         _threats.value = updated
                         _lastValidThreatUpdate.value = now
+                        _threatDataStale.value = false
                     }
                 }
                 "alerts" -> {

@@ -180,7 +180,8 @@ class AlertService : Service() {
         val slowVibrationLevel: Int,
         val focusLocation: LatLng?,
         val nightActive: Boolean,
-        val enabled: Set<ThreatType>
+        val enabled: Set<ThreatType>,
+        val threatDataStale: Boolean = false
     )
 
     private data class AlertConfig(
@@ -312,9 +313,9 @@ class AlertService : Service() {
         val notif = notificationManager.buildMonitorNotification(s.notifOngoingTitle, "")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
             } else {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             }
             ServiceCompat.startForeground(this, NOTIF_MONITOR, notif, fgsType)
         } else {
@@ -381,15 +382,17 @@ class AlertService : Service() {
             }
 
             data class Quint<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
+            data class Sext<A, B, C, D, E, F>(val a: A, val b: B, val c: C, val d: D, val e: E, val f: F)
 
             combine(
                 combine(
                     ConnectionHolder.getClient(applicationContext).connectionState,
                     ConnectionHolder.getClient(applicationContext).threats,
                     ConnectionHolder.getClient(applicationContext).alerts,
+                    ConnectionHolder.getClient(applicationContext).threatDataStale,
                     LocationTracker.location,
                     nowFlow
-                ) { cs, threats, alerts, gps, now -> Quint(cs, threats, alerts, gps, now) },
+                ) { cs, threats, alerts, threatDataStale, gps, now -> Sext(cs, threats, alerts, threatDataStale, gps, now) },
                 combine(
                     prefs.slowRedKm(), prefs.slowYellowKm(), prefs.fastRedMin(), prefs.fastYellowMin()
                 ) { slowRed, slowYellow, fastRed, fastYellow ->
@@ -451,7 +454,7 @@ class AlertService : Service() {
                 ) { window, zones, ov ->
                     NightSettings(window, zones, ov.first, ov.second)
                 }
-            ) { (cs, rawThreats, alerts, gps, now), dayParams, cfg, tail, night ->
+            ) { (cs, rawThreats, alerts, threatDataStale, gps, now), dayParams, cfg, tail, night ->
                 val nowMin = nowMinuteOfDay()
                 val nightActive = night.window.enabled && isWithinNight(nowMin, night.window.startMin, night.window.endMin)
                 val params = if (nightActive && night.window.useCustomZones) {
@@ -466,7 +469,8 @@ class AlertService : Service() {
                 val threats = rawThreats.filterValues { it.type in enabled }
 
                 val (pinnedName, pinnedLoc) = tail.pinned?.let { FocusCity.lookup(it) } ?: (null to null)
-                val gpsLoc = gps?.let { LatLng(it.lat, it.lon) }
+                val gpsFresh = LocationTracker.isFresh(now)
+                val gpsLoc = if (gpsFresh) gps?.let { LatLng(it.lat, it.lon) } else null
                 val (focusLoc, focusBannerCity, focusCityUa, focusRegion, focusPinned) = when {
                     !cfg.followMe && pinnedLoc != null && pinnedName != null -> {
                         val c = FocusCity.find(pinnedName)
@@ -525,7 +529,7 @@ class AlertService : Service() {
 
                 val effectiveOfficialActive = focusOblastAlertActive && !cityScopedSuppressed
 
-                val zoneThreats = if (focusLoc != null) {
+                val zoneThreats = if (focusLoc != null && !threatDataStale) {
                     ThreatEvaluator.evaluateThreatZones(threats.values.toList(), focusLoc, params)
                 } else {
                     emptyMap()
@@ -563,7 +567,8 @@ class AlertService : Service() {
                     slowVibrationLevel = slowVib,
                     focusLocation = focusLoc,
                     nightActive = nightActive,
-                    enabled = enabled
+                    enabled = enabled,
+                    threatDataStale = threatDataStale
                 ) to now
             }.collect { (state, now) ->
                 handleState(state, now)
@@ -661,6 +666,17 @@ class AlertService : Service() {
         if (droppedZoneIds.isNotEmpty()) {
             knownZones = knownZones.filterKeys { it !in droppedZoneIds }
             persistKnownZones()
+        }
+
+        if (officialRegionToken != null && state.focusToken != officialRegionToken) {
+            if (alertable.isEmpty()) {
+                cancelAlert()
+            }
+            currentReasonThreatId = null
+            debugOfficialActive = false
+            officialRegionToken = null
+            wasFocusAlertActive = false
+            clearOfficialAnnounced()
         }
 
         if (!wasFocusAlertActive && officialAnnouncedToken != null && officialAnnouncedSince != null &&
@@ -788,19 +804,6 @@ class AlertService : Service() {
                 distanceKm = null,
                 now = System.currentTimeMillis()
             )
-        }
-
-        if (wasFocusAlertActive && !state.focusOblastAlertActive &&
-            officialRegionToken != null && state.focusToken != officialRegionToken
-        ) {
-            if (alertable.isEmpty()) {
-                cancelAlert()
-            }
-            currentReasonThreatId = null
-            debugOfficialActive = false
-            officialRegionToken = null
-            wasFocusAlertActive = false
-            clearOfficialAnnounced()
         }
 
         if (!state.focusOblastAlertActive) {

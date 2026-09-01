@@ -129,7 +129,8 @@ data class UiState(
     val shelterIndex: ShelterIndex? = null,        // Odesa shelters — null while loading/unavailable
     val mapVisible: Boolean = true,          // the map screen is the visible screen (not settings/shelters/guide)
     val shelterOverlayUp: Boolean = false,   // the shelter overlay is showing (suppresses flourish)
-    val alertActive: Boolean = false         // any threat or official alert live right now
+    val alertActive: Boolean = false,        // any threat or official alert live right now
+    val threatDataStale: Boolean = false
 )
 
 /**
@@ -361,6 +362,7 @@ val fastGroupCollapsed: Boolean,
         val cs: ConnectionState,
         val threats: Map<String, Threat>,
         val alerts: List<OblastAlert>,
+        val threatDataStale: Boolean,
         val slowRedKm: Int,
         val slowYellowKm: Int,
         val fastRedMin: Int,
@@ -408,6 +410,7 @@ val fastGroupCollapsed: Boolean,
         zonesFlow,
         LocationTracker.location,
         LocationTracker.lastFixAtMs,
+        client.threatDataStale,
         revealFlow,
         flourishFlow,
         mapVisibleFlow,
@@ -417,12 +420,13 @@ val fastGroupCollapsed: Boolean,
         val radii = values[1] as ZoneParams
         val location = values[2] as LatLng?
         val lastFix = values[3] as Long?
-        val reveal = values[4] as RevealRequest?
-        val flourish = values[5] as FlourishShow?
-        val mapVisible = values[6] as Boolean
-        val shelterModeActive = values[7] as Boolean
+        val threatDataStale = values[4] as Boolean
+        val reveal = values[5] as RevealRequest?
+        val flourish = values[6] as FlourishShow?
+        val mapVisible = values[7] as Boolean
+        val shelterModeActive = values[8] as Boolean
         LiveSnapshot(
-            cs, threats, alerts,
+            cs, threats, alerts, threatDataStale,
             radii.slowRedKm, radii.slowYellowKm, radii.fastRedMin, radii.fastYellowMin,
             location, lastFix != null, reveal, flourish, mapVisible, shelterModeActive
         )
@@ -656,6 +660,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             cs = live.cs,
             threats = live.threats,
             alerts = live.alerts,
+            threatDataStale = live.threatDataStale,
             slowRedKm = live.slowRedKm,
             slowYellowKm = live.slowYellowKm,
             fastRedMin = live.fastRedMin,
@@ -827,6 +832,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         cs: ConnectionState,
         threats: Map<String, Threat>,
         alerts: List<OblastAlert>,
+        threatDataStale: Boolean,
         slowRedKm: Int,
         slowYellowKm: Int,
         fastRedMin: Int,
@@ -845,14 +851,16 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         officialAlertCityScope: Boolean
     ): UiState {
         val params = effectiveParams
-        // Camera + zone center: GPS while following, else the pinned city (else GPS as fallback).
+        val gpsFresh = LocationTracker.isFresh(now)
+        val effectiveUserLoc = if (gpsFresh) userLocation else null
+        // Camera + zone center: GPS while following (if fresh), else the pinned city (else GPS fallback).
         // Before the first GPS fix the map still needs a complete first visual, so it anchors on
         // Odesa (where the shelter data lives) until a real fix recentres it.
-        val focusLocation = if (followMe) (userLocation ?: ODESA_FALLBACK_FOCUS)
-        else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: (userLocation ?: ODESA_FALLBACK_FOCUS)
+        val focusLocation = if (followMe) (effectiveUserLoc ?: ODESA_FALLBACK_FOCUS)
+        else pinnedCity?.let { LatLng(it.lat, it.lon) } ?: (effectiveUserLoc ?: ODESA_FALLBACK_FOCUS)
         // Official alert state for the FOCUS point: the pinned city's oblast, else the
         // oblast of the nearest listed city to the GPS fix while following.
-        val attribution = focusAttribution(followMe, userLocation, pinnedCity)
+        val attribution = focusAttribution(followMe, effectiveUserLoc, pinnedCity)
         val focusToken = attribution.token
         val focusOblastAlertActive = officialAlertActiveFor(
             alerts,
@@ -883,7 +891,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         }
 
         val evaluation = ThreatEvaluator.evaluate(
-            threats = threats,
+            threats = if (threatDataStale) emptyMap() else threats,
             params = params,
             focusLocation = focusLocation,
             mapEnabledTypes = mapEnabledTypes,
@@ -913,7 +921,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             threatsOuter = inOuter,
             mapThreats = mapThreats,
             userLocation = userLocation,
-            gpsFixAvailable = gpsFixAvailable,
+            gpsFixAvailable = gpsFixAvailable && gpsFresh,
             slowRedKm = slowRedKm,
             slowYellowKm = slowYellowKm,
             fastRedMin = fastRedMin,
@@ -931,7 +939,8 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             threatLevel = ThreatLevelModel.overall(threatScores),
             revealRequest = reveal,
             flourish = flourish,
-            alertActive = alertActive
+            alertActive = alertActive,
+            threatDataStale = threatDataStale
         )
     }
 

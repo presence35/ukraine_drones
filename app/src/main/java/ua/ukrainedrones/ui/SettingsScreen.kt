@@ -763,6 +763,67 @@ fun SettingsScreen(
                     subtitle = s.alertsSubtitle(officialAlertsEnabled, sirenOverride),
                     onToggle = { onCollapseChange(collapse.copy(alerts = !collapse.alerts)) }
                 ) {
+                    val notifsEnabled = remember(Unit) {
+                        AlertNotificationManager.areNotificationsEnabled(appContext)
+                    }
+                    if (!notifsEnabled) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_notifications_off),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        if (lang == AppLanguage.UA) "Сповіщення вимкнено" else "Notifications disabled",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    if (lang == AppLanguage.UA)
+                                        "Додаток не зможе показувати тривоги та сирени. Увімкніть сповіщення в налаштуваннях системи."
+                                    else
+                                        "The app cannot deliver sirens or alert notifications. Enable notifications in system settings.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                            putExtra(Settings.EXTRA_APP_PACKAGE, appContext.packageName)
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        appContext.startActivity(intent)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        if (lang == AppLanguage.UA) "Увімкнути сповіщення" else "Enable notifications",
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+
                     AlertToggleRow(
                         title = s.officialAlertsTitle,
                         description = s.officialAlertsDesc,
