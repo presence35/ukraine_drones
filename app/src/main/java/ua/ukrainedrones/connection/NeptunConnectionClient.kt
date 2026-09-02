@@ -33,6 +33,7 @@ import ua.ukrainedrones.ThreatType
 import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.data.SystemEntry
 import ua.ukrainedrones.data.SystemEntryKind
+import ua.ukrainedrones.BatteryOptimization
 import ua.ukrainedrones.showToast
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap

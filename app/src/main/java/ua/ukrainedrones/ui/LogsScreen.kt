@@ -10,7 +10,7 @@ import ua.ukrainedrones.connection.NeptunConnectionClient
 import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.data.SystemEntry
 import ua.ukrainedrones.data.SystemEntryKind
-import ua.ukrainedrones.service.BatteryOptimization
+import ua.ukrainedrones.BatteryOptimization
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.animation.core.animateFloatAsState

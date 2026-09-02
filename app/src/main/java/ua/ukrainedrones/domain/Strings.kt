@@ -302,6 +302,7 @@ object Strings {
         val debugGroupOfficial: String,
         val debugGroupLeft: String,
         val debugBandCloseFormat: String,
+        val closeButton: String,
         val debugBandMidFormat: String,
         val debugBandFarFormat: String,
         val debugBandFarthestFormat: String,
@@ -905,6 +906,7 @@ object Strings {
         val debugGroupOfficial: String get() = misc.debugGroupOfficial
         val debugGroupLeft: String get() = misc.debugGroupLeft
         val debugBandCloseFormat: String get() = misc.debugBandCloseFormat
+        val closeButton: String get() = misc.closeButton
         val debugBandMidFormat: String get() = misc.debugBandMidFormat
         val debugBandFarFormat: String get() = misc.debugBandFarFormat
         val debugBandFarthestFormat: String get() = misc.debugBandFarthestFormat
@@ -1410,6 +1412,7 @@ connOnline = "Онлайн",
         debugGroupOfficial = "Офіційні тривоги",
         debugGroupLeft = "Покинули регіон",
         debugBandCloseFormat = "≤ %1\$d км",
+        closeButton = "Закрити",
         debugBandMidFormat = "%1\$d–%2\$d км",
         debugBandFarFormat = "%1\$d–%2\$d км",
         debugBandFarthestFormat = "> %1\$d км",
@@ -1980,6 +1983,7 @@ alertBannerFormat = "%1\$s: alert",
         debugGroupOfficial = "Official alerts",
         debugGroupLeft = "Left the region",
         debugBandCloseFormat = "≤ %1\$d km",
+        closeButton = "Close",
         debugBandMidFormat = "%1\$d–%2\$d km",
         debugBandFarFormat = "%1\$d–%2\$d km",
         debugBandFarthestFormat = "> %1\$d km",
