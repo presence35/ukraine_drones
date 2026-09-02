@@ -156,7 +156,7 @@ class NeptunConnectionClient(
     private fun startNetworkObserver() {
         scope.launch {
             networkMonitor.isValidated.collect { isValidated ->
-                if (isValidated && !isManuallyStopped && !isIgnoringPause()) {
+                if (isValidated && !isManuallyStopped && !testHarness.isForceOffline && !testHarness.isNoNetwork && !isIgnoringPause()) {
                     val current = _connectionState.value
                     if (current is ConnectionState.Connecting && !current.networkValidated) {
                         retryNow()
@@ -180,6 +180,7 @@ class NeptunConnectionClient(
         if (savedIgnoreUntilMs > 0L) ignoreUntilMs = savedIgnoreUntilMs
         isManuallyStopped = false
         if (_connectionState.value.isConnected) return
+        if (testHarness.isForceOffline || testHarness.isNoNetwork) return
         connect()
     }
 
@@ -199,7 +200,7 @@ class NeptunConnectionClient(
     }
 
     fun retryNow() {
-        if (isManuallyStopped) return
+        if (isManuallyStopped || testHarness.isForceOffline) return
         ignoreUntilMs = 0L
         reconnectAttempt = 0
         reconnectJob?.cancel()
@@ -211,7 +212,7 @@ class NeptunConnectionClient(
     }
 
     fun onForeground() {
-        if (!isManuallyStopped && _connectionState.value.isOffline && !isIgnoringPause()) {
+        if (!isManuallyStopped && !testHarness.isForceOffline && !testHarness.isNoNetwork && _connectionState.value.isOffline && !isIgnoringPause()) {
             retryNow()
         }
     }
@@ -551,7 +552,7 @@ class NeptunConnectionClient(
     inner class TestHarnessImpl {
         private var testMigSerial = 0
         private val testMigIds = ConcurrentHashMap.newKeySet<String>()
-        private val TEST_MIG_LINGER_MS = 20_000L
+        private val testMigCoords = ConcurrentHashMap<String, Pair<Double, Double>>()
         private val TEST_MIG_BASES = listOf(
             49.83 to 36.75, // Chuhuiv area
             46.05 to 38.35, // Primorsko-Akhtarsk area
@@ -559,12 +560,41 @@ class NeptunConnectionClient(
             51.48 to 46.20  // Engels area
         )
 
-        @Volatile var suppressFrames = false
-        @Volatile var frameDropPercent = 0
+        private val _forceOffline = MutableStateFlow(false)
+        val forceOffline: StateFlow<Boolean> = _forceOffline.asStateFlow()
+
+        private val _noNetwork = MutableStateFlow(false)
+        val noNetwork: StateFlow<Boolean> = _noNetwork.asStateFlow()
+
+        private val _blackHole = MutableStateFlow(false)
+        val blackHole: StateFlow<Boolean> = _blackHole.asStateFlow()
+
+        private val _slowDrain = MutableStateFlow(false)
+        val slowDrain: StateFlow<Boolean> = _slowDrain.asStateFlow()
+
+        private val _testMigCount = MutableStateFlow(0)
+        val testMigCount: StateFlow<Int> = _testMigCount.asStateFlow()
+
+        val isForceOffline: Boolean get() = _forceOffline.value
+        val isNoNetwork: Boolean get() = _noNetwork.value
+        val isBlackHole: Boolean get() = _blackHole.value
+        val isSlowDrain: Boolean get() = _slowDrain.value
+
+        var suppressFrames: Boolean
+            get() = _blackHole.value
+            set(value) { _blackHole.value = value }
+
+        var frameDropPercent: Int = 0
 
         fun setForceOffline(force: Boolean) {
+            _forceOffline.value = force
             if (force) {
                 val now = System.currentTimeMillis()
+                reconnectJob?.cancel()
+                reconnectJob = null
+                val gen = connectionGeneration.incrementAndGet()
+                activeWebSocket?.close(1000, "force offline test")
+                activeWebSocket = null
                 _connectionState.value = ConnectionState.Offline(
                     since = now,
                     reconnectStartMillis = now,
@@ -578,8 +608,39 @@ class NeptunConnectionClient(
             }
         }
 
+        fun setNoNetwork(noNet: Boolean) {
+            _noNetwork.value = noNet
+            if (noNet) {
+                networkMonitor.setTestValidated(false)
+                val now = System.currentTimeMillis()
+                reconnectJob?.cancel()
+                reconnectJob = null
+                val gen = connectionGeneration.incrementAndGet()
+                activeWebSocket?.close(1001, "no network test")
+                activeWebSocket = null
+                _connectionState.value = ConnectionState.Connecting(
+                    generation = gen,
+                    attempt = reconnectAttempt,
+                    nextRetryAtMs = now + NO_NETWORK_RECONNECT_MS,
+                    networkValidated = false
+                )
+            } else {
+                networkMonitor.clearTestValidated()
+                retryNow()
+            }
+        }
+
+        fun setBlackHole(blackHole: Boolean) {
+            _blackHole.value = blackHole
+        }
+
+        fun setSlowDrain(slowDrain: Boolean) {
+            _slowDrain.value = slowDrain
+            frameDropPercent = if (slowDrain) 50 else 0
+        }
+
         fun setNetworkValidated(validated: Boolean) {
-            networkMonitor.setTestValidated(validated)
+            setNoNetwork(!validated)
         }
 
         fun pauseFor(seconds: Int) {
@@ -594,17 +655,25 @@ class NeptunConnectionClient(
         }
 
         fun reset() {
-            suppressFrames = false
+            _forceOffline.value = false
+            _noNetwork.value = false
+            _blackHole.value = false
+            _slowDrain.value = false
             frameDropPercent = 0
             ignoreUntilMs = 0L
-            networkMonitor.setTestValidated(true)
+            testMigIds.clear()
+            testMigCoords.clear()
+            _testMigCount.value = 0
+            networkMonitor.clearTestValidated()
+            BatteryOptimization.setSimulatedOem(context, null)
+            _threats.update { it.filterKeys { k -> !k.startsWith("test_mig") } }
             if (_connectionState.value !is ConnectionState.Connected) {
                 retryNow()
             }
         }
 
         fun shouldDropFrame(): Boolean {
-            if (suppressFrames) return true
+            if (_blackHole.value) return true
             if (frameDropPercent > 0) return (0..99).random() < frameDropPercent
             return false
         }
@@ -612,14 +681,11 @@ class NeptunConnectionClient(
         fun fireTestMig() {
             testMigSerial++
             val id = "test_mig31k_$testMigSerial"
+            val base = TEST_MIG_BASES[(testMigSerial - 1) % TEST_MIG_BASES.size]
+            testMigCoords[id] = base
             testMigIds.add(id)
+            _testMigCount.value = testMigIds.size
             _threats.update { mergeTestThreats(it) }
-            scope.launch {
-                delay(TEST_MIG_LINGER_MS)
-                if (testMigIds.remove(id)) {
-                    _threats.update { it - id }
-                }
-            }
         }
 
         internal fun mergeTestThreats(baseMap: Map<String, Threat>): Map<String, Threat> {
@@ -627,7 +693,7 @@ class NeptunConnectionClient(
             val now = System.currentTimeMillis()
             val merged = HashMap(baseMap)
             for (id in testMigIds) {
-                val (lat, lon) = TEST_MIG_BASES.random()
+                val (lat, lon) = testMigCoords[id] ?: TEST_MIG_BASES.first()
                 merged[id] = buildTestMig(id, now, lat, lon)
             }
             return merged

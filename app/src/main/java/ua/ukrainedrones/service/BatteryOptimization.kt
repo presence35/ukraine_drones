@@ -36,8 +36,7 @@ object BatteryOptimization {
      */
     fun getOemInfo(context: Context? = null): OemInfo {
         // Check for simulation override (for testing on Pixel etc.)
-        val simOverride = context?.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            ?.getString(KEY_SIM_OEM, null)
+        val simOverride = getSimulatedOem(context)
         val raw = simOverride ?: Build.MANUFACTURER
         val mfg = raw.lowercase().trim()
 
@@ -57,6 +56,14 @@ object BatteryOptimization {
             else ->
                 OemInfo(raw, isAggressive = true, hasAutoStartIntent = false)
         }
+    }
+
+    /**
+     * Get the currently overridden OEM for testing, or null if none is set.
+     */
+    fun getSimulatedOem(context: Context?): String? {
+        return context?.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            ?.getString(KEY_SIM_OEM, null)
     }
 
     /**

@@ -949,6 +949,7 @@ private fun MapScreen(
                             redArmed = uiState.activeSlowRedArmed || uiState.activeFastRedArmed,
                             yellowArmed = uiState.activeSlowYellowArmed || uiState.activeFastYellowArmed,
                             lang = uiState.language,
+                            notificationsDisabled = uiState.notificationsDisabledBySystem,
                             onZoneTap = { zone ->
                                 showNearbyShelters = false
                                 selectedShelter = null
@@ -1498,6 +1499,7 @@ internal fun ZoneButtons(
     redArmed: Boolean,
     yellowArmed: Boolean,
     lang: AppLanguage,
+    notificationsDisabled: Boolean = false,
     onZoneTap: (ThreatZone) -> Unit,
     onEditZones: () -> Unit,
     modifier: Modifier = Modifier
@@ -1509,6 +1511,9 @@ internal fun ZoneButtons(
     ) {
         if (!redArmed && !yellowArmed) {
             AllAlertsOffWarning(label = s.allAlertsOffLabel, onClick = onEditZones)
+            Spacer(Modifier.height(6.dp))
+        } else if (notificationsDisabled) {
+            AllAlertsOffWarning(label = s.notificationsDisabledLabel, onClick = onEditZones)
             Spacer(Modifier.height(6.dp))
         }
         Row(

@@ -6,9 +6,11 @@ import android.net.Uri
 import ua.ukrainedrones.connection.ConnectionHolder
 import ua.ukrainedrones.connection.ConnEvent
 import ua.ukrainedrones.connection.ConnRetryState
+import ua.ukrainedrones.connection.NeptunConnectionClient
 import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.data.SystemEntry
 import ua.ukrainedrones.data.SystemEntryKind
+import ua.ukrainedrones.service.BatteryOptimization
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -16,7 +18,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +29,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -71,11 +76,13 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ripple
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,9 +97,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -155,19 +165,18 @@ private data class SystemRow(val entry: SystemEntry) : LogRow {
 }
 
 /**
- * Logs screen: a single card list over the decision audit trail and connection episodes.
- * Regular-user defaults: rolling 24h window, only notified, flourish hidden.
- * Controls: Alerts/Connections tabs with counts, group-by (Timeline/Proximity/Type),
- * sort chips (Newest/Oldest for Timeline/Type, Distance/Age for Proximity),
- * right-edged Notified + Shoot-downs chips; cards always show full audit row.
+ * Logs drop-down sheet: a top sheet that slides DOWN from the top bar (mirroring
+ * how the alert zones sheet slides UP from the bottom).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LogsScreen(
+fun LogsDropDownSheet(
     s: Strings.StringSet,
     lang: AppLanguage,
     iconSet: ThreatIconSet,
-    onBack: () -> Unit
+    neptunDown: Boolean,
+    degraded: Boolean,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val entries by DebugLog.entries.collectAsState()
     val connEntries by ConnectionLog.entries.collectAsState()
@@ -185,13 +194,14 @@ fun LogsScreen(
     var showFlourish by rememberSaveable { mutableStateOf(false) }
     var legendExpanded by rememberSaveable { mutableStateOf(false) }
     var visibleCount by remember { mutableIntStateOf(VISIBLE_INITIAL) }
+
     LaunchedEffect(Unit) {
         while (true) {
             now = System.currentTimeMillis()
             delay(1000)
         }
     }
-    // Rolling 24-hour window: decision rows older than a day drop off live.
+
     val window = entries.filter { now - it.atMillis < DebugLog.AUTO_CLEAR_AGE_MS }
     val isDecisions = filter == LogsFilter.DECISIONS
     val isSystem = filter == LogsFilter.SYSTEM
@@ -201,50 +211,108 @@ fun LogsScreen(
     val hasMore = visibleCount < rows.size
     val groups = if (isDecisions) buildGroups(visible.filterIsInstance<DecisionRow>().map { it.entry }, groupBy, showFlourish, proximitySort, newestFirst) else emptyList()
     val subtitle = if (isDecisions) String.format(s.logsSubtitleFormat, rows.size) else null
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(s.logsTitle) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = s.backButton)
-                    }
-                }
+
+    val connColor = when {
+        neptunDown -> Color(0xFFE57373)
+        degraded -> Color(0xFFFB8C00)
+        else -> Color(0xFF4CAF50)
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.85f)
+            .background(Color(0xFF1E1E1E))
+    ) {
+        // Top Header Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(connColor)
             )
-        }
-    ) { padding ->
-        val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS, LogsFilter.SYSTEM, LogsFilter.TESTS)
-        val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections, s.logsFilterSystem, s.logsFilterTests)
-        Column(Modifier.padding(padding).fillMaxWidth()) {
-            ScrollableTabRow(
-                selectedTabIndex = tabFilters.indexOf(filter),
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                edgePadding = 0.dp
-            ) {
-                tabFilters.forEachIndexed { index, f ->
-                    Tab(
-                        selected = filter == f,
-                        onClick = { filter = f; visibleCount = VISIBLE_INITIAL },
-                        text = { Text(tabLabels[index]) }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                s.logsTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.weight(1f)
+            )
+            Image(
+                painter = painterResource(R.drawable.neptun),
+                contentDescription = s.attributionText,
+                modifier = Modifier.height(20.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                NeptunConnectionClient.NEPTUN_DOMAIN,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF90CAF9),
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier.clickable {
+                    context.startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse(NeptunConnectionClient.NEPTUN_SITE_URL)
+                        )
                     )
                 }
-            }
-            if (isDecisions) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    LegendRow(s, legendExpanded) { legendExpanded = !legendExpanded }
-                }
-            }
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            )
+            val closeInteraction = remember { MutableInteractionSource() }
+            IconButton(
+                onClick = onClose,
+                interactionSource = closeInteraction,
+                modifier = Modifier.pressTick(closeInteraction)
             ) {
+                Icon(Icons.Filled.Close, contentDescription = s.closeButton, tint = Color.White)
+            }
+        }
+
+        // Tabs
+        val tabFilters = listOf(LogsFilter.DECISIONS, LogsFilter.CONNECTIONS, LogsFilter.SYSTEM, LogsFilter.TESTS)
+        val tabLabels = listOf(s.logsFilterDecisions, s.logsFilterConnections, s.logsFilterSystem, s.logsFilterTests)
+        ScrollableTabRow(
+            selectedTabIndex = tabFilters.indexOf(filter),
+            containerColor = Color(0xFF252525),
+            contentColor = MaterialTheme.colorScheme.primary,
+            edgePadding = 0.dp
+        ) {
+            tabFilters.forEachIndexed { index, f ->
+                Tab(
+                    selected = filter == f,
+                    onClick = { filter = f; visibleCount = VISIBLE_INITIAL },
+                    text = { Text(tabLabels[index]) }
+                )
+            }
+        }
+
+        if (isDecisions) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                LegendRow(s, legendExpanded) { legendExpanded = !legendExpanded }
+            }
+        }
+
+        // Scrollable Log Content
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             if (isDecisions) {
                 item(key = "viewopts") {
                     ViewOptionsRow(
@@ -360,14 +428,66 @@ fun LogsScreen(
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             TextButton(onClick = { scope.launch(Dispatchers.IO) { if (isSystem) ApiMonitor.clear() else DebugLog.clear() } }) {
                                 Text(s.debugLogClear)
+                            }
+                        }
+                    }
                 }
             }
-            }
+        }
+
+        // Swipe-up drag handle to dismiss
+        val density = LocalDensity.current
+        val dismissThresholdPx = with(density) { 60.dp.toPx() }
+        var dragAccum by remember { mutableFloatStateOf(0f) }
+        val dismissInteraction = remember { MutableInteractionSource() }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pressTick(dismissInteraction)
+                .clickable(
+                    interactionSource = dismissInteraction,
+                    indication = ripple(bounded = true),
+                    onClick = onClose
+                )
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            if (dragAccum < -dismissThresholdPx) onClose()
+                            dragAccum = 0f
+                        },
+                        onDragCancel = { dragAccum = 0f }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        dragAccum += dragAmount
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            SheetDragHandle()
         }
     }
 }
-        }
-    }
+
+/**
+ * Full-screen logs wrapper fallback if accessed directly.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LogsScreen(
+    s: Strings.StringSet,
+    lang: AppLanguage,
+    iconSet: ThreatIconSet,
+    onBack: () -> Unit
+) {
+    LogsDropDownSheet(
+        s = s,
+        lang = lang,
+        iconSet = iconSet,
+        neptunDown = false,
+        degraded = false,
+        onClose = onBack,
+        modifier = Modifier.fillMaxHeight(1f)
+    )
 }
 
 /**
@@ -1029,10 +1149,10 @@ private fun RetryLogCard(
 @Composable
 private fun TestSimButtons(context: android.content.Context, s: Strings.StringSet) {
     val client = ConnectionHolder.getClient(context)
-    var forceOffline by remember { mutableStateOf(false) }
-    var noNetwork by remember { mutableStateOf(false) }
-    var blackHole by remember { mutableStateOf(false) }
-    var slowDrain by remember { mutableStateOf(false) }
+    val forceOffline by client.testHarness.forceOffline.collectAsState()
+    val noNetwork by client.testHarness.noNetwork.collectAsState()
+    val blackHole by client.testHarness.blackHole.collectAsState()
+    val slowDrain by client.testHarness.slowDrain.collectAsState()
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -1044,13 +1164,7 @@ private fun TestSimButtons(context: android.content.Context, s: Strings.StringSe
             FilterChip(
                 selected = forceOffline,
                 onClick = {
-                    forceOffline = !forceOffline
-                    if (forceOffline) {
-                        noNetwork = false; blackHole = false; slowDrain = false
-                        client.testHarness.suppressFrames = false
-                        client.testHarness.frameDropPercent = 0
-                    }
-                    client.testHarness.setForceOffline(forceOffline)
+                    client.testHarness.setForceOffline(!forceOffline)
                 },
                 label = { Text("Offline", style = MaterialTheme.typography.labelSmall) },
                 leadingIcon = { Icon(Icons.Filled.CloudOff, contentDescription = null, modifier = Modifier.size(16.dp)) }
@@ -1058,49 +1172,27 @@ private fun TestSimButtons(context: android.content.Context, s: Strings.StringSe
             FilterChip(
                 selected = noNetwork,
                 onClick = {
-                    noNetwork = !noNetwork
-                    if (noNetwork) {
-                        forceOffline = false; blackHole = false; slowDrain = false
-                        client.testHarness.setForceOffline(false)
-                        client.testHarness.suppressFrames = false
-                        client.testHarness.frameDropPercent = 0
-                    }
-                    client.testHarness.setNetworkValidated(!noNetwork)
+                    client.testHarness.setNoNetwork(!noNetwork)
                 },
                 label = { Text("No Network", style = MaterialTheme.typography.labelSmall) }
             )
             FilterChip(
                 selected = blackHole,
                 onClick = {
-                    blackHole = !blackHole
-                    if (blackHole) {
-                        forceOffline = false; noNetwork = false; slowDrain = false
-                        client.testHarness.setForceOffline(false)
-                        client.testHarness.setNetworkValidated(true)
-                        client.testHarness.frameDropPercent = 0
-                    }
-                    client.testHarness.suppressFrames = blackHole
+                    client.testHarness.setBlackHole(!blackHole)
                 },
                 label = { Text("Black Hole", style = MaterialTheme.typography.labelSmall) }
             )
             FilterChip(
                 selected = slowDrain,
                 onClick = {
-                    slowDrain = !slowDrain
-                    if (slowDrain) {
-                        forceOffline = false; noNetwork = false; blackHole = false
-                        client.testHarness.setForceOffline(false)
-                        client.testHarness.setNetworkValidated(true)
-                        client.testHarness.suppressFrames = false
-                    }
-                    client.testHarness.frameDropPercent = if (slowDrain) 50 else 0
+                    client.testHarness.setSlowDrain(!slowDrain)
                 },
                 label = { Text("Slow Drain", style = MaterialTheme.typography.labelSmall) }
             )
             FilterChip(
                 selected = false,
                 onClick = {
-                    forceOffline = false; noNetwork = false; blackHole = false; slowDrain = false
                     client.testHarness.reset()
                 },
                 label = { Text("Reset", style = MaterialTheme.typography.labelSmall) },
@@ -1129,12 +1221,16 @@ private fun TestSimButtons(context: android.content.Context, s: Strings.StringSe
 @Composable
 private fun MigSimButton(context: android.content.Context, s: Strings.StringSet) {
     val client = ConnectionHolder.getClient(context)
+    val testMigCount by client.testHarness.testMigCount.collectAsState()
     Column(modifier = Modifier.fillMaxWidth()) {
         Button(
             onClick = { client.testHarness.fireTestMig() },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(s.connSimMigTitle, style = MaterialTheme.typography.labelMedium)
+            Text(
+                if (testMigCount > 0) "${s.connSimMigTitle} ($testMigCount)" else s.connSimMigTitle,
+                style = MaterialTheme.typography.labelMedium
+            )
         }
     }
 }
@@ -1142,7 +1238,7 @@ private fun MigSimButton(context: android.content.Context, s: Strings.StringSet)
 @Composable
 private fun OemSimButton(context: android.content.Context, s: Strings.StringSet) {
     val realManufacturer = remember { Build.MANUFACTURER.lowercase() }
-    var selectedOem by remember { mutableStateOf<String?>(null) }
+    var selectedOem by remember { mutableStateOf(BatteryOptimization.getSimulatedOem(context)) }
     val oemOptions = listOf(null to "Auto", "xiaomi" to "Xiaomi", "samsung" to "Samsung", "huawei" to "Huawei", "oppo" to "Oppo", "realme" to "Realme", "vivo" to "Vivo", "oneplus" to "OnePlus")
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(

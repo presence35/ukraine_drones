@@ -85,6 +85,7 @@ object Strings {
         val nightCustomZonesDesc: String,
         val nightMuteExitNote: String,
         val allAlertsOffLabel: String,
+        val notificationsDisabledLabel: String,
         val zoneButtonRed: String,
         val zoneButtonYellow: String,
         val slowSectionLabel: String,
@@ -618,6 +619,7 @@ object Strings {
         val nightCustomZonesDesc: String get() = settings.nightCustomZonesDesc
         val nightMuteExitNote: String get() = settings.nightMuteExitNote
         val allAlertsOffLabel: String get() = settings.allAlertsOffLabel
+        val notificationsDisabledLabel: String get() = settings.notificationsDisabledLabel
         val zoneButtonRed: String get() = settings.zoneButtonRed
         val zoneButtonYellow: String get() = settings.zoneButtonYellow
         val slowSectionLabel: String get() = settings.slowSectionLabel
@@ -1191,6 +1193,7 @@ val iconSetTitle: String get() = misc.iconSetTitle
         nightCustomZonesDesc = "Власні відстані/час і червона/жовта зони на час нічного вікна.",
         nightMuteExitNote = "Якщо справді хочеш повної тиші — скористайся кнопкою «Зупинити моніторинг і вийти» нижче; інакше легко забути повернути налаштування вранці.",
         allAlertsOffLabel = "Усі сповіщення вимкнено",
+        notificationsDisabledLabel = "Увімкніть сповіщення",
         zoneButtonRed = "Червона зона: натисни, щоб наблизити",
         zoneButtonYellow = "Жовта зона: натисни, щоб наблизити",
         slowSectionLabel = "Повільні — відстань",
@@ -1760,6 +1763,7 @@ connOnline = "Онлайн",
         nightCustomZonesDesc = "Own distances/times and red/yellow zones for the night window.",
         nightMuteExitNote = "If you truly want total silence, use \"Stop Monitoring & Exit\" below instead — otherwise you may forget to switch alerts back on tomorrow.",
         allAlertsOffLabel = "All alerts are off",
+        notificationsDisabledLabel = "Enable notifications",
         zoneButtonRed = "Red zone: tap to zoom in",
         zoneButtonYellow = "Yellow zone: tap to zoom in",
         slowSectionLabel = "Slow — distance",

@@ -130,7 +130,8 @@ data class UiState(
     val mapVisible: Boolean = true,          // the map screen is the visible screen (not settings/shelters/guide)
     val shelterOverlayUp: Boolean = false,   // the shelter overlay is showing (suppresses flourish)
     val alertActive: Boolean = false,        // any threat or official alert live right now
-    val threatDataStale: Boolean = false
+    val threatDataStale: Boolean = false,
+    val notificationsDisabledBySystem: Boolean = false
 )
 
 /**
@@ -738,7 +739,8 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             calmMessagesEnabled = prefs.calmMessagesEnabled,
             hapticsEnabled = resolveHaptics(prefs.hapticsEnabled),
             shelterIndex = shelterIndex,
-            shelterOverlayUp = live.shelterModeActive
+            shelterOverlayUp = live.shelterModeActive,
+            notificationsDisabledBySystem = !AlertNotificationManager.areNotificationsEnabled(app)
         )
         // A fresh INNER AVIATION (bell on) plays one full-size pass across the viewport; the
         // threat card opens when it lands (onFlybyFinished). Only while genuinely foregrounded

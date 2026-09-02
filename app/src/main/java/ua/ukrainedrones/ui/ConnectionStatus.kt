@@ -67,7 +67,7 @@ internal fun ConnectionStatus(
         else -> s.connOnline
     }
     val pillInteraction = remember { MutableInteractionSource() }
-        Row(
+    Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(Color.Black.copy(alpha = 0.55f))
@@ -76,7 +76,7 @@ internal fun ConnectionStatus(
             .clickable(
                 interactionSource = pillInteraction,
                 indication = ripple(bounded = true),
-                onClick = { onShowInfoChange(true) }
+                onClick = { onShowInfoChange(!showInfo) }
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -93,86 +93,6 @@ internal fun ConnectionStatus(
             color = connColor,
             style = MaterialTheme.typography.labelMedium
         )
-    }
-    if (showInfo) {
-        val context = LocalContext.current
-        Dialog(
-            onDismissRequest = { onShowInfoChange(false) },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
-                    .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(connColor)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(s.connStatusTitle, modifier = Modifier.weight(1f))
-                    Image(
-                        painter = painterResource(R.drawable.neptun),
-                        contentDescription = s.attributionText,
-                        modifier = Modifier.height(26.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        NeptunConnectionClient.NEPTUN_DOMAIN,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        textDecoration = TextDecoration.Underline,
-                        modifier = Modifier.clickable {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse(NeptunConnectionClient.NEPTUN_SITE_URL)
-                                )
-                            )
-                        }
-                    )
-                }
-                Column(
-                    modifier = Modifier.padding(top = 12.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SourceStatusRow(
-                        color = connColor,
-                        name = s.connNeptunLabel,
-                        active = !neptunDown
-                    )
-                }
-                Button(
-                    onClick = onOpenLogs,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.List,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        s.debugLogOpen,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
     }
 }
 
