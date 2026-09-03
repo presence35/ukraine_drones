@@ -31,7 +31,7 @@ class ThreatEngine(
 ) {
     val speedCache = SpeedCache()
 
-    private fun propsFor(type: String): ThreatProps =
+    fun propsFor(type: String): ThreatProps =
         typeCatalog[type] ?: DEFAULT_THREAT_PROPS
 
     fun evaluate(
@@ -150,6 +150,9 @@ class ThreatEngine(
 
     fun motionHeading(t: NormalizedThreat): Double? =
         t.bearingDeg ?: t.heading ?: speedCache.measuredHeading(t.id)
+
+    fun courseDeg(t: NormalizedThreat): Double =
+        motionHeading(t) ?: fallbackCourse(t.id)
 
     fun isStale(t: NormalizedThreat, props: ThreatProps, now: Long): Boolean =
         t.status == "stale" || isExpired(t, props, now)

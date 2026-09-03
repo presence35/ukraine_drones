@@ -1,6 +1,12 @@
 package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionHolder
+import ua.ukrainedrones.engine.ThreatEngine
+import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.toThreatType
+import ua.ukrainedrones.engine.threatTypeInfoByString
+import ua.ukrainedrones.engine.distanceFlat
+import ua.ukrainedrones.engine.NEPTUN_TYPES
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -438,6 +444,7 @@ fun NeptunMapView(
     onFlourishEjected: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val engine = remember { ThreatEngine(NEPTUN_TYPES) }
     val context = LocalContext.current
     val strings = Strings.get(lang)
 
@@ -814,19 +821,21 @@ fun NeptunMapView(
                     // A user-shot drone stays hidden while its death animation plays; the
                     // next redraw after the animation brings it back in place.
                     if (deathFx.isActiveFor(t.id)) continue
-                    ThreatSpeedTracker.record(t.id, t.updatedAtMillis ?: System.currentTimeMillis(), t.lat, t.lon)
-                    val typeInfo = ThreatTypeCatalog.INFO.getValue(t.type)
+                    val nt = t.toNormalizedThreat()
+                    val props = engine.propsFor(nt.type)
+                    engine.speedCache.record(nt.id, nt.updatedAtMillis ?: System.currentTimeMillis(), nt.lat, nt.lon)
+                    val typeInfo = threatTypeInfoByString(nt.type)!!
                     val typeLabel = if (lang == AppLanguage.UA) typeInfo.labelUa else typeInfo.labelEn
                     val rawRegion = t.region ?: t.district ?: t.locality ?: strings.noRegion
                     val regionLabel = if (lang == AppLanguage.EN) Cities.uaToEn[rawRegion] ?: rawRegion else rawRegion
                     // Place markers at their dead-reckoned position straight away (matching the
                     // animation loop) so a rebuild never snaps a moving marker back to its raw fix
                     // and returning to the app doesn't flash stale fixes before the loop corrects.
-                    val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let {
-                        predictPosition(t, it, System.currentTimeMillis())
+                    val predicted = engine.speedCache.estimate(nt.id, nt, props)?.let {
+                        engine.predictPosition(nt, it, props, System.currentTimeMillis())
                     }
-                    val pos = predicted ?: GeoPoint(t.lat, t.lon)
-                    val stale = t.isStale(System.currentTimeMillis())
+                    val pos = predicted?.let { GeoPoint(it.lat, it.lon) } ?: GeoPoint(nt.lat, nt.lon)
+                    val stale = engine.isStale(nt, props, System.currentTimeMillis())
                     val nowMs = System.currentTimeMillis()
                     val ring = newRingState.value
                     val revealed = ring != null && t.id == ring.id && nowMs < ring.activeUntilMs
@@ -841,8 +850,8 @@ fun NeptunMapView(
                         // bearing while live, else reported heading, else their A(id) pseudo-course.
                         // The classic icons face up at 0°; the photo/army sets have a baked-in
                         // facing angle, so their rotation is the course minus that base (0..360).
-                        rotation = if (t.areaOnly) 0f else {
-                            val course = t.courseDeg.toFloat()
+                        rotation = if (nt.areaOnly) 0f else {
+                            val course = engine.courseDeg(nt).toFloat()
                             val base = IconCatalog.baseDeg(t.type, iconSet)
                             (course - base + 360f) % 360f
                         }
@@ -1170,15 +1179,17 @@ fun NeptunMapView(
             var dirty = false
             for (t in mapThreatsState) {
                 val marker = markerRefs.value[t.id] ?: continue
+                val nt = t.toNormalizedThreat()
+                val props = engine.propsFor(nt.type)
                 // Staleness dimming + course rotation update in-place too (they're excluded
                 // from overlayKey, so a full rebuild no longer runs for them).
-                val targetAlpha = if (t.isStale(now)) 0.45f else 1.0f
+                val targetAlpha = if (engine.isStale(nt, props, now)) 0.45f else 1.0f
                 if (marker.alpha != targetAlpha) {
                     marker.alpha = targetAlpha
                     dirty = true
                 }
-                val targetRot = if (t.areaOnly) 0f else {
-                    val course = t.courseDeg.toFloat()
+                val targetRot = if (nt.areaOnly) 0f else {
+                    val course = engine.courseDeg(nt).toFloat()
                     val base = IconCatalog.baseDeg(t.type, iconSetState)
                     (course - base + 360f) % 360f
                 }
@@ -1186,13 +1197,13 @@ fun NeptunMapView(
                     marker.rotation = targetRot
                     dirty = true
                 }
-                val speed = ThreatSpeedTracker.estimate(t.id, t) ?: continue
-                val predicted = predictPosition(t, speed, now) ?: continue
+                val speed = engine.speedCache.estimate(nt.id, nt, props) ?: continue
+                val predicted = engine.predictPosition(nt, speed, props, now) ?: continue
                 val cur = marker.position
                 if (cur != null &&
-                    distanceMeters(cur.latitude, cur.longitude, predicted.latitude, predicted.longitude) > 1.0
+                    distanceFlat(cur.latitude, cur.longitude, predicted.lat, predicted.lon) > 1.0
                 ) {
-                    marker.position = predicted
+                    marker.position = GeoPoint(predicted.lat, predicted.lon)
                     dirty = true
                 }
             }

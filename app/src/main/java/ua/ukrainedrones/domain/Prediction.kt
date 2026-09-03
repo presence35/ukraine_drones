@@ -12,12 +12,9 @@ import kotlin.math.sqrt
 @Immutable
 data class LatLng(val lat: Double, val lon: Double)
 
-/** Approximate meters between two lat/lon points (equirectangular — fine for short distances). */
-fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-    val dLat = (lat2 - lat1) * 110_574.0
-    val dLon = (lon2 - lon1) * 111_320.0 * cos(Math.toRadians((lat1 + lat2) / 2.0))
-    return sqrt(dLat * dLat + dLon * dLon)
-}
+/** Approximate meters between two lat/lon points — delegates to engine's [distanceFlat]. */
+fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double =
+    ua.ukrainedrones.engine.distanceFlat(lat1, lon1, lat2, lon2)
 
 /** Initial bearing in degrees clockwise from north (0..360) from (lat1, lon1) toward (lat2, lon2),
  *  on the same equirectangular metre basis as [distanceMeters]. Good enough for course-facing

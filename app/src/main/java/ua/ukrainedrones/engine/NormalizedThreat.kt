@@ -37,3 +37,9 @@ data class NormalizedThreat(
     val flying: Boolean
         get() = bearingDeg != null && confirmedAtMillis != null && status == "active"
 }
+
+fun fallbackCourse(id: String): Double {
+    var t = 0
+    for (ch in id) t = (t + ch.code) % 360
+    return if (t == 0) 45.0 else t.toDouble()
+}
