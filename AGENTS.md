@@ -27,7 +27,7 @@ evaluation contract. Read `ARCHITECTURE.md` for module map and data-flow context
 
 ### Engine conventions
 
-- **No mirror rule.** UI and service call `ThreatEvaluator.evaluate()` — one call site,
+- **No mirror rule.** UI and service call `ThreatEngine.evaluate()` — one call site,
   no duplicated logic. See `BEHAVIORS.md` for the contract.
 - **Source-agnostic.** Engine works with `NormalizedThreat` and `ThreatProps`. Never
   touches NEPTUN JSON or source-specific formats.

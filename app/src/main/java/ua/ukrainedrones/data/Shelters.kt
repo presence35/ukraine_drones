@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import org.json.JSONObject
 
@@ -29,8 +30,8 @@ data class Shelter(
     val type: ShelterType = ShelterType.infer(name)
 ) {
     /** Straight-line distance to a query point, in meters (Haversine). */
-    fun distanceMeters(fromLat: Double, fromLon: Double): Double =
-        distanceMeters(fromLat, fromLon, lat, lon)
+    fun distanceFlat(fromLat: Double, fromLon: Double): Double =
+        distanceFlat(fromLat, fromLon, lat, lon)
 }
 
 /** Walking speed at a brisk adult pace (~5 km/h). */
@@ -119,7 +120,7 @@ class ShelterIndex private constructor(
 
         val sourceList = if (candidates.size >= targetLimit) candidates else shelters
         return sourceList
-            .map { NearestShelter(it, it.distanceMeters(fromLat, fromLon)) }
+            .map { NearestShelter(it, it.distanceFlat(fromLat, fromLon)) }
             .sortedBy { it.distanceMeters }
             .take(targetLimit)
     }

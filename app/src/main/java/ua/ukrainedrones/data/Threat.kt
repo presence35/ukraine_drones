@@ -172,37 +172,19 @@ data class Threat(
     /**
      * True when NEPTUN's SDK would dead-reckon this track (`predict()`): it needs a
      * velocity bearing, a confirmed fix to anchor on, and an active status. Speed may be
-     * absent — [ThreatSpeedTracker.estimate] fills in measured or nominal speed.
+     * absent — the engine fills in measured or nominal speed.
      */
     val flying: Boolean
         get() = bearingDeg != null && confirmedAtMillis != null && status == "active"
 
     /**
      * Direction to display, sharing the exact heading `predictPosition` glides along so a
-     * marker that moves always faces its motion. Uses the shared `motionHeading` (server's
-     * velocity bearing, then reported heading, then our measured track from fixes);
-     * when even that is unknown, NEPTUN's deterministic A(id) pseudo-course applies.
-     * 0 = north.
+     * marker that moves always faces its motion. Uses the shared motion heading (server's
+     * velocity bearing, then reported heading); when even that is unknown, NEPTUN's
+     * deterministic A(id) pseudo-course applies. 0 = north.
      */
     val courseDeg: Double
-        get() = motionHeading(this) ?: fallbackCourse(id)
-
-    /**
-     * Best-effort course from the NEPTUN course text when the velocity bearing and heading
-     * are both absent: the message names a destination ("…курсом на Київ" / "у напрямку"),
-     * resolve it in the city dictionary and aim the icon at its coordinates. Null when the
-     * text names no known place or carries no direction — then the A(id) pseudo-course applies.
-     */
-    private fun courseFromMessage(): Double? {
-        val text = explanationShort ?: title.takeIf { it.isNotBlank() } ?: return null
-        for (pattern in COURSE_TARGET_PATTERNS) {
-            val m = pattern.find(text) ?: continue
-            val place = m.groupValues.getOrNull(1)?.trim()?.trimEnd('.', '—', '-') ?: continue
-            val city = Cities.byUa[place] ?: continue
-            return bearingDegrees(lat, lon, city.lat, city.lon)
-        }
-        return null
-    }
+        get() = bearingDeg ?: heading ?: fallbackCourse(id)
 
     companion object {
         /** NEPTUN's deterministic pseudo-course when no real course is reported (their SDK `A(id)`). */
@@ -378,20 +360,6 @@ private val COURSE_PATTERNS: List<Pair<Regex, String>> = listOf(
     Regex("^БпЛА над (.+)$", RegexOption.IGNORE_CASE) to "UAV over {X}",
     Regex("^БпЛА (?:рухається|прямує) (?:в напрямку|у напрямку|в бік|у бік) (.+)$", RegexOption.IGNORE_CASE) to "UAV moving toward {X}",
     Regex("^Курс на (.+)$", RegexOption.IGNORE_CASE) to "Course toward {X}"
-)
-
-/** The subset of [COURSE_PATTERNS] that names a *destination* ("heading toward X") — used to
- *  aim the marker icon at that place when the stream reports no velocity bearing or heading.
- *  "From the direction of" / "over" are excluded: they don't face the threat toward a target. */
-private val COURSE_TARGET_PATTERNS: List<Regex> = listOf(
-    Regex("^(?:Група|Рій) БпЛА курсом на (.+)$", RegexOption.IGNORE_CASE),
-    Regex("^Шахеди? курсом на (.+)$", RegexOption.IGNORE_CASE),
-    Regex("^БпЛА курсом на (.+)$", RegexOption.IGNORE_CASE),
-    Regex("^(?:Ракета|Крилата ракета) (?:летить |рухається )?(?:у напрямку|в напрямку|на) (.+)$", RegexOption.IGNORE_CASE),
-    Regex("^Швидкісна ціль (?:у напрямку|в напрямку|на|курсом на) (.+)$", RegexOption.IGNORE_CASE),
-    Regex("^КАБи? (?:у напрямку|в напрямку|на|курсом на) (.+)$", RegexOption.IGNORE_CASE),
-    Regex("^БпЛА (?:рухається|прямує) (?:в напрямку|у напрямку|в бік|у бік) (.+)$", RegexOption.IGNORE_CASE),
-    Regex("^Курс на (.+)$", RegexOption.IGNORE_CASE)
 )
 
 /**

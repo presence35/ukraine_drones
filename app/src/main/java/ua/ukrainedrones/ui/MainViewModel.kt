@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import android.app.Application
 import android.content.Intent
@@ -809,7 +810,10 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             // The selected threat is gone (removed by the server, marked resolved/area-only, a
             // ghost past the hard cap, or long-pressed) — show a brief neutralized card.
             val selectedGone = sel.selected != null && (
-                (refreshed?.let { t -> t.status == "resolved" || t.isGhost(nowMs) } ?: true) ||
+                (refreshed?.let { t ->
+                    val nt = t.toNormalizedThreat()
+                    t.status == "resolved" || engine.isGhost(nt, engine.propsFor(nt.type), nowMs)
+                } ?: true) ||
                     sel.selected.id == sel.neutralizedId
                 )
             // With the death animation disabled the card never flips to the "Neutralized"
@@ -1425,7 +1429,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     private fun calculateFlybyDuration(threat: Threat): Long {
         val focus = uiState.value.focusLocation
             ?: return AVIATION_FLYBY_DURATION_MS
-        val distKm = distanceMeters(
+        val distKm = distanceFlat(
             focus.lat, focus.lon, threat.lat, threat.lon
         ) / 1000.0
         // MiG-31 cruise ~900 km/h; scale for visibility (1.5x), clamp 1.5–8 s
@@ -1478,9 +1482,12 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
      */
     fun panToThreat(t: Threat) {
         val now = System.currentTimeMillis()
-        val predicted = ThreatSpeedTracker.estimate(t.id, t)?.let { predictPosition(t, it, now) }
-            ?: GeoPoint(t.lat, t.lon)
-        revealThreat(t.id, predicted.latitude, predicted.longitude, select = true)
+        val nt = t.toNormalizedThreat()
+        val props = engine.propsFor(nt.type)
+        val speed = engine.speedCache.estimate(nt.id, nt, props)
+        val predicted = speed?.let { engine.predictPosition(nt, it, props, now) }
+            ?: ua.ukrainedrones.engine.LatLng(t.lat, t.lon)
+        revealThreat(t.id, predicted.lat, predicted.lon, select = true)
     }
 
     /** Auto-check at most once per day. [allowPopup] pops the dialog on start when no alert is active. */

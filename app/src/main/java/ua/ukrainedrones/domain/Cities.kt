@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import android.content.Context
 import android.graphics.Canvas
@@ -624,7 +625,7 @@ object Cities {
         var bestM = radiusKm * 1000.0
         for (c in ALL) {
             if (!c.major) continue
-            val d = distanceMeters(lat, lon, c.lat, c.lon)
+            val d = distanceFlat(lat, lon, c.lat, c.lon)
             if (d < bestM) {
                 bestM = d
                 best = c

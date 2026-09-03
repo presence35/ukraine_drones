@@ -2,100 +2,15 @@ package ua.ukrainedrones
 
 import org.junit.Assert.*
 import org.junit.Test
+import ua.ukrainedrones.engine.ThreatEngine
+import ua.ukrainedrones.engine.NEPTUN_TYPES
+import ua.ukrainedrones.engine.toNormalizedThreat
 
 /**
  * Tests for [Threat] data model — stale detection, ghost filtering,
  * and catalog lookups.
  */
 class ThreatTest {
-
-    // ─────────────────────────────────────────────────────────────
-    // isStale()
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `isStale - fresh threat returns false`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(updatedAtMillis = now - 30_000) // 30 sec old
-        assertFalse(threat.isStale(now))
-    }
-
-    @Test
-    fun `isStale - exactly at threshold returns false`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(updatedAtMillis = now - 300_000) // 5 min old
-        assertFalse(threat.isStale(now))
-    }
-
-    @Test
-    fun `isStale - very old threat returns true`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(updatedAtMillis = now - 600_000) // 10 min old
-        assertTrue(threat.isStale(now))
-    }
-
-    @Test
-    fun `isStale - AVIATION type exempt from local age expiry`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(
-            type = ThreatType.AVIATION,
-            updatedAtMillis = now - 600_000 // 10 min old
-        )
-        // AVIATION is exempt from local age expiry, only server "stale" flag matters
-        assertFalse(threat.isStale(now))
-    }
-
-    @Test
-    fun `isStale - server flagged stale returns true regardless of age`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(
-            updatedAtMillis = now - 30_000, // fresh
-            status = "stale"
-        )
-        assertTrue(threat.isStale(now))
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // isGhost()
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `isGhost - fresh threat returns false`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(updatedAtMillis = now - 30_000)
-        assertFalse(threat.isGhost(now))
-    }
-
-    @Test
-    fun `isGhost - stale but not yet ghost returns false`() {
-        val now = System.currentTimeMillis()
-        // SHAHED staleAfterMs = 300_000, STALE_GHOST_CAP_MS = 1_800_000
-        // So ghost threshold = 2_100_000 ms (35 min)
-        val threat = makeThreat(
-            updatedAtMillis = now - 600_000 // 10 min old, stale but not ghost
-        )
-        assertFalse(threat.isGhost(now))
-    }
-
-    @Test
-    fun `isGhost - very old threat returns true`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(
-            updatedAtMillis = now - 3_000_000 // 50 min old
-        )
-        assertTrue(threat.isGhost(now))
-    }
-
-    @Test
-    fun `isGhost - AVIATION has longer cap`() {
-        val now = System.currentTimeMillis()
-        val threat = makeThreat(
-            type = ThreatType.AVIATION,
-            updatedAtMillis = now - 3_000_000 // 50 min old
-        )
-        // AVIATION_GHOST_CAP_MS = 7_200_000 (2 hours), so not ghost yet
-        assertFalse(threat.isGhost(now))
-    }
 
     // ─────────────────────────────────────────────────────────────
     // ThreatTypeCatalog
@@ -256,11 +171,13 @@ class ThreatTest {
             put("updatedAt", future)
         }
         val threat = Threat.fromJson(json)!!
+        val nt = threat.toNormalizedThreat()
+        val engine = ThreatEngine(NEPTUN_TYPES)
         val now = System.currentTimeMillis()
         // With clamped timestamp, threat should become stale after its window
         // SHAHED staleAfterMs = 300_000 (5 min). A clamped-to-now threat is fresh,
         // but it should NOT be immune to staleness in the future.
-        assertFalse("fresh clamped threat is not stale", threat.isStale(now))
+        assertFalse("fresh clamped threat is not stale", engine.isStale(nt, engine.propsFor(nt.type), now))
     }
 
     @Test

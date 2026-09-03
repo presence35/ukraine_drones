@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -16,7 +17,7 @@ class CitiesTest {
                 for (j in i + 1 until group.size) {
                     val a = group[i]
                     val b = group[j]
-                    val km = distanceMeters(a.lat, a.lon, b.lat, b.lon) / 1000.0
+                    val km = distanceFlat(a.lat, a.lon, b.lat, b.lon) / 1000.0
                     assertTrue("same name '$name' too close: ${a.nameUa} vs ${b.nameUa}", km >= 20.0)
                 }
             }

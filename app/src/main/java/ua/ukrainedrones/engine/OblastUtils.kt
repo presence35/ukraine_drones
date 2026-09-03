@@ -8,7 +8,8 @@ import ua.ukrainedrones.Transliteration
 import ua.ukrainedrones.FocusCityInfo
 import ua.ukrainedrones.LatLng
 import ua.ukrainedrones.OblastAlert
-import ua.ukrainedrones.isStale
+
+private val oblastEngine = ThreatEngine(NEPTUN_TYPES)
 
 fun inOblast(region: String?, district: String?, locality: String?, token: String?): Boolean {
     if (token == null) return false
@@ -70,7 +71,9 @@ fun deriveOfficialAlertReason(
     var best: Threat? = null
     var bestScore = -1.0
     for (t in threats) {
-        if (t.status != "active" || t.advisory || t.areaOnly || t.isStale(now)) continue
+        if (t.status != "active" || t.advisory || t.areaOnly) continue
+        val nt = t.toNormalizedThreat()
+        if (oblastEngine.isStale(nt, oblastEngine.propsFor(nt.type), now)) continue
         if (!inOblast(t.region, t.district, t.locality, token)) continue
         val distKm = if (focus != null) {
             distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0

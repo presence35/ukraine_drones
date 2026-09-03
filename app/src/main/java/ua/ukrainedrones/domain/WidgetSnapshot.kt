@@ -11,7 +11,7 @@ import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.engine.ZoneParams
 import ua.ukrainedrones.engine.distanceFlat
 import ua.ukrainedrones.engine.toNormalizedThreat
-import ua.ukrainedrones.engine.toThreat
+import ua.ukrainedrones.engine.toThreatType
 import kotlin.math.roundToInt
 
 /**
@@ -84,19 +84,19 @@ fun computeWidgetSnapshot(
     var primaryThreat: WidgetThreat? = null
     var nearestDist = Double.MAX_VALUE
     val typeCounts = LinkedHashMap<ThreatType, Int>()
-    for (t in eval.mapThreats.map { it.toThreat() }) {
-        if (t.isStale(now)) continue
+    for (nt in eval.mapThreats) {
+        if (engine.isStale(nt, engine.propsFor(nt.type), now)) continue
         count++
-        typeCounts[t.type] = (typeCounts[t.type] ?: 0) + 1
+        typeCounts[nt.type.toThreatType()] = (typeCounts[nt.type.toThreatType()] ?: 0) + 1
         if (focus != null) {
-            val d = distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
+            val d = distanceFlat(focus.lat, focus.lon, nt.lat, nt.lon) / 1000.0
             if (nearestKm == null || d < nearestKm) nearestKm = d
             if (d < nearestDist) {
                 nearestDist = d
-                primaryThreat = WidgetThreat(t.id, t.lat, t.lon, t.type)
+                primaryThreat = WidgetThreat(nt.id, nt.lat, nt.lon, nt.type.toThreatType())
             }
         } else if (primaryThreat == null) {
-            primaryThreat = WidgetThreat(t.id, t.lat, t.lon, t.type)
+            primaryThreat = WidgetThreat(nt.id, nt.lat, nt.lon, nt.type.toThreatType())
         }
     }
     nearestKm = nearestKm?.let { it.coerceAtMost(WidgetSnapshot.NEAREST_CAP_KM).roundToInt().toDouble() }

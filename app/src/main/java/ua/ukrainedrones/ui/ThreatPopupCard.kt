@@ -3,6 +3,7 @@ package ua.ukrainedrones
 import ua.ukrainedrones.engine.SpeedSource
 import ua.ukrainedrones.engine.ThreatEngine
 import ua.ukrainedrones.engine.NEPTUN_TYPES
+import ua.ukrainedrones.engine.toNormalizedThreat
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -125,7 +126,9 @@ private fun ThreatElapsedText(
             now = System.currentTimeMillis()
         }
     }
-    val stale = threat.isStale(now)
+    val engine = remember { ThreatEngine(NEPTUN_TYPES) }
+    val nt = remember(threat) { threat.toNormalizedThreat() }
+    val stale = engine.isStale(nt, engine.propsFor(nt.type), now)
     val elapsedText = if (stale) strings.lastSeenAgoFormat.format(formatElapsedMss(threat.updatedAtMillis, now))
         else formatElapsedMss(threat.updatedAtMillis, now)
     return elapsedText to stale

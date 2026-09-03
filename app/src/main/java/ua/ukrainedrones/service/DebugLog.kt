@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
@@ -12,9 +13,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import ua.ukrainedrones.service.ServiceState
 import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.ThreatEngine
+import ua.ukrainedrones.engine.NEPTUN_TYPES
+import ua.ukrainedrones.engine.toNormalizedThreat
 import ua.ukrainedrones.engine.inOblast
 import ua.ukrainedrones.engine.isFastType
-import ua.ukrainedrones.engine.NEPTUN_TYPES
 import ua.ukrainedrones.engine.inOblast
 
 /** Event kinds shown in the Debug log screen. */
@@ -78,6 +81,8 @@ data class DebugLogContext(
  * deleting the write hooks.
  */
 object DebugLog {
+
+    private val engine = ThreatEngine(NEPTUN_TYPES)
 
     internal const val MAX_ENTRIES = 500
 
@@ -223,8 +228,9 @@ object DebugLog {
     }
 
     internal fun regionEntry(t: Threat, distKm: Double, ctx: DebugLogContext): DebugLogEntry {
+        val nt = t.toNormalizedThreat()
         val reason = when {
-            t.isStale(ctx.now) -> DebugLogReason.STALE
+            engine.isStale(nt, engine.propsFor(nt.type), ctx.now) -> DebugLogReason.STALE
             t.advisory -> DebugLogReason.ADVISORY
             t.type !in ctx.enabledTypes -> DebugLogReason.TYPE_OFF
             else -> DebugLogReason.OUTSIDE_ZONES
@@ -295,7 +301,7 @@ internal fun computeSweep(
     val regionIds = mutableSetOf<String>()
     for (t in ctx.threats.values) {
         if (t.status == "resolved" || t.areaOnly) continue
-        val distKm = distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
+        val distKm = distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
         if (distKm > (NEPTUN_TYPES[t.type.name.lowercase()]?.reachKm ?: 1500.0) &&
             !inOblast(t.region, t.district, t.locality, ctx.token)
         ) continue

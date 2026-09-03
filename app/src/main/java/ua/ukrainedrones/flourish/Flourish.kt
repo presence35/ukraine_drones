@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import androidx.compose.runtime.Immutable
 import org.osmdroid.util.BoundingBox
@@ -82,7 +83,7 @@ internal fun clusterFlourish(
         for (g in groups) {
             val cLat = g.map { it.lat }.average()
             val cLon = g.map { it.lon }.average()
-            if (distanceMeters(cLat, cLon, r.lat, r.lon) <= maxDistanceMeters) {
+            if (distanceFlat(cLat, cLon, r.lat, r.lon) <= maxDistanceMeters) {
                 g.add(r)
                 placed = true
                 break

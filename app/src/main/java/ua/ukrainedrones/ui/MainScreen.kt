@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import android.Manifest
 import android.content.Intent
@@ -1313,7 +1314,7 @@ private fun ThreatStripFooter(
                     val list = (inner + outer)
                         .filter { it.type == type }
                         .sortedBy {
-                            if (focusLocation != null) distanceMeters(focusLocation.lat, focusLocation.lon, it.lat, it.lon)
+                            if (focusLocation != null) distanceFlat(focusLocation.lat, focusLocation.lon, it.lat, it.lon)
                             else 0.0
                         }
                     ThreatStatusCell(

@@ -1,4 +1,5 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.distanceFlat
 
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
@@ -100,7 +101,7 @@ class ShelterTest {
     @Test
     fun `distance matches the top-level haversine`() {
         val shelter = Shelter("1", "x", 46.53, 30.73)
-        val expect = distanceMeters(46.48, 30.73, 46.53, 30.73)
-        assertEquals(expect, shelter.distanceMeters(46.48, 30.73), 1e-9)
+        val expect = distanceFlat(46.48, 30.73, 46.53, 30.73)
+        assertEquals(expect, shelter.distanceFlat(46.48, 30.73), 1e-9)
     }
 }

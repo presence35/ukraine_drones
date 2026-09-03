@@ -11,3 +11,6 @@ fun threatTypeInfoByString(type: String): ThreatTypeInfo? =
 
 fun isFastType(type: ThreatType): Boolean =
     NEPTUN_TYPES[type.name.lowercase()]?.isFast ?: DEFAULT_THREAT_PROPS.isFast
+
+fun typicalSpeedKmh(type: ThreatType): Double? =
+    NEPTUN_TYPES[type.name.lowercase()]?.nominalSpeedMps?.times(3.6)
