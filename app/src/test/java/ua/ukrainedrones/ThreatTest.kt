@@ -4,11 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 import ua.ukrainedrones.engine.ThreatEngine
 import ua.ukrainedrones.engine.NEPTUN_TYPES
-import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.toThreatType
 
 /**
- * Tests for [Threat] data model — stale detection, ghost filtering,
- * and catalog lookups.
+ * Tests for the NEPTUN JSON parser (`normalizedThreatFromJson`) — field mapping, stale
+ * detection, ghost filtering, and catalog lookups.
  */
 class ThreatTest {
 
@@ -42,7 +43,7 @@ class ThreatTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Threat.fromJson edge cases
+    // normalizedThreatFromJson edge cases
     // ─────────────────────────────────────────────────────────────
 
     @Test
@@ -51,7 +52,7 @@ class ThreatTest {
             put("id", "test-1")
             put("lon", 30.0)
         }
-        assertNull(Threat.fromJson(json))
+        assertNull(normalizedThreatFromJson(json))
     }
 
     @Test
@@ -60,7 +61,7 @@ class ThreatTest {
             put("id", "test-1")
             put("lat", 50.0)
         }
-        assertNull(Threat.fromJson(json))
+        assertNull(normalizedThreatFromJson(json))
     }
 
     @Test
@@ -70,7 +71,7 @@ class ThreatTest {
             put("lat", 50.0)
             put("lon", 30.0)
         }
-        assertNull(Threat.fromJson(json))
+        assertNull(normalizedThreatFromJson(json))
     }
 
     @Test
@@ -82,10 +83,10 @@ class ThreatTest {
             put("type", "shahed")
             put("status", "active")
         }
-        val threat = Threat.fromJson(json)
+        val threat = normalizedThreatFromJson(json)
         assertNotNull(threat)
         assertEquals("shahed-001", threat!!.id)
-        assertEquals(ThreatType.SHAHED, threat.type)
+        assertEquals(ThreatType.SHAHED, threat.type.toThreatType())
         assertEquals("active", threat.status)
     }
 
@@ -101,7 +102,7 @@ class ThreatTest {
                 put("bearingDeg", 90.0)
             })
         }
-        val threat = Threat.fromJson(json)!!
+        val threat = normalizedThreatFromJson(json)!!
         assertEquals(180.0, threat.speedKmh!!, 0.001)
         assertEquals(90.0, threat.bearingDeg!!, 0.001)
     }
@@ -117,7 +118,7 @@ class ThreatTest {
             put("updatedAt", future)
         }
         val before = System.currentTimeMillis()
-        val threat = Threat.fromJson(json)!!
+        val threat = normalizedThreatFromJson(json)!!
         val after = System.currentTimeMillis()
         assertNotNull(threat.updatedAtMillis)
         assertTrue("clamped timestamp must be <= now", threat.updatedAtMillis!! <= after)
@@ -135,7 +136,7 @@ class ThreatTest {
             put("confirmedAt", future)
         }
         val before = System.currentTimeMillis()
-        val threat = Threat.fromJson(json)!!
+        val threat = normalizedThreatFromJson(json)!!
         val after = System.currentTimeMillis()
         assertNotNull(threat.confirmedAtMillis)
         assertTrue(threat.confirmedAtMillis!! <= after)
@@ -152,7 +153,7 @@ class ThreatTest {
             put("updatedAt", "2025-06-15T12:00:00Z")
             put("confirmedAt", "2025-06-15T11:55:00Z")
         }
-        val threat = Threat.fromJson(json)!!
+        val threat = normalizedThreatFromJson(json)!!
         val expectedUpdated = java.time.Instant.parse("2025-06-15T12:00:00Z").toEpochMilli()
         val expectedConfirmed = java.time.Instant.parse("2025-06-15T11:55:00Z").toEpochMilli()
         assertEquals(expectedUpdated, threat.updatedAtMillis)
@@ -170,14 +171,13 @@ class ThreatTest {
             put("status", "active")
             put("updatedAt", future)
         }
-        val threat = Threat.fromJson(json)!!
-        val nt = threat.toNormalizedThreat()
+        val threat = normalizedThreatFromJson(json)!!
         val engine = ThreatEngine(NEPTUN_TYPES)
         val now = System.currentTimeMillis()
         // With clamped timestamp, threat should become stale after its window
         // SHAHED staleAfterMs = 300_000 (5 min). A clamped-to-now threat is fresh,
         // but it should NOT be immune to staleness in the future.
-        assertFalse("fresh clamped threat is not stale", engine.isStale(nt, engine.propsFor(nt.type), now))
+        assertFalse("fresh clamped threat is not stale", engine.isStale(threat, engine.propsFor(threat.type), now))
     }
 
     @Test
@@ -201,7 +201,7 @@ class ThreatTest {
             })
         }
         val before = System.currentTimeMillis()
-        val threat = Threat.fromJson(json)!!
+        val threat = normalizedThreatFromJson(json)!!
         val after = System.currentTimeMillis()
         assertEquals(2, threat.trail.size)
         val futurePoint = threat.trail[0]
@@ -213,7 +213,7 @@ class ThreatTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Threat.flying property
+    // NormalizedThreat.flying property
     // ─────────────────────────────────────────────────────────────
 
     @Test
@@ -281,7 +281,7 @@ class ThreatTest {
         district: String? = null,
         locality: String? = null,
         explanationShort: String? = null
-    ): Threat = Threat(
+    ): NormalizedThreat = threat(
         id = id,
         type = type,
         title = "Test threat",
@@ -296,16 +296,13 @@ class ThreatTest {
         advisory = advisory,
         areaOnly = areaOnly,
         confirmations = 1,
-        reliability = Reliability.MEDIUM,
+        reliability = "MEDIUM",
         count = 1,
         explanationShort = explanationShort,
         speedKmh = speedKmh,
         uncertaintyKm = null,
         positionQuality = null,
-        confirmedAt = null,
         confirmedAtMillis = confirmedAtMillis,
-        updatedAt = null,
-        updatedAtMillis = updatedAtMillis,
-        trail = emptyList()
+        updatedAtMillis = updatedAtMillis
     )
 }

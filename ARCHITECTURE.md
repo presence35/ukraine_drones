@@ -91,7 +91,9 @@ detail that matters when editing that file.
 
 | File | Responsibility |
 | --- | --- |
-| `MainActivity.kt` | Single activity; dark theme; starts `AlertService`; legacy osmdroid cache cleanup. *Note:* location→notification permissions defer until first-run onboarding resolves; "Later" sets `permission_prompt_deferred` (re-armed each cold start). |
+| `MainActivity.kt` | Single activity; dark theme (via `DarkThemePlugin`); starts `AlertService`; legacy osmdroid cache cleanup. *Note:* location→notification permissions defer until first-run onboarding resolves; "Later" sets `permission_prompt_deferred` (re-armed each cold start). |
+| `theme/ThemePlugin.kt` | Theme plugin contract (`name`, `isDark`, `colors`, `typography`). |
+| `theme/DarkThemePlugin.kt` | The only shipped theme (dark-only); `MainActivity` applies `DarkThemePlugin.colors`. |
 
 ### Data ingress (NEPTUN)
 
@@ -102,14 +104,14 @@ detail that matters when editing that file.
 | `connection/NetworkMonitor.kt` | Validated network observer via `ConnectivityManager.NetworkCallback`. Emits `isValidated` StateFlow. On validation, kicks `onValidatedReturn` callback (triggers fast reconnect in client). |
 | `connection/ConnectionSupervisor.kt` | Milestone tracker for offline episodes. Compares `offlineSinceOrNull` to thresholds (3/5/6/10/20 min) and emits milestone `ConnEventKind` entries. |
 | `connection/ConnectionHolder.kt` | Lazy singleton holder for `NeptunConnectionClient` + `ConnectionSupervisor`. `getClient(context)` / `getSupervisor(context)` / `clear()`. Avoids startup race — MainViewModel constructs before `AlertService.onCreate` runs. |
-| `NeptunClient.kt` | `object` holding shared constants (`OFFLINE_GRACE_MS`, `DEGRADED_STALE_MS`, `USER_SHOT_GRACE_MS`, `NEPTUN_DOMAIN`) and data classes (`ConnRetryState`, `ConnEventKind`, `ConnEvent`, `ThreatRemoved`). Also hosts `buildTestMig(...)` for test harness MiG injection. |
-| `Threat.kt` | `Threat` model + JSON parsing; `ThreatTypeCatalog` (labels, staleness, nominal speeds); `OblastAlert`/`inOblast`/`coversCity` + shared `officialAlertActiveFor` scope gate; `translateCourseAssessment` (EN course text, word-level common-word translation); `courseDeg` facing resolution (server `bearingDeg`, then `heading`, else the deterministic `A(id)` pseudo-course). |
+| `NeptunClient.kt` | `object` holding shared constants (`OFFLINE_GRACE_MS`, `DEGRADED_STALE_MS`, `USER_SHOT_GRACE_MS`, `NEPTUN_DOMAIN`) and data classes (`ConnRetryState`, `ConnEventKind`, `ConnEvent`, `ThreatRemoved`). |
+| `Threat.kt` | NEPTUN display metadata + parsing: `ThreatType`/`ThreatTypeCatalog`/`Reliability` (labels, staleness, nominal speeds), `OblastAlert`/`inOblast`/`coversCity` + shared `officialAlertActiveFor` scope gate; `translateCourseAssessment` (EN course text, word-level common-word translation); `normalizedThreatFromJson` — NEPTUN JSON → `NormalizedThreat` directly (the engine currency; no `Threat` display DTO anymore). |
 
 ### State / orchestration
 
 | File | Responsibility |
 | --- | --- |
-| `MainViewModel.kt` | `AndroidViewModel`. Combines NEPTUN + GPS + prefs + 1s clock (flourish data/policy live in `flourish/Flourish.kt` — `FlourishRecord`/`FlourishShow` and the `FlourishPolicy` gates used by `buildUiState`) → `StateFlow<UiState>`; drives the update flow (daily start check, a Settings-open check that raises `updateReminderTick` — a snackbar with a Download action — instead of a clickable toast, which Android can't make touchable, plus manual check/download/install); UI-side copy of zone/focus/alert logic (tradeoffs); `neutralizeThreat` long-press hook. Reads `ConnectionHolder.getClient(app)` flows directly: `connectionState`, `threats`, `alerts`; sampled at 120 ms for UI. `neptunForUi` is a `combine(connectionState, threats, alerts)` → `.sample(120)`. Test toggles (`simulateMig`, `setForceOffline`) call `client.testHarness`. |
+| `MainViewModel.kt` | `AndroidViewModel`. Combines NEPTUN + GPS + prefs + 1s clock (flourish data/policy live in `flourish/Flourish.kt` — `FlourishRecord`/`FlourishShow` and the `FlourishPolicy` gates used by `buildUiState`) → `StateFlow<UiState>`; drives the update flow (daily start check, a Settings-open check that raises `updateReminderTick` — a snackbar with a Download action — instead of a clickable toast, which Android can't make touchable, plus manual check/download/install); UI-side copy of zone/focus/alert logic (tradeoffs); `neutralizeThreat` long-press hook. Reads `ConnectionHolder.getClient(app)` flows directly: `connectionState`, `threats`, `alerts`; sampled at 120 ms for UI. `neptunForUi` is a `combine(connectionState, threats, alerts)` → `.sample(120)`. |
 | `ConnectionLog.kt` | `object` singleton. Persisted ring buffer (last 10 episodes) fed by the watchdog; commits drops only past `OFFLINE_GRACE_MS`. `ConnStatus` = ONLINE/OFFLINE (no backup state). Pure `commitLogState` (tested); rendered in the Logs screen. Non-blocking persistence (no `runBlocking` on IO). |
 | `DebugLog.kt` | `object` singleton. Persisted audit trail (last 500 decisions, rolling 24h window) written by `AlertService`, read by the Logs screen. Records every alert/threat decision in the active region — official on/off, zone entries, region threats — with day/night and effective sound, whether a notification was shown and why not. `DebugLog.sweep` runs once per service tick and is **read-only for the decision path**: it describes the service's own computed maps (`zoneThreats`/`alertable`/`knownZones`/`postedId`), never re-derives formulas. Pure `computeSweep`/serialize/parse (tested). Non-blocking persistence (no `runBlocking` on IO). *Note:* the whole feature is additive — removing it is deleting the write hooks + this object + `DebugLogScreen`. |
 | `Shelters.kt` | Odesa shelter dataset: `Shelter`/`NearestShelter` (adult ~5 km/h, kid ~3 km/h walk minutes), `ShelterIndex` (JSON parse, Odesa bbox, nearest ranking). |
@@ -124,7 +126,7 @@ detail that matters when editing that file.
 | `engine/SpeedCache.kt` | Engine-internal per-threat fix queue → measured speed/heading; `SpeedSource` (RECORDED/TYPICAL). |
 | `engine/ThreatEngine.kt` | The core: `evaluate` (inner/outer zones, mapThreats, scores, activeZone, threatLevel), `zoneTier`, `predictPosition`, `motionHeading`, `isStale`/`isExpired`/`isGhost`, `computeProximity`, `scoreThreat`/`aggregateScores`; `ThreatZone`, `ZoneParams`, `ThreatEvaluationResult`, `ThreatProximity`. |
 | `engine/ThreatSource.kt` | `ThreatSource` plugin interface + `PluginConnectionState` (source-agnostic connection state). |
-| `engine/TypeMapping.kt` | `ThreatType`→String (`toEngineString`), `Threat`↔`NormalizedThreat` (`toNormalizedThreat`/`toThreat` reverse mapper). |
+| `engine/TypeMapping.kt` | `ThreatType`→engine string (`toEngineString`). No reverse mapper — `NormalizedThreat` is the app-wide currency; NEPTUN JSON parses straight to it (`data/Threat.kt`). |
 | `engine/TypeBridge.kt` | App↔engine bridge: `String.toThreatType()`, `threatTypeInfoByString`, `isFastType(type)` (from `ThreatProps.isFast`), `typicalSpeedKmh(type)` (from `nominalSpeedMps`). |
 | `engine/OblastUtils.kt` | Geographic/text utilities (kept from the old `ThreatEvaluator`): `inOblast`, `inFocusOblast`, `matchOblast`, `canonicalToken`, `isCityScopedSuppressed`, `threatBody`, `deriveOfficialAlertReason`, `OblastMatch`. |
 | `plugins/NeptunPlugin.kt` | Wraps `NeptunConnectionClient` as a `ThreatSource`. |
@@ -144,7 +146,7 @@ detail that matters when editing that file.
 | `WidgetSnapshot.kt` | `WidgetSnapshot` + pure `computeWidgetSnapshot(...)` — deterministic projection of threat state for the widget, computed via the engine (`ThreatEngine(NEPTUN_TYPES).evaluate`, `engine.isStale`, `distanceFlat`, `focusAttribution`, `inOblast`). Counts + per-type `typeCounts` mirror the footer-strip semantics; `primaryThreat` = nearest live threat (id + position) so the widget can reveal it; `sourceOnline` is grace-filtered like the app pill. Takes `ConnectionState` + `Map<String, Threat>` + `List<OblastAlert>` directly (no `NeptunState`). Tested by `WidgetSnapshotTest`. |
 | `IconCatalog.kt` | Single source for threat icons: vector/photo/army/comic/russian sets, per-set facing (`baseDeg`), `ThreatIcon` composable; assets in `app/src/main/iconpacks/`. |
 | `Toasts.kt` | Shared toast helper: one function decides placement — top (below the header banner, via `ToastHost(topInset)`) normally, bottom (above the floating zone/shelter buttons) when a card/popup is visible. Dark themed pill. Callers never hardcode gravity. |
-| `Compat.kt` | Root-package typealiases so UI code keeps the flat names: `LatLng`, `ThreatZone`, `ZoneParams` → the engine types. |
+| `Compat.kt` | *(deleted — Session 6)* engine `LatLng`/`ThreatZone`/`ZoneParams` are now imported directly (`ua.ukrainedrones.engine.*`) instead of root-package typealiases. |
 
 ### UI (Compose)
 
@@ -304,11 +306,11 @@ Treat these as a contract. If you change one, update **every** place that relies
   service clears on a 20s grace.
 
 - **Threat facing always matches its motion.** `engine.predictPosition` (dead-reckoning) and
-  `Threat.courseDeg` (icon rotation) both resolve the heading via the engine's `motionHeading`:
+  `engine.courseDeg(nt)` (icon rotation) both resolve the heading via the engine's `motionHeading`:
   the server's authoritative velocity `bearingDeg` first, then the top-level `heading`. (The
   old measured fix-track fallback was dropped with `Prediction.kt` — the speed cache's recorded
   fixes are not fed back into facing.) Dead-reckoning only glides tracks with a real velocity
-  (`bearingDeg` + `speedKmh`, i.e. `Threat.flying`) — matching NEPTUN; everything else holds
+  (`bearingDeg` + `speedKmh`, i.e. `NormalizedThreat.flying`) — matching NEPTUN; everything else holds
   the raw fix. `courseDeg` keeps the deterministic `fallbackCourse(id)` (NEPTUN's `A(id)`)
   pseudo-course for *stationary* threats that don't glide. A change to heading resolution must
   stay in the engine so the marker never faces a direction it doesn't move.
@@ -325,9 +327,7 @@ Treat these as a contract. If you change one, update **every** place that relies
   is down: an outage must not fabricate "alert ended" / false all-clear — the truth arrives on
   reconnect. The scope is either oblast-wide (default) or city-level via the shared
   `officialAlertActiveFor(alerts, token, cityUa, scope)` gate (`OblastAlert.coversCity`), used
-  by **both** `MainViewModel` and `AlertService` (mirror rule). TEMP `forceOffline` flag
-  (`temp_force_offline`, restored on service start) forces the offline path for testing;
-  turning it off while the socket is down kicks a real reconnect (`retryNow`).
+  by **both** `MainViewModel` and `AlertService` (mirror rule).
   **Connection health is three-tier, not two.** Green online / red offline stay grace-filtered
   as before; the orange **degraded** middle state (`ConnectionState.Degraded`) fires while the
   socket is connected but no frame has arrived for `DEGRADED_STALE_MS` (30 s, below the REST
@@ -482,7 +482,7 @@ both UI and service consumers rely on.
 - `ThreatTest.kt` — JSON parsing, type mapping, course translation.
 - `TransliterationTest.kt` — КМУ №55 romanization, no semantic translation, digraph rules.
 - `UpdateManagerTest.kt` — `versionNameGreater`.
-- `NeptunClientTest.kt` — reconnect backoff (`NeptunConnectionClient.calculateBackoffMs`), `buildTestMig`, `ConnectionState` degradation.
+- `NeptunClientTest.kt` — reconnect backoff (`NeptunConnectionClient.calculateBackoffMs`), `ConnectionState` degradation.
 - `NightModeTest.kt` — night-window resolution + effective params/armed.
 - `ConnectionLogTest.kt` — episode-commit rules (grace window, blips, recovery, ring-buffer cap).
 - `DebugLogTest.kt` — serialize/parse round trip, ring-buffer cap, auto-clear, `computeSweep` verdicts (fired/coalesced/bell-muted, steady-state dedup, tier escalation, exits, stale/type-off region rows).

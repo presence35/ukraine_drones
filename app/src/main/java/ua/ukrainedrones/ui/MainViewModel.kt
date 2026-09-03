@@ -35,13 +35,14 @@ import ua.ukrainedrones.connection.ConnectionState
 import ua.ukrainedrones.connection.isConnected
 import ua.ukrainedrones.connection.isDegraded
 import ua.ukrainedrones.connection.isOffline
-import ua.ukrainedrones.connection.isForceOffline
 import ua.ukrainedrones.ODESA_LAT
 import ua.ukrainedrones.ODESA_LON
 import ua.ukrainedrones.engine.ThreatEngine
-import ua.ukrainedrones.engine.toThreat
-import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.engine.toEngineString
+import ua.ukrainedrones.engine.toThreatType
 import ua.ukrainedrones.engine.SpeedSource
 import ua.ukrainedrones.engine.ZoneParams
 import ua.ukrainedrones.service.ServiceState
@@ -52,12 +53,11 @@ import kotlin.random.Random
 @Immutable
 data class UiState(
     val connected: Boolean = false,
-    val neptunDown: Boolean = false,                 // NEPTUN offline (real or simulated via test toggle)
+    val neptunDown: Boolean = false,                 // NEPTUN offline
     val degraded: Boolean = false,                   // connected but stream quiet (orange pill)
-    val forceOffline: Boolean = false,              // TEMP test toggle — simulate NEPTUN offline
-    val threatsInner: List<Threat> = emptyList(), // reaching within the red time tier
-    val threatsOuter: List<Threat> = emptyList(), // in the yellow time tier, beyond red
-    val mapThreats: List<Threat> = emptyList(),   // all active threats across Europe
+    val threatsInner: List<NormalizedThreat> = emptyList(), // reaching within the red time tier
+    val threatsOuter: List<NormalizedThreat> = emptyList(), // in the yellow time tier, beyond red
+    val mapThreats: List<NormalizedThreat> = emptyList(),   // all active threats across Europe
     val userLocation: LatLng? = null,
     val gpsFixAvailable: Boolean = false,         // a GPS/cell fix has arrived at least once
     val slowRedKm: Int = 20,      // slow threats: distance to the red (inner) zone, km
@@ -148,9 +148,9 @@ data class UiState(
  */
 @Immutable
 data class SelectionUi(
-    val selected: Threat? = null,
+    val selected: NormalizedThreat? = null,
     val proximity: ThreatProximity? = null,
-    val neutralized: Threat? = null,   // resolved card while the death window plays
+    val neutralized: NormalizedThreat? = null,   // resolved card while the death window plays
     val fakeNeutralize: Boolean = false
 )
 
@@ -196,7 +196,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         else -> pref
     }
 
-    private val selectedThreatFlow = MutableStateFlow<Threat?>(null)
+    private val selectedThreatFlow = MutableStateFlow<NormalizedThreat?>(null)
     // A threat id long-pressed on the map is treated as neutralized so the card
     // self-destructs like a real resolution. Cleared on every selection change.
     private val neutralizedFlow = MutableStateFlow<String?>(null)
@@ -226,7 +226,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val registry = AppPluginHolder.registry
     private val engine = ThreatEngine(registry.typeCatalog.value)
     private val threatsFlow = registry.allThreats.map { list ->
-        list.associate { it.id to it.toThreat() }
+        list.associate { it.id to it }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     private val alertsFlow = registry.allAlerts
     /** Sampled NEPTUN state for UI (120ms) — bounds recomposition rate during heavy streams.
@@ -373,7 +373,7 @@ val fastGroupCollapsed: Boolean,
     /** Live inputs that change every frame/second: stream, GPS, selection, time. */
     private data class LiveSnapshot(
         val cs: ConnectionState,
-        val threats: Map<String, Threat>,
+        val threats: Map<String, NormalizedThreat>,
         val alerts: List<OblastAlert>,
         val threatDataStale: Boolean,
         val slowRedKm: Int,
@@ -429,7 +429,7 @@ val fastGroupCollapsed: Boolean,
         mapVisibleFlow,
         shelterModeFlow
     ) { values: Array<Any?> ->
-        val (cs, threats, alerts) = values[0] as Triple<ConnectionState, Map<String, Threat>, List<OblastAlert>>
+        val (cs, threats, alerts) = values[0] as Triple<ConnectionState, Map<String, NormalizedThreat>, List<OblastAlert>>
         val radii = values[1] as ZoneParams
         val location = values[2] as LatLng?
         val lastFix = values[3] as Long?
@@ -778,7 +778,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         )
 
     private data class SelectionInput(
-        val selected: Threat?,
+        val selected: NormalizedThreat?,
         val neutralizedId: String?,
         val fakeNeutralize: Boolean,
         val mapVisible: Boolean,
@@ -811,8 +811,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             // ghost past the hard cap, or long-pressed) — show a brief neutralized card.
             val selectedGone = sel.selected != null && (
                 (refreshed?.let { t ->
-                    val nt = t.toNormalizedThreat()
-                    t.status == "resolved" || engine.isGhost(nt, engine.propsFor(nt.type), nowMs)
+                    t.status == "resolved" || engine.isGhost(t, engine.propsFor(t.type), nowMs)
                 } ?: true) ||
                     sel.selected.id == sel.neutralizedId
                 )
@@ -823,16 +822,16 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
                 if (FlourishPolicy.showNeutralizedCard(selectedGone, animOn, sel.mapVisible, sel.shelterOverlayUp)) sel.selected else null
             SelectionUi(
                 selected = if (FlourishPolicy.dropSelection(selectedGone, animOn)) null else refreshed,
-                proximity = refreshed?.toNormalizedThreat()?.let { t ->
+                proximity = refreshed?.let { t ->
                     engine.computeProximity(
                         t,
-                        ui.focusLocation?.let { loc -> ua.ukrainedrones.engine.LatLng(loc.lat, loc.lon) },
-                        ua.ukrainedrones.engine.ZoneParams(ui.activeZoneParams.slowRedKm, ui.activeZoneParams.slowYellowKm, ui.activeZoneParams.fastRedMin, ui.activeZoneParams.fastYellowMin),
+                        ui.focusLocation?.let { loc -> LatLng(loc.lat, loc.lon) },
+                        ZoneParams(ui.activeZoneParams.slowRedKm, ui.activeZoneParams.slowYellowKm, ui.activeZoneParams.fastRedMin, ui.activeZoneParams.fastYellowMin),
                         nowMs
                     )
                 }?.let { ep ->
                     ThreatProximity(
-                        predicted = LatLng(ep.predicted.lat, ep.predicted.lon),
+                        predicted = ep.predicted,
                         distToUserKm = ep.distToUserKm,
                         etaToUserMin = ep.etaToUserMin,
                         params = ui.activeZoneParams,
@@ -858,7 +857,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
 
     private fun buildUiState(
         cs: ConnectionState,
-        threats: Map<String, Threat>,
+        threats: Map<String, NormalizedThreat>,
         alerts: List<OblastAlert>,
         threatDataStale: Boolean,
         slowRedKm: Int,
@@ -919,11 +918,10 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         }
 
         val threatList = if (threatDataStale) emptyList() else threats.values
-            .filter { it.type in mapEnabledTypes }
-            .map { it.toNormalizedThreat() }
+            .filter { it.type.toThreatType() in mapEnabledTypes }
         val silencedTypeStrings = alertedTypes.map { it.toEngineString() }.toSet()
-        val engineFocus = focusLocation?.let { ua.ukrainedrones.engine.LatLng(it.lat, it.lon) }
-        val engineParams = ua.ukrainedrones.engine.ZoneParams(params.slowRedKm, params.slowYellowKm, params.fastRedMin, params.fastYellowMin)
+        val engineFocus = focusLocation?.let { LatLng(it.lat, it.lon) }
+        val engineParams = ZoneParams(params.slowRedKm, params.slowYellowKm, params.fastRedMin, params.fastYellowMin)
         val evaluation = engine.evaluate(
             threats = threatList,
             focus = engineFocus,
@@ -932,16 +930,12 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             silencedTypes = silencedTypeStrings,
             now = now
         )
-        val inInner = evaluation.threatsInner.map { it.toThreat() }
-        val inOuter = evaluation.threatsOuter.map { it.toThreat() }
-        val mapThreats = evaluation.mapThreats.map { it.toThreat() }
+        val inInner = evaluation.threatsInner
+        val inOuter = evaluation.threatsOuter
+        val mapThreats = evaluation.mapThreats
         val threatScores = evaluation.threatScores
 
-        val activeZone: ThreatZone? = when (evaluation.activeZone) {
-            ua.ukrainedrones.engine.ThreatZone.INNER -> ThreatZone.INNER
-            ua.ukrainedrones.engine.ThreatZone.OUTER -> ThreatZone.OUTER
-            null -> null
-        }
+        val activeZone: ThreatZone? = evaluation.activeZone
         val alertActive = activeZone != null || focusOblastAlertActive
 
         // Short socket blips (drops that recover inside the shared grace window) are invisible
@@ -954,7 +948,6 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             connected = cs.isConnected,
             neptunDown = neptunDown,
             degraded = cs.isDegraded,
-            forceOffline = cs.isForceOffline,
             threatsInner = inInner,
             threatsOuter = inOuter,
             mapThreats = mapThreats,
@@ -1204,17 +1197,6 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         LocationTracker.forceRefresh(onComplete)
     }
 
-    /** TEMP test toggle: force the app to simulate NEPTUN being offline. */
-    fun setForceOffline(force: Boolean) {
-        viewModelScope.launch {
-            svcState.setForceOffline(force)
-            client.testHarness.setForceOffline(force)
-        }
-    }
-
-    /** TEMP test button: fire one synthetic MiG-31K takeoff through the real pipeline. */
-    fun simulateMig() = client.testHarness.fireTestMig()
-
     /** Pin the map to a city. Pinning auto-disables follow-me so the pin takes effect. */
     fun setPinnedCity(city: City?) {
         viewModelScope.launch {
@@ -1399,7 +1381,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         viewModelScope.launch { prefs.resetAllTips() }
     }
 
-    fun selectThreat(threat: Threat?) {
+    fun selectThreat(threat: NormalizedThreat?) {
         if (BuildConfig.DEBUG) android.util.Log.d("PerfTrace", "tap selectThreat ${threat?.id} t=${System.currentTimeMillis()}")
         neutralizedFlow.value = null
         fakeNeutralizeFlow.value = false
@@ -1426,7 +1408,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
     }
 
     /** Calculates flyby duration based on distance to threat (capped 1.5–8 s). */
-    private fun calculateFlybyDuration(threat: Threat): Long {
+    private fun calculateFlybyDuration(threat: NormalizedThreat): Long {
         val focus = uiState.value.focusLocation
             ?: return AVIATION_FLYBY_DURATION_MS
         val distKm = distanceFlat(
@@ -1454,7 +1436,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
         revealTick++
         neutralizedFlow.value = null
         val threat = id?.let { threatsFlow.value[it] }
-        val aviation = threat?.type == ThreatType.AVIATION
+        val aviation = threat?.type?.toThreatType() == ThreatType.AVIATION
         // A MiG-31K tap greets with a full flyby pass — every press, fresh random bearing —
         // and the card only opens when the jet is gone (onFlybyFinished), so selection is
         // deferred here. Marking it played also suppresses the live auto-trigger for the id.
@@ -1480,13 +1462,13 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
      * Footer strip tap: pan the camera onto [t]'s dead-reckoned position (where its marker
      * actually sits) and open its popup card.
      */
-    fun panToThreat(t: Threat) {
+    fun panToThreat(t: NormalizedThreat) {
         val now = System.currentTimeMillis()
-        val nt = t.toNormalizedThreat()
+        val nt = t
         val props = engine.propsFor(nt.type)
         val speed = engine.speedCache.estimate(nt.id, nt, props)
         val predicted = speed?.let { engine.predictPosition(nt, it, props, now) }
-            ?: ua.ukrainedrones.engine.LatLng(t.lat, t.lon)
+            ?: LatLng(t.lat, t.lon)
         revealThreat(t.id, predicted.lat, predicted.lon, select = true)
     }
 

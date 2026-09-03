@@ -46,6 +46,14 @@ evaluation contract. Read `ARCHITECTURE.md` for module map and data-flow context
 - Don't add comments unless asked.
 - UA/EN text goes through `Strings` (`Strings.get(lang).StringSet`), not Android resource
   localization.
+- **EN-only strings during normal work.** Do NOT translate new strings to UA — write only the
+  EN text (put it in the UA slot too as a placeholder so `Strings` compiles). A dedicated
+  "translate" command/session fills real UA later. Saves tokens.
+- **Editing files with non-ASCII text** (Cyrillic — `Strings.kt`, `Cities.kt`, etc.): never use
+  raw `Get-Content`/`Set-Content` in PowerShell 5.1 — it reads/writes ANSI and corrupts UTF-8
+  (mojibake + adds a BOM). Use .NET instead:
+  `$u = New-Object System.Text.UTF8Encoding($false)`; `[System.IO.File]::ReadAllText($f, $u)` /
+  `[System.IO.File]::WriteAllText($f, $text, $u)`.
 - User settings/prefs go through `ZonePrefs` (DataStore-backed); don't add a second prefs store.
 - Backwards compatible code, or migrating old users is not a concern -- we're in beta mode still.
 

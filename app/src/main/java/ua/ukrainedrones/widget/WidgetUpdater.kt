@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.engine.ZoneParams
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.NormalizedThreat
 
 /**
  * Background bridge between the live app state and the home-screen widget. Runs inside
@@ -86,7 +88,7 @@ object WidgetUpdater {
                     Tail(follow, pinned, lang, iconSet, mapEnabled)
                 }
             ) { core, params, tail ->
-                val (cs, threats, alerts) = core.first as Triple<ConnectionState, Map<String, Threat>, List<OblastAlert>>
+                val (cs, threats, alerts) = core.first as Triple<ConnectionState, Map<String, NormalizedThreat>, List<OblastAlert>>
                 val gps = core.second
                 val now = core.third
                 val pinnedCity = tail.pinned?.let { name -> Cities.byUa[name] }

@@ -56,7 +56,7 @@ data class ThreatRemoved(
 /**
  * Formal Connection State Machine for the NEPTUN WebSocket telemetry feed.
  *
- * Replaces the fragmented boolean flags (connected, forceOffline, degraded,
+ * Replaces the fragmented boolean flags (connected, degraded,
  * connectInFlight, reconnectAttempt, etc.) with a single, unambiguous state.
  */
 sealed interface ConnectionState {
@@ -102,8 +102,7 @@ sealed interface ConnectionState {
         val since: Long,
         val reconnectStartMillis: Long,
         val reason: String? = null,
-        val attempt: Int = 0,
-        val isForceOffline: Boolean = false
+        val attempt: Int = 0
     ) : ConnectionState
 
     /**
@@ -129,9 +128,6 @@ val ConnectionState.isOffline: Boolean
 
 val ConnectionState.isPaused: Boolean
     get() = this is ConnectionState.Paused
-
-val ConnectionState.isForceOffline: Boolean
-    get() = (this as? ConnectionState.Offline)?.isForceOffline == true
 
 val ConnectionState.offlineSinceOrNull: Long?
     get() = when (this) {

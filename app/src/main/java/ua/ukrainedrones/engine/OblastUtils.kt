@@ -2,11 +2,10 @@ package ua.ukrainedrones.engine
 
 import ua.ukrainedrones.AppLanguage
 import ua.ukrainedrones.Cities
-import ua.ukrainedrones.Threat
+import ua.ukrainedrones.ThreatType
 import ua.ukrainedrones.ThreatTypeCatalog
 import ua.ukrainedrones.Transliteration
 import ua.ukrainedrones.FocusCityInfo
-import ua.ukrainedrones.LatLng
 import ua.ukrainedrones.OblastAlert
 
 private val oblastEngine = ThreatEngine(NEPTUN_TYPES)
@@ -21,13 +20,13 @@ fun inOblast(region: String?, district: String?, locality: String?, token: Strin
 private fun inOblastText(text: String, token: String): Boolean =
     text.startsWith(token, ignoreCase = true) || Cities.cityOblast[text] == token
 
-fun inFocusOblast(t: Threat, token: String?): Boolean {
+fun inFocusOblast(t: NormalizedThreat, token: String?): Boolean {
     if (token == null) return false
     return inOblast(t.region, t.district, t.locality, token)
 }
 
-fun threatBody(t: Threat, lang: AppLanguage): String {
-    val info = ThreatTypeCatalog.INFO.getValue(t.type)
+fun threatBody(t: NormalizedThreat, lang: AppLanguage): String {
+    val info = threatTypeInfoByString(t.type) ?: ThreatTypeCatalog.INFO.getValue(ThreatType.UNKNOWN)
     val label = if (lang == AppLanguage.UA) info.labelUa else info.labelEn
     val where = t.locality ?: t.district ?: t.region
     val whereText = if (where == null) null else if (lang == AppLanguage.UA) where
@@ -49,7 +48,7 @@ fun canonicalToken(region: String): String? {
     return stem.ifBlank { null }
 }
 
-fun isCityScopedSuppressed(city: FocusCityInfo, threats: List<Threat>): Boolean {
+fun isCityScopedSuppressed(city: FocusCityInfo, threats: List<NormalizedThreat>): Boolean {
     if (threats.isEmpty()) return false
     val stem = city.oblastStem ?: return false
     return threats.none { t ->
@@ -60,7 +59,7 @@ fun isCityScopedSuppressed(city: FocusCityInfo, threats: List<Threat>): Boolean 
 }
 
 fun deriveOfficialAlertReason(
-    threats: List<Threat>,
+    threats: List<NormalizedThreat>,
     alert: OblastAlert?,
     focus: LatLng?,
     lang: AppLanguage
@@ -68,12 +67,11 @@ fun deriveOfficialAlertReason(
     if (alert == null) return null to null
     val token = canonicalToken(alert.oblast) ?: return null to null
     val now = System.currentTimeMillis()
-    var best: Threat? = null
+    var best: NormalizedThreat? = null
     var bestScore = -1.0
     for (t in threats) {
         if (t.status != "active" || t.advisory || t.areaOnly) continue
-        val nt = t.toNormalizedThreat()
-        if (oblastEngine.isStale(nt, oblastEngine.propsFor(nt.type), now)) continue
+        if (oblastEngine.isStale(t, oblastEngine.propsFor(t.type), now)) continue
         if (!inOblast(t.region, t.district, t.locality, token)) continue
         val distKm = if (focus != null) {
             distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0

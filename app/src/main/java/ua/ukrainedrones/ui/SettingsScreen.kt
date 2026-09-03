@@ -1,6 +1,9 @@
 package ua.ukrainedrones
 
 import ua.ukrainedrones.engine.SpeedSource
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.ZoneParams
 import ua.ukrainedrones.engine.typicalSpeedKmh
 import android.Manifest
 import android.app.Activity
@@ -2312,9 +2315,9 @@ private fun GpsCalibrationRow(
 }
 
 /** Mock threat + proximity driving the live card-size previews. */
-private val PreviewThreat = Threat(
+private val PreviewThreat = NormalizedThreat(
     id = "preview",
-    type = ThreatType.SHAHED,
+    type = "shahed",
     title = "БпЛА",
     region = "Одеська область",
     district = null,
@@ -2327,16 +2330,15 @@ private val PreviewThreat = Threat(
     advisory = false,
     areaOnly = false,
     confirmations = 3,
-    reliability = Reliability.MEDIUM,
+    reliability = "MEDIUM",
     count = 2,
     explanationShort = "БпЛА курсом на Чорноморськ",
     speedKmh = 180.0,
     uncertaintyKm = 1.5,
     positionQuality = "approx",
-    confirmedAt = null,
     confirmedAtMillis = null,
-    updatedAt = null,
-    updatedAtMillis = null
+    updatedAtMillis = null,
+    trail = emptyList()
 )
 
 private val PreviewProximity = ThreatProximity(

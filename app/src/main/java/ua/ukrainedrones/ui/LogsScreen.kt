@@ -354,12 +354,6 @@ fun LogsDropDownSheet(
                 }
             }
             if (filter == LogsFilter.TESTS) {
-                item(key = "testsim") {
-                    TestSimButtons(context, s)
-                }
-                item(key = "testmig") {
-                    MigSimButton(context, s)
-                }
                 item(key = "testoem") {
                     OemSimButton(context, s)
                 }
@@ -1143,95 +1137,6 @@ private fun RetryLogCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun TestSimButtons(context: android.content.Context, s: Strings.StringSet) {
-    val client = ConnectionHolder.getClient(context)
-    val forceOffline by client.testHarness.forceOffline.collectAsState()
-    val noNetwork by client.testHarness.noNetwork.collectAsState()
-    val blackHole by client.testHarness.blackHole.collectAsState()
-    val slowDrain by client.testHarness.slowDrain.collectAsState()
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-        ) {
-            FilterChip(
-                selected = forceOffline,
-                onClick = {
-                    client.testHarness.setForceOffline(!forceOffline)
-                },
-                label = { Text("Offline", style = MaterialTheme.typography.labelSmall) },
-                leadingIcon = { Icon(Icons.Filled.CloudOff, contentDescription = null, modifier = Modifier.size(16.dp)) }
-            )
-            FilterChip(
-                selected = noNetwork,
-                onClick = {
-                    client.testHarness.setNoNetwork(!noNetwork)
-                },
-                label = { Text("No Network", style = MaterialTheme.typography.labelSmall) }
-            )
-            FilterChip(
-                selected = blackHole,
-                onClick = {
-                    client.testHarness.setBlackHole(!blackHole)
-                },
-                label = { Text("Black Hole", style = MaterialTheme.typography.labelSmall) }
-            )
-            FilterChip(
-                selected = slowDrain,
-                onClick = {
-                    client.testHarness.setSlowDrain(!slowDrain)
-                },
-                label = { Text("Slow Drain", style = MaterialTheme.typography.labelSmall) }
-            )
-            FilterChip(
-                selected = false,
-                onClick = {
-                    client.testHarness.reset()
-                },
-                label = { Text("Reset", style = MaterialTheme.typography.labelSmall) },
-                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp)) }
-            )
-        }
-        if (blackHole) {
-            Text(
-                s.logsSimBlackHoleDesc,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp, top = 2.dp)
-            )
-        }
-        if (slowDrain) {
-            Text(
-                s.logsSimSlowDrainDesc,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp, top = 2.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun MigSimButton(context: android.content.Context, s: Strings.StringSet) {
-    val client = ConnectionHolder.getClient(context)
-    val testMigCount by client.testHarness.testMigCount.collectAsState()
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Button(
-            onClick = { client.testHarness.fireTestMig() },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                if (testMigCount > 0) "${s.connSimMigTitle} ($testMigCount)" else s.connSimMigTitle,
-                style = MaterialTheme.typography.labelMedium
-            )
         }
     }
 }

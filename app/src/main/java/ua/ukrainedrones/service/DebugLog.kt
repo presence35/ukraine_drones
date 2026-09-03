@@ -15,10 +15,11 @@ import ua.ukrainedrones.service.ServiceState
 import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.engine.ThreatEngine
 import ua.ukrainedrones.engine.NEPTUN_TYPES
-import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.toThreatType
 import ua.ukrainedrones.engine.inOblast
 import ua.ukrainedrones.engine.isFastType
-import ua.ukrainedrones.engine.inOblast
 
 /** Event kinds shown in the Debug log screen. */
 enum class DebugLogKind { OFFICIAL_ON, OFFICIAL_OFF, ZONE_ENTER, ZONE_EXIT, REGION_THREAT, FLOURISH }
@@ -59,7 +60,7 @@ data class DebugLogEntry(
  * never recomputes decisions, it just describes the service's own ones.
  */
 data class DebugLogContext(
-    val threats: Map<String, Threat>,
+    val threats: Map<String, NormalizedThreat>,
     val focus: LatLng?,
     val token: String?,
     val enabledTypes: Set<ThreatType>,
@@ -186,7 +187,7 @@ object DebugLog {
     }
 
     internal fun zoneEntry(
-        t: Threat,
+        t: NormalizedThreat,
         spatial: ThreatZone,
         focus: LatLng,
         distKm: Double,
@@ -218,28 +219,27 @@ object DebugLog {
         // The tier shown is what actually rang (effective after arming toggles) — mirrors
         // AlertService, which posts with the effective tier, never the raw spatial one.
         val tier = effective ?: spatial
-        val fast = isFastType(t.type)
+        val fast = isFastType(t.type.toThreatType())
         return DebugLogEntry(
             ctx.now, DebugLogKind.ZONE_ENTER, ctx.night, ctx.sirenOverride,
             if (fast) ctx.fastVibrationLevel else ctx.slowVibrationLevel,
-            notified, reason, t.id, t.type, tier, distKm,
+            notified, reason, t.id, t.type.toThreatType(), tier, distKm,
             t.locality ?: t.district ?: t.region
         )
     }
 
-    internal fun regionEntry(t: Threat, distKm: Double, ctx: DebugLogContext): DebugLogEntry {
-        val nt = t.toNormalizedThreat()
+    internal fun regionEntry(t: NormalizedThreat, distKm: Double, ctx: DebugLogContext): DebugLogEntry {
         val reason = when {
-            engine.isStale(nt, engine.propsFor(nt.type), ctx.now) -> DebugLogReason.STALE
+            engine.isStale(t, engine.propsFor(t.type), ctx.now) -> DebugLogReason.STALE
             t.advisory -> DebugLogReason.ADVISORY
-            t.type !in ctx.enabledTypes -> DebugLogReason.TYPE_OFF
+            t.type.toThreatType() !in ctx.enabledTypes -> DebugLogReason.TYPE_OFF
             else -> DebugLogReason.OUTSIDE_ZONES
         }
-        val fast = isFastType(t.type)
+        val fast = isFastType(t.type.toThreatType())
         return DebugLogEntry(
             ctx.now, DebugLogKind.REGION_THREAT, ctx.night, ctx.sirenOverride,
             if (fast) ctx.fastVibrationLevel else ctx.slowVibrationLevel,
-            false, reason, t.id, t.type, null, distKm,
+            false, reason, t.id, t.type.toThreatType(), null, distKm,
             t.locality ?: t.district ?: t.region
         )
     }
@@ -302,7 +302,7 @@ internal fun computeSweep(
     for (t in ctx.threats.values) {
         if (t.status == "resolved" || t.areaOnly) continue
         val distKm = distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
-        if (distKm > (NEPTUN_TYPES[t.type.name.lowercase()]?.reachKm ?: 1500.0) &&
+        if (distKm > (NEPTUN_TYPES[t.type]?.reachKm ?: 1500.0) &&
             !inOblast(t.region, t.district, t.locality, ctx.token)
         ) continue
         regionIds.add(t.id)
@@ -320,7 +320,7 @@ internal fun computeSweep(
         newEntries.add(
             DebugLogEntry(
                 ctx.now, DebugLogKind.ZONE_EXIT, ctx.night, ctx.sirenOverride, null,
-                false, DebugLogReason.LEFT, id, t?.type, null, null, t?.locality
+                false, DebugLogReason.LEFT, id, t?.type?.toThreatType(), null, null, t?.locality
             )
         )
         nextVerdicts.remove(id)

@@ -1,4 +1,8 @@
 package ua.ukrainedrones
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.toThreatType
 import ua.ukrainedrones.engine.distanceFlat
 
 import android.Manifest
@@ -617,8 +621,8 @@ private fun MapScreen(
     mapVisible: Boolean,
     onOpenSettings: () -> Unit,
     onOpenThreatSettings: () -> Unit,
-    onThreatTapped: (Threat) -> Unit,
-    onThreatStripTap: (Threat) -> Unit,
+    onThreatTapped: (NormalizedThreat) -> Unit,
+    onThreatStripTap: (NormalizedThreat) -> Unit,
     onDismissPopup: () -> Unit,
     onMapTapped: () -> Unit,
     onSlowRedChange: (Int) -> Unit,
@@ -1159,7 +1163,7 @@ private fun ThreatCardHost(
                         pinnedCity = if (followMe) null else pinnedCity,
                         threatLevel = threatLevel,
                         cardSize = cardSize,
-                        alertsOff = threat.type in silencedTypes,
+                        alertsOff = threat.type.toThreatType() in silencedTypes,
                         onDismiss = onDismiss,
                         fakeNeutralize = sel.fakeNeutralize,
                         modifier = if (smallCard) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth()
@@ -1221,8 +1225,8 @@ private fun ThreatCardHost(
  *  unrelated recompositions of the surrounding scope don't re-run grouping or sorting. */
 @Composable
 private fun ThreatStripFooter(
-    inner: List<Threat>,
-    outer: List<Threat>,
+    inner: List<NormalizedThreat>,
+    outer: List<NormalizedThreat>,
     hiddenTypes: Set<ThreatType>,
     silencedTypes: Set<ThreatType>,
     focusLocation: LatLng?,
@@ -1232,10 +1236,10 @@ private fun ThreatStripFooter(
     deathActive: Boolean,
     replayProgress: ReplayProgress?,
     s: Strings.StringSet,
-    onThreatStripTap: (Threat) -> Unit
+    onThreatStripTap: (NormalizedThreat) -> Unit
 ) {
-    val innerCounts = inner.groupingBy { it.type }.eachCount()
-    val outerCounts = outer.groupingBy { it.type }.eachCount()
+    val innerCounts = inner.groupingBy { it.type.toThreatType() }.eachCount()
+    val outerCounts = outer.groupingBy { it.type.toThreatType() }.eachCount()
     val total = ThreatType.values().sumOf {
         (innerCounts[it] ?: 0) + (outerCounts[it] ?: 0)
     }
@@ -1312,7 +1316,7 @@ private fun ThreatStripFooter(
                 val alerting = type !in silencedTypes
                 if (count > 0 && visible && alerting) {
                     val list = (inner + outer)
-                        .filter { it.type == type }
+                        .filter { it.type.toThreatType() == type }
                         .sortedBy {
                             if (focusLocation != null) distanceFlat(focusLocation.lat, focusLocation.lon, it.lat, it.lon)
                             else 0.0

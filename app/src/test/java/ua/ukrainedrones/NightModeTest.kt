@@ -1,5 +1,7 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.engine.ZoneParams
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

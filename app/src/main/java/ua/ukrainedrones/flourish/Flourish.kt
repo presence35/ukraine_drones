@@ -1,4 +1,6 @@
 package ua.ukrainedrones
+
+import ua.ukrainedrones.engine.LatLng
 import ua.ukrainedrones.engine.distanceFlat
 
 import androidx.compose.runtime.Immutable

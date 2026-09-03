@@ -15,7 +15,6 @@ class ConnectionStateTest {
         assertFalse(cs.isDegraded)
         assertFalse(cs.isOffline)
         assertFalse(cs.isPaused)
-        assertFalse(cs.isForceOffline)
     }
 
     @Test
@@ -35,18 +34,6 @@ class ConnectionStateTest {
         assertFalse(cs.isDegraded)
         assertTrue(cs.isOffline)
         assertFalse(cs.isPaused)
-    }
-
-    @Test
-    fun `Offline isForceOffline when set`() {
-        val cs = ConnectionState.Offline(since = now, reconnectStartMillis = now, isForceOffline = true)
-        assertTrue(cs.isForceOffline)
-    }
-
-    @Test
-    fun `Offline is not isForceOffline by default`() {
-        val cs = ConnectionState.Offline(since = now, reconnectStartMillis = now)
-        assertFalse(cs.isForceOffline)
     }
 
     @Test

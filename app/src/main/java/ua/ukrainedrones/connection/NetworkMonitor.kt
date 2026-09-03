@@ -24,11 +24,9 @@ class NetworkMonitor(context: Context) {
     private val _isValidated = MutableStateFlow(checkInitialValidation())
     val isValidated: StateFlow<Boolean> = _isValidated.asStateFlow()
 
-    @Volatile private var testOverride: Boolean? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     private fun checkInitialValidation(): Boolean {
-        testOverride?.let { return it }
         val manager = cm ?: return true
         val active = manager.activeNetwork ?: return false
         val caps = manager.getNetworkCapabilities(active) ?: return false
@@ -46,17 +44,14 @@ class NetworkMonitor(context: Context) {
             }
 
             override fun onLost(network: Network) {
-                if (testOverride != null) return
                 _isValidated.value = false
             }
 
             override fun onUnavailable() {
-                if (testOverride != null) return
                 _isValidated.value = false
             }
 
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                if (testOverride != null) return
                 val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 val validated = hasInternet && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 val wasValidated = _isValidated.value
@@ -85,19 +80,5 @@ class NetworkMonitor(context: Context) {
         val cb = networkCallback ?: return
         networkCallback = null
         runCatching { cm?.unregisterNetworkCallback(cb) }
-    }
-
-    /** Test-only: force the validated state without real network callbacks. */
-    @Synchronized
-    fun setTestValidated(value: Boolean) {
-        testOverride = value
-        _isValidated.value = value
-    }
-
-    /** Clear test override and restore real network state. */
-    @Synchronized
-    fun clearTestValidated() {
-        testOverride = null
-        _isValidated.value = checkInitialValidation()
     }
 }

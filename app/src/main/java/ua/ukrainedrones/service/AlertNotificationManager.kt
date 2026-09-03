@@ -17,7 +17,7 @@ import kotlinx.coroutines.runBlocking
 import ua.ukrainedrones.AppLanguage
 import ua.ukrainedrones.MainActivity
 import ua.ukrainedrones.R
-import ua.ukrainedrones.Threat
+import ua.ukrainedrones.engine.NormalizedThreat
 import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.Strings
 import ua.ukrainedrones.UserPrefs
@@ -197,7 +197,7 @@ class AlertNotificationManager(private val context: Context) {
         title: String,
         body: String,
         sirenOverride: Boolean,
-        revealThreat: Threat? = null,
+        revealThreat: NormalizedThreat? = null,
         vibrationLevel: Int = 3
     ) {
         val channel = when {
@@ -298,7 +298,7 @@ class AlertNotificationManager(private val context: Context) {
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
-    private fun openAppIntent(revealThreat: Threat? = null): PendingIntent {
+    private fun openAppIntent(revealThreat: NormalizedThreat? = null): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or

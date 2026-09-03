@@ -1,5 +1,8 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.ThreatZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,7 +76,7 @@ class DebugLogTest {
     }
 
     private fun ctx(
-        threats: Map<String, Threat>,
+        threats: Map<String, NormalizedThreat>,
         zoneThreats: Map<String, ThreatZone> = emptyMap(),
         alertable: Map<String, ThreatZone> = emptyMap(),
         knownZones: Map<String, ThreatZone> = emptyMap(),

@@ -10,7 +10,6 @@ import ua.ukrainedrones.OblastAlert
 import ua.ukrainedrones.connection.ConnectionState
 import ua.ukrainedrones.connection.isConnected
 import ua.ukrainedrones.connection.isDegraded
-import ua.ukrainedrones.connection.isForceOffline
 import ua.ukrainedrones.connection.isPaused
 import ua.ukrainedrones.connection.NeptunConnectionClient
 import ua.ukrainedrones.engine.NEPTUN_TYPES
@@ -18,7 +17,7 @@ import ua.ukrainedrones.engine.NormalizedThreat
 import ua.ukrainedrones.engine.PluginConnectionState
 import ua.ukrainedrones.engine.ThreatProps
 import ua.ukrainedrones.engine.ThreatSource
-import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.NEPTUN_TYPES
 
 class NeptunPlugin(private val client: NeptunConnectionClient) : ThreatSource {
 
@@ -39,7 +38,7 @@ class NeptunPlugin(private val client: NeptunConnectionClient) : ThreatSource {
     override fun start(scope: CoroutineScope) {
         scope.launch {
             client.threats.collect { map ->
-                _threats.update { map.values.map { it.toNormalizedThreat() } }
+                _threats.update { map.values.toList() }
             }
         }
         scope.launch {
@@ -63,7 +62,6 @@ class NeptunPlugin(private val client: NeptunConnectionClient) : ThreatSource {
     }
 
     private fun mapConnectionState(state: ConnectionState): PluginConnectionState = when {
-        state.isForceOffline -> PluginConnectionState.OFFLINE
         state.isPaused -> PluginConnectionState.PAUSED
         state.isDegraded -> PluginConnectionState.DEGRADED
         state.isConnected -> PluginConnectionState.CONNECTED

@@ -137,8 +137,6 @@ object Strings {
         val connStatusTitle: String,
         val connNeptunLabel: String,
         val connActiveLabel: String,
-        val connForceOfflineTitle: String,
-        val connSimMigTitle: String,
         val reliabilityLow: String,
         val reliabilityMedium: String,
         val reliabilityHigh: String,
@@ -406,8 +404,6 @@ object Strings {
         val apiSdkViewManifest: String,
         val apiUnknownType: String,
         val logsLegend: String,
-        val logsSimBlackHoleDesc: String,
-        val logsSimSlowDrainDesc: String,
         val logsFilterTests: String
     )
 
@@ -750,8 +746,6 @@ object Strings {
         val connStatusTitle: String get() = status.connStatusTitle
         val connNeptunLabel: String get() = status.connNeptunLabel
         val connActiveLabel: String get() = status.connActiveLabel
-        val connForceOfflineTitle: String get() = status.connForceOfflineTitle
-        val connSimMigTitle: String get() = status.connSimMigTitle
         val reliabilityLow: String get() = status.reliabilityLow
         val reliabilityMedium: String get() = status.reliabilityMedium
         val reliabilityHigh: String get() = status.reliabilityHigh
@@ -1010,8 +1004,6 @@ val iconSetTitle: String get() = misc.iconSetTitle
         val apiSdkViewManifest: String get() = misc.apiSdkViewManifest
         val apiUnknownType: String get() = misc.apiUnknownType
         val logsLegend: String get() = misc.logsLegend
-        val logsSimBlackHoleDesc: String get() = misc.logsSimBlackHoleDesc
-        val logsSimSlowDrainDesc: String get() = misc.logsSimSlowDrainDesc
         val logsFilterTests: String get() = misc.logsFilterTests
         val guideTitle: String get() = guide.guideTitle
         val guideSettingsButton: String get() = guide.guideSettingsButton
@@ -1247,8 +1239,6 @@ connOnline = "Онлайн",
         connStatusTitle = "Статус системи",
         connNeptunLabel = "NEPTUN",
         connActiveLabel = "Активне",
-        connForceOfflineTitle = "Тест: імітувати офлайн NEPTUN",
-        connSimMigTitle = "Тест: імітувати злет МіГ-31К",
         reliabilityLow = "Достовірність: Низька",
         reliabilityMedium = "Достовірність: Середня",
         reliabilityHigh = "Достовірність: Висока",
@@ -1516,8 +1506,6 @@ connOnline = "Онлайн",
         apiSdkViewManifest = "Переглянути маніфест →",
         apiUnknownType = "Невідомий тип: %s",
         logsLegend = "Легенда",
-        logsSimBlackHoleDesc = "Пригнічує кадри WebSocket (імітує втрату пакетів)",
-        logsSimSlowDrainDesc = "Знижує 50% кадрів (імітує повільне з'єднання)",
         logsFilterTests = "Тести",
     )
 
@@ -1818,8 +1806,6 @@ connOnline = "Online",
         connStatusTitle = "System status",
         connNeptunLabel = "NEPTUN",
         connActiveLabel = "Active",
-        connForceOfflineTitle = "Test: simulate NEPTUN offline",
-        connSimMigTitle = "Test: simulate MiG-31K takeoff",
         reliabilityLow = "Reliability: Low",
         reliabilityMedium = "Reliability: Average",
         reliabilityHigh = "Reliability: High",
@@ -2087,8 +2073,6 @@ alertBannerFormat = "%1\$s: alert",
         apiSdkViewManifest = "View manifest →",
         apiUnknownType = "Unknown type: %s",
         logsLegend = "Legend",
-        logsSimBlackHoleDesc = "Suppresses WebSocket frames (simulates packet drop)",
-        logsSimSlowDrainDesc = "Drops 50% of frames (simulates slow connection)",
         logsFilterTests = "Tests",
     )
 

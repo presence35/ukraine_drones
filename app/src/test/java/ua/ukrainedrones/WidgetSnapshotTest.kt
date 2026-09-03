@@ -1,6 +1,10 @@
 package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionState
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.ZoneParams
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -14,7 +18,7 @@ class WidgetSnapshotTest {
     private val now = 1_700_000_000_000L
     private val focus = LatLng(46.48, 30.73) // Odesa
 
-    private fun state(vararg threats: Threat) =
+    private fun state(vararg threats: NormalizedThreat) =
         threats.associateBy { it.id }
 
     @Test

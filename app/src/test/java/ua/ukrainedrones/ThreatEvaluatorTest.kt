@@ -1,5 +1,7 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.engine.NormalizedThreat
+
 import org.junit.Assert.*
 import org.junit.Test
 import ua.ukrainedrones.engine.inFocusOblast
@@ -104,7 +106,7 @@ class ThreatEvaluatorTest {
         status: String = "active",
         advisory: Boolean = false,
         areaOnly: Boolean = false
-    ): Threat = Threat(
+    ): NormalizedThreat = threat(
         id = id,
         type = type,
         title = "Test threat",
@@ -113,22 +115,13 @@ class ThreatEvaluatorTest {
         locality = locality,
         lat = lat,
         lon = lon,
-        heading = null,
-        bearingDeg = null,
         status = status,
         advisory = advisory,
         areaOnly = areaOnly,
         confirmations = 1,
-        reliability = Reliability.MEDIUM,
+        reliability = "MEDIUM",
         count = 1,
-        explanationShort = null,
-        speedKmh = null,
-        uncertaintyKm = null,
-        positionQuality = null,
-        confirmedAt = null,
         confirmedAtMillis = System.currentTimeMillis() - 60_000,
-        updatedAt = null,
-        updatedAtMillis = System.currentTimeMillis(),
-        trail = emptyList()
+        updatedAtMillis = System.currentTimeMillis()
     )
 }

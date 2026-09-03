@@ -1,6 +1,10 @@
 package ua.ukrainedrones
 
-/** Shared builder for a default active Threat so tests stay short. */
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.TrailPoint
+import ua.ukrainedrones.engine.toEngineString
+
+/** Shared builder for a default active NormalizedThreat so tests stay short. */
 fun threat(
     id: String = "t1",
     type: ThreatType = ThreatType.SHAHED,
@@ -16,20 +20,18 @@ fun threat(
     advisory: Boolean = false,
     areaOnly: Boolean = false,
     confirmations: Int = 1,
-    reliability: Reliability = Reliability.MEDIUM,
+    reliability: String = "MEDIUM",
     count: Int = 0,
     explanationShort: String? = null,
     speedKmh: Double? = null,
     uncertaintyKm: Double? = null,
     positionQuality: String? = "confirmed",
-    confirmedAt: String? = null,
     confirmedAtMillis: Long? = null,
-    updatedAt: String? = null,
     updatedAtMillis: Long? = null,
     trail: List<TrailPoint> = emptyList()
-): Threat = Threat(
+): NormalizedThreat = NormalizedThreat(
     id = id,
-    type = type,
+    type = type.toEngineString(),
     title = title,
     region = region,
     district = district,
@@ -48,9 +50,7 @@ fun threat(
     speedKmh = speedKmh,
     uncertaintyKm = uncertaintyKm,
     positionQuality = positionQuality,
-    confirmedAt = confirmedAt,
     confirmedAtMillis = confirmedAtMillis,
-    updatedAt = updatedAt,
     updatedAtMillis = updatedAtMillis,
     trail = trail
 )

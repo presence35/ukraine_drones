@@ -1,6 +1,8 @@
 package ua.ukrainedrones
 
 import androidx.compose.runtime.Immutable
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.toThreatType
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -31,13 +33,13 @@ object AviationFlyby {
      * once per process, and nothing plays while the map isn't the visible foreground screen.
      */
     fun nextShow(
-        innerThreats: List<Threat>,
+        innerThreats: List<NormalizedThreat>,
         playedIds: Set<String>,
         visible: Boolean,
         tick: Long
     ): AviationFlybyShow? {
         if (!visible) return null
-        val t = innerThreats.firstOrNull { it.type == ThreatType.AVIATION && it.id !in playedIds }
+        val t = innerThreats.firstOrNull { it.type.toThreatType() == ThreatType.AVIATION && it.id !in playedIds }
             ?: return null
         // Pure spectacle: a fresh random bearing every pass — "to somewhere, who knows".
         val course = Random.nextDouble(0.0, 360.0)

@@ -19,10 +19,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.core.app.ActivityCompat
@@ -34,18 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-
-// Dark-only palette — this app never switches to a light theme, regardless
-// of the device's system setting.
-private val AppDarkColors = darkColorScheme(
-    primary = Color(0xFF64B5F6),
-    background = Color(0xFF121212),
-    surface = Color(0xFF1A1A1A),
-    surfaceVariant = Color(0xFF232323),
-    onBackground = Color(0xFFEDEDED),
-    onSurface = Color(0xFFEDEDED),
-    error = Color(0xFFE57373)
-)
+import ua.ukrainedrones.theme.DarkThemePlugin
 
 class MainActivity : ComponentActivity() {
 
@@ -79,7 +66,7 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalDensity provides Density(baseDensity.density, fontScale)
             ) {
-                MaterialTheme(colorScheme = AppDarkColors) {
+                MaterialTheme(colorScheme = DarkThemePlugin.colors) {
                     Surface(
                         modifier = Modifier
                             .fillMaxSize()

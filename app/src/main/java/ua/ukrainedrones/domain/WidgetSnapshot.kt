@@ -9,8 +9,9 @@ import ua.ukrainedrones.engine.NEPTUN_TYPES
 import ua.ukrainedrones.engine.ThreatEngine
 import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.engine.ZoneParams
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.NormalizedThreat
 import ua.ukrainedrones.engine.distanceFlat
-import ua.ukrainedrones.engine.toNormalizedThreat
 import ua.ukrainedrones.engine.toThreatType
 import kotlin.math.roundToInt
 
@@ -58,7 +59,7 @@ data class WidgetThreat(
  */
 fun computeWidgetSnapshot(
     cs: ConnectionState,
-    threats: Map<String, Threat>,
+    threats: Map<String, NormalizedThreat>,
     alerts: List<OblastAlert>,
     focus: LatLng?,
     token: String?,
@@ -67,12 +68,11 @@ fun computeWidgetSnapshot(
     now: Long = System.currentTimeMillis()
 ): WidgetSnapshot {
     val threatList = threats.values
-        .filter { it.type in mapEnabled }
-        .map { it.toNormalizedThreat() }
+        .filter { it.type.toThreatType() in mapEnabled }
     val engine = ThreatEngine(NEPTUN_TYPES)
     val eval = engine.evaluate(
         threats = threatList,
-        focus = focus?.let { ua.ukrainedrones.engine.LatLng(it.lat, it.lon) },
+        focus = focus,
         params = params,
         hiddenTypes = emptySet(),
         silencedTypes = emptySet(),

@@ -29,11 +29,12 @@ import org.json.JSONObject
 import ua.ukrainedrones.AppLanguage
 import ua.ukrainedrones.connection.ConnectionState
 import ua.ukrainedrones.engine.isFastType
-import ua.ukrainedrones.LatLng
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.LatLng
 import ua.ukrainedrones.OblastAlert
-import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatType
 import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.toThreatType
 import ua.ukrainedrones.engine.inOblast
 import ua.ukrainedrones.engine.matchOblast
 import ua.ukrainedrones.engine.canonicalToken
@@ -70,8 +71,6 @@ import ua.ukrainedrones.isWithinNight
 import ua.ukrainedrones.threatAlertFlow
 import ua.ukrainedrones.NeutralizedTally
 import ua.ukrainedrones.engine.ThreatEngine
-import ua.ukrainedrones.engine.toNormalizedThreat
-import ua.ukrainedrones.engine.toThreat
 import ua.ukrainedrones.service.ServiceState
 import ua.ukrainedrones.connection.isConnected
 import ua.ukrainedrones.connection.isDegraded
@@ -187,7 +186,7 @@ class AlertService : Service() {
         val zoneSirenOverride: Boolean,
         val officialSirenOverride: Boolean,
         val connectionState: ConnectionState,
-        val threats: Map<String, Threat>,
+        val threats: Map<String, NormalizedThreat>,
         val alerts: List<OblastAlert>,
         val criticalOfflineOverride: Boolean,
         val fastVibrationLevel: Int,
@@ -273,8 +272,6 @@ class AlertService : Service() {
             val ignoreUntil = ServiceState(applicationContext).ignoreRetryUntil().first()
             client.start(savedReconnectStartMs = recStart, savedIgnoreUntilMs = ignoreUntil)
             sup.start()
-            ConnectionHolder.getClient(applicationContext)
-                .testHarness.setForceOffline(ServiceState(applicationContext).forceOffline().first())
 
             launch {
                 client.connectionState.collect { cs ->
@@ -399,7 +396,7 @@ class AlertService : Service() {
             data class Quint<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
             data class LiveInputs(
                 val cs: ConnectionState,
-                val rawThreats: Map<String, Threat>,
+                val rawThreats: Map<String, NormalizedThreat>,
                 val alerts: List<OblastAlert>,
                 val threatDataStale: Boolean,
                 val gps: LatLng?,
@@ -409,8 +406,8 @@ class AlertService : Service() {
             val client = ConnectionHolder.getClient(applicationContext)
             val registry = AppPluginHolder.registry
             val engine = ThreatEngine(registry.typeCatalog.value)
-            val mappedThreats = registry.allThreats.map { list ->
-                list.associate { it.id to it.toThreat() }
+val mappedThreats = registry.allThreats.map { list ->
+                list.associate { it.id to it }
             }
             val liveFlow = combine(
                 client.connectionState,
@@ -423,7 +420,7 @@ class AlertService : Service() {
                 @Suppress("UNCHECKED_CAST")
                 LiveInputs(
                     cs = values[0] as ConnectionState,
-                    rawThreats = values[1] as Map<String, Threat>,
+                    rawThreats = values[1] as Map<String, NormalizedThreat>,
                     alerts = values[2] as List<OblastAlert>,
                     threatDataStale = values[3] as Boolean,
                     gps = values[4] as LatLng?,
@@ -507,7 +504,7 @@ class AlertService : Service() {
                 val officialSirenOverride = if (nightActive) night.officialSirenOverride else cfg.sirenOverride
 
                 val enabled = tail.enabled
-                val threats = rawThreats.filterValues { it.type in enabled }
+                val threats = rawThreats.filterValues { it.type.toThreatType() in enabled }
 
                 val (pinnedName, pinnedLoc) = tail.pinned?.let { FocusCity.lookup(it) } ?: (null to null)
                 val gpsFresh = LocationTracker.isFresh(now)
@@ -571,8 +568,8 @@ class AlertService : Service() {
                 val effectiveOfficialActive = focusOblastAlertActive && !cityScopedSuppressed
 
                 val zoneThreats = if (focusLoc != null && !threatDataStale) {
-                    val threatList = threats.values.map { it.toNormalizedThreat() }
-                    val engineFocus = ua.ukrainedrones.engine.LatLng(focusLoc.lat, focusLoc.lon)
+                    val threatList = threats.values.toList()
+                    val engineFocus = LatLng(focusLoc.lat, focusLoc.lon)
                     engine.evaluate(threatList, engineFocus, params, emptySet(), emptySet(), now).zoneThreats
                 } else {
                     emptyMap()
@@ -663,7 +660,7 @@ class AlertService : Service() {
         val all = state.threats
 
         fun alertTier(id: String, spatial: ThreatZone): ThreatZone? {
-            val fast = all[id]?.let { isFastType(it.type) } ?: false
+            val fast = all[id]?.let { isFastType(it.type.toThreatType()) } ?: false
             val red = if (fast) state.fastRedArmed else state.slowRedArmed
             val yellow = if (fast) state.fastYellowArmed else state.slowYellowArmed
             return when (spatial) {
@@ -695,7 +692,7 @@ class AlertService : Service() {
                 body,
                 state.zoneSirenOverride,
                 revealThreat = t,
-                vibrationLevel = if (t?.let { isFastType(it.type) } ?: false) state.fastVibrationLevel else state.slowVibrationLevel
+                vibrationLevel = if (t?.let { isFastType(it.type.toThreatType()) } ?: false) state.fastVibrationLevel else state.slowVibrationLevel
             )
             posted = true
             knownZones = knownZones + (id to zone)
@@ -746,7 +743,7 @@ class AlertService : Service() {
                 night = state.nightActive,
                 sirenOverride = state.officialSirenOverride,
                 vibrationLevel = reasonThreat?.let {
-                    if (isFastType(it.type)) state.fastVibrationLevel else state.slowVibrationLevel
+                    if (isFastType(it.type.toThreatType())) state.fastVibrationLevel else state.slowVibrationLevel
                 } ?: VIBRATION_STRONG,
                 notified = state.officialAlertsEnabled && !posted,
                 reason = when {
@@ -755,7 +752,7 @@ class AlertService : Service() {
                     else -> DebugLogReason.FIRED
                 },
                 threatId = reasonThreat?.id,
-                threatType = reasonThreat?.type,
+                threatType = reasonThreat?.type?.toThreatType(),
                 locality = reasonThreat?.let { it.locality ?: it.district ?: it.region } ?: state.focusCityUa,
                 distanceKm = distanceFromFocusKm(reasonThreat, state),
                 now = System.currentTimeMillis()
@@ -772,7 +769,7 @@ class AlertService : Service() {
                 state.officialSirenOverride,
                 revealThreat = reasonThreat,
                 vibrationLevel = reasonThreat?.let {
-                    if (isFastType(it.type)) state.fastVibrationLevel else state.slowVibrationLevel
+                    if (isFastType(it.type.toThreatType())) state.fastVibrationLevel else state.slowVibrationLevel
                 } ?: VIBRATION_STRONG
             )
             currentReasonThreatId = state.officialReasonThreatId
@@ -790,7 +787,7 @@ class AlertService : Service() {
                 state.officialSirenOverride,
                 revealThreat = reasonThreat,
                 vibrationLevel = reasonThreat?.let {
-                    if (isFastType(it.type)) state.fastVibrationLevel else state.slowVibrationLevel
+                    if (isFastType(it.type.toThreatType())) state.fastVibrationLevel else state.slowVibrationLevel
                 } ?: VIBRATION_STRONG,
                 silent = true
             )
@@ -926,7 +923,7 @@ class AlertService : Service() {
         ThreatZone.OUTER -> s.yellowZoneAlert
     }
 
-    private fun distanceFromFocusKm(t: Threat?, state: MonitorState): Double? {
+    private fun distanceFromFocusKm(t: NormalizedThreat?, state: MonitorState): Double? {
         val focus = state.focusLocation ?: return null
         if (t == null) return null
         return distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
@@ -972,7 +969,7 @@ class AlertService : Service() {
         title: String,
         body: String,
         sirenOverride: Boolean,
-        revealThreat: Threat? = null,
+        revealThreat: NormalizedThreat? = null,
         silent: Boolean = false,
         vibrationLevel: Int = 3
     ) {

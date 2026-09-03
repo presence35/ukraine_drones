@@ -2,7 +2,6 @@ package ua.ukrainedrones.service
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -29,7 +28,6 @@ class ServiceState(private val context: Context) {
     private val debugLogKey = stringPreferencesKey("debug_log")
     private val lastUpdateCheckKey = longPreferencesKey("last_update_check")
     private val lastNotifiedUpdateCodeKey = longPreferencesKey("last_notified_update_code")
-    private val forceOfflineKey = booleanPreferencesKey("temp_force_offline")
     private val lastSdkManifestHashKey = stringPreferencesKey("last_sdk_manifest_hash")
     private val systemLogKey = stringPreferencesKey("system_log")
 
@@ -118,13 +116,6 @@ class ServiceState(private val context: Context) {
 
     suspend fun setLastNotifiedUpdateCode(code: Long) {
         context.dataStore.edit { it[lastNotifiedUpdateCodeKey] = code }
-    }
-
-    fun forceOffline(): Flow<Boolean> =
-        context.dataStore.data.map { prefs -> prefs[forceOfflineKey] ?: false }
-
-    suspend fun setForceOffline(force: Boolean) {
-        context.dataStore.edit { it[forceOfflineKey] = force }
     }
 
     fun lastSdkManifestHash(): Flow<String> =

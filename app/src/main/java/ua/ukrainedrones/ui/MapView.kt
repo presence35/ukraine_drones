@@ -2,7 +2,9 @@ package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionHolder
 import ua.ukrainedrones.engine.ThreatEngine
-import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.LatLng
+import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.engine.toThreatType
 import ua.ukrainedrones.engine.threatTypeInfoByString
 import ua.ukrainedrones.engine.distanceFlat
@@ -150,7 +152,7 @@ private fun sheltersBoundingBox(near: List<NearestShelter>): BoundingBox? {
     return BoundingBox(maxLat + pad, maxLon + pad, minLat - pad, minLon - pad)
 }
 
-private fun StringBuilder.appendThreatKey(t: Threat) {
+private fun StringBuilder.appendThreatKey(t: NormalizedThreat) {
     // Identity + lifecycle only. Continuously-changing fields (lat/lon/courseDeg) are
     // deliberately excluded: they churn on nearly every WebSocket frame during an alert,
     // defeating the key's whole purpose (avoid clears + full rebuilds). Position smoothing
@@ -421,7 +423,7 @@ fun NeptunMapView(
     lang: AppLanguage,
     iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     onScaleChange: (Double) -> Unit,
-    onThreatTapped: (Threat) -> Unit,
+    onThreatTapped: (NormalizedThreat) -> Unit,
     onMapTapped: () -> Unit,
     fitUkraineTick: Int = 0,
     zoomZone: ThreatZone? = null,
@@ -746,7 +748,7 @@ fun NeptunMapView(
                     markerRefs.value[id]?.let { m ->
                         val t = uiState.mapThreats.firstOrNull { it.id == id }
                         if (t != null) {
-                            m.icon = threatIconFor(context, t.type, iconSetState, revealed = true)
+                            m.icon = threatIconFor(context, t.type.toThreatType(), iconSetState, revealed = true)
                             mapView.invalidate()
                         }
                     }
@@ -821,7 +823,7 @@ fun NeptunMapView(
                     // A user-shot drone stays hidden while its death animation plays; the
                     // next redraw after the animation brings it back in place.
                     if (deathFx.isActiveFor(t.id)) continue
-                    val nt = t.toNormalizedThreat()
+                    val nt = t
                     val props = engine.propsFor(nt.type)
                     engine.speedCache.record(nt.id, nt.updatedAtMillis ?: System.currentTimeMillis(), nt.lat, nt.lon)
                     val typeInfo = threatTypeInfoByString(nt.type)!!
@@ -842,7 +844,7 @@ fun NeptunMapView(
                     val marker = Marker(mapView).apply {
                         position = pos
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        icon = threatIconFor(context, t.type, iconSet, revealed = revealed, areaOnly = t.areaOnly)
+                        icon = threatIconFor(context, t.type.toThreatType(), iconSet, revealed = revealed, areaOnly = t.areaOnly)
                         alpha = if (stale) 0.45f else 1.0f
                         title = typeLabel
                         snippet = regionLabel
@@ -852,7 +854,7 @@ fun NeptunMapView(
                         // facing angle, so their rotation is the course minus that base (0..360).
                         rotation = if (nt.areaOnly) 0f else {
                             val course = engine.courseDeg(nt).toFloat()
-                            val base = IconCatalog.baseDeg(t.type, iconSet)
+                            val base = IconCatalog.baseDeg(t.type.toThreatType(), iconSet)
                             (course - base + 360f) % 360f
                         }
                                                 setOnMarkerClickListener { _, _ ->
@@ -1179,7 +1181,7 @@ fun NeptunMapView(
             var dirty = false
             for (t in mapThreatsState) {
                 val marker = markerRefs.value[t.id] ?: continue
-                val nt = t.toNormalizedThreat()
+                val nt = t
                 val props = engine.propsFor(nt.type)
                 // Staleness dimming + course rotation update in-place too (they're excluded
                 // from overlayKey, so a full rebuild no longer runs for them).
@@ -1190,7 +1192,7 @@ fun NeptunMapView(
                 }
                 val targetRot = if (nt.areaOnly) 0f else {
                     val course = engine.courseDeg(nt).toFloat()
-                    val base = IconCatalog.baseDeg(t.type, iconSetState)
+                    val base = IconCatalog.baseDeg(t.type.toThreatType(), iconSetState)
                     (course - base + 360f) % 360f
                 }
                 if (marker.rotation != targetRot) {
@@ -1217,7 +1219,7 @@ fun NeptunMapView(
                     markerRefs.value[id]?.let { m ->
                         val t = mapThreatsState.firstOrNull { it.id == id }
                         if (t != null) {
-                            m.icon = threatIconFor(context, t.type, iconSetState)
+                            m.icon = threatIconFor(context, t.type.toThreatType(), iconSetState)
                             dirty = true
                         }
                     }

@@ -368,6 +368,8 @@ interface ThemePlugin {
 ```
 
 Only `DarkThemePlugin` ships. Architecture supports adding light/other themes later.
+Implemented in `theme/ThemePlugin.kt` + `theme/DarkThemePlugin.kt`; `MainActivity` uses
+`DarkThemePlugin.colors`.
 
 ### Plugin Registry
 
@@ -379,18 +381,18 @@ object PluginRegistry {
 }
 ```
 
-## File Map (Current → New)
+## File Map (Current → New) — completed
 
-| Current File | Responsibility | New Location |
+| Current File | Responsibility | New Location (actual) |
 |---|---|---|
 | `Zones.kt` | `zoneTier`, `reachKm`, `etaMinutes`, `ZoneParams` | `engine/ThreatEngine.kt` |
 | `Prediction.kt` | `predictPosition`, `motionHeading`, `distanceMeters`, `ThreatSpeedTracker` | `engine/ThreatEngine.kt` + `engine/SpeedCache.kt` |
 | `ThreatLevel.kt` | `scoreOf`, `overall` | `engine/ThreatEngine.kt` |
-| `ThreatEvaluator.kt` | `evaluate`, `zoneThreats`, `buildOfficialReason` | `engine/ThreatEngine.kt` |
-| `Threat.kt` | `Threat` data class, JSON parsing | `engine/NormalizedThreat.kt` + `plugin/NeptunPlugin.kt` |
-| `NeptunConnectionClient.kt` | WebSocket, REST merge | `plugin/NeptunPlugin.kt` (wrapped) |
-| `NightMode.kt` | Night window, effective params | `engine/NightMode.kt` (kept) |
-| `Cities.kt` | Focus attribution, city labels | `engine/Cities.kt` (kept) |
+| `ThreatEvaluator.kt` | `evaluate`, `zoneThreats`, `buildOfficialReason` | `engine/ThreatEngine.kt` + `engine/OblastUtils.kt` (geographic utils) |
+| `Threat.kt` | `Threat` data class, JSON parsing | kept as the UI display type; bridged to `engine/NormalizedThreat.kt` via `engine/TypeMapping.kt` |
+| `NeptunConnectionClient.kt` | WebSocket, REST merge | wrapped by `plugins/NeptunPlugin.kt` |
+| `NightMode.kt` | Night window, effective params | kept in `domain/NightMode.kt` (app-layer, no engine equivalent) |
+| `Cities.kt` | Focus attribution, city labels | kept in `domain/Cities.kt` (app-layer, no engine equivalent) |
 
 ## Session Status
 
@@ -398,4 +400,5 @@ object PluginRegistry {
 - [x] Session 2: Engine kernel (engine/*, 44 tests passing)
 - [x] Session 3: Plugin system (ThreatSource, NeptunPlugin, PluginRegistry, TypeMapping, 54 tests passing)
 - [x] Session 4: UI refactor (AppPluginHolder, reverse mapper, MainViewModel + AlertService wired to registry, 54 tests passing)
-- [ ] Session 5: Cleanup
+- [x] Session 5: Cleanup (test harness / TEMP toggles removed; `ThemePlugin` + `DarkThemePlugin` implemented in `theme/`; EN-only strings convention)
+- [x] Session 6: UI currency = `NormalizedThreat` (`Threat` display DTO + `toThreat()` reverse mapper deleted; `NeptunConnectionClient` emits `Map<String, NormalizedThreat>`; `Compat.kt` deleted; all consumers import `engine.LatLng/ThreatZone/ZoneParams` directly; `ThreatTypeCatalog.INFO[threat.type]` → `threatTypeInfoByString`; 197 tests passing)

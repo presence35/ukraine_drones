@@ -27,14 +27,16 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 import ua.ukrainedrones.OblastAlert
-import ua.ukrainedrones.Reliability
-import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatType
 import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.data.SystemEntry
 import ua.ukrainedrones.data.SystemEntryKind
 import ua.ukrainedrones.BatteryOptimization
 import ua.ukrainedrones.showToast
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.fallbackCourse
+import ua.ukrainedrones.engine.toThreatType
+import ua.ukrainedrones.normalizedThreatFromJson
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -95,8 +97,8 @@ class NeptunConnectionClient(
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    private val _threats = MutableStateFlow<Map<String, Threat>>(emptyMap())
-    val threats: StateFlow<Map<String, Threat>> = _threats.asStateFlow()
+    private val _threats = MutableStateFlow<Map<String, NormalizedThreat>>(emptyMap())
+    val threats: StateFlow<Map<String, NormalizedThreat>> = _threats.asStateFlow()
 
     private val _alerts = MutableStateFlow<List<OblastAlert>>(emptyList())
     val alerts: StateFlow<List<OblastAlert>> = _alerts.asStateFlow()
@@ -138,8 +140,6 @@ class NeptunConnectionClient(
     private var ignoreUntilMs = 0L
     private var persistedReconnectStartMs = 0L
 
-    val testHarness = TestHarnessImpl()
-
     init {
         startNetworkObserver()
         startFrameProcessor()
@@ -157,7 +157,7 @@ class NeptunConnectionClient(
     private fun startNetworkObserver() {
         scope.launch {
             networkMonitor.isValidated.collect { isValidated ->
-                if (isValidated && !isManuallyStopped && !testHarness.isForceOffline && !testHarness.isNoNetwork && !isIgnoringPause()) {
+                if (isValidated && !isManuallyStopped && !isIgnoringPause()) {
                     val current = _connectionState.value
                     if (current is ConnectionState.Connecting && !current.networkValidated) {
                         retryNow()
@@ -181,7 +181,6 @@ class NeptunConnectionClient(
         if (savedIgnoreUntilMs > 0L) ignoreUntilMs = savedIgnoreUntilMs
         isManuallyStopped = false
         if (_connectionState.value.isConnected) return
-        if (testHarness.isForceOffline || testHarness.isNoNetwork) return
         connect()
     }
 
@@ -201,7 +200,7 @@ class NeptunConnectionClient(
     }
 
     fun retryNow() {
-        if (isManuallyStopped || testHarness.isForceOffline) return
+        if (isManuallyStopped) return
         ignoreUntilMs = 0L
         reconnectAttempt = 0
         reconnectJob?.cancel()
@@ -213,7 +212,7 @@ class NeptunConnectionClient(
     }
 
     fun onForeground() {
-        if (!isManuallyStopped && !testHarness.isForceOffline && !testHarness.isNoNetwork && _connectionState.value.isOffline && !isIgnoringPause()) {
+        if (!isManuallyStopped && _connectionState.value.isOffline && !isIgnoringPause()) {
             retryNow()
         }
     }
@@ -278,7 +277,6 @@ class NeptunConnectionClient(
                 val now = System.currentTimeMillis()
                 lastFrameAtMs = now
                 _lastSocketFrame.value = now
-                if (testHarness.shouldDropFrame()) return
 
                 if (_connectionState.value is ConnectionState.Degraded) {
                     _connectionState.value = ConnectionState.Connected(
@@ -418,7 +416,7 @@ class NeptunConnectionClient(
                     val data = env.optJSONObject("data") ?: return
                     val arr = data.optJSONArray("threats") ?: return
                     threatsMutex.withLock {
-                        val map = LinkedHashMap<String, Threat>()
+                        val map = LinkedHashMap<String, NormalizedThreat>()
                         for (i in 0 until arr.length()) {
                             try {
                                 val obj = arr.getJSONObject(i)
@@ -426,7 +424,7 @@ class NeptunConnectionClient(
                                 if (rawType != null && rawType !in knownTypeKeys) {
                                     recordUnknownType(rawType)
                                 }
-                                val t = Threat.fromJson(obj) ?: continue
+                                val t = normalizedThreatFromJson(obj) ?: continue
                                 map[t.id] = t
                             } catch (e: Exception) {
                                 Log.w("NeptunClient", "Malformed WS threat at index $i", e)
@@ -444,7 +442,7 @@ class NeptunConnectionClient(
                         userShotAt.entries.removeIf { now - it.value > USER_SHOT_GRACE_MS }
                         recentlyRemovedThreats.entries.removeIf { now - it.value > RECENT_REMOVED_GRACE_MS }
 
-                        _threats.value = testHarness.mergeTestThreats(map)
+                        _threats.value = map
                         _lastValidThreatUpdate.value = now
                         _lastValidSnapshot.value = now
                         _threatDataStale.value = false
@@ -456,13 +454,13 @@ class NeptunConnectionClient(
                     if (rawType != null && rawType !in knownTypeKeys) {
                         recordUnknownType(rawType)
                     }
-                    val t = Threat.fromJson(data) ?: return
+                    val t = normalizedThreatFromJson(data) ?: return
                     threatsMutex.withLock {
                         val updated = _threats.value.toMutableMap()
                         if (t.status == "resolved") {
                             recentlyRemovedThreats[t.id] = now
                             _removedThreats.tryEmit(
-                                ThreatRemoved(t.id, t.lat, t.lon, t.type, t.courseDeg, t.region, t.district, t.locality)
+                                ThreatRemoved(t.id, t.lat, t.lon, t.type.toThreatType(), t.bearingDeg ?: t.heading ?: fallbackCourse(t.id), t.region, t.district, t.locality)
                             )
                             updated.remove(t.id)
                         } else {
@@ -487,7 +485,7 @@ class NeptunConnectionClient(
                         recentlyRemovedThreats[id] = now
                         updated.remove(id)?.let { gone ->
                             _removedThreats.tryEmit(
-                                ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type, gone.courseDeg, gone.region, gone.district, gone.locality)
+                                ThreatRemoved(gone.id, gone.lat, gone.lon, gone.type.toThreatType(), gone.bearingDeg ?: gone.heading ?: fallbackCourse(gone.id), gone.region, gone.district, gone.locality)
                             )
                         }
                         _threats.value = updated
@@ -546,188 +544,4 @@ class NeptunConnectionClient(
         stop()
         scope.cancel()
     }
-
-    // =========================================================================
-    // Isolated Test Harness implementation
-    // =========================================================================
-    inner class TestHarnessImpl {
-        private var testMigSerial = 0
-        private val testMigIds = ConcurrentHashMap.newKeySet<String>()
-        private val testMigCoords = ConcurrentHashMap<String, Pair<Double, Double>>()
-        private val TEST_MIG_BASES = listOf(
-            49.83 to 36.75, // Chuhuiv area
-            46.05 to 38.35, // Primorsko-Akhtarsk area
-            48.35 to 42.50, // Morozovsk area
-            51.48 to 46.20  // Engels area
-        )
-
-        private val _forceOffline = MutableStateFlow(false)
-        val forceOffline: StateFlow<Boolean> = _forceOffline.asStateFlow()
-
-        private val _noNetwork = MutableStateFlow(false)
-        val noNetwork: StateFlow<Boolean> = _noNetwork.asStateFlow()
-
-        private val _blackHole = MutableStateFlow(false)
-        val blackHole: StateFlow<Boolean> = _blackHole.asStateFlow()
-
-        private val _slowDrain = MutableStateFlow(false)
-        val slowDrain: StateFlow<Boolean> = _slowDrain.asStateFlow()
-
-        private val _testMigCount = MutableStateFlow(0)
-        val testMigCount: StateFlow<Int> = _testMigCount.asStateFlow()
-
-        val isForceOffline: Boolean get() = _forceOffline.value
-        val isNoNetwork: Boolean get() = _noNetwork.value
-        val isBlackHole: Boolean get() = _blackHole.value
-        val isSlowDrain: Boolean get() = _slowDrain.value
-
-        var suppressFrames: Boolean
-            get() = _blackHole.value
-            set(value) { _blackHole.value = value }
-
-        var frameDropPercent: Int = 0
-
-        fun setForceOffline(force: Boolean) {
-            _forceOffline.value = force
-            if (force) {
-                val now = System.currentTimeMillis()
-                reconnectJob?.cancel()
-                reconnectJob = null
-                val gen = connectionGeneration.incrementAndGet()
-                activeWebSocket?.close(1000, "force offline test")
-                activeWebSocket = null
-                _connectionState.value = ConnectionState.Offline(
-                    since = now,
-                    reconnectStartMillis = now,
-                    reason = "Test Force Offline",
-                    isForceOffline = true
-                )
-            } else {
-                if (_connectionState.value is ConnectionState.Offline) {
-                    retryNow()
-                }
-            }
-        }
-
-        fun setNoNetwork(noNet: Boolean) {
-            _noNetwork.value = noNet
-            if (noNet) {
-                networkMonitor.setTestValidated(false)
-                val now = System.currentTimeMillis()
-                reconnectJob?.cancel()
-                reconnectJob = null
-                val gen = connectionGeneration.incrementAndGet()
-                activeWebSocket?.close(1001, "no network test")
-                activeWebSocket = null
-                _connectionState.value = ConnectionState.Connecting(
-                    generation = gen,
-                    attempt = reconnectAttempt,
-                    nextRetryAtMs = now + NO_NETWORK_RECONNECT_MS,
-                    networkValidated = false
-                )
-            } else {
-                networkMonitor.clearTestValidated()
-                retryNow()
-            }
-        }
-
-        fun setBlackHole(blackHole: Boolean) {
-            _blackHole.value = blackHole
-        }
-
-        fun setSlowDrain(slowDrain: Boolean) {
-            _slowDrain.value = slowDrain
-            frameDropPercent = if (slowDrain) 50 else 0
-        }
-
-        fun setNetworkValidated(validated: Boolean) {
-            setNoNetwork(!validated)
-        }
-
-        fun pauseFor(seconds: Int) {
-            ignoreUntilMs = System.currentTimeMillis() + seconds * 1000L
-            reconnectJob?.cancel()
-            reconnectJob = null
-            _connectionState.value = ConnectionState.Paused(
-                untilMs = ignoreUntilMs,
-                since = System.currentTimeMillis(),
-                reconnectStartMillis = persistedReconnectStartMs
-            )
-        }
-
-        fun reset() {
-            _forceOffline.value = false
-            _noNetwork.value = false
-            _blackHole.value = false
-            _slowDrain.value = false
-            frameDropPercent = 0
-            ignoreUntilMs = 0L
-            testMigIds.clear()
-            testMigCoords.clear()
-            _testMigCount.value = 0
-            networkMonitor.clearTestValidated()
-            BatteryOptimization.setSimulatedOem(context, null)
-            _threats.update { it.filterKeys { k -> !k.startsWith("test_mig") } }
-            if (_connectionState.value !is ConnectionState.Connected) {
-                retryNow()
-            }
-        }
-
-        fun shouldDropFrame(): Boolean {
-            if (_blackHole.value) return true
-            if (frameDropPercent > 0) return (0..99).random() < frameDropPercent
-            return false
-        }
-
-        fun fireTestMig() {
-            testMigSerial++
-            val id = "test_mig31k_$testMigSerial"
-            val base = TEST_MIG_BASES[(testMigSerial - 1) % TEST_MIG_BASES.size]
-            testMigCoords[id] = base
-            testMigIds.add(id)
-            _testMigCount.value = testMigIds.size
-            _threats.update { mergeTestThreats(it) }
-        }
-
-        internal fun mergeTestThreats(baseMap: Map<String, Threat>): Map<String, Threat> {
-            if (testMigIds.isEmpty()) return baseMap
-            val now = System.currentTimeMillis()
-            val merged = HashMap(baseMap)
-            for (id in testMigIds) {
-                val (lat, lon) = testMigCoords[id] ?: TEST_MIG_BASES.first()
-                merged[id] = buildTestMig(id, now, lat, lon)
-            }
-            return merged
-        }
-    }
-}
-
-internal fun buildTestMig(id: String, now: Long, lat: Double, lon: Double): Threat {
-    val nowIso = Instant.ofEpochMilli(now).toString()
-    return Threat(
-        id = id,
-        type = ThreatType.AVIATION,
-        title = "",
-        region = null,
-        district = null,
-        locality = null,
-        lat = lat,
-        lon = lon,
-        heading = null,
-        bearingDeg = null,
-        status = "active",
-        advisory = false,
-        areaOnly = false,
-        confirmations = 2,
-        reliability = Reliability.HIGH,
-        count = 0,
-        explanationShort = null,
-        speedKmh = null,
-        uncertaintyKm = null,
-        positionQuality = "confirmed",
-        confirmedAt = nowIso,
-        confirmedAtMillis = now,
-        updatedAt = nowIso,
-        updatedAtMillis = now
-    )
 }

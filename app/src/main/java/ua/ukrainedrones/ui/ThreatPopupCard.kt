@@ -3,7 +3,10 @@ package ua.ukrainedrones
 import ua.ukrainedrones.engine.SpeedSource
 import ua.ukrainedrones.engine.ThreatEngine
 import ua.ukrainedrones.engine.NEPTUN_TYPES
-import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.NormalizedThreat
+import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.toThreatType
+import ua.ukrainedrones.engine.threatTypeInfoByString
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -116,7 +119,7 @@ private fun fontAware(dp: Dp): Dp = dp * fontScale()
  *  and stale flag for a threat. Isolated here so the parent card doesn't recompose every second. */
 @Composable
 private fun ThreatElapsedText(
-    threat: Threat,
+    threat: NormalizedThreat,
     strings: Strings.StringSet
 ): Pair<String, Boolean> {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -127,7 +130,7 @@ private fun ThreatElapsedText(
         }
     }
     val engine = remember { ThreatEngine(NEPTUN_TYPES) }
-    val nt = remember(threat) { threat.toNormalizedThreat() }
+    val nt = threat
     val stale = engine.isStale(nt, engine.propsFor(nt.type), now)
     val elapsedText = if (stale) strings.lastSeenAgoFormat.format(formatElapsedMss(threat.updatedAtMillis, now))
         else formatElapsedMss(threat.updatedAtMillis, now)
@@ -137,7 +140,7 @@ private fun ThreatElapsedText(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ThreatPopupCard(
-    threat: Threat,
+    threat: NormalizedThreat,
     lang: AppLanguage,
     iconSet: ThreatIconSet = ThreatIconSet.PHOTO,
     proximity: ThreatProximity?,
@@ -154,7 +157,7 @@ fun ThreatPopupCard(
 ) {
     val s = Strings.get(lang)
     val engine = remember { ThreatEngine(NEPTUN_TYPES) }
-    val typeInfo = ThreatTypeCatalog.INFO.getValue(threat.type)
+    val typeInfo = threatTypeInfoByString(threat.type) ?: ThreatTypeCatalog.INFO.getValue(ThreatType.UNKNOWN)
     val typeLabel = if (lang == AppLanguage.UA) typeInfo.labelUa else typeInfo.labelEn
 
     val regionText = listOf(threat.locality, threat.district, threat.region)
@@ -174,7 +177,7 @@ fun ThreatPopupCard(
     val confirmations = threat.confirmations.takeIf { it > 0 }
 
     val band = proximity?.let { p ->
-        val props = NEPTUN_TYPES[threat.type.name.lowercase()] ?: return@let null
+        val props = NEPTUN_TYPES[threat.type] ?: return@let null
         engine.zoneTier(props, p.distToUserKm ?: return@let null, p.speedKmh, p.params)
     }
     val bandColor = when (band) {
@@ -231,7 +234,7 @@ fun ThreatPopupCard(
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ThreatIcon(
-                        type = threat.type,
+                        type = threat.type.toThreatType(),
                         set = iconSet,
                         size = 28.dp,
                         contentDescription = typeLabel
@@ -307,7 +310,7 @@ fun ThreatPopupCard(
                             Row(verticalAlignment = Alignment.Top) {
                                 Box(modifier = Modifier.graphicsLayer { val s = iconScale.value; scaleX = s; scaleY = s }) {
                                     ThreatIcon(
-                                        type = threat.type,
+                                        type = threat.type.toThreatType(),
                                         set = iconSet,
                                         size = 40.dp,
                                         contentDescription = typeLabel
@@ -350,7 +353,7 @@ fun ThreatPopupCard(
                                         color = Color(0xFF9E9E9E)
                                     )
                                     Spacer(Modifier.width(4.dp))
-                                    ReliabilityBar(reliability = threat.reliability, s = s, compact = true)
+                                    ReliabilityBar(reliability = Reliability.fromApi(threat.reliability), s = s, compact = true)
                                 }
                                 HorizontalLevelBar(level = threatLevel)
                             }
@@ -367,7 +370,7 @@ fun ThreatPopupCard(
                         Row(verticalAlignment = Alignment.Top) {
                             Box(modifier = Modifier.graphicsLayer { val s = iconScale.value; scaleX = s; scaleY = s }) {
                                 ThreatIcon(
-                                    type = threat.type,
+                                    type = threat.type.toThreatType(),
                                     set = iconSet,
                                     size = 40.dp,
                                     contentDescription = typeLabel
@@ -410,7 +413,7 @@ fun ThreatPopupCard(
                         Row(verticalAlignment = Alignment.Top) {
                             Box(modifier = Modifier.graphicsLayer { val s = iconScale.value; scaleX = s; scaleY = s }) {
                                 ThreatIcon(
-                                    type = threat.type,
+                                    type = threat.type.toThreatType(),
                                     set = iconSet,
                                     size = 40.dp,
                                     contentDescription = typeLabel
@@ -513,7 +516,7 @@ fun ThreatPopupCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                ReliabilityBar(reliability = threat.reliability, s = s)
+                                ReliabilityBar(reliability = Reliability.fromApi(threat.reliability), s = s)
                                 confirmations?.let { n ->
                                     Surface(
                                         shape = RoundedCornerShape(20.dp),

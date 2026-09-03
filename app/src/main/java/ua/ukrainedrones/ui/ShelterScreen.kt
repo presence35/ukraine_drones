@@ -1,5 +1,7 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.engine.LatLng
+
 import android.Manifest
 import android.app.Activity
 import android.content.Intent

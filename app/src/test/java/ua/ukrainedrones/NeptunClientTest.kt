@@ -2,7 +2,6 @@ package ua.ukrainedrones
 
 import ua.ukrainedrones.connection.ConnectionState
 import ua.ukrainedrones.connection.NeptunConnectionClient
-import ua.ukrainedrones.connection.buildTestMig
 import ua.ukrainedrones.connection.isDegraded
 import ua.ukrainedrones.connection.isOffline
 import org.junit.Assert.assertEquals
@@ -42,22 +41,6 @@ class NeptunClientTest {
             val ms = NeptunConnectionClient.calculateBackoffMs(attempt)
             assertTrue("attempt $attempt should cap at ~15s, got $ms", ms in 15000..15400)
         }
-    }
-
-    @Test
-    fun `test mig is a live non-advisory aviation takeoff pin`() {
-        val t = buildTestMig("test_mig31k_1", 1_000_000L, lat = 49.83, lon = 36.75)
-        assertEquals(ThreatType.AVIATION, t.type)
-        assertEquals("active", t.status)
-        assertFalse(t.advisory)
-        assertFalse(t.areaOnly)
-        // Static airbase-style pin: no velocity, so it never dead-reckons.
-        assertNull(t.bearingDeg)
-        assertNull(t.speedKmh)
-        assertFalse(t.flying)
-        assertEquals(49.83, t.lat, 1e-9)
-        assertEquals(36.75, t.lon, 1e-9)
-        assertEquals(1_000_000L, t.confirmedAtMillis)
     }
 
     @Test

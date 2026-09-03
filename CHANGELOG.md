@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Internal: migrated all UI/service/widget consumers onto the engine's `NormalizedThreat`; deleted the `Threat` display DTO and `Compat.kt` aliases / Внутрішнє: міграцію всіх UI/service/widget споживачів на `NormalizedThreat` рушія; видалено DTO `Threat` та аліаси `Compat.kt`
 - Service: fix startup crash by aligning startForeground foregroundServiceType with manifest declaration / Сервіс: виправлено збій запуску узгодженням foregroundServiceType у startForeground з оголошенням у маніфесті
 - Connection: remove legacy REST polling fallback completely; WebSocket channel is now the sole data source / З'єднання: повне видалення застарілого опитування REST; потік WebSocket тепер є єдиним джерелом даних
 - Alerts: fix official-alert focus change — switching focus between alerting oblasts now properly drops the previous region and announces the new region / Сповіщення: виправлено зміну фокусу офіційних тривог — перемикання між областями з тривогою тепер скидає попередню область та оголошує нову

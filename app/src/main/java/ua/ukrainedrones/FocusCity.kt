@@ -1,5 +1,7 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.engine.LatLng
+
 data class FocusCityInfo(
     val nameUa: String,
     val oblastStem: String?,
