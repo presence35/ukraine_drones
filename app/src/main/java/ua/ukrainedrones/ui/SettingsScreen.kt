@@ -1,5 +1,6 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.engine.SpeedSource
 import android.Manifest
 import android.app.Activity
 import android.content.Context

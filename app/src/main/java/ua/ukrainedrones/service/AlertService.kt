@@ -33,11 +33,11 @@ import ua.ukrainedrones.LatLng
 import ua.ukrainedrones.OblastAlert
 import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatType
-import ua.ukrainedrones.ThreatZone
+import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.UpdateInfo
 import ua.ukrainedrones.UpdateManager
 import ua.ukrainedrones.UpdateState
-import ua.ukrainedrones.ZoneParams
+import ua.ukrainedrones.engine.ZoneParams
 import ua.ukrainedrones.data.ApiMonitor
 import ua.ukrainedrones.connection.ConnectionHolder
 import ua.ukrainedrones.ConnectionLog
@@ -54,10 +54,12 @@ import ua.ukrainedrones.NightZones
 import ua.ukrainedrones.Strings
 import ua.ukrainedrones.ThreatEvaluator
 import ua.ukrainedrones.UserPrefs
-import ua.ukrainedrones.distanceMeters
+import ua.ukrainedrones.engine.distanceFlat
 import ua.ukrainedrones.isWithinNight
 import ua.ukrainedrones.threatAlertFlow
 import ua.ukrainedrones.NeutralizedTally
+import ua.ukrainedrones.engine.ThreatEngine
+import ua.ukrainedrones.engine.toNormalizedThreat
 import ua.ukrainedrones.engine.toThreat
 import ua.ukrainedrones.service.ServiceState
 import ua.ukrainedrones.connection.isConnected
@@ -395,6 +397,7 @@ class AlertService : Service() {
 
             val client = ConnectionHolder.getClient(applicationContext)
             val registry = AppPluginHolder.registry
+            val engine = ThreatEngine(registry.typeCatalog.value)
             val mappedThreats = registry.allThreats.map { list ->
                 list.associate { it.id to it.toThreat() }
             }
@@ -557,7 +560,9 @@ class AlertService : Service() {
                 val effectiveOfficialActive = focusOblastAlertActive && !cityScopedSuppressed
 
                 val zoneThreats = if (focusLoc != null && !threatDataStale) {
-                    ThreatEvaluator.evaluateThreatZones(threats.values.toList(), focusLoc, params)
+                    val threatList = threats.values.map { it.toNormalizedThreat() }
+                    val engineFocus = ua.ukrainedrones.engine.LatLng(focusLoc.lat, focusLoc.lon)
+                    engine.evaluate(threatList, engineFocus, params, emptySet(), emptySet(), now).zoneThreats
                 } else {
                     emptyMap()
                 }
@@ -913,7 +918,7 @@ class AlertService : Service() {
     private fun distanceFromFocusKm(t: Threat?, state: MonitorState): Double? {
         val focus = state.focusLocation ?: return null
         if (t == null) return null
-        return distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
+        return distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
     }
 
     private fun notifyMonitor(

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import ua.ukrainedrones.engine.ZoneParams
 
 /** Night-mode schedule window. Times are minutes since midnight (0–1439). */
 @Immutable

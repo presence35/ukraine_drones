@@ -18,6 +18,8 @@ import ua.ukrainedrones.connection.ConnectionState
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.ZoneParams
 
 /**
  * Background bridge between the live app state and the home-screen widget. Runs inside

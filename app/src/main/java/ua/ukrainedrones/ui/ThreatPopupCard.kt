@@ -1,5 +1,6 @@
 package ua.ukrainedrones
 
+import ua.ukrainedrones.engine.SpeedSource
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring

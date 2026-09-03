@@ -18,7 +18,7 @@ import ua.ukrainedrones.AppLanguage
 import ua.ukrainedrones.MainActivity
 import ua.ukrainedrones.R
 import ua.ukrainedrones.Threat
-import ua.ukrainedrones.ThreatZone
+import ua.ukrainedrones.engine.ThreatZone
 import ua.ukrainedrones.Strings
 import ua.ukrainedrones.UserPrefs
 import ua.ukrainedrones.NeutralizedTally

@@ -2,6 +2,7 @@ package ua.ukrainedrones
 
 import androidx.compose.runtime.Immutable
 import org.osmdroid.util.GeoPoint
+import ua.ukrainedrones.engine.SpeedSource
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -10,9 +11,6 @@ import kotlin.math.sqrt
 /** Simple lat/lon value (independent of any mapping library). */
 @Immutable
 data class LatLng(val lat: Double, val lon: Double)
-
-/** Where a speed estimate came from — affects how it's labelled in the popup. */
-enum class SpeedSource { RECORDED, TYPICAL }
 
 /** Approximate meters between two lat/lon points (equirectangular — fine for short distances). */
 fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -29,46 +27,6 @@ fun bearingDegrees(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Doub
     val dLon = (lon2 - lon1) * 111_320.0 * cos(Math.toRadians((lat1 + lat2) / 2.0))
     val deg = Math.toDegrees(atan2(dLon, dLat))
     return (deg + 360.0) % 360.0
-}
-
-/**
- * Time in minutes for a point moving from [from] along [bearingDeg] at [speedMps] to cross the
- * boundary of the circle of radius [radiusM] centered at [center]. Null when the point is already
- * inside the circle, heading away from it, or has no usable speed. Solves the ray–circle
- * intersection: the positive root `d = (v·u) + sqrt((v·u)^2 - (D^2 - R^2))` is the distance to the
- * near boundary along the heading, where `v` = from − center, `u` = unit heading vector,
- * `D` = distance to center. Returns minutes = `d / speed / 60`.
- */
-fun etaToCircleEdgeMinutes(
-    from: LatLng,
-    center: LatLng,
-    radiusM: Double,
-    bearingDeg: Double,
-    speedMps: Double
-): Double? {
-    if (speedMps <= 0.0) return null
-    val vx = from.lat - center.lat
-    val vy = from.lon - center.lon
-    val dLatM = vx * 110_574.0
-    val dLonM = vy * 111_320.0 * cos(Math.toRadians((from.lat + center.lat) / 2.0))
-    val dSq = dLatM * dLatM + dLonM * dLonM
-    val d = sqrt(dSq)
-    if (d <= radiusM) return null // already inside
-    val rad = Math.toRadians(bearingDeg)
-    // unit heading vector (latitude/longitude metres), same metre basis as the offset above
-    val uLat = cos(rad)
-    val uLon = sin(rad) * (111_320.0 / 110_574.0) * cos(Math.toRadians(from.lat)).coerceAtLeast(0.01)
-    val uNorm = sqrt(uLat * uLat + uLon * uLon)
-    val ux = uLat / uNorm
-    val uy = uLon / uNorm
-    // v·u where v = center - from (threat -> center is negative along an inbound heading)
-    val vDotU = -(dLatM * ux + dLonM * uy)
-    if (vDotU <= 0.0) return null // heading away from the circle
-    val disc = vDotU * vDotU - (dSq - radiusM * radiusM)
-    if (disc < 0.0) return null // ray misses the circle entirely
-    val dist = vDotU - sqrt(disc)
-    if (dist < 0.0) return null
-    return dist / speedMps / 60.0
 }
 
 /**

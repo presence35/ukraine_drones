@@ -37,7 +37,12 @@ import ua.ukrainedrones.connection.isOffline
 import ua.ukrainedrones.connection.isForceOffline
 import ua.ukrainedrones.domain.ODESA_LAT
 import ua.ukrainedrones.domain.ODESA_LON
+import ua.ukrainedrones.engine.ThreatEngine
 import ua.ukrainedrones.engine.toThreat
+import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.toEngineString
+import ua.ukrainedrones.engine.SpeedSource
+import ua.ukrainedrones.engine.ZoneParams
 import ua.ukrainedrones.service.ServiceState
 import org.osmdroid.util.GeoPoint
 import kotlin.math.roundToLong
@@ -218,6 +223,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val client = ConnectionHolder.getClient(app)
     private val connectionStateFlow = client.connectionState
     private val registry = AppPluginHolder.registry
+    private val engine = ThreatEngine(registry.typeCatalog.value)
     private val threatsFlow = registry.allThreats.map { list ->
         list.associate { it.id to it.toThreat() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
@@ -813,12 +819,23 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
                 if (FlourishPolicy.showNeutralizedCard(selectedGone, animOn, sel.mapVisible, sel.shelterOverlayUp)) sel.selected else null
             SelectionUi(
                 selected = if (FlourishPolicy.dropSelection(selectedGone, animOn)) null else refreshed,
-                proximity = ThreatEvaluator.computeProximity(
-                    t = refreshed,
-                    focusLocation = ui.focusLocation,
-                    params = ui.activeZoneParams,
-                    now = nowMs
-                ),
+                proximity = refreshed?.toNormalizedThreat()?.let { t ->
+                    engine.computeProximity(
+                        t,
+                        ui.focusLocation?.let { loc -> ua.ukrainedrones.engine.LatLng(loc.lat, loc.lon) },
+                        ua.ukrainedrones.engine.ZoneParams(ui.activeZoneParams.slowRedKm, ui.activeZoneParams.slowYellowKm, ui.activeZoneParams.fastRedMin, ui.activeZoneParams.fastYellowMin),
+                        nowMs
+                    )
+                }?.let { ep ->
+                    ThreatProximity(
+                        predicted = LatLng(ep.predicted.lat, ep.predicted.lon),
+                        distToUserKm = ep.distToUserKm,
+                        etaToUserMin = ep.etaToUserMin,
+                        params = ui.activeZoneParams,
+                        speedSource = ep.speedSource,
+                        speedKmh = ep.speedKmh
+                    )
+                },
                 neutralized = neutralizedThreat,
                 fakeNeutralize = sel.fakeNeutralize
             )
@@ -897,20 +914,30 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             }
         }
 
-        val evaluation = ThreatEvaluator.evaluate(
-            threats = if (threatDataStale) emptyMap() else threats,
-            params = params,
-            focusLocation = focusLocation,
-            mapEnabledTypes = mapEnabledTypes,
-            alertEnabledTypes = alertedTypes,
+        val threatList = if (threatDataStale) emptyList() else threats.values
+            .filter { it.type in mapEnabledTypes }
+            .map { it.toNormalizedThreat() }
+        val silencedTypeStrings = alertedTypes.map { it.toEngineString() }.toSet()
+        val engineFocus = focusLocation?.let { ua.ukrainedrones.engine.LatLng(it.lat, it.lon) }
+        val engineParams = ua.ukrainedrones.engine.ZoneParams(params.slowRedKm, params.slowYellowKm, params.fastRedMin, params.fastYellowMin)
+        val evaluation = engine.evaluate(
+            threats = threatList,
+            focus = engineFocus,
+            params = engineParams,
+            hiddenTypes = emptySet(),
+            silencedTypes = silencedTypeStrings,
             now = now
         )
-        val inInner = evaluation.threatsInner
-        val inOuter = evaluation.threatsOuter
-        val mapThreats = evaluation.mapThreats
+        val inInner = evaluation.threatsInner.map { it.toThreat() }
+        val inOuter = evaluation.threatsOuter.map { it.toThreat() }
+        val mapThreats = evaluation.mapThreats.map { it.toThreat() }
         val threatScores = evaluation.threatScores
 
-        val activeZone = evaluation.activeZone
+        val activeZone: ThreatZone? = when (evaluation.activeZone) {
+            ua.ukrainedrones.engine.ThreatZone.INNER -> ThreatZone.INNER
+            ua.ukrainedrones.engine.ThreatZone.OUTER -> ThreatZone.OUTER
+            null -> null
+        }
         val alertActive = activeZone != null || focusOblastAlertActive
 
         // Short socket blips (drops that recover inside the shared grace window) are invisible
@@ -943,7 +970,7 @@ val uiState: StateFlow<UiState> = combine<Any?, UiState>(
             pinnedCity = pinnedCity,
             focusLocation = focusLocation,
             redCities = redCities,
-            threatLevel = ThreatLevelModel.overall(threatScores),
+            threatLevel = evaluation.threatLevel,
             revealRequest = reveal,
             flourish = flourish,
             alertActive = alertActive,

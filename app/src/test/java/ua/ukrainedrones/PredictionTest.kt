@@ -3,6 +3,7 @@ package ua.ukrainedrones
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import ua.ukrainedrones.engine.SpeedSource
 
 /**
  * Tests for prediction math, distance calculations, and speed tracking.
@@ -72,52 +73,6 @@ class PredictionTest {
 
     // ─────────────────────────────────────────────────────────────
     // etaToCircleEdgeMinutes()
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `etaToCircleEdge - threat heading directly at user`() {
-        // Threat 60 km north, heading south at 900 km/h = 250 m/s
-        val from = LatLng(userLat + 0.54, userLng)
-        val center = LatLng(userLat, userLng)
-        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 180.0, speedMps = 250.0)
-        // ~60 km at 250 m/s = 240 sec = 4 min to center. To 15 km edge = ~3 min.
-        assertNotNull(eta)
-        assertEquals(3.0, eta!!, 0.5)
-    }
-
-    @Test
-    fun `etaToCircleEdge - threat already inside radius returns null`() {
-        val from = LatLng(userLat + 0.05, userLng) // ~5.5 km
-        val center = LatLng(userLat, userLng)
-        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 180.0, speedMps = 50.0)
-        assertNull(eta)
-    }
-
-    @Test
-    fun `etaToCircleEdge - threat flying away returns null`() {
-        val from = LatLng(userLat + 0.54, userLng)
-        val center = LatLng(userLat, userLng)
-        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 0.0, speedMps = 250.0)
-        assertNull(eta)
-    }
-
-    @Test
-    fun `etaToCircleEdge - zero speed returns null`() {
-        val from = LatLng(userLat + 0.54, userLng)
-        val center = LatLng(userLat, userLng)
-        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 180.0, speedMps = 0.0)
-        assertNull(eta)
-    }
-
-    @Test
-    fun `etaToCircleEdge - tangential approach misses circle`() {
-        // Threat due east of center, heading north — will miss the 15 km circle
-        val from = LatLng(userLat, userLng + 0.54)
-        val center = LatLng(userLat, userLng)
-        val eta = etaToCircleEdgeMinutes(from, center, radiusM = 15_000.0, bearingDeg = 0.0, speedMps = 250.0)
-        assertNull(eta)
-    }
-
     // ─────────────────────────────────────────────────────────────
     // predictPosition()
     // ─────────────────────────────────────────────────────────────

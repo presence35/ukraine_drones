@@ -1,6 +1,7 @@
 package ua.ukrainedrones
 
 import android.os.Build
+import ua.ukrainedrones.engine.ThreatZone
 import android.content.Intent
 import android.net.Uri
 import ua.ukrainedrones.connection.ConnectionHolder

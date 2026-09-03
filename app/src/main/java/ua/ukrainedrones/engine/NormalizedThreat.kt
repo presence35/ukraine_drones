@@ -1,7 +1,11 @@
 package ua.ukrainedrones.engine
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class LatLng(val lat: Double, val lon: Double)
 
+@Immutable
 data class TrailPoint(val lat: Double, val lon: Double, val tMillis: Long?)
 
 data class NormalizedThreat(

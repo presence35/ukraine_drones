@@ -5,6 +5,13 @@ import ua.ukrainedrones.connection.NeptunConnectionClient
 import ua.ukrainedrones.connection.isDegraded
 import ua.ukrainedrones.connection.isOffline
 import ua.ukrainedrones.connection.offlineSinceOrNull
+import ua.ukrainedrones.engine.NEPTUN_TYPES
+import ua.ukrainedrones.engine.ThreatEngine
+import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.ZoneParams
+import ua.ukrainedrones.engine.distanceFlat
+import ua.ukrainedrones.engine.toNormalizedThreat
+import ua.ukrainedrones.engine.toThreat
 import kotlin.math.roundToInt
 
 /**
@@ -59,11 +66,16 @@ fun computeWidgetSnapshot(
     mapEnabled: Set<ThreatType>,
     now: Long = System.currentTimeMillis()
 ): WidgetSnapshot {
-    val eval = ThreatEvaluator.evaluate(
-        threats = threats,
+    val threatList = threats.values
+        .filter { it.type in mapEnabled }
+        .map { it.toNormalizedThreat() }
+    val engine = ThreatEngine(NEPTUN_TYPES)
+    val eval = engine.evaluate(
+        threats = threatList,
+        focus = focus?.let { ua.ukrainedrones.engine.LatLng(it.lat, it.lon) },
         params = params,
-        focusLocation = focus,
-        mapEnabledTypes = mapEnabled,
+        hiddenTypes = emptySet(),
+        silencedTypes = emptySet(),
         now = now
     )
 
@@ -72,12 +84,12 @@ fun computeWidgetSnapshot(
     var primaryThreat: WidgetThreat? = null
     var nearestDist = Double.MAX_VALUE
     val typeCounts = LinkedHashMap<ThreatType, Int>()
-    for (t in eval.mapThreats) {
+    for (t in eval.mapThreats.map { it.toThreat() }) {
         if (t.isStale(now)) continue
         count++
         typeCounts[t.type] = (typeCounts[t.type] ?: 0) + 1
         if (focus != null) {
-            val d = distanceMeters(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
+            val d = distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
             if (nearestKm == null || d < nearestKm) nearestKm = d
             if (d < nearestDist) {
                 nearestDist = d
