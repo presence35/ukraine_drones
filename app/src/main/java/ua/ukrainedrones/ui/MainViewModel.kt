@@ -35,8 +35,8 @@ import ua.ukrainedrones.connection.isConnected
 import ua.ukrainedrones.connection.isDegraded
 import ua.ukrainedrones.connection.isOffline
 import ua.ukrainedrones.connection.isForceOffline
-import ua.ukrainedrones.domain.ODESA_LAT
-import ua.ukrainedrones.domain.ODESA_LON
+import ua.ukrainedrones.ODESA_LAT
+import ua.ukrainedrones.ODESA_LON
 import ua.ukrainedrones.engine.ThreatEngine
 import ua.ukrainedrones.engine.toThreat
 import ua.ukrainedrones.engine.toNormalizedThreat

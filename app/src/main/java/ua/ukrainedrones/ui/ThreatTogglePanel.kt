@@ -17,11 +17,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import ua.ukrainedrones.engine.isFastType
 
 /** The two threat groupings shown in Settings: fast (missiles, bombs) and slow (drones). */
 internal fun fastAndSlowGroups(lang: AppLanguage): List<Triple<Int, String, Set<ThreatType>>> {
     val s = Strings.get(lang)
-    val fast = FastThreatTypes
+    val fast = ThreatType.entries.filter { isFastType(it) }.toSet()
     val slow = ThreatType.values().toSet() - fast
     return listOf(
         Triple(R.drawable.ic_lightning, s.fastGroupLabel, fast),

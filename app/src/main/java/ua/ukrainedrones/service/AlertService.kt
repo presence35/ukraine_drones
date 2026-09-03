@@ -28,12 +28,18 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import ua.ukrainedrones.AppLanguage
 import ua.ukrainedrones.connection.ConnectionState
-import ua.ukrainedrones.FastThreatTypes
+import ua.ukrainedrones.engine.isFastType
 import ua.ukrainedrones.LatLng
 import ua.ukrainedrones.OblastAlert
 import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatType
 import ua.ukrainedrones.engine.ThreatZone
+import ua.ukrainedrones.engine.inOblast
+import ua.ukrainedrones.engine.matchOblast
+import ua.ukrainedrones.engine.canonicalToken
+import ua.ukrainedrones.engine.deriveOfficialAlertReason
+import ua.ukrainedrones.engine.isCityScopedSuppressed
+import ua.ukrainedrones.engine.threatBody
 import ua.ukrainedrones.UpdateInfo
 import ua.ukrainedrones.UpdateManager
 import ua.ukrainedrones.UpdateState
@@ -52,7 +58,12 @@ import ua.ukrainedrones.data.SystemEntryKind
 import ua.ukrainedrones.data.TelegramNotifier
 import ua.ukrainedrones.NightZones
 import ua.ukrainedrones.Strings
-import ua.ukrainedrones.ThreatEvaluator
+import ua.ukrainedrones.engine.inOblast
+import ua.ukrainedrones.engine.matchOblast
+import ua.ukrainedrones.engine.canonicalToken
+import ua.ukrainedrones.engine.deriveOfficialAlertReason
+import ua.ukrainedrones.engine.isCityScopedSuppressed
+import ua.ukrainedrones.engine.threatBody
 import ua.ukrainedrones.UserPrefs
 import ua.ukrainedrones.engine.distanceFlat
 import ua.ukrainedrones.isWithinNight
@@ -345,7 +356,7 @@ class AlertService : Service() {
                 .collect { removed ->
                     if (!prefs.neutralizedTallyAllUkraine().first()) {
                         val token = currentToken ?: return@collect
-                        if (!ThreatEvaluator.inOblast(removed.region, removed.district, removed.locality, token)) return@collect
+                        if (!inOblast(removed.region, removed.district, removed.locality, token)) return@collect
                     }
                     tally.onResolved(removed, prefs.language().first())
                 }
@@ -505,11 +516,11 @@ class AlertService : Service() {
                     !cfg.followMe && pinnedLoc != null && pinnedName != null -> {
                         val c = FocusCity.find(pinnedName)
                         val name = if (tail.lang == AppLanguage.UA) (c?.nameUa ?: pinnedName) else pinnedName
-                        val reg = c?.oblastStem ?: ThreatEvaluator.matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
+                        val reg = c?.oblastStem ?: matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
                         Quint(pinnedLoc, name, c?.nameUa ?: pinnedName, reg, true)
                     }
                     gpsLoc != null -> {
-                        val gpsOblast = ThreatEvaluator.matchOblast(gpsLoc.lat, gpsLoc.lon)
+                        val gpsOblast = matchOblast(gpsLoc.lat, gpsLoc.lon)
                         val name = when {
                             gpsOblast == null -> if (tail.lang == AppLanguage.UA) "Україна" else "Ukraine"
                             tail.lang == AppLanguage.UA -> gpsOblast.nameUa
@@ -520,7 +531,7 @@ class AlertService : Service() {
                     pinnedLoc != null && pinnedName != null -> {
                         val c = FocusCity.find(pinnedName)
                         val name = if (tail.lang == AppLanguage.UA) (c?.nameUa ?: pinnedName) else pinnedName
-                        val reg = c?.oblastStem ?: ThreatEvaluator.matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
+                        val reg = c?.oblastStem ?: matchOblast(pinnedLoc.lat, pinnedLoc.lon)?.nameUa ?: ""
                         Quint(pinnedLoc, name, c?.nameUa ?: pinnedName, reg, false)
                     }
                     else -> {
@@ -529,7 +540,7 @@ class AlertService : Service() {
                     }
                 }
 
-                val focusToken = ThreatEvaluator.canonicalToken(focusRegion)
+                val focusToken = canonicalToken(focusRegion)
                 currentToken = focusToken
 
                 val (focusOblastAlertActive, focusOblastAlertSince) = if (focusToken != null) {
@@ -541,7 +552,7 @@ class AlertService : Service() {
 
                 val activeOfficialAlert = focusToken?.let { token -> alerts.firstOrNull { it.inOblast(token) } }
                 val (officialReason, officialReasonThreatId) = if (activeOfficialAlert != null) {
-                    ThreatEvaluator.deriveOfficialAlertReason(
+                    deriveOfficialAlertReason(
                         threats.values.toList(),
                         activeOfficialAlert,
                         focusLoc,
@@ -555,7 +566,7 @@ class AlertService : Service() {
                 val cityScopedSuppressed = cfg.officialAlertCityScope &&
                     focusCityObj != null &&
                     activeOfficialAlert != null &&
-                    ThreatEvaluator.isCityScopedSuppressed(focusCityObj, threats.values.toList())
+                    isCityScopedSuppressed(focusCityObj, threats.values.toList())
 
                 val effectiveOfficialActive = focusOblastAlertActive && !cityScopedSuppressed
 
@@ -652,7 +663,7 @@ class AlertService : Service() {
         val all = state.threats
 
         fun alertTier(id: String, spatial: ThreatZone): ThreatZone? {
-            val fast = FastThreatTypes.contains(all[id]?.type)
+            val fast = all[id]?.let { isFastType(it.type) } ?: false
             val red = if (fast) state.fastRedArmed else state.slowRedArmed
             val yellow = if (fast) state.fastYellowArmed else state.slowYellowArmed
             return when (spatial) {
@@ -675,7 +686,7 @@ class AlertService : Service() {
             val (id, zone) = newEntries.first()
             postedId = id
             val t = all[id]
-            val body = t?.let { ThreatEvaluator.threatBody(it, state.lang) } ?: s.notifBodyRegion
+            val body = t?.let { threatBody(it, state.lang) } ?: s.notifBodyRegion
 
             wakeLockManager.acquireForAlert()
             postAlert(
@@ -684,7 +695,7 @@ class AlertService : Service() {
                 body,
                 state.zoneSirenOverride,
                 revealThreat = t,
-                vibrationLevel = if (t?.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+                vibrationLevel = if (t?.let { isFastType(it.type) } ?: false) state.fastVibrationLevel else state.slowVibrationLevel
             )
             posted = true
             knownZones = knownZones + (id to zone)
@@ -735,7 +746,7 @@ class AlertService : Service() {
                 night = state.nightActive,
                 sirenOverride = state.officialSirenOverride,
                 vibrationLevel = reasonThreat?.let {
-                    if (it.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+                    if (isFastType(it.type)) state.fastVibrationLevel else state.slowVibrationLevel
                 } ?: VIBRATION_STRONG,
                 notified = state.officialAlertsEnabled && !posted,
                 reason = when {
@@ -761,7 +772,7 @@ class AlertService : Service() {
                 state.officialSirenOverride,
                 revealThreat = reasonThreat,
                 vibrationLevel = reasonThreat?.let {
-                    if (it.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+                    if (isFastType(it.type)) state.fastVibrationLevel else state.slowVibrationLevel
                 } ?: VIBRATION_STRONG
             )
             currentReasonThreatId = state.officialReasonThreatId
@@ -779,7 +790,7 @@ class AlertService : Service() {
                 state.officialSirenOverride,
                 revealThreat = reasonThreat,
                 vibrationLevel = reasonThreat?.let {
-                    if (it.type in FastThreatTypes) state.fastVibrationLevel else state.slowVibrationLevel
+                    if (isFastType(it.type)) state.fastVibrationLevel else state.slowVibrationLevel
                 } ?: VIBRATION_STRONG,
                 silent = true
             )

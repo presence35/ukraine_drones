@@ -1,6 +1,8 @@
 package ua.ukrainedrones
 
 import ua.ukrainedrones.engine.SpeedSource
+import ua.ukrainedrones.engine.ThreatEngine
+import ua.ukrainedrones.engine.NEPTUN_TYPES
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -148,6 +150,7 @@ fun ThreatPopupCard(
     fakeNeutralize: Boolean = false
 ) {
     val s = Strings.get(lang)
+    val engine = remember { ThreatEngine(NEPTUN_TYPES) }
     val typeInfo = ThreatTypeCatalog.INFO.getValue(threat.type)
     val typeLabel = if (lang == AppLanguage.UA) typeInfo.labelUa else typeInfo.labelEn
 
@@ -168,7 +171,8 @@ fun ThreatPopupCard(
     val confirmations = threat.confirmations.takeIf { it > 0 }
 
     val band = proximity?.let { p ->
-        zoneTier(threat, p.distToUserKm ?: return@let null, p.speedKmh, p.params)
+        val props = NEPTUN_TYPES[threat.type.name.lowercase()] ?: return@let null
+        engine.zoneTier(props, p.distToUserKm ?: return@let null, p.speedKmh, p.params)
     }
     val bandColor = when (band) {
         ThreatZone.INNER -> DistUserRed

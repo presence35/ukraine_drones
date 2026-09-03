@@ -1,4 +1,4 @@
-package ua.ukrainedrones.domain
+package ua.ukrainedrones
 
 /** Ukraine (incl. Crimea) tight bounds — ~0.5° margin, used for UI clamping and map pan limits. */
 const val UA_TIGHT_MIN_LAT = 43.9

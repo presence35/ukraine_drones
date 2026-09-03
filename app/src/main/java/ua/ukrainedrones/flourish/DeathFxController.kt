@@ -16,10 +16,10 @@ import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.TileSystem
 import org.osmdroid.views.MapView
-import ua.ukrainedrones.domain.UA_TIGHT_MIN_LAT
-import ua.ukrainedrones.domain.UA_TIGHT_MAX_LAT
-import ua.ukrainedrones.domain.UA_TIGHT_MIN_LON
-import ua.ukrainedrones.domain.UA_TIGHT_MAX_LON
+import ua.ukrainedrones.UA_TIGHT_MIN_LAT
+import ua.ukrainedrones.UA_TIGHT_MAX_LAT
+import ua.ukrainedrones.UA_TIGHT_MIN_LON
+import ua.ukrainedrones.UA_TIGHT_MAX_LON
 import kotlin.random.Random
 
 private val UA_MIN_LAT = UA_TIGHT_MIN_LAT

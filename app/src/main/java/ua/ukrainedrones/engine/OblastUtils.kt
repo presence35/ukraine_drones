@@ -6,6 +6,9 @@ import ua.ukrainedrones.Threat
 import ua.ukrainedrones.ThreatTypeCatalog
 import ua.ukrainedrones.Transliteration
 import ua.ukrainedrones.FocusCityInfo
+import ua.ukrainedrones.LatLng
+import ua.ukrainedrones.OblastAlert
+import ua.ukrainedrones.isStale
 
 fun inOblast(region: String?, district: String?, locality: String?, token: String?): Boolean {
     if (token == null) return false
@@ -52,6 +55,37 @@ fun isCityScopedSuppressed(city: FocusCityInfo, threats: List<Threat>): Boolean 
         t.status == "active" && !t.advisory && !t.areaOnly &&
             (t.region?.contains(stem, ignoreCase = true) == true ||
                 t.locality?.contains(city.nameUa, ignoreCase = true) == true)
+    }
+}
+
+fun deriveOfficialAlertReason(
+    threats: List<Threat>,
+    alert: OblastAlert?,
+    focus: LatLng?,
+    lang: AppLanguage
+): Pair<String?, String?> {
+    if (alert == null) return null to null
+    val token = canonicalToken(alert.oblast) ?: return null to null
+    val now = System.currentTimeMillis()
+    var best: Threat? = null
+    var bestScore = -1.0
+    for (t in threats) {
+        if (t.status != "active" || t.advisory || t.areaOnly || t.isStale(now)) continue
+        if (!inOblast(t.region, t.district, t.locality, token)) continue
+        val distKm = if (focus != null) {
+            distanceFlat(focus.lat, focus.lon, t.lat, t.lon) / 1000.0
+        } else null
+        val score = distKm ?: 0.0
+        if (score > bestScore) {
+            bestScore = score
+            best = t
+        }
+    }
+    return if (best != null) {
+        val body = threatBody(best, lang)
+        body to best.id
+    } else {
+        alert.name to null
     }
 }
 

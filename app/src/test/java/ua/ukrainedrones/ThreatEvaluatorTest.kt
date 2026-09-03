@@ -2,6 +2,9 @@ package ua.ukrainedrones
 
 import org.junit.Assert.*
 import org.junit.Test
+import ua.ukrainedrones.engine.inFocusOblast
+import ua.ukrainedrones.engine.inOblast
+import ua.ukrainedrones.engine.threatBody
 
 class ThreatEvaluatorTest {
 
@@ -15,24 +18,24 @@ class ThreatEvaluatorTest {
     @Test
     fun `inFocusOblast - matching region returns true`() {
         val threat = makeThreat(region = "Київська область")
-        assertTrue(ThreatEvaluator.inFocusOblast(threat, "Київськ"))
+        assertTrue(inFocusOblast(threat, "Київськ"))
     }
 
     @Test
     fun `inFocusOblast - non-matching region returns false`() {
         val threat = makeThreat(region = "Одеська область")
-        assertFalse(ThreatEvaluator.inFocusOblast(threat, "Київськ"))
+        assertFalse(inFocusOblast(threat, "Київськ"))
     }
 
     @Test
     fun `inFocusOblast - null token returns false`() {
         val threat = makeThreat(region = "Київська область")
-        assertFalse(ThreatEvaluator.inFocusOblast(threat, null))
+        assertFalse(inFocusOblast(threat, null))
     }
 
     @Test
     fun `inOblast - district match works`() {
-        assertTrue(ThreatEvaluator.inOblast(
+        assertTrue(inOblast(
             region = "Одеська",
             district = "Київський",
             locality = null,
@@ -42,7 +45,7 @@ class ThreatEvaluatorTest {
 
     @Test
     fun `inOblast - locality match works`() {
-        assertTrue(ThreatEvaluator.inOblast(
+        assertTrue(inOblast(
             region = "Одеська",
             district = "Одеський",
             locality = "Київське",
@@ -60,7 +63,7 @@ class ThreatEvaluatorTest {
             type = ThreatType.SHAHED,
             locality = "Київ"
         )
-        val body = ThreatEvaluator.threatBody(threat, AppLanguage.UA)
+        val body = threatBody(threat, AppLanguage.UA)
         assertEquals("БпЛА — Київ", body)
     }
 
@@ -70,7 +73,7 @@ class ThreatEvaluatorTest {
             type = ThreatType.SHAHED,
             locality = "Київ"
         )
-        val body = ThreatEvaluator.threatBody(threat, AppLanguage.EN)
+        val body = threatBody(threat, AppLanguage.EN)
         assertEquals("UAV — Kyiv", body)
     }
 
@@ -82,7 +85,7 @@ class ThreatEvaluatorTest {
             district = null,
             region = null
         )
-        val body = ThreatEvaluator.threatBody(threat, AppLanguage.UA)
+        val body = threatBody(threat, AppLanguage.UA)
         assertEquals("БпЛА", body)
     }
 

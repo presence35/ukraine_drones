@@ -8,3 +8,6 @@ fun String.toThreatType(): ThreatType = ThreatType.fromApi(this)
 
 fun threatTypeInfoByString(type: String): ThreatTypeInfo? =
     ThreatTypeCatalog.INFO[type.toThreatType()]
+
+fun isFastType(type: ThreatType): Boolean =
+    NEPTUN_TYPES[type.name.lowercase()]?.isFast ?: DEFAULT_THREAT_PROPS.isFast
