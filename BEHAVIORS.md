@@ -396,6 +396,6 @@ object PluginRegistry {
 
 - [x] Session 1: BEHAVIORS.md (this document)
 - [x] Session 2: Engine kernel (engine/*, 44 tests passing)
-- [ ] Session 3: Plugin system
+- [x] Session 3: Plugin system (ThreatSource, NeptunPlugin, PluginRegistry, TypeMapping, 54 tests passing)
 - [ ] Session 4: UI refactor
 - [ ] Session 5: Cleanup
