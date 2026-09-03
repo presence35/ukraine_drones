@@ -58,6 +58,7 @@ import ua.ukrainedrones.distanceMeters
 import ua.ukrainedrones.isWithinNight
 import ua.ukrainedrones.threatAlertFlow
 import ua.ukrainedrones.NeutralizedTally
+import ua.ukrainedrones.engine.toThreat
 import ua.ukrainedrones.service.ServiceState
 import ua.ukrainedrones.connection.isConnected
 import ua.ukrainedrones.connection.isDegraded
@@ -221,6 +222,7 @@ class AlertService : Service() {
     override fun onCreate() {
         super.onCreate()
         notificationManager.createChannels()
+        AppPluginHolder.init(applicationContext)
 
         scope.launch {
             ConnectionLog.attach(applicationContext)
@@ -392,10 +394,14 @@ class AlertService : Service() {
             )
 
             val client = ConnectionHolder.getClient(applicationContext)
+            val registry = AppPluginHolder.registry
+            val mappedThreats = registry.allThreats.map { list ->
+                list.associate { it.id to it.toThreat() }
+            }
             val liveFlow = combine(
                 client.connectionState,
-                client.threats,
-                client.alerts,
+                mappedThreats,
+                registry.allAlerts,
                 client.threatDataStale,
                 LocationTracker.location,
                 nowFlow

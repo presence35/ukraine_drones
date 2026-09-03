@@ -37,6 +37,7 @@ import ua.ukrainedrones.connection.isOffline
 import ua.ukrainedrones.connection.isForceOffline
 import ua.ukrainedrones.domain.ODESA_LAT
 import ua.ukrainedrones.domain.ODESA_LON
+import ua.ukrainedrones.engine.toThreat
 import ua.ukrainedrones.service.ServiceState
 import org.osmdroid.util.GeoPoint
 import kotlin.math.roundToLong
@@ -216,8 +217,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     val updateReminderTick: StateFlow<Int> get() = updateReminderFlow
     private val client = ConnectionHolder.getClient(app)
     private val connectionStateFlow = client.connectionState
-    private val threatsFlow = client.threats
-    private val alertsFlow = client.alerts
+    private val registry = AppPluginHolder.registry
+    private val threatsFlow = registry.allThreats.map { list ->
+        list.associate { it.id to it.toThreat() }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    private val alertsFlow = registry.allAlerts
     /** Sampled NEPTUN state for UI (120ms) — bounds recomposition rate during heavy streams.
      *  AlertService still consumes the raw stream directly (mirror rule). */
     @OptIn(FlowPreview::class)
@@ -258,6 +262,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        AppPluginHolder.init(getApplication())
         LocationTracker.start(getApplication())
         // Auto-check for updates at most once per day; pops only when no alert is active.
         autoCheckForUpdates(allowPopup = true)
