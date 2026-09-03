@@ -22,22 +22,31 @@ Only when the user says **"release it"**, perform a full release:
 
 ## Development conventions
 
-Read `ARCHITECTURE.md` before exploring the codebase — it has the full module map (every
-source file with its one-line responsibility), the data-flow pipeline, and the key invariants.
-Use it to jump straight to the right file instead of re-reading the codebase.
+Read `BEHAVIORS.md` before any engine work — it is the source of truth for the threat
+evaluation contract. Read `ARCHITECTURE.md` for module map and data-flow context.
+
+### Engine conventions
+
+- **No mirror rule.** UI and service call `ThreatEvaluator.evaluate()` — one call site,
+  no duplicated logic. See `BEHAVIORS.md` for the contract.
+- **Source-agnostic.** Engine works with `NormalizedThreat` and `ThreatProps`. Never
+  touches NEPTUN JSON or source-specific formats.
+- **Plugin-provided type properties.** `ThreatProps` come from the active plugin.
+  Engine defaults exist for unknown types. Never hardcode type names in engine logic.
+- **Explicit `now` parameter.** All time-dependent functions take a timestamp.
+  Enables deterministic testing.
+- **Haversine for distance.**
+- **Speed cache is engine-internal.** Not a global singleton. Consumers never touch it.
+- **Dark-only theme.** Theme is a plugin interface; only dark ships for now.
+  Never hardcode theme assumptions in the engine.
 
 ### Coding conventions
 
 - Minimal patches; don't rewrite whole files for small changes.
 - Don't add comments unless asked.
-- Dark-only theme; never add a light theme.
 - UA/EN text goes through `Strings` (`Strings.get(lang).StringSet`), not Android resource
   localization.
 - User settings/prefs go through `ZonePrefs` (DataStore-backed); don't add a second prefs store.
-- **Mirror rule**: `MainViewModel` (UI) and `AlertService` (notifications) each reimplement the
-  zone/focus/alert logic. Any change to `zoneTier`, `ZoneParams`, `reachKm`,
-  `focusAttribution`, `staleAfterMs`, or `predictPosition` must be applied in
-  **both** files — see `ARCHITECTURE.md#key-invariants`.
 - Backwards compatible code, or migrating old users is not a concern -- we're in beta mode still.
 
 ### Always build/verify before finishing
@@ -45,8 +54,8 @@ Use it to jump straight to the right file instead of re-reading the codebase.
 After a meaningful code change, verify before declaring the task done:
 
 - `.\gradlew.bat :app:assembleDebug`
-- `.\gradlew.bat :app:testDebugUnitTest` — when touching domain logic
-  (`Prediction`/`Zones`/`ThreatLevel`/`Threat`/`UpdateManager`).
+- `.\gradlew.bat :app:testDebugUnitTest` — when touching engine logic
+  (`ThreatEngine`/`NormalizedThreat`/`ThreatProps`/`SpeedCache`).
 
 Fix any failures before finishing.
 
@@ -60,3 +69,8 @@ Fix any failures before finishing.
 
 When you add a source file or change a documented invariant, update the module map /
 key-invariants section of `ARCHITECTURE.md` in the same change, so the docs never rot.
+
+### Refactor branch
+
+This is the `refactor` branch. The `refactor/` subdirectory is a Gemini scaffold — ignore it.
+Work at the root of the clone. The refactor plan lives in `BEHAVIORS.md` under "Session Status".
